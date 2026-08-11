@@ -22,5 +22,5 @@ LoomTable 的 Obsidian 前端插件。Plugin 使用 TypeScript，通过 LoomTabl
 - 使用 Obsidian 主题变量适配 Light、Dark 和移动端环境。
 - 生产数据通过 LoomTable Server 获取；本地缓存不是真实数据来源。
 
-许可证：AGPL-3.0。
+许可证：MIT License。
 

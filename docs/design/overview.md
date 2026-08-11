@@ -94,5 +94,5 @@ src/
 
 ## 7. 许可证
 
-LoomTable Obsidian Plugin 使用 AGPL-3.0。第三方字体、地图服务、瓦片和依赖需要单独完成许可证审查。
+LoomTable Obsidian Plugin 使用 MIT License。第三方字体、地图服务、瓦片和依赖需要单独完成许可证审查。
 
