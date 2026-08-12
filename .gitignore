@@ -1,5 +1,6 @@
 # Dependencies and package-manager caches
 node_modules/
+# Project-local pnpm store configured in pnpm-workspace.yaml; never publish its contents.
 .pnpm-store/
 .corepack-cache/
 .npm/
