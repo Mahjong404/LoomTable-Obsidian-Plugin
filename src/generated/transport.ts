@@ -505,31 +505,2157 @@ export interface components {
             deletedAt?: string;
         };
         /** @description Strict type-discriminated P0 Field response. */
-        Field: components["schemas"]["TextField"] | componentÛzöÚ$z{-®éÜj×NÂˆÛÛÚÚYOÎˆ™]™\ÂˆNÂˆ™\]Y\İ›ÙNˆÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ“X\Û\İ\”™XÛÜ™Ô]Y\T™\]Y\İ—NÂˆNÂˆNÂˆ™\ÜÛœÙ\ÎˆÂˆÊŠˆ\ØÜš\[ÛˆHİ\œÛÜˆYÙHÙˆ[™XÛÜ™È™\™\Ù[YHHÛ\İ\ˆ
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ”]Y\T™\İ[—NÂˆNÂˆNÂˆÊŠˆ\ØÜš\[ÛˆÛ\İ\ˆÚÙ[ˆÜˆİ\œÛÜˆ\È[˜[YÜˆ›İ[™È[›İ\ˆ]Y\H
-‹ÂˆˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆNˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[˜]][XØ]Y—NÂˆÎˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘›Ü˜šY[ˆ—NÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ“›İ›İ[™—NÂˆÊŠˆ\ØÜš\[ÛˆÚÙ[ˆ[Y[İ]Üˆ[H™[]˜[šY]ËÕX›HÚ[™ÙH™]\›œÈUQT–WÔÓTÒÕÑVT‘QÈHÛY[™Yœ™\Ú\ÈHšY]ÜÜ™Y›Ü™HÜ[š[™ÈHÛ\İ\ˆYØZ[ˆ
-‹ÂˆLˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆÊŠˆ\ØÜš\[ÛˆHšY]È\È›ÈÛ™Ù\ˆH\ØX›HX\šY]È
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆY˜][ˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆÙ]™XÛÜ™ˆÂˆ\˜[Y]\œÎˆÂˆ]Y\OÎˆ™]™\ÂˆXY\Îˆ™]™\Âˆ]ˆÂˆ™XÛÜ™YˆÛÛ\Û™[ÖÈœ\˜[Y]\œÈ—VÈ”™XÛÜ™Y—NÂˆNÂˆÛÛÚÚYOÎˆ™]™\ÂˆNÂˆ™\]Y\İ›ÙOÎˆ™]™\Âˆ™\ÜÛœÙ\ÎˆÂˆÊŠˆ\ØÜš\[Ûˆ[™XÛÜ™
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ”™XÛÜ™—NÂˆNÂˆNÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ˜Y™\]Y\İ—NÂˆNˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[˜]][XØ]Y—NÂˆÎˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘›Ü˜šY[ˆ—NÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ“›İ›İ[™—NÂˆY˜][ˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆ]Y\T™XÛÜ™ÎˆÂˆ\˜[Y]\œÎˆÂˆ]Y\OÎˆ™]™\ÂˆXY\Îˆ™]™\Âˆ]ˆÂˆX›RYˆÛÛ\Û™[ÖÈœ\˜[Y]\œÈ—VÈ•X›RY—NÂˆNÂˆÛÛÚÚYOÎˆ™]™\ÂˆNÂˆ™\]Y\İ›ÙNˆÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ”]Y\T™\]Y\İ—NÂˆNÂˆNÂˆ™\ÜÛœÙ\ÎˆÂˆÊŠˆ\ØÜš\[ÛˆHİ\œÛÜˆYÙHÙˆ™XÛÜ™È
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ”]Y\T™\İ[—NÂˆNÂˆNÂˆÊŠˆ\ØÜš\[Ûˆ[˜[Y™\]Y\İÜˆİ\œÛÜˆ›İ[™ÈHY™™\™[]Y\H
-‹ÂˆˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆNˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[˜]][XØ]Y—NÂˆÎˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘›Ü˜šY[ˆ—NÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ“›İ›İ[™—NÂˆÊŠˆ\ØÜš\[Ûˆİ\œÛÜˆ\È^\™Y[™HÛY[]\İ™\İ\œ›ÛHHš\œİYÙH
-‹ÂˆLˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆÊŠˆ\ØÜš\[Ûˆš[\‹ÛÜ›Ú™Xİ[Û‹ÜˆšY[Ü\˜]Üˆ\È[˜[Y
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆY˜][ˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆ]]]T™XÛÜ™ÎˆÂˆ\˜[Y]\œÎˆÂˆ]Y\OÎˆ™]™\ÂˆXY\Îˆ™]™\Âˆ]ˆÂˆX›RYˆÛÛ\Û™[ÖÈœ\˜[Y]\œÈ—VÈ•X›RY—NÂˆNÂˆÛÛÚÚYOÎˆ™]™\ÂˆNÂˆ™\]Y\İ›ÙNˆÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ“]]][Û”™\]Y\İ—NÂˆNÂˆNÂˆ™\ÜÛœÙ\ÎˆÂˆÊŠˆ\ØÜš\[Ûˆ\‹XÛÛ[X[™]]][Ûˆ™\İ[È
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ“]]][Û”™\İ[—NÂˆNÂˆNÂˆÊŠˆ\ØÜš\[Ûˆ[˜[Y™\]Y\İ
-‹ÂˆˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆÊŠˆ\ØÜš\[ÛˆZ\ÜÚ[™ÈÜˆ[˜[Y™X\™\ˆÚÙ[ˆ
-‹ÂˆNˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆÊŠˆ\ØÜš\[ÛˆXİÜˆ\È]][XØ]Y]›Ü˜šY[ˆ
-‹ÂˆÎˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆÊŠˆ\ØÜš\[ÛˆX›HÜˆ™Y™\™[˜ÙY™XÛÜ™Ø\È›İ›İ[™
-‹ÂˆˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆÊŠˆ\ØÜš\[Ûˆ]X\İÛ™HÛÛ[X[™\ÈH™]š\Ú[ÛˆÛÛ™›Xİ
-‹ÂˆNˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈÛÛ™›Xİ™\ÜÛœÙH—NÂˆNÂˆNÂˆÊŠˆ\ØÜš\[ÛˆšY[˜[YHÜˆÛÛ[X[™Ù[X[XÜÈ\™H[˜[Y
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆY˜][ˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆ[Ú[™Ù\ÎˆÂˆ\˜[Y]\œÎˆÂˆ]Y\OÎˆÂˆİ\œÛÜÎˆİš[™ÎÂˆ[Z]Îˆ[X™\ÂˆNÂˆXY\Îˆ™]™\Âˆ]ˆÂˆX›RYˆÛÛ\Û™[ÖÈœ\˜[Y]\œÈ—VÈ•X›RY—NÂˆNÂˆÛÛÚÚYOÎˆ™]™\ÂˆNÂˆ™\]Y\İ›ÙOÎˆ™]™\Âˆ™\ÜÛœÙ\ÎˆÂˆÊŠˆ\ØÜš\[ÛˆÚ[™Ù\ÈY\ˆHİ\YYİ\œÛÜˆ
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈÚ[™ÙTYÙH—NÂˆNÂˆNÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ˜Y™\]Y\İ—NÂˆNˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[˜]][XØ]Y—NÂˆÎˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘›Ü˜šY[ˆ—NÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ“›İ›İ[™—NÂˆLˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈİ\œÛÜ‘^\™Y—NÂˆY˜][ˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆ[š]X[^™P]XÚY[ˆÂˆ\˜[Y]\œÎˆÂˆ]Y\OÎˆ™]™\ÂˆXY\Îˆ™]™\Âˆ]Îˆ™]™\ÂˆÛÛÚÚYOÎˆ™]™\ÂˆNÂˆ™\]Y\İ›ÙNˆÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ’[š]X[^™P]XÚY[™\]Y\İ—NÂˆNÂˆNÂˆ™\ÜÛœÙ\ÎˆÂˆÊŠˆ\ØÜš\[Ûˆ]XÚY[Y]Y]H[š]X[^™Y
-‹ÂˆŒNˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ]XÚY[—NÂˆNÂˆNÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ˜Y™\]Y\İ—NÂˆNˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[˜]][XØ]Y—NÂˆÎˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘›Ü˜šY[ˆ—NÂˆŒˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[œ›ØÙ\ÜØX›Q[]H—NÂˆÊŠˆ\ØÜš\[Ûˆ]XÚY[Ø\Xš[]H\È™\Ù[[ˆHÛÛ˜Xİ]\ØX›Y[ˆ
-‹ÂˆLNˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆY˜][ˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆÙ]]XÚY[ˆÂˆ\˜[Y]\œÎˆÂˆ]Y\OÎˆ™]™\ÂˆXY\Îˆ™]™\Âˆ]ˆÂˆ]XÚY[YˆÛÛ\Û™[ÖÈœ\˜[Y]\œÈ—VÈ]XÚY[Y—NÂˆNÂˆÛÛÚÚYOÎˆ™]™\ÂˆNÂˆ™\]Y\İ›ÙOÎˆ™]™\Âˆ™\ÜÛœÙ\ÎˆÂˆÊŠˆ\ØÜš\[Ûˆ]XÚY[Y]Y]H
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ]XÚY[—NÂˆNÂˆNÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ˜Y™\]Y\İ—NÂˆNˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[˜]][XØ]Y—NÂˆÎˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘›Ü˜šY[ˆ—NÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ“›İ›İ[™—NÂˆÊŠˆ\ØÜš\[Ûˆ]XÚY[Ø\Xš[]H\È™\Ù[[ˆHÛÛ˜Xİ]\ØX›Y[ˆ
-‹ÂˆLNˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆY˜][ˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆ[]P]XÚY[ˆÂˆ\˜[Y]\œÎˆÂˆ]Y\OÎˆ™]™\ÂˆXY\Îˆ™]™\Âˆ]ˆÂˆ]XÚY[YˆÛÛ\Û™[ÖÈœ\˜[Y]\œÈ—VÈ]XÚY[Y—NÂˆNÂˆÛÛÚÚYOÎˆ™]™\ÂˆNÂˆ™\]Y\İ›ÙOÎˆ™]™\Âˆ™\ÜÛœÙ\ÎˆÂˆÊŠˆ\ØÜš\[Ûˆ]XÚY[™Y™\™[˜ÙH™[[İ™YÈ\ÚXØ[ÛX[\X^H™HY™\œ™Y
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[Îˆ™]™\ÂˆNÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ˜Y™\]Y\İ—NÂˆNˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[˜]][XØ]Y—NÂˆÎˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘›Ü˜šY[ˆ—NÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ“›İ›İ[™—NÂˆÊŠˆ\ØÜš\[Ûˆ]XÚY[Ø\Xš[]H\È™\Ù[[ˆHÛÛ˜Xİ]\ØX›Y[ˆ
-‹ÂˆLNˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆY˜][ˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆİÛ›ØY]XÚY[ÛÛ[ˆÂˆ\˜[Y]\œÎˆÂˆ]Y\OÎˆ™]™\ÂˆXY\Îˆ™]™\Âˆ]ˆÂˆ]XÚY[YˆÛÛ\Û™[ÖÈœ\˜[Y]\œÈ—VÈ]XÚY[Y—NÂˆNÂˆÛÛÚÚYOÎˆ™]™\ÂˆNÂˆ™\]Y\İ›ÙOÎˆ™]™\Âˆ™\ÜÛœÙ\ÎˆÂˆÊŠˆ\ØÜš\[Ûˆ]XÚY[ÛÛ[
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÛØİ]\İ™X[Hˆ[šÛ›İÛÂˆš[XYÙKÊˆˆ[šÛ›İÛÂˆ˜\XØ][Û‹Üˆˆ[šÛ›İÛÂˆNÂˆNÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ˜Y™\]Y\İ—NÂˆNˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[˜]][XØ]Y—NÂˆÎˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘›Ü˜šY[ˆ—NÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ“›İ›İ[™—NÂˆÊŠˆ\ØÜš\[Ûˆ]XÚY[Ø\Xš[]H\È™\Ù[[ˆHÛÛ˜Xİ]\ØX›Y[ˆ
-‹ÂˆLNˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆY˜][ˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆ\ØY]XÚY[ÛÛ[ˆÂˆ\˜[Y]\œÎˆÂˆ]Y\OÎˆ™]™\ÂˆXY\Îˆ™]™\Âˆ]ˆÂˆ]XÚY[YˆÛÛ\Û™[ÖÈœ\˜[Y]\œÈ—VÈ]XÚY[Y—NÂˆNÂˆÛÛÚÚYOÎˆ™]™\ÂˆNÂˆ™\]Y\İ›ÙNˆÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÛØİ]\İ™X[Hˆ[šÛ›İÛÂˆNÂˆNÂˆ™\ÜÛœÙ\ÎˆÂˆÊŠˆ\ØÜš\[Ûˆ]XÚY[ÛÛ[İÜ™Y
-‹ÂˆŒˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[Îˆ™]™\ÂˆNÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ˜Y™\]Y\İ—NÂˆNˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[˜]][XØ]Y—NÂˆÎˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘›Ü˜šY[ˆ—NÂˆˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ“›İ›İ[™—NÂˆŒˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ•[œ›ØÙ\ÜØX›Q[]H—NÂˆÊŠˆ\ØÜš\[Ûˆ]XÚY[Ø\Xš[]H\È™\Ù[[ˆHÛÛ˜Xİ]\ØX›Y[ˆ
-‹ÂˆLNˆÂˆXY\œÎˆÂˆÛ˜[YNˆİš[™×Nˆ[šÛ›İÛÂˆNÂˆÛÛ[ˆÂˆ˜\XØ][Û‹ÚœÛÛˆˆÛÛ\Û™[ÖÈœØÚ[X\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂˆY˜][ˆÛÛ\Û™[ÖÈœ™\ÜÛœÙ\È—VÈ‘\œ›Ü”™\ÜÛœÙH—NÂˆNÂˆNÂŸB
+        Field: components["schemas"]["TextField"] | components["schemas"]["LongTextField"] | components["schemas"]["NumberField"] | components["schemas"]["CheckboxField"] | components["schemas"]["DateField"] | components["schemas"]["SelectField"] | components["schemas"]["MultiSelectField"] | components["schemas"]["URLField"] | components["schemas"]["LocationField"];
+        FieldBase: {
+            id: components["schemas"]["FieldId"];
+            tableId: components["schemas"]["TableId"];
+            name: components["schemas"]["ResourceName"];
+            position: number;
+            schemaVersion: number;
+            revision: number;
+            /** Format: date-time */
+            deletedAt?: string;
+        };
+        TextField: components["schemas"]["FieldBase"] & {
+            /** @constant */
+            type: "text";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
+        };
+        LongTextField: components["schemas"]["FieldBase"] & {
+            /** @constant */
+            type: "longText";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "longText";
+        };
+        NumberField: components["schemas"]["FieldBase"] & {
+            /** @constant */
+            type: "number";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "number";
+        };
+        CheckboxField: components["schemas"]["FieldBase"] & {
+            /** @constant */
+            type: "checkbox";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "checkbox";
+        };
+        DateField: components["schemas"]["FieldBase"] & {
+            /** @constant */
+            type: "date";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "date";
+        };
+        SelectField: components["schemas"]["FieldBase"] & {
+            /** @constant */
+            type: "select";
+            config: components["schemas"]["SelectFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "select";
+        };
+        MultiSelectField: components["schemas"]["FieldBase"] & {
+            /** @constant */
+            type: "multiSelect";
+            config: components["schemas"]["SelectFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "multiSelect";
+        };
+        URLField: components["schemas"]["FieldBase"] & {
+            /** @constant */
+            type: "url";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "url";
+        };
+        LocationField: components["schemas"]["FieldBase"] & {
+            /** @constant */
+            type: "location";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "location";
+        };
+        /** @description A discriminated P0 View. The type always determines the exact config schema. */
+        View: components["schemas"]["GridView"] | components["schemas"]["MapView"];
+        GridView: {
+            id: components["schemas"]["ViewId"];
+            tableId: components["schemas"]["TableId"];
+            name: components["schemas"]["ResourceName"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "grid";
+            config: components["schemas"]["GridViewConfig"];
+            revision: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            deletedAt?: string;
+        };
+        MapView: {
+            id: components["schemas"]["ViewId"];
+            tableId: components["schemas"]["TableId"];
+            name: components["schemas"]["ResourceName"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "map";
+            config: components["schemas"]["MapViewConfig"];
+            revision: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            deletedAt?: string;
+        };
+        /** @description The keys of values are stable Field IDs, never mutable Field names. A missing key is an Unset Cell; a present null is an explicitly cleared Cell. */
+        Record: {
+            id: components["schemas"]["RecordId"];
+            tableId: components["schemas"]["TableId"];
+            revision: number;
+            values: components["schemas"]["RecordValues"];
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: date-time */
+            deletedAt?: string;
+        };
+        /** @description Values keyed by stable Field ID. Missing keys are Unset. Every P0 Field Type accepts explicit null; Text and LongText additionally accept an empty string, and MultiSelect accepts an empty array. Empty URL strings and empty Location objects are invalid. Unknown, foreign-Table, or deleted Fields cannot be written. Deleted Options cannot be newly introduced, but existing references may remain. Violations return 422 VALIDATION_ERROR and are never silently removed. */
+        RecordValues: {
+            [key: string]: components["schemas"]["P0FieldValue"];
+        };
+        /** @description Transport union for a P0 Cell value. Semantic validity is selected by the Field Type identified by the containing object key. Text is limited to 10,000 and LongText to 100,000 Unicode code points; URL is an absolute HTTP/HTTPS URL up to 2,048 characters; Number is finite IEEE-754; Date is a valid Gregorian YYYY-MM-DD. */
+        P0FieldValue: null | string | number | boolean | components["schemas"]["OptionId"][] | components["schemas"]["LocationValue"];
+        LocationValue: {
+            label?: string;
+            address?: string;
+            lat?: number;
+            lng?: number;
+            provider?: string;
+            /** @enum {string} */
+            precision?: "exact" | "rooftop" | "approximate";
+        };
+        Attachment: {
+            id: components["schemas"]["AttachmentId"];
+            /** @enum {string} */
+            source: "managed" | "vault";
+            filename: string;
+            mimeType?: string;
+            size?: number;
+            storageKey?: string;
+            vaultPath?: string;
+            hash?: string;
+            width?: number;
+            height?: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreateWorkspaceRequest: {
+            name: components["schemas"]["ResourceName"];
+        };
+        CreateBaseRequest: {
+            workspaceId: components["schemas"]["WorkspaceId"];
+            name: components["schemas"]["ResourceName"];
+        };
+        /** @description Creating a Table atomically creates its renameable text Primary Field and initial Grid View. Clients should submit localized names; the Server fallbacks are Name and Grid. */
+        CreateTableRequest: {
+            baseId: components["schemas"]["BaseId"];
+            name: components["schemas"]["ResourceName"];
+            /** @default Name */
+            primaryFieldName: components["schemas"]["ResourceName"];
+            /** @default Grid */
+            initialViewName: components["schemas"]["ResourceName"];
+        };
+        /** @description Atomic result of creating a Table and its mandatory initial metadata. */
+        CreateTableResult: {
+            table: components["schemas"]["Table"];
+            primaryField: components["schemas"]["Field"];
+            initialView: components["schemas"]["GridView"];
+        };
+        UpdateNameRequest: {
+            name: components["schemas"]["ResourceName"];
+            expectedRevision: number;
+        };
+        RestoreMetadataRequest: {
+            expectedRevision: number;
+        };
+        /** @description Strict type-discriminated Field creation request. The parent Table ID comes only from the route. */
+        CreateFieldRequest: components["schemas"]["CreateTextFieldRequest"] | components["schemas"]["CreateLongTextFieldRequest"] | components["schemas"]["CreateNumberFieldRequest"] | components["schemas"]["CreateCheckboxFieldRequest"] | components["schemas"]["CreateDateFieldRequest"] | components["schemas"]["CreateSelectFieldRequest"] | components["schemas"]["CreateMultiSelectFieldRequest"] | components["schemas"]["CreateURLFieldRequest"] | components["schemas"]["CreateLocationFieldRequest"];
+        CreateFieldBase: {
+            name: components["schemas"]["ResourceName"];
+        };
+        CreateTextFieldRequest: components["schemas"]["CreateFieldBase"] & {
+            /** @constant */
+            type: "text";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
+        };
+        CreateLongTextFieldRequest: components["schemas"]["CreateFieldBase"] & {
+            /** @constant */
+            type: "longText";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "longText";
+        };
+        CreateNumberFieldRequest: components["schemas"]["CreateFieldBase"] & {
+            /** @constant */
+            type: "number";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "number";
+        };
+        CreateCheckboxFieldRequest: components["schemas"]["CreateFieldBase"] & {
+            /** @constant */
+            type: "checkbox";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "checkbox";
+        };
+        CreateDateFieldRequest: components["schemas"]["CreateFieldBase"] & {
+            /** @constant */
+            type: "date";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "date";
+        };
+        CreateSelectFieldRequest: components["schemas"]["CreateFieldBase"] & {
+            /** @constant */
+            type: "select";
+            config: components["schemas"]["SelectFieldConfigInput"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "select";
+        };
+        CreateMultiSelectFieldRequest: components["schemas"]["CreateFieldBase"] & {
+            /** @constant */
+            type: "multiSelect";
+            config: components["schemas"]["SelectFieldConfigInput"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "multiSelect";
+        };
+        CreateURLFieldRequest: components["schemas"]["CreateFieldBase"] & {
+            /** @constant */
+            type: "url";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "url";
+        };
+        CreateLocationFieldRequest: components["schemas"]["CreateFieldBase"] & {
+            /** @constant */
+            type: "location";
+            config: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "location";
+        };
+        /** @description Strict type-discriminated top-level PATCH. Type is immutable and must be echoed; omitted name or config is preserved, while a supplied config completely replaces the old config. */
+        UpdateFieldRequest: components["schemas"]["UpdateTextFieldRequest"] | components["schemas"]["UpdateLongTextFieldRequest"] | components["schemas"]["UpdateNumberFieldRequest"] | components["schemas"]["UpdateCheckboxFieldRequest"] | components["schemas"]["UpdateDateFieldRequest"] | components["schemas"]["UpdateSelectFieldRequest"] | components["schemas"]["UpdateMultiSelectFieldRequest"] | components["schemas"]["UpdateURLFieldRequest"] | components["schemas"]["UpdateLocationFieldRequest"];
+        UpdateFieldBase: {
+            name?: components["schemas"]["ResourceName"];
+            /** @enum {string} */
+            type: "text" | "longText" | "number" | "checkbox" | "date" | "select" | "multiSelect" | "url" | "location";
+            expectedRevision: number;
+        } | unknown | unknown;
+        UpdateTextFieldRequest: components["schemas"]["UpdateFieldBase"] & {
+            /** @constant */
+            type?: "text";
+            config?: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "text";
+        };
+        UpdateLongTextFieldRequest: components["schemas"]["UpdateFieldBase"] & {
+            /** @constant */
+            type?: "longText";
+            config?: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "longText";
+        };
+        UpdateNumberFieldRequest: components["schemas"]["UpdateFieldBase"] & {
+            /** @constant */
+            type?: "number";
+            config?: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "number";
+        };
+        UpdateCheckboxFieldRequest: components["schemas"]["UpdateFieldBase"] & {
+            /** @constant */
+            type?: "checkbox";
+            config?: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "checkbox";
+        };
+        UpdateDateFieldRequest: components["schemas"]["UpdateFieldBase"] & {
+            /** @constant */
+            type?: "date";
+            config?: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "date";
+        };
+        UpdateSelectFieldRequest: components["schemas"]["UpdateFieldBase"] & {
+            /** @constant */
+            type?: "select";
+            config?: components["schemas"]["SelectFieldConfigInput"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "select";
+        };
+        UpdateMultiSelectFieldRequest: components["schemas"]["UpdateFieldBase"] & {
+            /** @constant */
+            type?: "multiSelect";
+            config?: components["schemas"]["SelectFieldConfigInput"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "multiSelect";
+        };
+        UpdateURLFieldRequest: components["schemas"]["UpdateFieldBase"] & {
+            /** @constant */
+            type?: "url";
+            config?: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "url";
+        };
+        UpdateLocationFieldRequest: components["schemas"]["UpdateFieldBase"] & {
+            /** @constant */
+            type?: "location";
+            config?: components["schemas"]["EmptyFieldConfig"];
+        } & {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "location";
+        };
+        EmptyFieldConfig: Record<string, never>;
+        /** @description Desired active Option list in display order. Omitted active IDs are soft-deleted; deleted IDs are restored. Unknown or foreign IDs are invalid. */
+        SelectFieldConfigInput: {
+            options: components["schemas"]["SelectOptionInput"][];
+        };
+        SelectOptionInput: {
+            /** @description Omit to create. Supply an ID owned by this Field to update or restore it. */
+            id?: components["schemas"]["OptionId"];
+            name: components["schemas"]["ResourceName"];
+            color: components["schemas"]["SelectOptionColor"];
+        };
+        SelectFieldConfig: {
+            /** @description Active Options in display order. */
+            options: components["schemas"]["SelectOption"][];
+            /** @description Soft-deleted Option tombstones retained for old Record references and explicit restoration. */
+            deletedOptions: components["schemas"]["DeletedSelectOption"][];
+        };
+        SelectOption: {
+            /** @description Server-generated stable option ID. Deleted option IDs are never reused. */
+            id: components["schemas"]["OptionId"];
+            name: string;
+            color: components["schemas"]["SelectOptionColor"];
+        };
+        DeletedSelectOption: {
+            id: components["schemas"]["OptionId"];
+            name: string;
+            color: components["schemas"]["SelectOptionColor"];
+            /** Format: date-time */
+            deletedAt: string;
+        };
+        /** @description Server-defined semantic palette token, never a CSS color value. The closed P0 enum is pending the next design frontier. */
+        SelectOptionColor: string;
+        /** @description A discriminated P0 View creation request. */
+        CreateViewRequest: components["schemas"]["CreateGridViewRequest"] | components["schemas"]["CreateMapViewRequest"];
+        CreateGridViewRequest: {
+            name: components["schemas"]["ResourceName"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "grid";
+            config: components["schemas"]["GridViewConfig"];
+        };
+        CreateMapViewRequest: {
+            name: components["schemas"]["ResourceName"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "map";
+            config: components["schemas"]["MapViewConfig"];
+        };
+        /** @description Full replacement of a P0 View config. Optional config members mean their documented unset/default state, not preservation of the prior value. The type must match the existing View. */
+        UpdateViewRequest: components["schemas"]["UpdateGridViewRequest"] | components["schemas"]["UpdateMapViewRequest"];
+        UpdateGridViewRequest: {
+            name?: components["schemas"]["ResourceName"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "grid";
+            config: components["schemas"]["GridViewConfig"];
+            expectedRevision: number;
+        };
+        UpdateMapViewRequest: {
+            name?: components["schemas"]["ResourceName"];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "map";
+            config: components["schemas"]["MapViewConfig"];
+            expectedRevision: number;
+        };
+        /** @description P0 Grid configuration. Grouping is reserved and is not implemented in P0. The initial Grid contains only the Primary Field in projection/columnOrder, empty widths/frozen fields, standard row height, no filter, and an empty sort. */
+        GridViewConfig: {
+            projection: components["schemas"]["FieldId"][];
+            columnOrder: components["schemas"]["FieldId"][];
+            /** @description Explicit widths in CSS pixels; omitted Field IDs use the shared client default. */
+            columnWidths: {
+                [key: string]: number;
+            };
+            frozenFieldIds: components["schemas"]["FieldId"][];
+            /** @enum {string} */
+            rowHeight: "compact" | "standard" | "comfortable";
+            filter?: components["schemas"]["FilterNode"];
+            sort: components["schemas"]["SortSpec"][];
+        };
+        /** @description P0 Map configuration for an active Location Field in the same Table. Center and zoom are an explicitly saved Default Camera, not a client's temporary viewport. Tile provider selection and credentials are client-local and never appear here. */
+        MapViewConfig: {
+            locationFieldId: components["schemas"]["FieldId"];
+            filter?: components["schemas"]["FilterNode"];
+            center?: {
+                lat: number;
+                lng: number;
+            };
+            zoom?: number;
+        };
+        MapCoordinate: {
+            lat: number;
+            lng: number;
+        };
+        /** @description A non-wrapping WGS 84 box. West must not exceed east and south must not exceed north. A viewport that crosses the antimeridian is represented by two boxes; Records are de-duplicated by Record ID at the seam. */
+        MapViewportBox: {
+            west: number;
+            south: number;
+            east: number;
+            north: number;
+        };
+        MapViewport: {
+            boxes: components["schemas"]["MapViewportBox"][];
+        };
+        /** @description The current temporary camera is client state. Pixel dimensions are CSS pixels and let the Server choose an appropriate adaptive clustering density. */
+        MapQueryRequest: {
+            viewport: components["schemas"]["MapViewport"];
+            zoom: number;
+            pixelWidth: number;
+            pixelHeight: number;
+        };
+        MapFeature: components["schemas"]["MapPoint"] | components["schemas"]["MapCluster"];
+        /** @description Lightweight map presentation for one Record. Full field values are fetched only when the user opens Record details. */
+        MapPoint: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "point";
+            recordId: components["schemas"]["RecordId"];
+            position: components["schemas"]["MapCoordinate"];
+            /** @description Server-formatted Primary Field display text; unset, null, or empty Primary Field values produce an empty string. The Plugin applies its localized Untitled or Record ID fallback without persisting it. */
+            primaryFieldText: string;
+        };
+        /** @description An ephemeral map-scale grouping. The clustering algorithm and cluster identity are internal and may change on every map query; clients must not persist clusterId. */
+        MapCluster: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "cluster";
+            /** @description Ephemeral identity for renderer reconciliation within this response only. */
+            clusterId: string;
+            position: components["schemas"]["MapCoordinate"];
+            bounds: components["schemas"]["MapViewport"];
+            pointCount: number;
+            /** @description Suggested zoom at which this cluster separates. If absent, or above the active renderer/provider maximum zoom, the client opens the paginated Record list instead. */
+            expansionZoom?: number;
+            /** @description Opaque five-minute token bound to the View revision and Table Change Cursor for paging through this cluster. */
+            recordsQueryToken: string;
+        };
+        /** @description Exact global counts over all active Records matching the saved Map View Filter. matchedRecordCount equals renderableRecordCount plus unlocatedRecordCount plus unrenderableRecordCount. */
+        MapQuerySummary: {
+            /** Format: int64 */
+            matchedRecordCount: number;
+            /** Format: int64 */
+            renderableRecordCount: number;
+            /**
+             * Format: int64
+             * @description Matching Records whose Location is missing or is not a valid WGS 84 coordinate.
+             */
+            unlocatedRecordCount: number;
+            /**
+             * Format: int64
+             * @description Matching Records with a valid WGS 84 coordinate outside the EPSG:3857 renderable latitude range.
+             */
+            unrenderableRecordCount: number;
+            /** @description Bounds of every renderable matching Record, omitted when renderableRecordCount is zero. It may contain two boxes when the minimal span crosses the antimeridian. */
+            dataBounds?: components["schemas"]["MapViewport"];
+        };
+        MapSummaryResult: {
+            summary: components["schemas"]["MapQuerySummary"];
+            viewRevision: number;
+            changeCursor: string;
+        };
+        /** @description The features collectively represent all viewportRenderableRecordCount Records: each Point contributes one and each Cluster contributes pointCount. The Server adaptively clusters until no more than 500 features remain and never silently truncates Records. Global counts and Data Bounds come from MapSummaryResult, not from every viewport query. */
+        MapQueryResult: {
+            features: components["schemas"]["MapFeature"][];
+            /** Format: int64 */
+            viewportRenderableRecordCount: number;
+            viewRevision: number;
+            changeCursor: string;
+        };
+        MapClusterRecordsQueryRequest: {
+            clusterToken: string;
+            /** @description Opaque next-page cursor bound to the cluster token and limit. */
+            cursor?: string;
+            /** @default 100 */
+            limit: number;
+        };
+        /** @description When viewId is supplied, the View configuration is the base query. Explicit filter, sort, projection, and pagination values temporarily override it for this request and are not persisted. */
+        QueryRequest: {
+            viewId?: components["schemas"]["ViewId"];
+            lifecycle?: components["schemas"]["LifecycleScope"];
+            /** @description Opaque cursor bound to the equivalent table, view, lifecycle, filter, sort, projection, search, limit, and API version. */
+            cursor?: string;
+            /** @default 100 */
+            limit: number;
+            projection?: components["schemas"]["FieldId"][];
+            filter?: components["schemas"]["FilterNode"];
+            /** @description Temporary request override. If absent, the server uses createdAt ASC, id ASC for stable cursor pagination. */
+            sort?: components["schemas"]["SortSpec"][];
+            /** @description Case-insensitive contains search over the Primary Field, Text, LongText, and URL fields only. */
+            search?: string;
+        };
+        FilterNode: components["schemas"]["FilterGroup"] | components["schemas"]["FilterRule"];
+        /** @description Recursive AND/OR groups. Each group must contain at least one child and the maximum nesting depth is 8; invalid depth returns 422 VALIDATION_ERROR. */
+        FilterGroup: {
+            /** @constant */
+            kind: "group";
+            /** @enum {string} */
+            operator: "and" | "or";
+            children: components["schemas"]["FilterNode"][];
+        };
+        /** @description Operator and value are validated against the referenced Field Type. Text, LongText, and URL support equality, inequality, contains, not-contains, prefix, suffix, empty, and not-empty. Number and Date support equality, inequality, all six ordered comparisons, empty, and not-empty. Checkbox supports equality and inequality; Select supports equality, inequality, empty, and not-empty; MultiSelect supports includes, excludes, empty, and not-empty; Location supports empty and not-empty. isEmpty matches Unset, explicit null, and the Field Type's natural empty value; isNotEmpty is its complement. Text matching is case-insensitive. */
+        FilterRule: {
+            /** @constant */
+            kind: "rule";
+            fieldId: components["schemas"]["FieldId"];
+            /** @enum {string} */
+            operator: "is" | "isNot" | "isEmpty" | "isNotEmpty" | "contains" | "notContains" | "startsWith" | "endsWith" | "greaterThan" | "greaterOrEqual" | "lessThan" | "lessOrEqual" | "includes" | "excludes";
+            /** @description Field-type-specific value. Unsupported operators return 422 UNSUPPORTED_OPERATOR. */
+            value?: unknown;
+        };
+        SortSpec: {
+            fieldId: components["schemas"]["FieldId"];
+            /** @enum {string} */
+            direction: "asc" | "desc";
+            /**
+             * @default last
+             * @enum {string}
+             */
+            nulls: "first" | "last";
+        };
+        QueryResult: {
+            items: components["schemas"]["Record"][];
+            /** @description Opaque cursor for the next page; it is bound to this equivalent query. */
+            nextCursor?: string;
+            hasMore?: boolean;
+            changeCursor: string;
+            totalEstimate?: number;
+        };
+        /** @description All commands are applied atomically in one transaction. If any command fails, the whole request rolls back. Reusing clientMutationId returns the first result without applying the mutation again. */
+        MutationRequest: {
+            /** @description Unique with actorId. Reusing it with the same request body returns the historical result; a different body returns 409 IDEMPOTENCY_KEY_REUSED. P0 retains results for 30 days. */
+            clientMutationId: components["schemas"]["MutationId"];
+            commands: components["schemas"]["MutationCommand"][];
+        };
+        MutationCommand: components["schemas"]["CreateRecordCommand"] | components["schemas"]["UpdateRecordCommand"] | components["schemas"]["DeleteRecordCommand"] | components["schemas"]["RestoreRecordCommand"];
+        CreateRecordCommand: {
+            /** @constant */
+            kind: "createRecord";
+            /** @description May be an empty object; a Primary Field value is not required. Explicit null or natural empty values are distinct from omitted, Unset Fields. */
+            values: components["schemas"]["RecordValues"];
+        };
+        /** @description Writes fields in set and removes keys in unsetFieldIds. A Field present in both is invalid; omitted Fields are unchanged. */
+        UpdateRecordCommand: {
+            /** @constant */
+            kind: "updateRecord";
+            recordId: components["schemas"]["RecordId"];
+            expectedRevision: number;
+            /** @description Values keyed by Field ID. Explicit null, empty string, or empty array is a write when valid for the Field Type. */
+            set?: components["schemas"]["RecordValues"];
+            /** @description Field IDs whose keys are removed from Record.values. */
+            unsetFieldIds?: components["schemas"]["FieldId"][];
+        } | unknown | unknown;
+        DeleteRecordCommand: {
+            /** @constant */
+            kind: "deleteRecord";
+            recordId: components["schemas"]["RecordId"];
+            expectedRevision: number;
+        };
+        RestoreRecordCommand: {
+            /** @constant */
+            kind: "restoreRecord";
+            recordId: components["schemas"]["RecordId"];
+            expectedRevision: number;
+        };
+        /** @description The request is atomic. Any rejected or conflicting command rolls back every command in the request. */
+        MutationResult: {
+            clientMutationId: components["schemas"]["MutationId"];
+            results: components["schemas"]["CommandResult"][];
+        };
+        CommandResult: {
+            index: number;
+            /** @enum {string} */
+            status: "applied";
+            record?: components["schemas"]["Record"];
+            error?: components["schemas"]["ErrorBody"];
+        };
+        /** @description Revision conflict using the standard error envelope. */
+        ConflictResponse: {
+            error: components["schemas"]["ConflictErrorBody"];
+        };
+        ConflictErrorBody: components["schemas"]["ErrorBody"] & {
+            /** @constant */
+            code?: "CONFLICT";
+            clientMutationId: components["schemas"]["MutationId"];
+            failedCommandIndex: number;
+            conflicts: components["schemas"]["ConflictBody"][];
+        };
+        ConflictBody: {
+            recordId: components["schemas"]["RecordId"];
+            expectedRevision: number;
+            currentRevision: number;
+            currentValues: components["schemas"]["RecordValues"];
+            submittedSet?: components["schemas"]["RecordValues"];
+            submittedUnsetFieldIds?: components["schemas"]["FieldId"][];
+        };
+        ChangePage: {
+            items: components["schemas"]["Change"][];
+            /** @description Table-scoped opaque Change Cursor. The current default retention is 30 days; without a cursor the server returns the current tail and an empty page. */
+            nextCursor: string;
+            hasMore: boolean;
+        };
+        Change: {
+            id: components["schemas"]["ChangeId"];
+            /** @enum {string} */
+            kind: "recordCreated" | "recordUpdated" | "recordDeleted" | "recordRestored" | "schemaChanged" | "viewChanged";
+            tableId: components["schemas"]["TableId"];
+            recordId?: components["schemas"]["RecordId"];
+            /** @description Field, View, Table, or other schema object ID for non-Record changes. */
+            objectId?: components["schemas"]["TableId"] | components["schemas"]["FieldId"] | components["schemas"]["ViewId"];
+            revision: number;
+            actorId?: components["schemas"]["ActorId"];
+            /** Format: date-time */
+            occurredAt: string;
+        };
+        InitializeAttachmentRequest: {
+            /** @enum {string} */
+            source: "managed" | "vault";
+            filename: string;
+            mimeType?: string;
+            size?: number;
+            vaultPath?: string;
+        };
+        /** @description Standard error envelope. HTTP status mapping is 400 BAD_REQUEST or INVALID_CURSOR, 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND, 409 CONFLICT or IDEMPOTENCY_KEY_REUSED, 410 CURSOR_EXPIRED or QUERY_SNAPSHOT_EXPIRED, 422 validation, unsupported operator, or VIEW_CONFIGURATION_REQUIRED, 501 CAPABILITY_NOT_ENABLED, 503 readiness/dependency failure, and 500 INTERNAL_ERROR. */
+        ErrorResponse: {
+            error: components["schemas"]["ErrorBody"];
+        };
+        /** @description Error details are safe for user display and diagnostics; requestId must be retained by clients. */
+        ErrorBody: {
+            code: string;
+            message: string;
+            requestId: components["schemas"]["RequestId"];
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+    };
+    responses: {
+        /** @description LoomTable API error */
+        ErrorResponse: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Malformed request, parameter, cursor, or Idempotency-Key */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description Missing or invalid Bearer Token */
+        Unauthenticated: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description The authenticated Actor is not allowed to perform this operation */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description The resource or requested parent does not exist for this Actor */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description The Idempotency-Key was previously used for a different method, path, or canonical request body; error code IDEMPOTENCY_KEY_REUSED */
+        IdempotencyKeyReused: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description The supplied expectedRevision does not match the current object revision; error code CONFLICT */
+        RevisionConflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description The cursor is outside the retained query or change window; error code CURSOR_EXPIRED */
+        CursorExpired: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description The short-lived query snapshot expired or was invalidated; error code QUERY_SNAPSHOT_EXPIRED */
+        QuerySnapshotExpired: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+        /** @description The request is structurally valid but violates a domain validation rule */
+        UnprocessableEntity: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorResponse"];
+            };
+        };
+    };
+    parameters: {
+        WorkspaceId: components["schemas"]["WorkspaceId"];
+        BaseId: components["schemas"]["BaseId"];
+        TableId: components["schemas"]["TableId"];
+        FieldId: components["schemas"]["FieldId"];
+        ViewId: components["schemas"]["ViewId"];
+        RecordId: components["schemas"]["RecordId"];
+        AttachmentId: components["schemas"]["AttachmentId"];
+        /** @description Revision required for optimistic concurrency on metadata deletion. */
+        ExpectedRevision: number;
+        /** @description Filters by the object's own soft-deletion state. Ancestor visibility and authorization still apply. */
+        Lifecycle: components["schemas"]["LifecycleScope"];
+        /** @description Actor-global metadata creation key. Retrying the same method, path, and canonical body replays the first 201 response; using the key for a different request returns 409 IDEMPOTENCY_KEY_REUSED. */
+        IdempotencyKey: components["schemas"]["MutationId"];
+    };
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
+}
+export type $defs = Record<string, never>;
+export interface operations {
+    healthz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server process is alive */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "ok";
+                    };
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    readyz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server is ready to accept business requests */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        status: "ok";
+                    };
+                };
+            };
+            /** @description Server is alive but not ready; pending migrations return MIGRATION_REQUIRED */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getServerMeta: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Server capability and compatibility information */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerMeta"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listWorkspaces: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Workspaces visible to the authenticated actor, ordered by createdAt ASC then id ASC */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Workspace"][];
+                    };
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createWorkspace: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Actor-global metadata creation key. Retrying the same method, path, and canonical body replays the first 201 response; using the key for a different request returns 409 IDEMPOTENCY_KEY_REUSED. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateWorkspaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Workspace created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Workspace"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["IdempotencyKeyReused"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listBases: {
+        parameters: {
+            query: {
+                workspaceId: components["parameters"]["WorkspaceId"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Bases in a Workspace, ordered by createdAt ASC then id ASC */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Base"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createBase: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Actor-global metadata creation key. Retrying the same method, path, and canonical body replays the first 201 response; using the key for a different request returns 409 IDEMPOTENCY_KEY_REUSED. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateBaseRequest"];
+            };
+        };
+        responses: {
+            /** @description Base created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Base"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["IdempotencyKeyReused"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listTables: {
+        parameters: {
+            query: {
+                baseId: components["parameters"]["BaseId"];
+                /** @description Filters by the object's own soft-deletion state. Ancestor visibility and authorization still apply. */
+                lifecycle?: components["parameters"]["Lifecycle"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tables in a Base, ordered by createdAt ASC then id ASC */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Table"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createTable: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Actor-global metadata creation key. Retrying the same method, path, and canonical body replays the first 201 response; using the key for a different request returns 409 IDEMPOTENCY_KEY_REUSED. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTableRequest"];
+            };
+        };
+        responses: {
+            /** @description Table, Primary Field, and initial Grid View created atomically */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateTableResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["IdempotencyKeyReused"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Table metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteTable: {
+        parameters: {
+            query: {
+                /** @description Revision required for optimistic concurrency on metadata deletion. */
+                expectedRevision: components["parameters"]["ExpectedRevision"];
+            };
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Table moved to the recycle state */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    updateTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNameRequest"];
+            };
+        };
+        responses: {
+            /** @description Table updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    restoreTable: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreMetadataRequest"];
+            };
+        };
+        responses: {
+            /** @description Table restored when its expected revision matches */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Table"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listFields: {
+        parameters: {
+            query?: {
+                /** @description Filters by the object's own soft-deletion state. Ancestor visibility and authorization still apply. */
+                lifecycle?: components["parameters"]["Lifecycle"];
+            };
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Fields in a Table, ordered by position ASC then id ASC */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["Field"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createField: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Actor-global metadata creation key. Retrying the same method, path, and canonical body replays the first 201 response; using the key for a different request returns 409 IDEMPOTENCY_KEY_REUSED. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateFieldRequest"];
+            };
+        };
+        responses: {
+            /** @description Field created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Field"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["IdempotencyKeyReused"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteField: {
+        parameters: {
+            query: {
+                /** @description Revision required for optimistic concurrency on metadata deletion. */
+                expectedRevision: components["parameters"]["ExpectedRevision"];
+            };
+            header?: never;
+            path: {
+                fieldId: components["parameters"]["FieldId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Field moved to the recycle state */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    updateField: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fieldId: components["parameters"]["FieldId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateFieldRequest"];
+            };
+        };
+        responses: {
+            /** @description Field updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Field"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    restoreField: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fieldId: components["parameters"]["FieldId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreMetadataRequest"];
+            };
+        };
+        responses: {
+            /** @description Field restored when its expected revision matches */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Field"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    listViews: {
+        parameters: {
+            query?: {
+                /** @description Filters by the object's own soft-deletion state. Ancestor visibility and authorization still apply. */
+                lifecycle?: components["parameters"]["Lifecycle"];
+            };
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Views in a Table, ordered by createdAt ASC then id ASC */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["View"][];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    createView: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Actor-global metadata creation key. Retrying the same method, path, and canonical body replays the first 201 response; using the key for a different request returns 409 IDEMPOTENCY_KEY_REUSED. */
+                "Idempotency-Key": components["parameters"]["IdempotencyKey"];
+            };
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateViewRequest"];
+            };
+        };
+        responses: {
+            /** @description View created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["View"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["IdempotencyKeyReused"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                viewId: components["parameters"]["ViewId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description View configuration */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["View"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteView: {
+        parameters: {
+            query: {
+                /** @description Revision required for optimistic concurrency on metadata deletion. */
+                expectedRevision: components["parameters"]["ExpectedRevision"];
+            };
+            header?: never;
+            path: {
+                viewId: components["parameters"]["ViewId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description View deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    updateView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                viewId: components["parameters"]["ViewId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateViewRequest"];
+            };
+        };
+        responses: {
+            /** @description View updated */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["View"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    restoreView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                viewId: components["parameters"]["ViewId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreMetadataRequest"];
+            };
+        };
+        responses: {
+            /** @description View restored when its expected revision matches */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["View"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    queryMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                viewId: components["parameters"]["ViewId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description At most 500 Map Points or Map Clusters that collectively represent every renderable matching Record in the viewport */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapQueryResult"];
+                };
+            };
+            /** @description Viewport, zoom, or pixel dimensions are invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The View is not a Map View or its saved Location Field is unavailable; an unavailable field returns VIEW_CONFIGURATION_REQUIRED */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    summarizeMap: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                viewId: components["parameters"]["ViewId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Exact global Map summary and Data Bounds */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MapSummaryResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description The View is not a usable Map View or its saved Location Field is unavailable */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    queryMapClusterRecords: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                viewId: components["parameters"]["ViewId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MapClusterRecordsQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description A cursor page of full Records represented by the cluster */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueryResult"];
+                };
+            };
+            /** @description Cluster token or cursor is invalid or bound to another query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Token timeout or any relevant View/Table change returns QUERY_SNAPSHOT_EXPIRED; the client refreshes the viewport before opening the cluster again */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The View is no longer a usable Map View */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                recordId: components["parameters"]["RecordId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Full Record */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Record"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    queryRecords: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QueryRequest"];
+            };
+        };
+        responses: {
+            /** @description A cursor page of records */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueryResult"];
+                };
+            };
+            /** @description Invalid request or cursor bound to a different query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Cursor has expired and the client must restart from the first page */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Filter, sort, projection, or field operator is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    mutateRecords: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MutationRequest"];
+            };
+        };
+        responses: {
+            /** @description Per-command mutation results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MutationResult"];
+                };
+            };
+            /** @description Invalid request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Missing or invalid Bearer Token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Actor is authenticated but forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Table or referenced record was not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description At least one command has a revision conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictResponse"];
+                };
+            };
+            /** @description Field value or command semantics are invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    pullChanges: {
+        parameters: {
+            query?: {
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Changes after the supplied cursor */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangePage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            410: components["responses"]["CursorExpired"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    initializeAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InitializeAttachmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Attachment metadata initialized */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Attachment"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            422: components["responses"]["UnprocessableEntity"];
+            /** @description Attachment capability is present in the contract but disabled in P0 */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    getAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachmentId: components["parameters"]["AttachmentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Attachment"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Attachment capability is present in the contract but disabled in P0 */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    deleteAttachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachmentId: components["parameters"]["AttachmentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment reference removed; physical cleanup may be deferred */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Attachment capability is present in the contract but disabled in P0 */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    downloadAttachmentContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachmentId: components["parameters"]["AttachmentId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Attachment content */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": unknown;
+                    "image/*": unknown;
+                    "application/pdf": unknown;
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Attachment capability is present in the contract but disabled in P0 */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    uploadAttachmentContent: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                attachmentId: components["parameters"]["AttachmentId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/octet-stream": unknown;
+            };
+        };
+        responses: {
+            /** @description Attachment content stored */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            /** @description Attachment capability is present in the contract but disabled in P0 */
+            501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+}
