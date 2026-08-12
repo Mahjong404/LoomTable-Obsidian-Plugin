@@ -15,6 +15,27 @@ export const englishMessages = {
   'connection.rememberedToken': 'Remembered token secret',
   'connection.token': 'Access token',
   'connection.tokenSession': 'The token is kept only for this Obsidian session unless remembered.',
+  'connection.test': 'Test connection',
+  'connection.testing': 'Testing…',
+  'connection.status.authenticationFailed': 'The access token was rejected. Replace it and retry.',
+  'connection.status.authenticationRequired':
+    'The Server is compatible. Enter a token to authenticate.',
+  'connection.status.checking': 'Checking Server compatibility and authentication…',
+  'connection.status.connected': 'Connected and authenticated.',
+  'connection.status.forbidden':
+    'The token is valid but cannot access LoomTable workspaces. Use an authorized token.',
+  'connection.status.incompatibleApi': 'This Plugin requires API v1; the Server reported',
+  'connection.status.incompatiblePlugin':
+    'Update this Plugin. The Server requires at least version',
+  'connection.status.migrationRequired':
+    'The Server requires a migration before it can be used. Run the Server migration command.',
+  'connection.status.notTested': 'Connection has not been tested in this session.',
+  'connection.status.requestId': 'Request ID:',
+  'connection.status.serverError':
+    'The Server returned an unexpected response. Retry and use the Request ID to inspect Server logs.',
+  'connection.status.serverVersion': 'Server',
+  'connection.status.unreachable':
+    'The Server could not be reached. Check the address and Server status, then retry.',
   'error.invalidOrigin': 'Enter an absolute HTTP(S) server origin without credentials.',
   'language.english': 'English',
   'language.label': 'Language',

@@ -11,6 +11,7 @@
 ```ts
 interface LoomTableClient {
   getMeta(): Promise<ServerMeta>;
+  checkConnection(): Promise<ConnectionCheckResult>;
   query(request: QueryRequest): Promise<QueryResult>;
   queryMap(request: MapQueryRequest): Promise<MapQueryResult>;
   queryMapSummary(request: MapSummaryRequest): Promise<MapSummaryResult>;
@@ -20,6 +21,8 @@ interface LoomTableClient {
   pullChanges(request: ChangeRequest): Promise<ChangePage>;
 }
 ```
+
+`checkConnection()` 是只读连接探测：先请求公开的 `/v1/meta` 判断 API 版本、最低 Plugin 版本和迁移状态；兼容后再以当前 Token 请求 `/v1/workspaces`，区分缺少 Token、认证失败、权限不足、网络不可达与 Server 故障。该探测不创建或修改任何 Server 数据。
 
 Schema、Workspace、Base、Table、View 和 Attachment 的管理操作也通过同一 Client 的领域方法分组暴露，但不把底层 HTTP 请求透传到组件。
 
