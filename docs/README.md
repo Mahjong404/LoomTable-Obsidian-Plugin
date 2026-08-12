@@ -7,6 +7,7 @@
 - [产品范围](./product/scope.md)
 - [UI Design System](./ui/design-system.md)
 - [Grid View 规范](./ui/grid-spec.md)
+- [Map View 与瓦片提供方规范](./ui/map-spec.md)
 
 ## Plugin 架构
 

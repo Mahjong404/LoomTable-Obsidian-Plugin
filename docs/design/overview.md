@@ -16,6 +16,7 @@ Plugin 负责：
 - 提供 Field Editor、Record 编辑和 View 配置。
 - 提供键盘、触控和响应式布局。
 - 管理活动 View 的查询窗口、本地缓存和刷新状态。
+- 管理本地瓦片提供方预设、配置档、Credential 和 Attribution。
 - 读取 Vault Attachment。
 - 通过可选 Adapter 接入 Obsidian 生态。
 
@@ -33,17 +34,18 @@ Plugin 不负责：
 Obsidian
 └── LoomTable Obsidian Plugin
     ├── Obsidian API Adapter
-    ├── LoomTable Client
+    ├── LoomTable Client ── OpenAPI v1 ── LoomTable Server
     ├── Local View Cache
     ├── UI and Field Registry
     ├── Grid View
     └── Map View
-            │ OpenAPI v1
-            ▼
-      LoomTable Server
+        ├── Leaflet Map Renderer
+        └── Tile Provider Registry ── HTTPS tiles ── External Tile Provider
 ```
 
 Plugin 和 Server 是两个独立仓库、独立发布的产品部件。OpenAPI 是它们之间的唯一接口合同。
+
+图中的两条网络边界彼此独立：Record、Field 和 View 数据只来自 LoomTable Server；地图瓦片直接来自用户选择的 Tile Provider，不经过 LoomTable Server。
 
 ## 4. P0 用户流程
 
@@ -78,6 +80,10 @@ src/
 ├── views/
 │   ├── grid/
 │   └── map/
+├── maps/
+│   ├── renderer/
+│   ├── providers/
+│   └── credentials/
 └── settings/
 ```
 
@@ -91,8 +97,11 @@ src/
 - 主题适配使用 Obsidian CSS Variables，不绑定某个主题。
 - 服务不可用时显示缓存并进入只读或离线状态。
 - Conflict、AuthError、Readonly 和 ServerIncompatible 有明确 UI 状态。
+- Tile Provider 缺少配置或不可用时，Map View 保留 Record 访问能力并显示独立错误状态。
+- 地图始终显示 Provider 要求的 Attribution，且不提供违反服务政策的批量预取或离线下载。
 
 ## 7. 许可证
 
 LoomTable Obsidian Plugin 使用 MIT License。第三方字体、地图服务、瓦片和依赖需要单独完成许可证审查。
 
+Map View 的实现合同见 [Map View 与瓦片提供方规范](../ui/map-spec.md)。

@@ -40,13 +40,13 @@ Plugin 不应为了显示一个 View 而下载全部 20k Records。查询结果�
 
 ## 虚拟化
 
-第一阶段优先实现行虚拟化：
+P0 使用原生 DOM 自定义行虚拟化，并采用固定行高模式：
 
 - 只渲染视口附近的行。
 - 行进入和离开窗口时复用 DOM。
 - 保留滚动高度占位。
 - 复杂 Cell 不在不可见区域创建编辑器。
-- 为未来列虚拟化保留 Grid Renderer Interface。
+- P0 不实现列虚拟化，但为未来列虚拟化保留 Grid Renderer Interface。
 
 固定列和列宽属于 View Config，不能写入 Record。
 
@@ -71,6 +71,8 @@ Plugin 不应为了显示一个 View 而下载全部 20k Records。查询结果�
 - LongText
 - 未来的 Formula 配置
 
+P0 剪贴板只支持单个 Cell 的复制和粘贴。矩形 TSV 多 Cell 粘贴延后实现；粘贴值必须先经过目标 Field Type 的校验和标准化，非法值不得产生部分 Mutation。
+
 ## 保存
 
 1. Cell 进入 editing 状态。
@@ -82,6 +84,20 @@ Plugin 不应为了显示一个 View 而下载全部 20k Records。查询结果�
 7. 失败后恢复或标记 conflict/error。
 
 单元格失败不能导致整张 Table 重新加载。
+
+同一 Record 的编辑进入 FIFO Mutation Queue，不同 Record 可以并行保存。当前 Record 发生 Conflict 后暂停其后续 Mutation，直到用户放弃本地修改、采用服务端值、明确覆盖或逐字段合并。覆盖与合并必须创建新的 Mutation。
+
+## Record 生命周期
+
+P0 Grid 支持创建、编辑、软删除和恢复 Record。软删除前必须确认；P0 不提供不可恢复的硬删除入口。删除和恢复均携带 `expectedRevision`，并遵守与 Cell 编辑相同的 Conflict 处理规则。
+
+## Filter、Sort 和 Search
+
+- Filter Builder 根据 `FieldTypeRegistry` 只显示该 Field Type 支持的 Operator。
+- 支持嵌套 `AND` / `OR` Filter Group。
+- 支持多字段 Sort，并明确每个 Sort 的方向和空值位置。
+- Filter、Sort 和 Search 全部提交 Server 执行；Plugin 不对缓存页进行本地重算。
+- 修改 Query 后丢弃旧 Query 的分页 Cursor，从第一页重新加载。
 
 ## View 配置
 
@@ -100,13 +116,11 @@ Grid View 可以保存：
 
 ## 状态
 
-必须区分：
+Grid 从 View Controller 接收正交的 Connection、Content 和 Edit 状态。至少必须能够表达：
 
-- Loading：正在获取当前窗口。
-- Empty：Table 没有 Record。
-- No Match：有 Record，但当前 Filter 没有匹配。
-- Offline：只能读取缓存。
-- Readonly：当前操作不允许编辑。
-- Conflict：Mutation 基于过期 Revision。
-- Server Error：服务端操作失败。
-
+- `online + loading + readonly/editable`：正在获取当前窗口。
+- `online + empty + editable`：Table 没有 Record。
+- `online + no-match + editable`：有 Record，但当前 Filter 没有匹配。
+- `offline + ready + readonly`：只能读取缓存。
+- `online + ready + conflict`：Mutation 基于过期 Revision。
+- `server-error + ready/idle + readonly`：服务端操作失败，可保留已有缓存内容。
