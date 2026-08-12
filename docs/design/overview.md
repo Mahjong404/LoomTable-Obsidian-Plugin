@@ -105,3 +105,4 @@ src/
 LoomTable Obsidian Plugin 使用 MIT License。第三方字体、地图服务、瓦片和依赖需要单独完成许可证审查。
 
 Map View 的实现合同见 [Map View 与瓦片提供方规范](../ui/map-spec.md)。
+

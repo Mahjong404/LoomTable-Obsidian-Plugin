@@ -1,0 +1,24 @@
+.loom-root {
+  padding: var(--size-4-4);
+}
+
+.loom-status {
+  max-width: 48rem;
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+}
+
+.loom-status.is-ready {
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+}
+
+.loom-profile {
+  margin-block: var(--size-4-4);
+  padding: var(--size-4-4);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+}

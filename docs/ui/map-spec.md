@@ -327,7 +327,7 @@ interface MapCluster {
 - 每次响应最多 500 个 Point/Cluster；Server 自适应聚类，Feature 必须完整代表当前 Map Viewport 内全部可渲染匹配 Record，Plugin 不接受“前 500 条”式静默截断。
 - Point 只包含 Record ID、坐标和 Primary Field 显示文本；Popup/Marker 不预取自定义字段，打开详情时调用 `GET /v1/records/{recordId}`。
 - 可展开 Cluster 点击后适配其 Bounds；相同坐标、已到最大 Zoom 或没有可用 `expansionZoom` 的终端 Cluster，通过 `POST /v1/views/{viewId}/map/cluster-records/query` 分页显示完整 Record。
-- Summary 对 Map View Filter 命中的全部 Active Record 返回精确的匹配、可渲染、当前视口可渲染、未定位和不可渲染数量，以及全部可渲染结果的 Data Bounds。匹配数量必须等于后三个互斥全局类别之和；Point 数量加 Cluster 的 `pointCount` 必须等于当前视口可渲染数量。
+- 独立 `POST /v1/views/{viewId}/map/summary` 对 Map View Filter 命中的全部 Active Record 返回精确的匹配、可渲染、未定位和不可渲染数量，以及全部可渲染结果的 Data Bounds。首次打开、保存的 Filter 改变或显式“适配全部结果”时调用，普通相机移动不调用。匹配数量必须等于三个互斥全局类别之和；Map Query 中 Point 数量加 Cluster 的 `pointCount` 必须等于当前视口可渲染数量。
 - Map Query 返回 `changeCursor`。活动 View 收到 Record、Field 或 View Change 后保留临时相机并重查当前视口；不尝试用 Change 在客户端自行重算 Filter、Cluster 或 Summary。
 - 每次相机稳定后逻辑取消前一笔仍在途的 Map Query，并用单调 Request Sequence 丢弃迟到响应；`requestUrl` 不承诺网络级中止，底层 Promise 的最终结果仍需安全消费。主动取消不显示为 Server 错误。View Revision 与当前已加载 View 不一致的响应也必须丢弃并刷新配置。
 

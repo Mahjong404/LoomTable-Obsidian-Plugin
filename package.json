@@ -1,0 +1,53 @@
+{
+  "name": "loomtable-obsidian-plugin",
+  "version": "0.1.0",
+  "description": "LoomTable client for Obsidian.",
+  "main": "main.js",
+  "type": "module",
+  "scripts": {
+    "api:check": "pnpm api:generate && git diff --exit-code -- src/generated/transport.ts",
+    "api:generate": "openapi-typescript openapi/loomtable-server.openapi.yaml -o src/generated/transport.ts",
+    "api:sync": "node scripts/sync-openapi.mjs",
+    "build": "pnpm typecheck && node esbuild.config.mjs production",
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test:run && pnpm api:check && pnpm build",
+    "dev": "node esbuild.config.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint . --cache",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "obsidian",
+    "database",
+    "table"
+  ],
+  "author": "Mahjong404",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "packageManager": "pnpm@11.16.0",
+  "dependencies": {
+    "leaflet": "^1.9.4"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/leaflet": "^1.9.20",
+    "@types/node": "^24.10.0",
+    "esbuild": "^0.25.12",
+    "eslint": "^9.39.4",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-obsidianmd": "^0.4.0",
+    "globals": "^17.6.0",
+    "jsdom": "^27.2.0",
+    "jiti": "^2.6.1",
+    "obsidian": "^1.8.7",
+    "openapi-typescript": "^7.10.1",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.59.1",
+    "vitest": "^4.0.16"
+  }
+}
