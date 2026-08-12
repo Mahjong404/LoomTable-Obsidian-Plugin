@@ -22,3 +22,26 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
 }
+
+.loom-connection-check {
+  margin-block-start: var(--size-4-3);
+  padding: var(--size-4-3);
+  border-inline-start: 3px solid var(--background-modifier-border);
+  background: var(--background-secondary-alt);
+}
+
+.loom-connection-check.is-success {
+  border-inline-start-color: var(--color-green);
+}
+
+.loom-connection-check.is-warning {
+  border-inline-start-color: var(--color-orange);
+}
+
+.loom-connection-check.is-error {
+  border-inline-start-color: var(--color-red);
+}
+
+.loom-connection-check.is-pending {
+  border-inline-start-color: var(--interactive-accent);
+}

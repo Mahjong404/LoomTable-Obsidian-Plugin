@@ -4,7 +4,7 @@ LoomTable 的 Obsidian 前端插件。Plugin 使用 TypeScript，通过 LoomTabl
 
 ## 当前状态
 
-P0 Plugin 工程基线已经建立：Manifest、严格 TypeScript、esbuild、Vitest、ESLint、Prettier、CI、固定 Server SHA 的 OpenAPI 快照，以及 Connection Profile/凭据/i18n/缓存策略首个前端 seam 均可构建和测试。Grid、Map 与完整 Client 业务能力仍在开发中。
+P0 Plugin 工程基线已经建立：Manifest、严格 TypeScript、esbuild、Vitest、ESLint、Prettier、CI、固定 Server SHA 的 OpenAPI 快照，以及 Connection Profile、凭据、i18n 和缓存策略均可构建和测试。设置页已经支持 `/v1/meta` 兼容性检测和只读认证探测；Grid、Map 与后续 Client 业务能力仍在开发中。
 
 ## 开发
 
@@ -14,6 +14,8 @@ P0 Plugin 工程基线已经建立：Manifest、严格 TypeScript、esbuild、Vi
 pnpm install --frozen-lockfile
 pnpm check
 ```
+
+贡献代码前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。分支遵循 GitHub Flow，使用 `feature/`、`fix/`、`docs/` 等用途前缀，不使用个人或自动化工具前缀。
 
 `pnpm dev` 持续生成 Obsidian 加载的 `main.js`；`pnpm build` 生成生产 Bundle。OpenAPI 快照与生成类型均已提交，普通构建不读取同级 Server 工作树，也不访问网络。显式升级契约时运行：
 
@@ -27,6 +29,7 @@ pnpm api:generate
 - [Plugin 文档索引](./docs/README.md)
 - [产品范围](./docs/product/scope.md)
 - [Plugin Client Interface](./docs/architecture/client-contract.md)
+- [Plugin 源码结构](./docs/architecture/source-layout.md)
 - [UI Design System](./docs/ui/design-system.md)
 - [Grid View 规范](./docs/ui/grid-spec.md)
 - [Map View 与瓦片提供方规范](./docs/ui/map-spec.md)

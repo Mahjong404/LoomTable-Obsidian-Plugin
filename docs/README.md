@@ -12,5 +12,6 @@
 ## Plugin 架构
 
 - [Plugin Client Interface](./architecture/client-contract.md)
+- [Plugin 源码结构](./architecture/source-layout.md)
 
 Plugin 使用的领域术语、字段语义和 API 合同以 LoomTable Server 仓库中的对应文档为准。

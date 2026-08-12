@@ -1,5 +1,8 @@
 import { Plugin } from 'obsidian';
 
+import { HttpLoomTableClient } from './client/http-loomtable-client';
+import type { ConnectionCheckResult } from './client/loomtable-client';
+import { obsidianHttpTransport } from './client/obsidian-http-transport';
 import {
   ObsidianSecretCredentialStore,
   SessionCredentialStore,
@@ -7,6 +10,7 @@ import {
 import { ProfileCredentialStore } from './credentials/profile-credential-store';
 import { createTranslator } from './i18n';
 import { normalizePluginSettings, type PluginSettings } from './settings/plugin-settings';
+import type { ConnectionProfile } from './settings/connection-profile';
 import { LoomTableSettingTab } from './settings/settings-tab';
 import { LOOMTABLE_VIEW_TYPE, LoomTableView } from './ui/loomtable-view';
 
@@ -44,6 +48,18 @@ export default class LoomTablePlugin extends Plugin {
   async saveSettings(): Promise<void> {
     this.settings = normalizePluginSettings(this.settings);
     await this.saveData(this.settings);
+  }
+
+  async checkConnection(profile: ConnectionProfile): Promise<ConnectionCheckResult> {
+    const client = new HttpLoomTableClient(
+      {
+        serverOrigin: profile.serverOrigin,
+        pluginVersion: this.manifest.version,
+        accessToken: () => this.credentials.get(profile),
+      },
+      obsidianHttpTransport,
+    );
+    return client.checkConnection();
   }
 
   refreshViews(): void {
