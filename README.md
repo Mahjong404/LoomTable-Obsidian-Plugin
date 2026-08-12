@@ -4,7 +4,23 @@ LoomTable 的 Obsidian 前端插件。Plugin 使用 TypeScript，通过 LoomTabl
 
 ## 当前状态
 
-当前仓库处于设计和工程准备阶段，尚未开始 P0 功能实现。
+P0 Plugin 工程基线已经建立：Manifest、严格 TypeScript、esbuild、Vitest、ESLint、Prettier、CI、固定 Server SHA 的 OpenAPI 快照，以及 Connection Profile/凭据/i18n/缓存策略首个前端 seam 均可构建和测试。Grid、Map 与完整 Client 业务能力仍在开发中。
+
+## 开发
+
+需要 Node.js 24 和 pnpm 11.16.0：
+
+```text
+pnpm install --frozen-lockfile
+pnpm check
+```
+
+`pnpm dev` 持续生成 Obsidian 加载的 `main.js`；`pnpm build` 生成生产 Bundle。OpenAPI 快照与生成类型均已提交，普通构建不读取同级 Server 工作树，也不访问网络。显式升级契约时运行：
+
+```text
+pnpm api:sync <40 位 Server commit SHA>
+pnpm api:generate
+```
 
 ## 文档
 

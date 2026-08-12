@@ -29,6 +29,7 @@ interface LoomTableClient {
   getMeta(): Promise<ServerMeta>;
   query(request: QueryRequest): Promise<QueryResult>;
   queryMap(request: MapQueryRequest): Promise<MapQueryResult>;
+  queryMapSummary(request: MapSummaryRequest): Promise<MapSummaryResult>;
   mutate(request: MutationRequest): Promise<MutationResult>;
   pullChanges(request: ChangeRequest): Promise<ChangePage>;
 }
@@ -186,6 +187,12 @@ interface LoomTableViewIdentity {
 - Map View 使用随包发布的 Leaflet Adapter，不依赖外部 Obsidian 地图插件。
 - 生产 Client 使用 Obsidian 官方 HTTP 能力。
 - Plugin 保存版本化 OpenAPI 快照并生成 Transport Types；CI 检查生成结果是否漂移。
+- OpenAPI 快照来源记录完整 Server Commit SHA；`api:sync` 是唯一显式更新入口，普通安装、构建和测试不得读取同级 Server 工作树或访问网络。
+- 包管理使用 pnpm 并提交 Lockfile；TypeScript 开启 strict，CI 使用 Node.js 24，统一执行格式、Lint、类型、测试、OpenAPI 漂移和生产构建校验。
+- Plugin Manifest 首版身份固定为 `id=loomtable`、`name=LoomTable`、`version=0.1.0`、`minAppVersion=1.11.5`、`author=Mahjong404`、`isDesktopOnly=false`。
+- 支持多个命名 Connection Profile；每个 Profile 使用稳定本地 ID、规范化 Server Origin 和 SecretStorage 绑定，并且恰有一个默认 Profile。Leaf 身份和所有 Cache Key 必须按 Profile ID 隔离。
+- Record Page Cache 使用 LRU；软上限为 64 MiB 和 256 页，配额不足时主动收缩，包含未提交 Mutation 的页面不得持久化。
+- 所有用户可见字符串使用类型安全消息 Key；首版提供 English 与简体中文，缺失翻译回退 English。
 - `InMemoryLoomTableClient`、OpenAPI Fixtures 和 Component Gallery 为 UI 开发提供无 Server 环境。
 - P0 开发从一开始覆盖 Client 错误映射、View Controller 状态、Field Type 逻辑、Grid 键盘操作和 Obsidian Workspace View Smoke Test。
 
@@ -227,7 +234,7 @@ Filter Builder 已支持递归 `AND`/`OR` Group；每个 Group 至少一个子�
 - Map View 创建必须选择 Active Location Field；没有可选 Field 时禁用创建。Field 后续不可用时进入配置修复状态，不自动选择替代 Field。
 - Map 数据通过 `POST /v1/views/{viewId}/map/query` 提交一个或两个不跨反经线的 WGS 84 Box、Zoom 和 CSS Pixel 尺寸。Server 使用已保存的 Location Field/Filter，自适应聚类并返回最多 500 个完整代表视口结果的 Point/Cluster。
 - Point 只含 Record ID、坐标和 Primary Field 文本，详情按 ID 直查；可展开 Cluster 适配 Bounds，终端 Cluster 使用短期 Token 游标分页。Cluster 不持久化。
-- Summary 对全部匹配 Active Record 返回精确互斥计数和 Data Bounds；缺失/无效坐标属于未定位，合法但超出 EPSG:3857 纬度的坐标保留原值并属于不可渲染。
+- 独立 `POST /v1/views/{viewId}/map/summary` 对全部匹配 Active Record 返回精确互斥计数和 Data Bounds；首次打开、保存的 Filter 改变或显式“适配全部结果”时调用，普通相机移动不调用。缺失/无效坐标属于未定位，合法但超出 EPSG:3857 纬度的坐标保留原值并属于不可渲染。
 - 同 Leaf 恢复临时相机；新 Leaf 使用 Default Camera → Data Bounds → 世界视图。Filter/数据刷新保留临时相机，只有显式“适配全部结果”才自动定位。
 - P0 的 Location 使用 WGS 84 经纬度，瓦片只支持 EPSG:3857；不隐式转换 GCJ-02 或 BD-09。
 - OSM 不允许批量预取或离线下载；任何 Provider 的 Attribution 都必须始终可见。

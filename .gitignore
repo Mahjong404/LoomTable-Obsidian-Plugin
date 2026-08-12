@@ -146,3 +146,7 @@ dist/
 build/
 coverage/
 .obsidian/
+
+# Obsidian Plugin bundle
+main.js
+main.js.map
