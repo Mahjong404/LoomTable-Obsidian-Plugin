@@ -11,6 +11,8 @@ Obsidian 插件是主要前端，LoomTable Server 是数据事实来源。Person
 - 服务端是 Record、Field、View 和 Attachment 元数据的事实来源。
 - Plugin 不直接连接 PostgreSQL。
 - View 只保存查询和展示配置，不复制 Record。
+- 瓦片服务是可替换的客户端展示依赖；LoomTable Server 不代理瓦片，也不保存 Provider Credential。
+- P0 要求 Obsidian `1.11.5` 或更高版本，并使用 SecretStorage 保存用户明确要求记住的 Server Token 与瓦片 Credential。
 - Record 和 Field 使用稳定 ID，显示名称可以修改。
 - 所有危险修改都必须可恢复或提供明确确认。
 - 第一阶段不实现实时协作，但从第一天保留 Revision 和 Change Cursor。
@@ -29,7 +31,15 @@ Obsidian 插件是主要前端，LoomTable Server 是数据事实来源。Person
 7. 在 Grid View 中进行虚拟化浏览和直接编辑。
 8. 使用 Revision 处理并发修改冲突。
 9. 使用 Location 保存地点和可选坐标。
-10. 在 Map View 中显示带坐标的 Record。
+10. 显式创建 Map View，并在内置 OSM 或天地图预设上显示带坐标的 Record。
+
+## P0 地图提供方
+
+- 随 Plugin 打包 Leaflet Renderer，不要求安装外部地图 Plugin。
+- 内置 OpenStreetMap Standard 预设并作为首次安装默认。
+- 内置天地图矢量、影像和地形预设；Token 由用户自行申请和配置。
+- 提供经校验的 Custom XYZ 配置档，以便接入其他合规或自托管瓦片服务。
+- P0 不提供瓦片批量预取、离线包、通用 WMTS Capabilities、WMS 或矢量瓦片。
 
 ## 字段实现阶段
 
@@ -92,4 +102,3 @@ Obsidian 插件是主要前端，LoomTable Server 是数据事实来源。Person
 - Redis 或其他协调组件。
 - 后台任务和通知。
 - 对象存储和更完整的审计能力。
-

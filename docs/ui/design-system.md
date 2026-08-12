@@ -90,7 +90,7 @@ textarea {}
 | Grid | Loom 自定义 DOM |
 | Cell Editor | Loom Field Editor |
 | Filter Builder | Loom 自定义 DOM |
-| Map View | Loom Map + 地图渲染器 |
+| Map View | Loom Map UI + 随包 Leaflet Adapter |
 
 ## 组件状态
 
@@ -131,6 +131,7 @@ createRecordDetail(record, context)
 - 平板：保留 Grid，工具栏和详情面板可折叠，支持触控。
 - 手机：使用记录卡片、详情编辑和简化工具栏；必要时支持横向 Grid。
 - Map View：所有设备支持触控缩放、拖动和 Marker 选择。
+- Provider Attribution 固定在地图可见区域内，不得被工具栏、详情面板或窄屏布局遮挡，也不得只放进二级菜单。
 - 窄面板不强行压缩所有字段，而是允许横向滚动或切换详情模式。
 
 ## Component Gallery
@@ -142,4 +143,3 @@ Plugin 内提供开发用 Component Gallery，展示每个组件的：
 - Light/Dark 主题变量环境。
 - 长文本、空值和窄面板。
 - 键盘操作和触控操作。
-

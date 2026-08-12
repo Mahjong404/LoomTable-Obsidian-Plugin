@@ -13,6 +13,7 @@ LoomTable 的 Obsidian 前端插件。Plugin 使用 TypeScript，通过 LoomTabl
 - [Plugin Client Interface](./docs/architecture/client-contract.md)
 - [UI Design System](./docs/ui/design-system.md)
 - [Grid View 规范](./docs/ui/grid-spec.md)
+- [Map View 与瓦片提供方规范](./docs/ui/map-spec.md)
 
 ## 运行边界
 
@@ -23,4 +24,3 @@ LoomTable 的 Obsidian 前端插件。Plugin 使用 TypeScript，通过 LoomTabl
 - 生产数据通过 LoomTable Server 获取；本地缓存不是真实数据来源。
 
 许可证：MIT License。
-
