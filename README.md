@@ -30,6 +30,7 @@ pnpm api:generate
 - [产品范围](./docs/product/scope.md)
 - [Plugin Client Interface](./docs/architecture/client-contract.md)
 - [Plugin 源码结构](./docs/architecture/source-layout.md)
+- [Plugin 仓库结构与文件职责](./docs/architecture/repository-layout.md)
 - [UI Design System](./docs/ui/design-system.md)
 - [Grid View 规范](./docs/ui/grid-spec.md)
 - [Map View 与瓦片提供方规范](./docs/ui/map-spec.md)
