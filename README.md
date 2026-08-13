@@ -4,6 +4,8 @@ LoomTable 的 Obsidian 前端插件。Plugin 使用 TypeScript，通过 LoomTabl
 
 ## 当前状态
 
+新建 Connection Profile 默认连接本机 Server 地址 `http://127.0.0.1:31201`；已有 Profile 会保留用户已保存的地址，不会静默迁移。
+
 P0 Plugin 工程基线已经建立：Manifest、严格 TypeScript、esbuild、Vitest、ESLint、Prettier、CI、固定 Server SHA 的 OpenAPI 快照，以及 Connection Profile、凭据、i18n 和缓存策略均可构建和测试。设置页已经支持 `/v1/meta` 兼容性检测和只读认证探测；Grid、Map 与后续 Client 业务能力仍在开发中。
 
 ## 开发

@@ -4,11 +4,25 @@ import { normalizeServerOrigin } from './server-origin';
 import {
   LOOMTABLE_API_VERSION,
   LoomTableClientError,
+  type Base,
+  type BootstrapState,
   type ConnectionCheckResult,
+  type DeletedSelectOption,
+  type Field,
+  type FilterNode,
+  type GridViewConfig,
   type LoomTableClient,
   type LoomTableClientErrorDetails,
+  type MapViewConfig,
+  type ResourceListOptions,
+  type SelectFieldConfig,
+  type SelectOption,
+  type SortSpec,
   type ServerIncompatibility,
   type ServerMeta,
+  type Table,
+  type View,
+  type Workspace,
 } from './loomtable-client';
 
 type TransportServerMeta = components['schemas']['ServerMeta'];
@@ -31,6 +45,32 @@ const RETRY_BASE_DELAY_MS = 250;
 const MAX_RETRY_AFTER_MS = 30_000;
 const RETRYABLE_STATUSES = new Set([408, 429, 502, 503, 504]);
 const RETENTION_VALUES = new Set(['30d', '90d', '365d', 'forever']);
+const BOOTSTRAP_STATES = new Set(['required', 'complete', 'unknown']);
+const EMPTY_FIELD_TYPES = new Set([
+  'text',
+  'longText',
+  'number',
+  'checkbox',
+  'date',
+  'url',
+  'location',
+]);
+const FILTER_OPERATORS = new Set([
+  'is',
+  'isNot',
+  'isEmpty',
+  'isNotEmpty',
+  'contains',
+  'notContains',
+  'startsWith',
+  'endsWith',
+  'greaterThan',
+  'greaterOrEqual',
+  'lessThan',
+  'lessOrEqual',
+  'includes',
+  'excludes',
+]);
 
 export class HttpLoomTableClient implements LoomTableClient {
   readonly #serverOrigin: string;
@@ -114,13 +154,67 @@ export class HttpLoomTableClient implements LoomTableClient {
     }
   }
 
-  async #requestJson(path: string, token: string | null): Promise<unknown> {
+  async listWorkspaces(): Promise<readonly Workspace[]> {
+    const value = await this.#requestJson('/v1/workspaces', this.#requireAccessToken());
+    return decodeResourceList(value, decodeWorkspace, 'workspace');
+  }
+
+  async listBases(workspaceId: string): Promise<readonly Base[]> {
+    const value = await this.#requestJson('/v1/bases', this.#requireAccessToken(), {
+      workspaceId,
+    });
+    return decodeResourceList(value, decodeBase, 'base');
+  }
+
+  async listTables(baseId: string, options: ResourceListOptions = {}): Promise<readonly Table[]> {
+    const value = await this.#requestJson('/v1/tables', this.#requireAccessToken(), {
+      baseId,
+      lifecycle: options.lifecycle,
+    });
+    return decodeResourceList(value, decodeTable, 'table');
+  }
+
+  async listFields(tableId: string, options: ResourceListOptions = {}): Promise<readonly Field[]> {
+    const value = await this.#requestJson(
+      `/v1/tables/${encodeURIComponent(tableId)}/fields`,
+      this.#requireAccessToken(),
+      { lifecycle: options.lifecycle },
+    );
+    return decodeResourceList(value, decodeField, 'field');
+  }
+
+  async listViews(tableId: string, options: ResourceListOptions = {}): Promise<readonly View[]> {
+    const value = await this.#requestJson(
+      `/v1/tables/${encodeURIComponent(tableId)}/views`,
+      this.#requireAccessToken(),
+      { lifecycle: options.lifecycle },
+    );
+    return decodeResourceList(value, decodeView, 'view');
+  }
+
+  #requireAccessToken(): string {
+    try {
+      const token = this.#accessToken()?.trim() ?? '';
+      if (token !== '') return token;
+    } catch {
+      // Treat an unavailable SecretStorage value as an authentication requirement.
+    }
+    throw new LoomTableClientError('authentication', {
+      message: 'A LoomTable Server Token is required for this operation.',
+    });
+  }
+
+  async #requestJson(
+    path: string,
+    token: string | null,
+    query: Readonly<Record<string, string | undefined>> = {},
+  ): Promise<unknown> {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       let response: HttpTransportResponse;
       try {
         response = await withTimeout(
           this.#transport({
-            url: `${this.#serverOrigin}${path}`,
+            url: buildRequestUrl(this.#serverOrigin, path, query),
             method: 'GET',
             headers: token === null ? { Accept: 'application/json' } : authenticatedHeaders(token),
           }),
@@ -187,6 +281,330 @@ export class HttpLoomTableClient implements LoomTableClient {
     const jitteredDelay = exponentialDelay * (0.75 + this.#random() * 0.5);
     await this.#delay(retryAfter ?? jitteredDelay);
   }
+}
+
+function buildRequestUrl(
+  serverOrigin: string,
+  path: string,
+  query: Readonly<Record<string, string | undefined>>,
+): string {
+  const url = new URL(`${serverOrigin}${path}`);
+  for (const [key, value] of Object.entries(query)) {
+    if (value !== undefined) url.searchParams.set(key, value);
+  }
+  return url.toString();
+}
+
+function decodeResourceList<T>(
+  value: unknown,
+  decodeItem: (item: unknown) => T,
+  resourceName: string,
+): readonly T[] {
+  if (!isRecord(value) || !Array.isArray(value.items)) {
+    throw invalidResourceList(resourceName);
+  }
+  try {
+    return value.items.map(decodeItem);
+  } catch (error) {
+    if (error instanceof LoomTableClientError) throw error;
+    throw invalidResourceList(resourceName, error);
+  }
+}
+
+function decodeWorkspace(value: unknown): Workspace {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.name !== 'string' ||
+    !isPositiveInteger(value.revision) ||
+    typeof value.createdAt !== 'string' ||
+    typeof value.updatedAt !== 'string'
+  ) {
+    throw invalidResource('workspace');
+  }
+  return {
+    id: value.id,
+    name: value.name,
+    revision: value.revision,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  };
+}
+
+function decodeBase(value: unknown): Base {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.workspaceId !== 'string' ||
+    typeof value.name !== 'string' ||
+    !isPositiveInteger(value.revision) ||
+    typeof value.createdAt !== 'string' ||
+    typeof value.updatedAt !== 'string'
+  ) {
+    throw invalidResource('base');
+  }
+  return {
+    id: value.id,
+    workspaceId: value.workspaceId,
+    name: value.name,
+    revision: value.revision,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  };
+}
+
+function decodeTable(value: unknown): Table {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.baseId !== 'string' ||
+    typeof value.name !== 'string' ||
+    typeof value.primaryFieldId !== 'string' ||
+    !isPositiveInteger(value.revision) ||
+    typeof value.createdAt !== 'string' ||
+    typeof value.updatedAt !== 'string' ||
+    !isOptionalString(value.deletedAt)
+  ) {
+    throw invalidResource('table');
+  }
+  return {
+    id: value.id,
+    baseId: value.baseId,
+    name: value.name,
+    primaryFieldId: value.primaryFieldId,
+    revision: value.revision,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+    ...(value.deletedAt === undefined ? {} : { deletedAt: value.deletedAt }),
+  };
+}
+
+function decodeField(value: unknown): Field {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.tableId !== 'string' ||
+    typeof value.name !== 'string' ||
+    !isNonNegativeInteger(value.position) ||
+    !isPositiveInteger(value.schemaVersion) ||
+    !isPositiveInteger(value.revision) ||
+    !isOptionalString(value.deletedAt) ||
+    typeof value.type !== 'string' ||
+    !isRecord(value.config)
+  ) {
+    throw invalidResource('field');
+  }
+
+  const base = {
+    id: value.id,
+    tableId: value.tableId,
+    name: value.name,
+    position: value.position,
+    schemaVersion: value.schemaVersion,
+    revision: value.revision,
+    ...(value.deletedAt === undefined ? {} : { deletedAt: value.deletedAt }),
+  };
+
+  if (EMPTY_FIELD_TYPES.has(value.type)) {
+    if (!isEmptyObject(value.config)) throw invalidResource('field');
+    return { ...base, type: value.type, config: {} } as Field;
+  }
+  if (value.type === 'select' || value.type === 'multiSelect') {
+    const config = decodeSelectFieldConfig(value.config);
+    if (config === null) throw invalidResource('field');
+    return { ...base, type: value.type, config };
+  }
+  throw invalidResource('field');
+}
+
+function decodeView(value: unknown): View {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.tableId !== 'string' ||
+    typeof value.name !== 'string' ||
+    !isPositiveInteger(value.revision) ||
+    typeof value.createdAt !== 'string' ||
+    typeof value.updatedAt !== 'string' ||
+    !isOptionalString(value.deletedAt) ||
+    typeof value.type !== 'string' ||
+    !isRecord(value.config)
+  ) {
+    throw invalidResource('view');
+  }
+
+  const base = {
+    id: value.id,
+    tableId: value.tableId,
+    name: value.name,
+    revision: value.revision,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+    ...(value.deletedAt === undefined ? {} : { deletedAt: value.deletedAt }),
+  };
+
+  if (value.type === 'grid') {
+    const config = decodeGridViewConfig(value.config);
+    if (config === null) throw invalidResource('view');
+    return { ...base, type: 'grid', config };
+  }
+  if (value.type === 'map') {
+    const config = decodeMapViewConfig(value.config);
+    if (config === null) throw invalidResource('view');
+    return { ...base, type: 'map', config };
+  }
+  throw invalidResource('view');
+}
+
+function decodeSelectFieldConfig(value: Record<string, unknown>): SelectFieldConfig | null {
+  if (!Array.isArray(value.options) || !Array.isArray(value.deletedOptions)) return null;
+  const options: SelectOption[] = [];
+  for (const item of value.options) {
+    const option = decodeSelectOption(item);
+    if (option === null) return null;
+    options.push(option);
+  }
+  const deletedOptions: DeletedSelectOption[] = [];
+  for (const item of value.deletedOptions) {
+    const option = decodeDeletedSelectOption(item);
+    if (option === null) return null;
+    deletedOptions.push(option);
+  }
+  return { options, deletedOptions };
+}
+
+function decodeSelectOption(value: unknown): SelectOption | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.name !== 'string' ||
+    typeof value.color !== 'string'
+  ) {
+    return null;
+  }
+  return { id: value.id, name: value.name, color: value.color };
+}
+
+function decodeDeletedSelectOption(value: unknown): DeletedSelectOption | null {
+  if (!isRecord(value) || typeof value.deletedAt !== 'string') return null;
+  const option = decodeSelectOption(value);
+  return option === null ? null : { ...option, deletedAt: value.deletedAt };
+}
+
+function decodeGridViewConfig(value: Record<string, unknown>): GridViewConfig | null {
+  if (
+    !isStringArray(value.projection) ||
+    !isStringArray(value.columnOrder) ||
+    !isNumberRecord(value.columnWidths) ||
+    !isStringArray(value.frozenFieldIds) ||
+    !isRowHeight(value.rowHeight) ||
+    !Array.isArray(value.sort)
+  ) {
+    return null;
+  }
+  const sort: SortSpec[] = [];
+  for (const item of value.sort) {
+    const decoded = decodeSortSpec(item);
+    if (decoded === null) return null;
+    sort.push(decoded);
+  }
+  const filter = value.filter === undefined ? undefined : decodeFilterNode(value.filter);
+  if (value.filter !== undefined && filter === null) return null;
+  return {
+    projection: value.projection,
+    columnOrder: value.columnOrder,
+    columnWidths: value.columnWidths,
+    frozenFieldIds: value.frozenFieldIds,
+    rowHeight: value.rowHeight,
+    ...(filter === undefined || filter === null ? {} : { filter }),
+    sort,
+  };
+}
+
+function decodeMapViewConfig(value: Record<string, unknown>): MapViewConfig | null {
+  if (typeof value.locationFieldId !== 'string') return null;
+  const filter = value.filter === undefined ? undefined : decodeFilterNode(value.filter);
+  if (value.filter !== undefined && filter === null) return null;
+
+  let center: MapViewConfig['center'];
+  if (value.center !== undefined) {
+    if (
+      !isRecord(value.center) ||
+      !isFiniteNumber(value.center.lat) ||
+      !isFiniteNumber(value.center.lng)
+    ) {
+      return null;
+    }
+    center = { lat: value.center.lat, lng: value.center.lng };
+  }
+  if (value.zoom !== undefined && !isFiniteNumber(value.zoom)) return null;
+  return {
+    locationFieldId: value.locationFieldId,
+    ...(filter === undefined || filter === null ? {} : { filter }),
+    ...(center === undefined ? {} : { center }),
+    ...(value.zoom === undefined ? {} : { zoom: value.zoom }),
+  };
+}
+
+function decodeFilterNode(value: unknown): FilterNode | null {
+  if (!isRecord(value) || typeof value.kind !== 'string') return null;
+  if (value.kind === 'group') {
+    if (
+      (value.operator !== 'and' && value.operator !== 'or') ||
+      !Array.isArray(value.children) ||
+      value.children.length === 0
+    ) {
+      return null;
+    }
+    const children: FilterNode[] = [];
+    for (const child of value.children) {
+      const decoded = decodeFilterNode(child);
+      if (decoded === null) return null;
+      children.push(decoded);
+    }
+    return { kind: 'group', operator: value.operator, children };
+  }
+  if (
+    value.kind !== 'rule' ||
+    typeof value.fieldId !== 'string' ||
+    typeof value.operator !== 'string' ||
+    !FILTER_OPERATORS.has(value.operator) ||
+    (value.value !== undefined && !isJsonValue(value.value))
+  ) {
+    return null;
+  }
+  return {
+    kind: 'rule',
+    fieldId: value.fieldId,
+    operator: value.operator,
+    ...(value.value === undefined ? {} : { value: value.value }),
+  } as FilterNode;
+}
+
+function decodeSortSpec(value: unknown): SortSpec | null {
+  if (
+    !isRecord(value) ||
+    typeof value.fieldId !== 'string' ||
+    (value.direction !== 'asc' && value.direction !== 'desc') ||
+    (value.nulls !== 'first' && value.nulls !== 'last')
+  ) {
+    return null;
+  }
+  return { fieldId: value.fieldId, direction: value.direction, nulls: value.nulls };
+}
+
+function invalidResourceList(resourceName: string, cause?: unknown): LoomTableClientError {
+  return new LoomTableClientError(
+    'invalid-response',
+    { message: `The LoomTable Server returned an invalid ${resourceName} list response.` },
+    cause === undefined ? undefined : { cause },
+  );
+}
+
+function invalidResource(resourceName: string): LoomTableClientError {
+  return new LoomTableClientError('invalid-response', {
+    message: `The LoomTable Server returned an invalid ${resourceName}.`,
+  });
 }
 
 function authenticatedHeaders(token: string): Readonly<Record<string, string>> {
@@ -262,7 +680,8 @@ function decodeServerMeta(value: unknown): ServerMeta {
     !isStringArray(value.capabilities) ||
     !isRetention(value.changeRetention) ||
     !isRetention(value.idempotencyRetention) ||
-    (value.migrationRequired !== undefined && typeof value.migrationRequired !== 'boolean')
+    typeof value.migrationRequired !== 'boolean' ||
+    !isBootstrapState(value.bootstrapState)
   ) {
     throw invalidMeta();
   }
@@ -274,9 +693,8 @@ function decodeServerMeta(value: unknown): ServerMeta {
     capabilities: value.capabilities,
     changeRetention: value.changeRetention,
     idempotencyRetention: value.idempotencyRetention,
-    ...(value.migrationRequired === undefined
-      ? {}
-      : { migrationRequired: value.migrationRequired }),
+    migrationRequired: value.migrationRequired,
+    bootstrapState: value.bootstrapState,
   };
   return transportMeta;
 }
@@ -319,6 +737,12 @@ function errorFromResponse(status: number, apiError: ApiError | null): LoomTable
   };
   if (status === 401) return new LoomTableClientError('authentication', details);
   if (status === 403) return new LoomTableClientError('forbidden', details);
+  if (status === 404) return new LoomTableClientError('not-found', details);
+  if (status === 409) return new LoomTableClientError('conflict', details);
+  if (status === 410 && apiError?.code === 'CURSOR_EXPIRED') {
+    return new LoomTableClientError('cursor-expired', details);
+  }
+  if (status === 400 || status === 422) return new LoomTableClientError('validation', details);
   return new LoomTableClientError('server', details);
 }
 
@@ -426,13 +850,52 @@ function numericIdentifier(value: string): number | null {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
+function isNumberRecord(value: unknown): value is Record<string, number> {
+  return isRecord(value) && Object.values(value).every(isFiniteNumber);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === 'string';
+}
+
+function isEmptyObject(value: Record<string, unknown>): value is Record<string, never> {
+  return Object.keys(value).length === 0;
+}
+
+function isRowHeight(value: unknown): value is GridViewConfig['rowHeight'] {
+  return value === 'compact' || value === 'standard' || value === 'comfortable';
+}
+
+function isJsonValue(value: unknown): value is import('./loomtable-client').JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  return isRecord(value) && Object.values(value).every(isJsonValue);
+}
+
 function isRetention(value: unknown): value is TransportServerMeta['changeRetention'] {
   return typeof value === 'string' && RETENTION_VALUES.has(value);
+}
+
+function isBootstrapState(value: unknown): value is BootstrapState {
+  return typeof value === 'string' && BOOTSTRAP_STATES.has(value);
 }

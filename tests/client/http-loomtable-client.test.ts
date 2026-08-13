@@ -10,6 +10,8 @@ const compatibleMeta = {
   capabilities: ['grid', 'map'],
   changeRetention: '30d',
   idempotencyRetention: '30d',
+  migrationRequired: false,
+  bootstrapState: 'complete',
 };
 
 describe('HttpLoomTableClient connection checks', () => {

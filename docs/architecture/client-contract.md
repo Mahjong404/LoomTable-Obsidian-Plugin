@@ -12,6 +12,11 @@
 interface LoomTableClient {
   getMeta(): Promise<ServerMeta>;
   checkConnection(): Promise<ConnectionCheckResult>;
+  listWorkspaces(): Promise<readonly Workspace[]>;
+  listBases(workspaceId: string): Promise<readonly Base[]>;
+  listTables(baseId: string, options?: ResourceListOptions): Promise<readonly Table[]>;
+  listFields(tableId: string, options?: ResourceListOptions): Promise<readonly Field[]>;
+  listViews(tableId: string, options?: ResourceListOptions): Promise<readonly View[]>;
   query(request: QueryRequest): Promise<QueryResult>;
   queryMap(request: MapQueryRequest): Promise<MapQueryResult>;
   queryMapSummary(request: MapSummaryRequest): Promise<MapSummaryResult>;
@@ -23,6 +28,8 @@ interface LoomTableClient {
 ```
 
 `checkConnection()` 是只读连接探测：先请求公开的 `/v1/meta` 判断 API 版本、最低 Plugin 版本和迁移状态；兼容后再以当前 Token 请求 `/v1/workspaces`，区分缺少 Token、认证失败、权限不足、网络不可达与 Server 故障。该探测不创建或修改任何 Server 数据。
+
+资源发现方法只执行认证后的 GET 请求，并返回 Plugin 领域类型；它们不把 OpenAPI 生成类型泄漏给 UI。列表顺序由 Server 合同定义并保持不变。`listTables`、`listFields` 和 `listViews` 接受可选的 `active`、`deleted` 或 `all` 生命周期范围；缺省值由 Server 采用 `active`。
 
 Schema、Workspace、Base、Table、View 和 Attachment 的管理操作也通过同一 Client 的领域方法分组暴露，但不把底层 HTTP 请求透传到组件。
 
@@ -50,6 +57,8 @@ UI 和领域模块不直接依赖生成类型。Client Adapter 负责在生成�
 P0 的 View、CreateViewRequest 和 UpdateViewRequest 是以 `type` 为判别字段的 Grid/Map 联合类型。View Config 更新是带 `expectedRevision` 的完整替换，不是任意 JSON Patch；P0 不支持改变既有 View Type。
 
 ## Token 和传输安全
+
+- 新建 Connection Profile 默认使用 Server 原生本地地址 `http://127.0.0.1:31201`；已有 Profile 的地址保持不变。
 
 - Token 默认只保存在当前 Obsidian 会话的内存中，退出或重新加载 Plugin 后清除。
 - P0 的最低 Obsidian 版本是 `1.11.5`，持久化密钥统一使用 `app.secretStorage`；不存在把明文 Token 写入 Plugin Data 的兼容回退。

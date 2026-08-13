@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_SERVER_ORIGIN,
   type ConnectionProfileId,
   createConnectionProfileId,
   normalizeServerOrigin,
@@ -30,6 +31,11 @@ describe('connection profiles', () => {
     expect(normalizeServerOrigin('http://localhost:3000/')).toBe('http://localhost:3000');
     expect(normalizeServerOrigin('http://127.0.0.1:3000')).toBe('http://127.0.0.1:3000');
     expect(normalizeServerOrigin('http://[::1]:3000')).toBe('http://[::1]:3000');
+  });
+
+  it('uses the Server native loopback address for new connections', () => {
+    expect(DEFAULT_SERVER_ORIGIN).toBe('http://127.0.0.1:31201');
+    expect(normalizeServerOrigin(DEFAULT_SERVER_ORIGIN)).toBe(DEFAULT_SERVER_ORIGIN);
   });
 
   it('creates a stable local profile id from a UUID', () => {

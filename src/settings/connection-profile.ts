@@ -1,5 +1,7 @@
 export { normalizeServerOrigin } from '../client/server-origin';
 
+export const DEFAULT_SERVER_ORIGIN = 'http://127.0.0.1:31201';
+
 export type ConnectionProfileId = string & { readonly __connectionProfileId: unique symbol };
 
 export interface ConnectionProfile {
