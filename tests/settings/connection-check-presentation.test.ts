@@ -13,6 +13,8 @@ const meta = {
   capabilities: ['grid', 'map'],
   changeRetention: '30d' as const,
   idempotencyRetention: '30d' as const,
+  migrationRequired: false,
+  bootstrapState: 'complete' as const,
 };
 
 describe('connection check presentation', () => {

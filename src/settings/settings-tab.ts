@@ -15,7 +15,11 @@ import {
   describeConnectionCheck,
   type ConnectionCheckState,
 } from './connection-check-presentation';
-import { normalizeServerOrigin, type ConnectionProfile } from './connection-profile';
+import {
+  DEFAULT_SERVER_ORIGIN,
+  normalizeServerOrigin,
+  type ConnectionProfile,
+} from './connection-profile';
 import {
   addConnectionProfile,
   removeConnectionProfile,
@@ -69,7 +73,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
         .onClick(async () => {
           addConnectionProfile(this.loomTablePlugin.settings, {
             name: t('connection.newName'),
-            serverOrigin: 'http://localhost:3000',
+            serverOrigin: DEFAULT_SERVER_ORIGIN,
             rememberToken: false,
             tokenSecretId: null,
           });
