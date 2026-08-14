@@ -4,6 +4,8 @@
 
 Grid View 是第一阶段的核心交互。它必须支持约 20k Records 的浏览、筛选、排序和编辑，同时避免把完整数据集转换成完整 DOM。
 
+当前实现切片是 `feature/grid-readonly`：先交付 Workspace/Base/Table/Grid View 导航、服务端 Query/Filter/Sort/Cursor、只读 Cell、固定行高原生 DOM 虚拟化、刷新、详情入口和连接/空态/错误态。编辑、Mutation Queue、Conflict UI 和列虚拟化不属于本切片；它们保留在本规范中作为后续接口约束。
+
 ## 结构
 
 ```text

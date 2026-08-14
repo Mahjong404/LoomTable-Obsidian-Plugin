@@ -18,9 +18,13 @@ import {
   type FilterNode,
   type GridViewConfig,
   type InitializeAttachmentRequest,
+  type JsonValue,
   type LoomTableClient,
   type LoomTableClientErrorDetails,
+  type LoomTableRecord,
   type MapViewConfig,
+  type QueryRequest,
+  type QueryResult,
   type ResourceListOptions,
   type SelectFieldConfig,
   type SelectOption,
@@ -33,6 +37,7 @@ import {
 } from './loomtable-client';
 
 type TransportServerMeta = components['schemas']['ServerMeta'];
+type TransportQueryRequest = components['schemas']['QueryRequest'];
 
 export interface HttpLoomTableClientConfig {
   readonly serverOrigin: string;
@@ -217,6 +222,38 @@ export class HttpLoomTableClient implements LoomTableClient {
       { query: { lifecycle: options.lifecycle } },
     );
     return decodeResourceList(value, decodeView, 'view');
+  }
+
+  async query(request: QueryRequest): Promise<QueryResult> {
+    const tableId = request.tableId.trim();
+    if (tableId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Table ID is required to query Records.',
+      });
+    }
+    const limit = request.limit ?? 100;
+    if (!isPositiveInteger(limit) || limit > 500) {
+      throw new LoomTableClientError('validation', {
+        message: 'Record query limit must be an integer between 1 and 500.',
+      });
+    }
+
+    const body: TransportQueryRequest = {
+      limit,
+      ...(request.viewId === undefined ? {} : { viewId: request.viewId }),
+      ...(request.lifecycle === undefined ? {} : { lifecycle: request.lifecycle }),
+      ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
+      ...(request.projection === undefined ? {} : { projection: [...request.projection] }),
+      ...(request.filter === undefined ? {} : { filter: toTransportFilter(request.filter) }),
+      ...(request.sort === undefined ? {} : { sort: request.sort.map((sort) => ({ ...sort })) }),
+      ...(request.search === undefined ? {} : { search: request.search }),
+    };
+    const value = await this.#requestJson(
+      `/v1/tables/${encodeURIComponent(tableId)}/records/query`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: true },
+    );
+    return decodeQueryResult(value);
   }
 
   async initializeAttachment(
@@ -453,6 +490,86 @@ function decodeResourceList<T>(
     if (error instanceof LoomTableClientError) throw error;
     throw invalidResourceList(resourceName, error);
   }
+}
+
+function decodeQueryResult(value: unknown): QueryResult {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.items) ||
+    typeof value.hasMore !== 'boolean' ||
+    typeof value.changeCursor !== 'string' ||
+    !isOptionalString(value.nextCursor) ||
+    !isOptionalNonNegativeInteger(value.totalCount) ||
+    (value.hasMore && value.nextCursor === undefined) ||
+    (!value.hasMore && value.nextCursor !== undefined)
+  ) {
+    throw invalidResource('query result');
+  }
+
+  try {
+    const items = value.items.map(decodeRecord);
+    return {
+      items,
+      hasMore: value.hasMore,
+      changeCursor: value.changeCursor,
+      ...(value.nextCursor === undefined ? {} : { nextCursor: value.nextCursor }),
+      ...(value.totalCount === undefined ? {} : { totalCount: value.totalCount }),
+    };
+  } catch (error) {
+    if (error instanceof LoomTableClientError) throw error;
+    throw invalidResource('query result');
+  }
+}
+
+function decodeRecord(value: unknown): LoomTableRecord {
+  if (!isRecord(value)) throw invalidResource('record');
+  const values = decodeRecordValues(value.values);
+  if (
+    typeof value.id !== 'string' ||
+    typeof value.tableId !== 'string' ||
+    !isPositiveInteger(value.revision) ||
+    values === null ||
+    typeof value.createdAt !== 'string' ||
+    typeof value.updatedAt !== 'string' ||
+    !isOptionalString(value.deletedAt)
+  ) {
+    throw invalidResource('record');
+  }
+  return {
+    id: value.id,
+    tableId: value.tableId,
+    revision: value.revision,
+    values,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+    ...(value.deletedAt === undefined ? {} : { deletedAt: value.deletedAt }),
+  };
+}
+
+function decodeRecordValues(value: unknown): Readonly<Record<string, JsonValue>> | null {
+  if (!isRecord(value)) return null;
+  const values: Record<string, JsonValue> = {};
+  for (const [fieldId, fieldValue] of Object.entries(value)) {
+    if (!isJsonValue(fieldValue)) return null;
+    values[fieldId] = fieldValue;
+  }
+  return values;
+}
+
+function toTransportFilter(value: FilterNode): components['schemas']['FilterNode'] {
+  if (value.kind === 'group') {
+    return {
+      kind: 'group',
+      operator: value.operator,
+      children: value.children.map(toTransportFilter),
+    };
+  }
+  return {
+    kind: 'rule',
+    fieldId: value.fieldId,
+    operator: value.operator,
+    ...(value.value === undefined ? {} : { value: value.value }),
+  };
 }
 
 function decodeWorkspace(value: unknown): Workspace {
@@ -948,7 +1065,10 @@ function errorFromResponse(status: number, apiError: ApiError | null): LoomTable
   if (status === 404) return new LoomTableClientError('not-found', details);
   if (status === 409) return new LoomTableClientError('conflict', details);
   if (status === 501) return new LoomTableClientError('capability', details);
-  if (status === 410 && apiError?.code === 'CURSOR_EXPIRED') {
+  if (
+    status === 410 &&
+    (apiError?.code === 'CURSOR_EXPIRED' || apiError?.code === 'QUERY_SNAPSHOT_EXPIRED')
+  ) {
     return new LoomTableClientError('cursor-expired', details);
   }
   if (status === 400 || status === 422) return new LoomTableClientError('validation', details);

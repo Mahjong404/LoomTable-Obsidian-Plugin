@@ -250,6 +250,36 @@ export interface GridViewConfig {
   readonly sort: readonly SortSpec[];
 }
 
+export interface QueryRequest {
+  readonly tableId: string;
+  readonly viewId?: string;
+  readonly lifecycle?: LifecycleScope;
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly projection?: readonly string[];
+  readonly filter?: FilterNode;
+  readonly sort?: readonly SortSpec[];
+  readonly search?: string;
+}
+
+export interface LoomTableRecord {
+  readonly id: string;
+  readonly tableId: string;
+  readonly revision: number;
+  readonly values: Readonly<Record<string, JsonValue>>;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly deletedAt?: string;
+}
+
+export interface QueryResult {
+  readonly items: readonly LoomTableRecord[];
+  readonly nextCursor?: string;
+  readonly hasMore: boolean;
+  readonly changeCursor: string;
+  readonly totalCount?: number;
+}
+
 export interface MapViewConfig {
   readonly locationFieldId: string;
   readonly filter?: FilterNode;
@@ -282,6 +312,7 @@ export interface LoomTableClient {
   listTables(baseId: string, options?: ResourceListOptions): Promise<readonly Table[]>;
   listFields(tableId: string, options?: ResourceListOptions): Promise<readonly Field[]>;
   listViews(tableId: string, options?: ResourceListOptions): Promise<readonly View[]>;
+  query(request: QueryRequest): Promise<QueryResult>;
   initializeAttachment(
     request: InitializeAttachmentRequest,
     idempotencyKey: string,

@@ -32,6 +32,7 @@ export default class LoomTablePlugin extends Plugin {
           leaf,
           () => this.settings,
           () => createTranslator(this.settings.locale),
+          (profile) => this.createClient(profile),
         ),
     );
 
@@ -51,7 +52,11 @@ export default class LoomTablePlugin extends Plugin {
   }
 
   async checkConnection(profile: ConnectionProfile): Promise<ConnectionCheckResult> {
-    const client = new HttpLoomTableClient(
+    return this.createClient(profile).checkConnection();
+  }
+
+  private createClient(profile: ConnectionProfile): HttpLoomTableClient {
+    return new HttpLoomTableClient(
       {
         serverOrigin: profile.serverOrigin,
         pluginVersion: this.manifest.version,
@@ -59,7 +64,6 @@ export default class LoomTablePlugin extends Plugin {
       },
       obsidianHttpTransport,
     );
-    return client.checkConnection();
   }
 
   refreshViews(): void {

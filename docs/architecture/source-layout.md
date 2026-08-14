@@ -15,7 +15,7 @@ src/
 ├── settings/                        Persisted profiles and the settings UI
 ├── cache/                           Bounded local cache policy
 ├── i18n/                            Type-safe user-facing text
-├── ui/                              Obsidian views and renderers
+├── ui/                              Obsidian views, Grid Controller, and renderers
 └── main.ts                          Plugin composition root and lifecycle
 ```
 
@@ -28,5 +28,6 @@ src/
 - Generated transport types do not cross into Grid, Map, settings, or other UI interfaces.
 - A connection check uses public `/v1/meta` for reachability and compatibility, then an authenticated `/v1/workspaces` read to validate the configured token. It performs no mutation.
 - Attachment P1 metadata and content operations stay behind `LoomTableClient`; only the transport seam knows about HTTP methods, JSON request bodies, and binary response buffers.
+- `grid-view-controller.ts` owns Workspace → Base → Table → Grid View selection, query pages, cursor transitions, and UI-facing status mapping. `readonly-grid-renderer.ts` owns native DOM layout and fixed-row-height virtualization; neither module depends on generated OpenAPI types.
 
 New source directories should represent a durable responsibility or seam, not a single call site. Keep tests under `tests/` with the same responsibility-oriented layout.

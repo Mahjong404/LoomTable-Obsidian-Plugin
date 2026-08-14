@@ -45,3 +45,206 @@
 .loom-connection-check.is-pending {
   border-inline-start-color: var(--interactive-accent);
 }
+
+.loom-grid-shell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+  min-width: 0;
+}
+
+.loom-grid-toolbar,
+.loom-grid-navigation {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  flex-wrap: wrap;
+}
+
+.loom-grid-toolbar {
+  justify-content: space-between;
+}
+
+.loom-grid-toolbar-title {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-2);
+}
+
+.loom-grid-toolbar-title span {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.loom-button {
+  padding: var(--size-4-1) var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--interactive-normal);
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.loom-button:hover:not(:disabled),
+.loom-button:focus-visible {
+  background: var(--interactive-hover);
+}
+
+.loom-button:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.loom-grid-select {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.loom-grid-select select {
+  max-width: 16rem;
+}
+
+.loom-grid-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+
+.loom-grid-header,
+.loom-grid-row {
+  display: grid;
+  min-width: max-content;
+}
+
+.loom-grid-header {
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-bottom: 0;
+  background: var(--background-secondary);
+}
+
+.loom-grid-header-cell,
+.loom-grid-cell,
+.loom-grid-index-cell {
+  min-width: 0;
+  padding: 0 var(--size-4-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loom-grid-header-cell {
+  height: 2.25rem;
+  display: flex;
+  align-items: center;
+  border-inline-end: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+}
+
+.loom-grid-viewport {
+  position: relative;
+  height: min(60vh, 34rem);
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  contain: strict;
+}
+
+.loom-grid-canvas {
+  position: relative;
+  min-width: max-content;
+}
+
+.loom-grid-row-layer {
+  position: absolute;
+  inset: 0;
+  min-width: max-content;
+}
+
+.loom-grid-row {
+  position: absolute;
+  inset-inline: 0;
+  align-items: center;
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.loom-grid-row:hover,
+.loom-grid-row:focus-visible {
+  background: var(--background-modifier-hover);
+  outline: none;
+}
+
+.loom-grid-cell,
+.loom-grid-index-cell {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  border-inline-end: 1px solid var(--background-modifier-border);
+}
+
+.loom-grid-index-cell {
+  justify-content: space-between;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.loom-grid-open {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.loom-grid-open:hover,
+.loom-grid-open:focus-visible {
+  color: var(--text-accent);
+}
+
+.loom-grid-load-more {
+  align-self: flex-start;
+}
+
+.loom-grid-status {
+  margin: 0;
+}
+
+.loom-grid-status.is-offline,
+.loom-grid-status.is-network,
+.loom-grid-status.is-server-error {
+  border-inline-start-color: var(--color-orange);
+}
+
+.loom-grid-status.is-authentication,
+.loom-grid-status.is-forbidden {
+  border-inline-start-color: var(--color-red);
+}
+
+.loom-record-detail {
+  margin-block-start: var(--size-4-3);
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.loom-record-detail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+}
+
+.loom-record-detail pre {
+  max-height: 18rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}

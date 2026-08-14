@@ -39,6 +39,11 @@ interface LoomTableClient {
 }
 ```
 
+只读 Grid 使用的 `QueryRequest` 将路由所需的 `tableId` 与 Server 的请求体字段分开；Client Adapter 只把请求体中的 `viewId`、`projection`、`filter`、`sort`、`search`、`limit` 和不透明 `cursor` 发送到
+`POST /v1/tables/{tableId}/records/query`。`QueryResult` 必须保留 `items`、`hasMore`、`changeCursor`，并在首个页面保留 `totalCount`；当 `hasMore` 为真时必须有 `nextCursor`，否则不得接受该响应。
+
+当前 `feature/grid-readonly` 垂直切片只读地呈现返回的 Record。Workspace → Base → Table → Grid View 导航由 View Controller 驱动，Filter、Sort 和 Cursor 继续由 Server 执行；Plugin 不在缓存页上重算查询语义。编辑、Mutation Queue 和 Conflict UI 属于后续切片。
+
 `checkConnection()` 是只读连接探测：先请求公开的 `/v1/meta` 判断 API 版本、最低 Plugin 版本和迁移状态；兼容后再以当前 Token 请求 `/v1/workspaces`，区分缺少 Token、认证失败、权限不足、网络不可达与 Server 故障。该探测不创建或修改任何 Server 数据。
 
 资源发现方法只执行认证后的 GET 请求，并返回 Plugin 领域类型；它们不把 OpenAPI 生成类型泄漏给 UI。列表顺序由 Server 合同定义并保持不变。`listTables`、`listFields` 和 `listViews` 接受可选的 `active`、`deleted` 或 `all` 生命周期范围；缺省值由 Server 采用 `active`。
