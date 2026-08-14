@@ -6,7 +6,7 @@
 
 这不是一个通用数据库接口，也不承诺兼容其他后端。
 
-## P0 Interface
+## Client Interface
 
 ```ts
 interface LoomTableClient {
@@ -17,6 +17,18 @@ interface LoomTableClient {
   listTables(baseId: string, options?: ResourceListOptions): Promise<readonly Table[]>;
   listFields(tableId: string, options?: ResourceListOptions): Promise<readonly Field[]>;
   listViews(tableId: string, options?: ResourceListOptions): Promise<readonly View[]>;
+  initializeAttachment(
+    request: InitializeAttachmentRequest,
+    idempotencyKey: string,
+  ): Promise<Attachment>;
+  getAttachment(attachmentId: string): Promise<Attachment>;
+  deleteAttachment(attachmentId: string, expectedRevision: number): Promise<void>;
+  uploadAttachmentContent(
+    attachmentId: string,
+    bytes: ArrayBuffer,
+    contentType?: string,
+  ): Promise<Attachment>;
+  downloadAttachmentContent(attachmentId: string): Promise<AttachmentDownload>;
   query(request: QueryRequest): Promise<QueryResult>;
   queryMap(request: MapQueryRequest): Promise<MapQueryResult>;
   queryMapSummary(request: MapSummaryRequest): Promise<MapSummaryResult>;
@@ -31,7 +43,7 @@ interface LoomTableClient {
 
 资源发现方法只执行认证后的 GET 请求，并返回 Plugin 领域类型；它们不把 OpenAPI 生成类型泄漏给 UI。列表顺序由 Server 合同定义并保持不变。`listTables`、`listFields` 和 `listViews` 接受可选的 `active`、`deleted` 或 `all` 生命周期范围；缺省值由 Server 采用 `active`。
 
-Schema、Workspace、Base、Table、View 和 Attachment 的管理操作也通过同一 Client 的领域方法分组暴露，但不把底层 HTTP 请求透传到组件。
+Schema、Workspace、Base、Table、View 和 Attachment 的管理操作也通过同一 Client 的领域方法分组暴露，但不把底层 HTTP 请求透传到组件。Attachment P1 的 Managed 内容使用初始化、二进制上传和内容下载三段式边界；Vault Attachment 只初始化元数据，不通过 Server 读写 Vault 内容。
 
 ## 必须遵守的 Interface 事实
 
@@ -44,7 +56,7 @@ Schema、Workspace、Base、Table、View 和 Attachment 的管理操作也通过
 - 更新 Record 时必须携带 `expectedRevision`。
 - 版本过期时返回可识别的 Conflict，而不是静默覆盖。
 - `pullChanges` 只返回游标之后的 Change，并返回新的游标。
-- P0 的 `getMeta()` 不声明 `attachments` capability；Plugin 必须隐藏 Attachment 入口，不能把 `501 CAPABILITY_NOT_ENABLED` 当作普通资源不存在。
+- P1 的 `getMeta()` 可以声明 `attachments` capability；Plugin 只在该能力已声明时展示 Attachment 入口。`501 CAPABILITY_NOT_ENABLED` 必须映射为独立的能力不可用状态，不能当作普通资源不存在。
 - 认证失败、版本不兼容、服务不可用和数据冲突必须映射为不同错误类型。
 - 网络重试不能导致 Mutation 重复应用。
 

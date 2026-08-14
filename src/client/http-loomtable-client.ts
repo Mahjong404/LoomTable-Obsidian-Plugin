@@ -1,9 +1,15 @@
 import type { components } from '../generated/transport';
-import type { HttpTransport, HttpTransportResponse } from './http-transport';
+import type { HttpTransport, HttpTransportRequest, HttpTransportResponse } from './http-transport';
 import { normalizeServerOrigin } from './server-origin';
 import {
   LOOMTABLE_API_VERSION,
   LoomTableClientError,
+  type Attachment,
+  type AttachmentDownload,
+  type AttachmentFieldConfig,
+  type AttachmentRef,
+  type AttachmentSource,
+  type AttachmentStatus,
   type Base,
   type BootstrapState,
   type ConnectionCheckResult,
@@ -11,6 +17,7 @@ import {
   type Field,
   type FilterNode,
   type GridViewConfig,
+  type InitializeAttachmentRequest,
   type LoomTableClient,
   type LoomTableClientErrorDetails,
   type MapViewConfig,
@@ -39,6 +46,22 @@ export interface HttpLoomTableClientOptions {
   readonly random?: () => number;
 }
 
+interface JsonRequestOptions {
+  readonly method?: HttpTransportRequest['method'];
+  readonly query?: Readonly<Record<string, string | undefined>>;
+  readonly body?: unknown;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly retryable?: boolean;
+}
+
+interface RawRequestOptions {
+  readonly method?: HttpTransportRequest['method'];
+  readonly query?: Readonly<Record<string, string | undefined>>;
+  readonly body?: string | ArrayBuffer;
+  readonly headers?: Readonly<Record<string, string>>;
+  readonly retryable?: boolean;
+}
+
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
 const MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 250;
@@ -46,6 +69,8 @@ const MAX_RETRY_AFTER_MS = 30_000;
 const RETRYABLE_STATUSES = new Set([408, 429, 502, 503, 504]);
 const RETENTION_VALUES = new Set(['30d', '90d', '365d', 'forever']);
 const BOOTSTRAP_STATES = new Set(['required', 'complete', 'unknown']);
+const ATTACHMENT_SOURCES = new Set(['managed', 'vault']);
+const ATTACHMENT_STATUSES = new Set(['pending', 'ready']);
 const EMPTY_FIELD_TYPES = new Set([
   'text',
   'longText',
@@ -161,15 +186,17 @@ export class HttpLoomTableClient implements LoomTableClient {
 
   async listBases(workspaceId: string): Promise<readonly Base[]> {
     const value = await this.#requestJson('/v1/bases', this.#requireAccessToken(), {
-      workspaceId,
+      query: { workspaceId },
     });
     return decodeResourceList(value, decodeBase, 'base');
   }
 
   async listTables(baseId: string, options: ResourceListOptions = {}): Promise<readonly Table[]> {
     const value = await this.#requestJson('/v1/tables', this.#requireAccessToken(), {
-      baseId,
-      lifecycle: options.lifecycle,
+      query: {
+        baseId,
+        lifecycle: options.lifecycle,
+      },
     });
     return decodeResourceList(value, decodeTable, 'table');
   }
@@ -178,7 +205,7 @@ export class HttpLoomTableClient implements LoomTableClient {
     const value = await this.#requestJson(
       `/v1/tables/${encodeURIComponent(tableId)}/fields`,
       this.#requireAccessToken(),
-      { lifecycle: options.lifecycle },
+      { query: { lifecycle: options.lifecycle } },
     );
     return decodeResourceList(value, decodeField, 'field');
   }
@@ -187,9 +214,95 @@ export class HttpLoomTableClient implements LoomTableClient {
     const value = await this.#requestJson(
       `/v1/tables/${encodeURIComponent(tableId)}/views`,
       this.#requireAccessToken(),
-      { lifecycle: options.lifecycle },
+      { query: { lifecycle: options.lifecycle } },
     );
     return decodeResourceList(value, decodeView, 'view');
+  }
+
+  async initializeAttachment(
+    request: InitializeAttachmentRequest,
+    idempotencyKey: string,
+  ): Promise<Attachment> {
+    const normalizedIdempotencyKey = idempotencyKey.trim();
+    if (normalizedIdempotencyKey === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'An Idempotency-Key is required to initialize an Attachment.',
+      });
+    }
+    const value = await this.#requestJson('/v1/attachments/init', this.#requireAccessToken(), {
+      method: 'POST',
+      body: request,
+      headers: { 'Idempotency-Key': normalizedIdempotencyKey },
+      retryable: true,
+    });
+    return decodeAttachment(value);
+  }
+
+  async getAttachment(attachmentId: string): Promise<Attachment> {
+    const value = await this.#requestJson(
+      '/v1/attachments/' + encodeURIComponent(attachmentId),
+      this.#requireAccessToken(),
+    );
+    return decodeAttachment(value);
+  }
+
+  async deleteAttachment(attachmentId: string, expectedRevision: number): Promise<void> {
+    if (!isPositiveInteger(expectedRevision)) {
+      throw new LoomTableClientError('validation', {
+        message: 'Attachment expectedRevision must be a positive integer.',
+      });
+    }
+    await this.#request(
+      '/v1/attachments/' + encodeURIComponent(attachmentId),
+      this.#requireAccessToken(),
+      {
+        method: 'DELETE',
+        query: { expectedRevision: String(expectedRevision) },
+        retryable: false,
+      },
+    );
+  }
+
+  async uploadAttachmentContent(
+    attachmentId: string,
+    bytes: ArrayBuffer,
+    contentType?: string,
+  ): Promise<Attachment> {
+    const response = await this.#request(
+      '/v1/attachments/' + encodeURIComponent(attachmentId) + '/content',
+      this.#requireAccessToken(),
+      {
+        method: 'PUT',
+        body: bytes,
+        headers: {
+          'Content-Type': contentType?.trim() || 'application/octet-stream',
+        },
+        retryable: false,
+      },
+    );
+    return decodeAttachment(decodeJsonResponse(response));
+  }
+
+  async downloadAttachmentContent(attachmentId: string): Promise<AttachmentDownload> {
+    const response = await this.#request(
+      '/v1/attachments/' + encodeURIComponent(attachmentId) + '/content',
+      this.#requireAccessToken(),
+      {
+        method: 'GET',
+        headers: { Accept: '*/*' },
+      },
+    );
+    if (response.bytes === undefined) {
+      throw new LoomTableClientError('invalid-response', {
+        message: 'The LoomTable Server returned no Attachment content.',
+        httpStatus: response.status,
+      });
+    }
+    const contentType = getHeader(response.headers, 'content-type');
+    return {
+      bytes: response.bytes,
+      ...(contentType === undefined ? {} : { contentType }),
+    };
   }
 
   #requireAccessToken(): string {
@@ -207,21 +320,48 @@ export class HttpLoomTableClient implements LoomTableClient {
   async #requestJson(
     path: string,
     token: string | null,
-    query: Readonly<Record<string, string | undefined>> = {},
+    options: JsonRequestOptions = {},
   ): Promise<unknown> {
+    const body = options.body === undefined ? undefined : JSON.stringify(options.body);
+    const response = await this.#request(path, token, {
+      ...(options.method === undefined ? {} : { method: options.method }),
+      ...(options.query === undefined ? {} : { query: options.query }),
+      ...(body === undefined ? {} : { body }),
+      headers: {
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...options.headers,
+      },
+      ...(options.retryable === undefined ? {} : { retryable: options.retryable }),
+    });
+    return decodeJsonResponse(response);
+  }
+
+  async #request(
+    path: string,
+    token: string | null,
+    options: RawRequestOptions = {},
+  ): Promise<HttpTransportResponse> {
+    const method = options.method ?? 'GET';
+    const retryable = options.retryable ?? method === 'GET';
+    const headers = {
+      Accept: 'application/json',
+      ...(token === null ? {} : authenticatedHeaders(token)),
+      ...options.headers,
+    };
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
       let response: HttpTransportResponse;
       try {
         response = await withTimeout(
           this.#transport({
-            url: buildRequestUrl(this.#serverOrigin, path, query),
-            method: 'GET',
-            headers: token === null ? { Accept: 'application/json' } : authenticatedHeaders(token),
+            url: buildRequestUrl(this.#serverOrigin, path, options.query ?? {}),
+            method,
+            headers,
+            ...(options.body === undefined ? {} : { body: options.body }),
           }),
           this.#requestTimeoutMs,
         );
       } catch (error) {
-        if (attempt < MAX_ATTEMPTS - 1) {
+        if (retryable && attempt < MAX_ATTEMPTS - 1) {
           await this.#waitBeforeRetry(attempt);
           continue;
         }
@@ -243,6 +383,7 @@ export class HttpLoomTableClient implements LoomTableClient {
 
       const apiError = decodeApiError(response.body);
       if (
+        retryable &&
         RETRYABLE_STATUSES.has(response.status) &&
         apiError?.code !== 'MIGRATION_REQUIRED' &&
         attempt < MAX_ATTEMPTS - 1
@@ -254,19 +395,7 @@ export class HttpLoomTableClient implements LoomTableClient {
       if (response.status < 200 || response.status >= 300) {
         throw errorFromResponse(response.status, apiError);
       }
-
-      try {
-        return JSON.parse(response.body) as unknown;
-      } catch (error) {
-        throw new LoomTableClientError(
-          'invalid-response',
-          {
-            message: 'The LoomTable Server returned an invalid JSON response.',
-            httpStatus: response.status,
-          },
-          { cause: error },
-        );
-      }
+      return response;
     }
 
     throw new Error('Unreachable retry state.');
@@ -293,6 +422,21 @@ function buildRequestUrl(
     if (value !== undefined) url.searchParams.set(key, value);
   }
   return url.toString();
+}
+
+function decodeJsonResponse(response: HttpTransportResponse): unknown {
+  try {
+    return JSON.parse(response.body) as unknown;
+  } catch (error) {
+    throw new LoomTableClientError(
+      'invalid-response',
+      {
+        message: 'The LoomTable Server returned an invalid JSON response.',
+        httpStatus: response.status,
+      },
+      { cause: error },
+    );
+  }
 }
 
 function decodeResourceList<T>(
@@ -414,6 +558,11 @@ function decodeField(value: unknown): Field {
     if (config === null) throw invalidResource('field');
     return { ...base, type: value.type, config };
   }
+  if (value.type === 'attachment') {
+    const config = decodeAttachmentFieldConfig(value.config);
+    if (config === null) throw invalidResource('field');
+    return { ...base, type: 'attachment', config };
+  }
   throw invalidResource('field');
 }
 
@@ -489,6 +638,65 @@ function decodeDeletedSelectOption(value: unknown): DeletedSelectOption | null {
   if (!isRecord(value) || typeof value.deletedAt !== 'string') return null;
   const option = decodeSelectOption(value);
   return option === null ? null : { ...option, deletedAt: value.deletedAt };
+}
+
+function decodeAttachmentFieldConfig(value: Record<string, unknown>): AttachmentFieldConfig | null {
+  const maxCount = value.maxCount ?? 10;
+  return isPositiveInteger(maxCount) && maxCount <= 100 ? { maxCount } : null;
+}
+
+function decodeAttachment(value: unknown): Attachment {
+  if (
+    !isRecord(value) ||
+    !isAttachmentStatus(value.status) ||
+    !isPositiveInteger(value.revision) ||
+    typeof value.createdAt !== 'string' ||
+    typeof value.updatedAt !== 'string' ||
+    !isOptionalString(value.deletedAt)
+  ) {
+    throw invalidResource('attachment');
+  }
+  const reference = decodeAttachmentRef(value);
+  if (reference === null) throw invalidResource('attachment');
+  return {
+    ...reference,
+    status: value.status,
+    revision: value.revision,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+    ...(value.deletedAt === undefined ? {} : { deletedAt: value.deletedAt }),
+  };
+}
+
+function decodeAttachmentRef(value: unknown): AttachmentRef | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    !isAttachmentSource(value.source) ||
+    typeof value.filename !== 'string' ||
+    value.filename.length === 0 ||
+    !isOptionalString(value.mimeType) ||
+    !isOptionalNonNegativeInteger(value.size) ||
+    !isOptionalString(value.storageKey) ||
+    !isOptionalString(value.vaultPath) ||
+    !isOptionalHash(value.hash) ||
+    !isOptionalPositiveInteger(value.width) ||
+    !isOptionalPositiveInteger(value.height)
+  ) {
+    return null;
+  }
+  return {
+    id: value.id,
+    source: value.source,
+    filename: value.filename,
+    ...(value.mimeType === undefined ? {} : { mimeType: value.mimeType }),
+    ...(value.size === undefined ? {} : { size: value.size }),
+    ...(value.storageKey === undefined ? {} : { storageKey: value.storageKey }),
+    ...(value.vaultPath === undefined ? {} : { vaultPath: value.vaultPath }),
+    ...(value.hash === undefined ? {} : { hash: value.hash }),
+    ...(value.width === undefined ? {} : { width: value.width }),
+    ...(value.height === undefined ? {} : { height: value.height }),
+  };
 }
 
 function decodeGridViewConfig(value: Record<string, unknown>): GridViewConfig | null {
@@ -739,11 +947,20 @@ function errorFromResponse(status: number, apiError: ApiError | null): LoomTable
   if (status === 403) return new LoomTableClientError('forbidden', details);
   if (status === 404) return new LoomTableClientError('not-found', details);
   if (status === 409) return new LoomTableClientError('conflict', details);
+  if (status === 501) return new LoomTableClientError('capability', details);
   if (status === 410 && apiError?.code === 'CURSOR_EXPIRED') {
     return new LoomTableClientError('cursor-expired', details);
   }
   if (status === 400 || status === 422) return new LoomTableClientError('validation', details);
   return new LoomTableClientError('server', details);
+}
+
+function getHeader(headers: Readonly<Record<string, string>>, name: string): string | undefined {
+  const value = Object.entries(headers).find(
+    ([headerName]) => headerName.toLowerCase() === name.toLowerCase(),
+  )?.[1];
+  const normalized = value?.trim();
+  return normalized === undefined || normalized === '' ? undefined : normalized;
 }
 
 function parseRetryAfter(headers: Readonly<Record<string, string>>): number | null {
@@ -877,6 +1094,18 @@ function isOptionalString(value: unknown): value is string | undefined {
   return value === undefined || typeof value === 'string';
 }
 
+function isOptionalNonNegativeInteger(value: unknown): value is number | undefined {
+  return value === undefined || isNonNegativeInteger(value);
+}
+
+function isOptionalPositiveInteger(value: unknown): value is number | undefined {
+  return value === undefined || isPositiveInteger(value);
+}
+
+function isOptionalHash(value: unknown): value is string | undefined {
+  return value === undefined || (typeof value === 'string' && /^[0-9a-f]{64}$/u.test(value));
+}
+
 function isEmptyObject(value: Record<string, unknown>): value is Record<string, never> {
   return Object.keys(value).length === 0;
 }
@@ -898,4 +1127,12 @@ function isRetention(value: unknown): value is TransportServerMeta['changeRetent
 
 function isBootstrapState(value: unknown): value is BootstrapState {
   return typeof value === 'string' && BOOTSTRAP_STATES.has(value);
+}
+
+function isAttachmentSource(value: unknown): value is AttachmentSource {
+  return typeof value === 'string' && ATTACHMENT_SOURCES.has(value);
+}
+
+function isAttachmentStatus(value: unknown): value is AttachmentStatus {
+  return typeof value === 'string' && ATTACHMENT_STATUSES.has(value);
 }
