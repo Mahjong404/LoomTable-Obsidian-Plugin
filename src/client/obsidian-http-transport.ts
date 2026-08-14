@@ -7,6 +7,7 @@ export const obsidianHttpTransport: HttpTransport = async (request) => {
     url: request.url,
     method: request.method,
     headers: { ...request.headers },
+    ...(request.body === undefined ? {} : { body: request.body }),
     throw: false,
   });
 
@@ -14,5 +15,6 @@ export const obsidianHttpTransport: HttpTransport = async (request) => {
     status: response.status,
     headers: response.headers,
     body: response.text,
+    bytes: response.arrayBuffer,
   };
 };

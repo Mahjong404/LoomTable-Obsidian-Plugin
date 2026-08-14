@@ -15,6 +15,7 @@ export interface ServerMeta {
 
 export type LoomTableClientErrorKind =
   | 'authentication'
+  | 'capability'
   | 'conflict'
   | 'cursor-expired'
   | 'forbidden'
@@ -141,6 +142,47 @@ export interface SelectFieldConfig {
   readonly deletedOptions: readonly DeletedSelectOption[];
 }
 
+export type AttachmentSource = 'managed' | 'vault';
+export type AttachmentStatus = 'pending' | 'ready';
+
+export interface AttachmentRef {
+  readonly id: string;
+  readonly source: AttachmentSource;
+  readonly filename: string;
+  readonly mimeType?: string;
+  readonly size?: number;
+  readonly storageKey?: string;
+  readonly vaultPath?: string;
+  readonly hash?: string;
+  readonly width?: number;
+  readonly height?: number;
+}
+
+export interface Attachment extends AttachmentRef {
+  readonly status: AttachmentStatus;
+  readonly revision: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly deletedAt?: string;
+}
+
+export interface AttachmentFieldConfig {
+  readonly maxCount: number;
+}
+
+export interface InitializeAttachmentRequest {
+  readonly source: AttachmentSource;
+  readonly filename: string;
+  readonly mimeType?: string;
+  readonly size?: number;
+  readonly vaultPath?: string;
+}
+
+export interface AttachmentDownload {
+  readonly bytes: ArrayBuffer;
+  readonly contentType?: string;
+}
+
 export type EmptyFieldType =
   'text' | 'longText' | 'number' | 'checkbox' | 'date' | 'url' | 'location';
 
@@ -152,6 +194,10 @@ export type Field =
   | (FieldBase & {
       readonly type: 'select' | 'multiSelect';
       readonly config: SelectFieldConfig;
+    })
+  | (FieldBase & {
+      readonly type: 'attachment';
+      readonly config: AttachmentFieldConfig;
     });
 
 export type JsonValue =
@@ -236,4 +282,16 @@ export interface LoomTableClient {
   listTables(baseId: string, options?: ResourceListOptions): Promise<readonly Table[]>;
   listFields(tableId: string, options?: ResourceListOptions): Promise<readonly Field[]>;
   listViews(tableId: string, options?: ResourceListOptions): Promise<readonly View[]>;
+  initializeAttachment(
+    request: InitializeAttachmentRequest,
+    idempotencyKey: string,
+  ): Promise<Attachment>;
+  getAttachment(attachmentId: string): Promise<Attachment>;
+  deleteAttachment(attachmentId: string, expectedRevision: number): Promise<void>;
+  uploadAttachmentContent(
+    attachmentId: string,
+    bytes: ArrayBuffer,
+    contentType?: string,
+  ): Promise<Attachment>;
+  downloadAttachmentContent(attachmentId: string): Promise<AttachmentDownload>;
 }

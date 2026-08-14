@@ -6,7 +6,7 @@ The Plugin keeps protocol knowledge behind a small client interface so UI module
 src/
 ├── client/
 │   ├── loomtable-client.ts          Domain interface and connection result types
-│   ├── http-transport.ts            Internal transport seam used by tests and adapters
+│   ├── http-transport.ts            Internal JSON/binary transport seam used by tests and adapters
 │   ├── http-loomtable-client.ts     HTTP, decoding, retry, auth, and compatibility logic
 │   ├── obsidian-http-transport.ts   The only production adapter that calls requestUrl
 │   └── server-origin.ts             Shared HTTPS and loopback-origin safety rules
@@ -27,5 +27,6 @@ src/
 - Credentials are supplied at the composition root. Client and UI modules never persist tokens.
 - Generated transport types do not cross into Grid, Map, settings, or other UI interfaces.
 - A connection check uses public `/v1/meta` for reachability and compatibility, then an authenticated `/v1/workspaces` read to validate the configured token. It performs no mutation.
+- Attachment P1 metadata and content operations stay behind `LoomTableClient`; only the transport seam knows about HTTP methods, JSON request bodies, and binary response buffers.
 
 New source directories should represent a durable responsibility or seam, not a single call site. Keep tests under `tests/` with the same responsibility-oriented layout.
