@@ -13,6 +13,8 @@ import {
   type Base,
   type BootstrapState,
   type ConnectionCheckResult,
+  type ConflictBody,
+  type ConflictDetails,
   type DeletedSelectOption,
   type Field,
   type FilterNode,
@@ -23,6 +25,9 @@ import {
   type LoomTableClientErrorDetails,
   type LoomTableRecord,
   type MapViewConfig,
+  type MutationCommandResult,
+  type MutationRequest,
+  type MutationResult,
   type QueryRequest,
   type QueryResult,
   type ResourceListOptions,
@@ -38,6 +43,7 @@ import {
 
 type TransportServerMeta = components['schemas']['ServerMeta'];
 type TransportQueryRequest = components['schemas']['QueryRequest'];
+type TransportMutationRequest = components['schemas']['MutationRequest'];
 
 export interface HttpLoomTableClientConfig {
   readonly serverOrigin: string;
@@ -254,6 +260,36 @@ export class HttpLoomTableClient implements LoomTableClient {
       { method: 'POST', body, retryable: true },
     );
     return decodeQueryResult(value);
+  }
+
+  async mutate(tableId: string, request: MutationRequest): Promise<MutationResult> {
+    const normalizedTableId = tableId.trim();
+    if (normalizedTableId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Table ID is required to mutate Records.',
+      });
+    }
+    if (request.clientMutationId.trim() === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A clientMutationId is required to mutate Records.',
+      });
+    }
+    if (request.commands.length < 1 || request.commands.length > 500) {
+      throw new LoomTableClientError('validation', {
+        message: 'A Record Mutation must contain between 1 and 500 commands.',
+      });
+    }
+
+    const body = {
+      clientMutationId: request.clientMutationId,
+      commands: request.commands.map((command) => ({ ...command })),
+    } as TransportMutationRequest;
+    const value = await this.#requestJson(
+      `/v1/tables/${encodeURIComponent(normalizedTableId)}/records/mutate`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: true },
+    );
+    return decodeMutationResult(value);
   }
 
   async initializeAttachment(
@@ -518,6 +554,42 @@ function decodeQueryResult(value: unknown): QueryResult {
   } catch (error) {
     if (error instanceof LoomTableClientError) throw error;
     throw invalidResource('query result');
+  }
+}
+
+function decodeMutationResult(value: unknown): MutationResult {
+  if (
+    !isRecord(value) ||
+    typeof value.clientMutationId !== 'string' ||
+    !Array.isArray(value.results) ||
+    typeof value.changeCursor !== 'string'
+  ) {
+    throw invalidResource('mutation result');
+  }
+
+  try {
+    const results: MutationCommandResult[] = value.results.map((item) => {
+      if (
+        !isRecord(item) ||
+        !isNonNegativeInteger(item.index) ||
+        (item.status !== 'applied' && item.status !== 'unchanged')
+      ) {
+        throw invalidResource('mutation command result');
+      }
+      return {
+        index: item.index,
+        status: item.status,
+        record: decodeRecord(item.record),
+      };
+    });
+    return {
+      clientMutationId: value.clientMutationId,
+      results,
+      changeCursor: value.changeCursor,
+    };
+  } catch (error) {
+    if (error instanceof LoomTableClientError) throw error;
+    throw invalidResource('mutation result');
   }
 }
 
@@ -1034,6 +1106,7 @@ interface ApiError {
   readonly code: string;
   readonly message: string;
   readonly requestId: string;
+  readonly conflict?: ConflictDetails;
 }
 
 function decodeApiError(body: string): ApiError | null {
@@ -1048,7 +1121,13 @@ function decodeApiError(body: string): ApiError | null {
     ) {
       return null;
     }
-    return { code: error.code, message: error.message, requestId: error.requestId };
+    const conflict = decodeConflictDetails(error);
+    return {
+      code: error.code,
+      message: error.message,
+      requestId: error.requestId,
+      ...(conflict === undefined ? {} : { conflict }),
+    };
   } catch {
     return null;
   }
@@ -1063,7 +1142,9 @@ function errorFromResponse(status: number, apiError: ApiError | null): LoomTable
   if (status === 401) return new LoomTableClientError('authentication', details);
   if (status === 403) return new LoomTableClientError('forbidden', details);
   if (status === 404) return new LoomTableClientError('not-found', details);
-  if (status === 409) return new LoomTableClientError('conflict', details);
+  if (status === 409) {
+    return new LoomTableClientError('conflict', details, undefined, apiError?.conflict);
+  }
   if (status === 501) return new LoomTableClientError('capability', details);
   if (
     status === 410 &&
@@ -1073,6 +1154,49 @@ function errorFromResponse(status: number, apiError: ApiError | null): LoomTable
   }
   if (status === 400 || status === 422) return new LoomTableClientError('validation', details);
   return new LoomTableClientError('server', details);
+}
+
+function decodeConflictDetails(value: Record<string, unknown>): ConflictDetails | undefined {
+  if (
+    value.code !== 'CONFLICT' ||
+    typeof value.clientMutationId !== 'string' ||
+    !isNonNegativeInteger(value.failedCommandIndex) ||
+    !Array.isArray(value.conflicts)
+  ) {
+    return undefined;
+  }
+  const conflicts: ConflictBody[] = [];
+  for (const item of value.conflicts) {
+    if (!isRecord(item)) return undefined;
+    const currentValues = decodeRecordValues(item.currentValues);
+    const submittedSet =
+      item.submittedSet === undefined ? undefined : decodeRecordValues(item.submittedSet);
+    if (
+      typeof item.recordId !== 'string' ||
+      !isPositiveInteger(item.expectedRevision) ||
+      !isPositiveInteger(item.currentRevision) ||
+      currentValues === null ||
+      (item.submittedSet !== undefined && submittedSet === null) ||
+      (item.submittedUnsetFieldIds !== undefined && !isStringArray(item.submittedUnsetFieldIds))
+    ) {
+      return undefined;
+    }
+    conflicts.push({
+      recordId: item.recordId,
+      expectedRevision: item.expectedRevision,
+      currentRevision: item.currentRevision,
+      currentValues,
+      ...(submittedSet === undefined || submittedSet === null ? {} : { submittedSet }),
+      ...(item.submittedUnsetFieldIds === undefined
+        ? {}
+        : { submittedUnsetFieldIds: item.submittedUnsetFieldIds }),
+    });
+  }
+  return {
+    clientMutationId: value.clientMutationId,
+    failedCommandIndex: value.failedCommandIndex,
+    conflicts,
+  };
 }
 
 function getHeader(headers: Readonly<Record<string, string>>, name: string): string | undefined {

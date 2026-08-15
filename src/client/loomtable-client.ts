@@ -38,6 +38,7 @@ export class LoomTableClientError extends Error {
     readonly kind: LoomTableClientErrorKind,
     readonly details: LoomTableClientErrorDetails,
     options?: ErrorOptions,
+    readonly conflict?: ConflictDetails,
   ) {
     super(details.message, options);
     this.name = 'LoomTableClientError';
@@ -280,6 +281,68 @@ export interface QueryResult {
   readonly totalCount?: number;
 }
 
+export type MutationValue = JsonValue;
+
+export interface CreateRecordCommand {
+  readonly kind: 'createRecord';
+  readonly values: Readonly<Record<string, MutationValue>>;
+}
+
+export interface UpdateRecordCommand {
+  readonly kind: 'updateRecord';
+  readonly recordId: string;
+  readonly expectedRevision: number;
+  readonly set?: Readonly<Record<string, MutationValue>>;
+  readonly unsetFieldIds?: readonly string[];
+}
+
+export interface DeleteRecordCommand {
+  readonly kind: 'deleteRecord';
+  readonly recordId: string;
+  readonly expectedRevision: number;
+}
+
+export interface RestoreRecordCommand {
+  readonly kind: 'restoreRecord';
+  readonly recordId: string;
+  readonly expectedRevision: number;
+}
+
+export type MutationCommand =
+  CreateRecordCommand | UpdateRecordCommand | DeleteRecordCommand | RestoreRecordCommand;
+
+export interface MutationRequest {
+  readonly clientMutationId: string;
+  readonly commands: readonly MutationCommand[];
+}
+
+export interface MutationCommandResult {
+  readonly index: number;
+  readonly status: 'applied' | 'unchanged';
+  readonly record: LoomTableRecord;
+}
+
+export interface MutationResult {
+  readonly clientMutationId: string;
+  readonly results: readonly MutationCommandResult[];
+  readonly changeCursor: string;
+}
+
+export interface ConflictBody {
+  readonly recordId: string;
+  readonly expectedRevision: number;
+  readonly currentRevision: number;
+  readonly currentValues: Readonly<Record<string, MutationValue>>;
+  readonly submittedSet?: Readonly<Record<string, MutationValue>>;
+  readonly submittedUnsetFieldIds?: readonly string[];
+}
+
+export interface ConflictDetails {
+  readonly clientMutationId: string;
+  readonly failedCommandIndex: number;
+  readonly conflicts: readonly ConflictBody[];
+}
+
 export interface MapViewConfig {
   readonly locationFieldId: string;
   readonly filter?: FilterNode;
@@ -313,6 +376,7 @@ export interface LoomTableClient {
   listFields(tableId: string, options?: ResourceListOptions): Promise<readonly Field[]>;
   listViews(tableId: string, options?: ResourceListOptions): Promise<readonly View[]>;
   query(request: QueryRequest): Promise<QueryResult>;
+  mutate(tableId: string, request: MutationRequest): Promise<MutationResult>;
   initializeAttachment(
     request: InitializeAttachmentRequest,
     idempotencyKey: string,

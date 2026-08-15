@@ -137,6 +137,30 @@
   white-space: nowrap;
 }
 
+.loom-grid-cell.loom-grid-editable {
+  cursor: text;
+}
+
+.loom-grid-cell[data-edit-state='queued'],
+.loom-grid-cell[data-edit-state='saving'] {
+  background: var(--background-modifier-form-field);
+}
+
+.loom-grid-cell[data-edit-state='conflict'] {
+  background: var(--background-modifier-error);
+}
+
+.loom-grid-editor {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0 var(--size-4-1);
+  border: 1px solid var(--interactive-accent);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
 .loom-grid-header-cell {
   height: 2.25rem;
   display: flex;
@@ -226,6 +250,45 @@
 .loom-grid-status.is-authentication,
 .loom-grid-status.is-forbidden {
   border-inline-start-color: var(--color-red);
+}
+
+.loom-grid-edit-status,
+.loom-grid-conflicts {
+  margin-block-end: var(--size-4-2);
+}
+
+.loom-grid-edit-status.is-error,
+.loom-grid-conflict {
+  border-inline-start-color: var(--color-red);
+}
+
+.loom-grid-conflicts {
+  display: grid;
+  gap: var(--size-4-2);
+}
+
+.loom-grid-conflict {
+  padding: var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-inline-start: 3px solid var(--color-orange);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.loom-grid-conflict p {
+  margin-block: var(--size-4-1);
+}
+
+.loom-grid-conflict-values {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.loom-grid-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
 }
 
 .loom-record-detail {

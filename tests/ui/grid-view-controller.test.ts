@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   LoomTableClientError,
   type Field,
   type GridViewConfig,
   type LoomTableRecord,
+  type MutationRequest,
+  type MutationResult,
   type View,
 } from '../../src/client/loomtable-client';
 import {
@@ -109,6 +111,84 @@ describe('GridViewController', () => {
 
     expect(controller.state.status).toBe(expectedStatus);
     expect(controller.state.error?.message).toBe(kind);
+  });
+
+  it('rejects invalid Cell values without enqueueing a mutation', async () => {
+    const data = createData(createRecords(1), createGridConfig(false));
+    const client = new InMemoryLoomTableClient(data);
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    await expect(
+      controller.editCell('record_01', 'field_name', 'bad\u0000value'),
+    ).rejects.toMatchObject({ kind: 'validation' });
+    expect(client.mutationRequests).toHaveLength(0);
+    expect(controller.state.editError?.message).toContain('control characters');
+  });
+
+  it('keeps an optimistic value while the mutation is in flight and applies the Server Record', async () => {
+    const data = createData(createRecords(1), createGridConfig(false));
+    let resolveMutation: ((result: MutationResult) => void) | undefined;
+    const mutate = vi.fn(
+      () => new Promise<MutationResult>((resolve) => (resolveMutation = resolve)),
+    );
+    const controller = new GridViewController(withMutation(data, mutate));
+    await controller.load();
+
+    const pending = controller.editCell('record_01', 'field_name', 'Optimistic');
+    await Promise.resolve();
+    expect(controller.state.records[0]?.values.field_name).toBe('Optimistic');
+    expect(controller.state.editStatuses.record_01).toBe('saving');
+    resolveMutation?.(mutationResult('mutation_01', 'Optimistic', 2));
+    await pending;
+
+    expect(controller.state.records[0]?.revision).toBe(2);
+    expect(controller.state.records[0]?.values.field_name).toBe('Optimistic');
+    expect(controller.state.editStatuses.record_01).toBeUndefined();
+  });
+
+  it('surfaces a conflict and supports explicit overwrite using the Server revision', async () => {
+    const data = createData(createRecords(1), createGridConfig(false));
+    const conflict = new LoomTableClientError(
+      'conflict',
+      { message: 'Revision conflict.', code: 'CONFLICT' },
+      undefined,
+      {
+        clientMutationId: 'mutation_01',
+        failedCommandIndex: 0,
+        conflicts: [
+          {
+            recordId: 'record_01',
+            expectedRevision: 1,
+            currentRevision: 2,
+            currentValues: { field_name: 'Server value' },
+            submittedSet: { field_name: 'Local value' },
+          },
+        ],
+      },
+    );
+    const mutate = vi
+      .fn<(tableId: string, request: MutationRequest) => Promise<MutationResult>>()
+      .mockRejectedValueOnce(conflict)
+      .mockResolvedValueOnce(mutationResult('mutation_02', 'Local value', 3));
+    const controller = new GridViewController(withMutation(data, mutate));
+    await controller.load();
+
+    await expect(
+      controller.editCell('record_01', 'field_name', 'Local value'),
+    ).rejects.toMatchObject({ kind: 'conflict' });
+    expect(controller.state.conflicts[0]).toMatchObject({
+      currentRevision: 2,
+      currentValues: { field_name: 'Server value' },
+      submittedSet: { field_name: 'Local value' },
+    });
+
+    controller.resolveConflict('record_01', 'overwrite');
+    await vi.waitFor(() => expect(mutate).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(controller.state.records[0]?.revision).toBe(3));
+    expect(mutate.mock.calls[1]?.[1].commands[0]).toMatchObject({ expectedRevision: 2 });
+    expect(controller.state.conflicts).toHaveLength(0);
+    expect(controller.state.records[0]?.revision).toBe(3);
   });
 });
 
@@ -235,5 +315,42 @@ function failingSource(data: InMemoryGridData, error: LoomTableClientError): Gri
     query: async () => {
       throw error;
     },
+  };
+}
+
+function withMutation(
+  data: InMemoryGridData,
+  mutate: (tableId: string, request: MutationRequest) => Promise<MutationResult>,
+): GridDataSource {
+  const client = new InMemoryLoomTableClient(data);
+  return {
+    listWorkspaces: () => client.listWorkspaces(),
+    listBases: (workspaceId) => client.listBases(workspaceId),
+    listTables: (baseId) => client.listTables(baseId),
+    listFields: (tableId) => client.listFields(tableId),
+    listViews: (tableId) => client.listViews(tableId),
+    query: (request) => client.query(request),
+    mutate,
+  };
+}
+
+function mutationResult(clientMutationId: string, value: string, revision: number): MutationResult {
+  return {
+    clientMutationId,
+    results: [
+      {
+        index: 0,
+        status: 'applied',
+        record: {
+          id: 'record_01',
+          tableId: 'table_01',
+          revision,
+          values: { field_name: value },
+          createdAt: '2026-08-14T00:00:00Z',
+          updatedAt: '2026-08-15T00:00:00Z',
+        },
+      },
+    ],
+    changeCursor: 'change_02',
   };
 }

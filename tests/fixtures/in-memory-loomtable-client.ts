@@ -2,6 +2,8 @@ import type {
   Base,
   Field,
   LoomTableRecord,
+  MutationRequest,
+  MutationResult,
   QueryRequest,
   QueryResult,
   Table,
@@ -21,10 +23,16 @@ export interface InMemoryGridData {
 
 export class InMemoryLoomTableClient implements GridDataSource {
   readonly queryRequests: QueryRequest[] = [];
+  readonly mutationRequests: Array<{
+    readonly tableId: string;
+    readonly request: MutationRequest;
+  }> = [];
   readonly #data: InMemoryGridData;
+  readonly #records: LoomTableRecord[];
 
   constructor(data: InMemoryGridData) {
     this.#data = data;
+    this.#records = [...data.records];
   }
 
   async listWorkspaces(): Promise<readonly Workspace[]> {
@@ -49,7 +57,7 @@ export class InMemoryLoomTableClient implements GridDataSource {
 
   async query(request: QueryRequest): Promise<QueryResult> {
     this.queryRequests.push(request);
-    const records = this.#data.records.filter((record) => record.tableId === request.tableId);
+    const records = this.#records.filter((record) => record.tableId === request.tableId);
     const offset = decodeCursor(request.cursor);
     const limit = request.limit ?? 100;
     const items = records.slice(offset, offset + limit);
@@ -61,6 +69,34 @@ export class InMemoryLoomTableClient implements GridDataSource {
       changeCursor: 'change_01',
       ...(hasMore ? { nextCursor: encodeCursor(nextOffset) } : {}),
       ...(request.cursor === undefined ? { totalCount: records.length } : {}),
+    };
+  }
+
+  async mutate(tableId: string, request: MutationRequest): Promise<MutationResult> {
+    this.mutationRequests.push({ tableId, request });
+    const command = request.commands[0];
+    if (command?.kind !== 'updateRecord')
+      throw new Error('Only updateRecord is supported in memory.');
+    const index = this.#records.findIndex((record) => record.id === command.recordId);
+    const record = this.#records[index];
+    if (record === undefined) throw new Error('Record not found.');
+    if (record.revision !== command.expectedRevision) {
+      const error = new (class extends Error {})('conflict');
+      throw error;
+    }
+    const values = { ...record.values, ...(command.set ?? {}) };
+    for (const fieldId of command.unsetFieldIds ?? []) delete values[fieldId];
+    const updated: LoomTableRecord = {
+      ...record,
+      revision: record.revision + 1,
+      values,
+      updatedAt: new Date().toISOString(),
+    };
+    this.#records[index] = updated;
+    return {
+      clientMutationId: request.clientMutationId,
+      results: [{ index: 0, status: 'applied', record: updated }],
+      changeCursor: 'change_02',
     };
   }
 }

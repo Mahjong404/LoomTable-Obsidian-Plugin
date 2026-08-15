@@ -13,6 +13,7 @@ export type LoomTableClientFactory = (profile: ConnectionProfile) => LoomTableCl
 
 export class LoomTableView extends ItemView {
   #unsubscribe: (() => void) | null = null;
+  #controller: GridViewController | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -63,6 +64,7 @@ export class LoomTableView extends ItemView {
     this.contentEl.addClass('loom-root');
 
     const controller = new GridViewController(this.createClient(profile));
+    this.#controller = controller;
     const renderer = new ReadonlyGridRenderer(this.contentEl, this.getTranslator(), {
       onRefresh: () => controller.refresh(),
       onWorkspaceChange: (workspaceId) => controller.selectWorkspace(workspaceId),
@@ -71,6 +73,8 @@ export class LoomTableView extends ItemView {
       onViewChange: (viewId) => controller.selectView(viewId),
       onLoadMore: () => controller.loadNextPage(),
       onRecordOpen: (record) => this.showRecordDetail(record),
+      onCellEdit: (recordId, fieldId, value) => controller.editCell(recordId, fieldId, value),
+      onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
     });
     this.#unsubscribe = controller.subscribe((state) => renderer.render(state));
     void controller.load();
@@ -93,6 +97,8 @@ export class LoomTableView extends ItemView {
   private disposeGrid(): void {
     this.#unsubscribe?.();
     this.#unsubscribe = null;
+    this.#controller?.dispose();
+    this.#controller = null;
   }
 }
 

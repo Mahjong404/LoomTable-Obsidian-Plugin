@@ -118,6 +118,140 @@ describe('HttpLoomTableClient record query', () => {
   });
 });
 
+describe('HttpLoomTableClient record mutations', () => {
+  it('posts an idempotent update command and decodes the returned Record', async () => {
+    const updated = {
+      id: 'record_01',
+      tableId: 'table_01',
+      revision: 2,
+      values: { field_name: 'Updated' },
+      createdAt: '2026-08-14T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    const transport = queuedTransport([
+      jsonResponse(200, {
+        clientMutationId: 'mutation_01',
+        results: [{ index: 0, status: 'applied', record: updated }],
+        changeCursor: 'change_02',
+      }),
+    ]);
+    const client = createClient(transport);
+
+    await expect(
+      client.mutate('table_01', {
+        clientMutationId: 'mutation_01',
+        commands: [
+          {
+            kind: 'updateRecord',
+            recordId: 'record_01',
+            expectedRevision: 1,
+            set: { field_name: 'Updated' },
+          },
+        ],
+      }),
+    ).resolves.toEqual({
+      clientMutationId: 'mutation_01',
+      results: [{ index: 0, status: 'applied', record: updated }],
+      changeCursor: 'change_02',
+    });
+
+    expect(transport).toHaveBeenCalledWith({
+      url: 'https://loom.example/v1/tables/table_01/records/mutate',
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        clientMutationId: 'mutation_01',
+        commands: [
+          {
+            kind: 'updateRecord',
+            recordId: 'record_01',
+            expectedRevision: 1,
+            set: { field_name: 'Updated' },
+          },
+        ],
+      }),
+    });
+  });
+
+  it('keeps IDEMPOTENCY_KEY_REUSED distinguishable from a revision Conflict', async () => {
+    const transport = queuedTransport([
+      jsonResponse(409, {
+        error: {
+          code: 'IDEMPOTENCY_KEY_REUSED',
+          message: 'The mutation ID was reused for another request.',
+          requestId: 'req_idempotency',
+        },
+      }),
+    ]);
+
+    await expect(
+      createClient(transport).mutate('table_01', {
+        clientMutationId: 'mutation_01',
+        commands: [
+          { kind: 'updateRecord', recordId: 'record_01', expectedRevision: 1, set: { field: 'x' } },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      kind: 'conflict',
+      conflict: undefined,
+      details: { code: 'IDEMPOTENCY_KEY_REUSED', requestId: 'req_idempotency' },
+    });
+  });
+
+  it('decodes the published ConflictResponse details', async () => {
+    const transport = queuedTransport([
+      jsonResponse(409, {
+        error: {
+          code: 'CONFLICT',
+          message: 'Revision conflict.',
+          requestId: 'req_conflict',
+          clientMutationId: 'mutation_01',
+          failedCommandIndex: 0,
+          conflicts: [
+            {
+              recordId: 'record_01',
+              expectedRevision: 1,
+              currentRevision: 2,
+              currentValues: { field_name: 'Server value' },
+              submittedSet: { field_name: 'Local value' },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    await expect(
+      createClient(transport).mutate('table_01', {
+        clientMutationId: 'mutation_01',
+        commands: [
+          {
+            kind: 'updateRecord',
+            recordId: 'record_01',
+            expectedRevision: 1,
+            set: { field_name: 'Local value' },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      kind: 'conflict',
+      conflict: {
+        clientMutationId: 'mutation_01',
+        conflicts: [
+          {
+            currentRevision: 2,
+            currentValues: { field_name: 'Server value' },
+            submittedSet: { field_name: 'Local value' },
+          },
+        ],
+      },
+    });
+  });
+});
+
 function createClient(transport: HttpTransport): HttpLoomTableClient {
   return new HttpLoomTableClient(
     {
