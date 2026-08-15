@@ -1,3 +1,10 @@
+MethodException: 
+Line |
+   2 |  … s.ts' -Raw; $c = $c.Replace([char]13 + [char]10, [char]10).Replace([c …
+     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Cannot convert argument "oldChar", with value: "
+", for "Replace" to type "System.Char": "Cannot convert value "
+" to type "System.Char". Error: "String must be exactly one character long.""
 import type { TileProviderDefinition } from './tile-provider-schema';
 
 const TIANDITU_SUBDOMAINS = ['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7'] as const;
