@@ -3229,4 +3229,3 @@ components:
         limitBytes:
           type: integer
           const: 8388608
-

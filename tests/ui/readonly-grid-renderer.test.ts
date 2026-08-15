@@ -211,4 +211,3 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     ...update,
   };
 }
-

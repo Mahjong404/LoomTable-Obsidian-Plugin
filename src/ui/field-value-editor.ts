@@ -189,4 +189,3 @@ function hasForbiddenControl(value: string): boolean {
     return (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) || code === 0x7f;
   });
 }
-

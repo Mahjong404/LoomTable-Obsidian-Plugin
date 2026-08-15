@@ -1380,4 +1380,3 @@ function isAttachmentSource(value: unknown): value is AttachmentSource {
 function isAttachmentStatus(value: unknown): value is AttachmentStatus {
   return typeof value === 'string' && ATTACHMENT_STATUSES.has(value);
 }
-

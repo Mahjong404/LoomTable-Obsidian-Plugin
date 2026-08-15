@@ -158,4 +158,3 @@ function result(
     changeCursor: 'change_02',
   };
 }
-

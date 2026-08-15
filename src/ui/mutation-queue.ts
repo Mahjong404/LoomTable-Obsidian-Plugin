@@ -273,4 +273,3 @@ function createMutationId(): string {
   mutationSequence += 1;
   return `plugin-mutation-${Date.now().toString(36)}-${mutationSequence.toString(36)}`;
 }
-

@@ -674,4 +674,3 @@ function withValues(
   for (const fieldId of unsetFieldIds ?? []) delete values[fieldId];
   return { ...record, values };
 }
-

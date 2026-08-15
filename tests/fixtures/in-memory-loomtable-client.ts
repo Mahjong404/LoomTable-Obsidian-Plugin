@@ -111,4 +111,3 @@ function decodeCursor(cursor: string | undefined): number {
   const offset = Number(value);
   return Number.isInteger(offset) && offset >= 0 ? offset : 0;
 }
-
