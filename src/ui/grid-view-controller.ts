@@ -76,6 +76,7 @@ export interface GridViewControllerOptions {
   readonly isOffline?: () => boolean;
   readonly mutationIdFactory?: () => string;
   readonly mutationNetworkAttempts?: number;
+  readonly onNonGridViewSelected?: (view: View, state: GridState) => void | Promise<void>;
 }
 
 export type GridStateListener = (state: GridState) => void;
@@ -117,6 +118,7 @@ export class GridViewController {
   readonly #isOffline: () => boolean;
   readonly #listeners = new Set<GridStateListener>();
   readonly #queue: MutationQueue | null;
+  readonly #onNonGridViewSelected: GridViewControllerOptions['onNonGridViewSelected'];
   #queueUnsubscribe: (() => void) | null = null;
   readonly #authoritativeRecords = new Map<string, LoomTableRecord>();
   readonly #optimisticRecords = new Map<string, LoomTableRecord>();
@@ -130,6 +132,7 @@ export class GridViewController {
     this.#client = client;
     this.#pageSize = normalizePageSize(options.pageSize ?? DEFAULT_GRID_PAGE_SIZE);
     this.#isOffline = options.isOffline ?? defaultOfflineCheck;
+    this.#onNonGridViewSelected = options.onNonGridViewSelected;
     const mutate = client.mutate;
     this.#queue =
       mutate === undefined
@@ -318,7 +321,7 @@ export class GridViewController {
           workspaces,
           bases,
           tables,
-          views: gridViews,
+          views,
           fields,
           selectedWorkspaceId: workspace.id,
           selectedBaseId: base.id,
@@ -340,7 +343,7 @@ export class GridViewController {
         workspaces,
         bases,
         tables,
-        views: gridViews,
+        views,
         fields,
         selectedWorkspaceId: workspace.id,
         selectedBaseId: base.id,
@@ -394,7 +397,12 @@ export class GridViewController {
   }
 
   async selectView(viewId: string): Promise<void> {
-    if (!this.#state.views.some((view) => view.id === viewId)) return;
+    const view = this.#state.views.find((candidate) => candidate.id === viewId);
+    if (view === undefined) return;
+    if (!isGridView(view)) {
+      await this.#onNonGridViewSelected?.(view, this.#state);
+      return;
+    }
     this.#selection = {
       ...(this.#state.selectedWorkspaceId === null
         ? {}
@@ -674,3 +682,4 @@ function withValues(
   for (const fieldId of unsetFieldIds ?? []) delete values[fieldId];
   return { ...record, values };
 }
+

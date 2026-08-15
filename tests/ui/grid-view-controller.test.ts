@@ -190,6 +190,31 @@ describe('GridViewController', () => {
     expect(controller.state.conflicts).toHaveLength(0);
     expect(controller.state.records[0]?.revision).toBe(3);
   });
+
+  it('keeps Map Views in navigation and delegates selection without querying them as Grid data', async () => {
+    const mapView: Extract<View, { type: 'map' }> = {
+      id: 'view_map',
+      tableId: 'table_01',
+      name: 'Map',
+      type: 'map',
+      config: { locationFieldId: 'field_location' },
+      revision: 1,
+      createdAt: '2026-08-14T00:00:00Z',
+      updatedAt: '2026-08-14T00:00:00Z',
+    };
+    const onMapSelected = vi.fn();
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [mapView]),
+    );
+    const controller = new GridViewController(client, { onNonGridViewSelected: onMapSelected });
+
+    await controller.load();
+    await controller.selectView('view_map');
+
+    expect(controller.state.views.map((view) => view.id)).toEqual(['view_01', 'view_map']);
+    expect(onMapSelected).toHaveBeenCalledWith(mapView, controller.state);
+    expect(client.queryRequests).toHaveLength(1);
+  });
 });
 
 describe('createGridQuery', () => {
@@ -208,7 +233,11 @@ describe('createGridQuery', () => {
   });
 });
 
-function createData(records: readonly LoomTableRecord[], config: GridViewConfig): InMemoryGridData {
+function createData(
+  records: readonly LoomTableRecord[],
+  config: GridViewConfig,
+  extraViews: readonly View[] = [],
+): InMemoryGridData {
   return {
     workspaces: [
       {
@@ -241,7 +270,7 @@ function createData(records: readonly LoomTableRecord[], config: GridViewConfig)
       },
     ],
     fields: [createField()],
-    views: [createView(config)],
+    views: [createView(config), ...extraViews],
     records,
   };
 }
@@ -354,3 +383,4 @@ function mutationResult(clientMutationId: string, value: string, revision: numbe
     changeCursor: 'change_02',
   };
 }
+

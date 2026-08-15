@@ -9,6 +9,16 @@ import {
 
 import type LoomTablePlugin from '../main';
 import type { ProfileCredentialStore } from '../credentials/profile-credential-store';
+import type { TileCredentialStore } from '../maps/credentials/tile-credential-store';
+import { BUILT_IN_TILE_PROVIDERS } from '../maps/providers/presets';
+import { TileProviderRegistry } from '../maps/providers/tile-provider-registry';
+import {
+  credentialBindingKey,
+  validateCustomTileProviderProfile,
+  type CustomTileProviderProfileV1,
+  type BuiltInTileProviderId,
+  type TileProviderRef,
+} from '../maps/providers/tile-provider-schema';
 import { createTranslator } from '../i18n';
 import {
   connectionCheckTone,
@@ -30,11 +40,14 @@ import {
 export class LoomTableSettingTab extends PluginSettingTab {
   readonly #connectionChecks = new Map<ConnectionProfile['id'], ConnectionCheckState>();
   readonly #checkSequences = new Map<ConnectionProfile['id'], number>();
+  #customNameDraft = '';
+  #customUrlDraft = '';
 
   constructor(
     app: App,
     private readonly loomTablePlugin: LoomTablePlugin,
     private readonly credentials: ProfileCredentialStore,
+    private readonly tileCredentials?: TileCredentialStore,
   ) {
     super(app, loomTablePlugin);
   }
@@ -82,6 +95,8 @@ export class LoomTableSettingTab extends PluginSettingTab {
           this.loomTablePlugin.refreshViews();
         }),
     );
+
+    this.renderMapSettings();
   }
 
   private renderProfile(profile: ConnectionProfile): void {
@@ -190,6 +205,154 @@ export class LoomTableSettingTab extends PluginSettingTab {
     }
   }
 
+  private renderMapSettings(): void {
+    const t = createTranslator(this.loomTablePlugin.settings.locale);
+    const section = this.containerEl.createDiv({ cls: 'loom-map-settings' });
+    new Setting(section).setName(t('map.settings')).setHeading();
+    const registry = new TileProviderRegistry({
+      customProfiles: () => this.loomTablePlugin.settings.mapPresentation.customProfiles,
+    });
+    const providers = registry.list();
+    new Setting(section).setName(t('map.defaultProvider')).addDropdown((dropdown) => {
+      for (const provider of providers) {
+        dropdown.addOption(providerKey(provider.ref), provider.displayName);
+      }
+      dropdown
+        .setValue(providerKey(this.loomTablePlugin.settings.mapPresentation.defaultProvider))
+        .onChange(async (value) => {
+          const provider = providers.find((candidate) => providerKey(candidate.ref) === value);
+          if (provider === undefined) return;
+          this.loomTablePlugin.settings.mapPresentation.defaultProvider = provider.ref;
+          await this.loomTablePlugin.saveSettings();
+          this.loomTablePlugin.refreshViews();
+        });
+    });
+
+    for (const definition of BUILT_IN_TILE_PROVIDERS) {
+      for (const slot of definition.credentialSlots ?? []) {
+        this.renderCredential(
+          section,
+          definition.displayName,
+          {
+            kind: 'built-in',
+            id: definition.id as BuiltInTileProviderId,
+          },
+          slot.id,
+          slot.displayName,
+        );
+      }
+    }
+    for (const profile of this.loomTablePlugin.settings.mapPresentation.customProfiles) {
+      this.renderCustomProfile(section, profile);
+      for (const slot of profile.credentialSlots ?? []) {
+        this.renderCredential(
+          section,
+          profile.name,
+          { kind: 'custom', profileId: profile.id },
+          slot.id,
+          slot.displayName,
+        );
+      }
+    }
+
+    new Setting(section).setName(t('map.customProfile')).setHeading();
+    new Setting(section).setName(t('map.customName')).addText((text) =>
+      text.setValue(this.#customNameDraft).onChange((value) => {
+        this.#customNameDraft = value;
+      }),
+    );
+    new Setting(section)
+      .setName(t('map.customUrl'))
+      .setDesc(t('map.customUrlDescription'))
+      .addText((text) =>
+        text.setValue(this.#customUrlDraft).onChange((value) => {
+          this.#customUrlDraft = value;
+        }),
+      );
+    new Setting(section).addButton((button) =>
+      button
+        .setButtonText(t('map.addCustom'))
+        .setCta()
+        .onClick(async () => {
+          const name = this.#customNameDraft.trim();
+          const urlTemplate = this.#customUrlDraft.trim();
+          const profile: CustomTileProviderProfileV1 = {
+            schemaVersion: 1,
+            id: `custom-${Date.now().toString(36)}`,
+            name,
+            urlTemplate,
+            minZoom: 0,
+            maxZoom: 18,
+            tileSize: 256,
+            attribution: [{ label: name }],
+          };
+          const error = validateCustomTileProviderProfile(profile);
+          if (error !== null) {
+            new Notice(error.message);
+            return;
+          }
+          this.loomTablePlugin.settings.mapPresentation.customProfiles.push(profile);
+          this.#customNameDraft = '';
+          this.#customUrlDraft = '';
+          await this.loomTablePlugin.saveSettings();
+          this.display();
+        }),
+    );
+  }
+
+  private renderCustomProfile(section: HTMLElement, profile: CustomTileProviderProfileV1): void {
+    const t = createTranslator(this.loomTablePlugin.settings.locale);
+    new Setting(section)
+      .setName(profile.name)
+      .setDesc(profile.urlTemplate)
+      .addButton((button) =>
+        button
+          .setButtonText(t('common.delete'))
+          .setWarning()
+          .onClick(async () => {
+            this.loomTablePlugin.settings.mapPresentation.customProfiles =
+              this.loomTablePlugin.settings.mapPresentation.customProfiles.filter(
+                (candidate) => candidate.id !== profile.id,
+              );
+            await this.loomTablePlugin.saveSettings();
+            this.display();
+          }),
+      );
+  }
+
+  private renderCredential(
+    section: HTMLElement,
+    providerName: string,
+    ref: TileProviderRef,
+    slotId: string,
+    slotName: string,
+  ): void {
+    const t = createTranslator(this.loomTablePlugin.settings.locale);
+    const bindingKey = credentialBindingKey(ref, slotId);
+    const settings = this.loomTablePlugin.settings.mapPresentation;
+    new Setting(section)
+      .setName(`${providerName} · ${slotName}`)
+      .setDesc(t('map.credentialDescription'))
+      .addText((text) => {
+        text.inputEl.type = 'password';
+        text.inputEl.autocomplete = 'off';
+        text.setValue(this.tileCredentials?.getSession(bindingKey) ?? '').onChange((value) => {
+          this.tileCredentials?.setSession(bindingKey, value);
+          this.loomTablePlugin.refreshViews();
+        });
+      })
+      .addComponent((container) =>
+        new SecretComponent(this.app, container)
+          .setValue(settings.credentialBindings[bindingKey] ?? '')
+          .onChange(async (secretId) => {
+            if (secretId.trim() === '') delete settings.credentialBindings[bindingKey];
+            else settings.credentialBindings[bindingKey] = secretId.trim();
+            await this.loomTablePlugin.saveSettings();
+            this.display();
+          }),
+      );
+  }
+
   private renderConnectionCheck(section: HTMLElement, profile: ConnectionProfile): () => void {
     const t = createTranslator(this.loomTablePlugin.settings.locale);
     const status = new Setting(section).setName(t('connection.test'));
@@ -241,3 +404,8 @@ export class LoomTableSettingTab extends PluginSettingTab {
     this.#connectionChecks.delete(profile.id);
   }
 }
+
+function providerKey(ref: TileProviderRef): string {
+  return ref.kind === 'built-in' ? `built-in:${ref.id}` : `custom:${ref.profileId}`;
+}
+

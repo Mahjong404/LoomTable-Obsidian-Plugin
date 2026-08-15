@@ -9,14 +9,20 @@ import {
 } from './credentials/credential-store';
 import { ProfileCredentialStore } from './credentials/profile-credential-store';
 import { createTranslator } from './i18n';
+import { TileCredentialStore } from './maps/credentials/tile-credential-store';
+import { TileProviderRegistry } from './maps/providers/tile-provider-registry';
+import { LeafletMapAdapter } from './maps/renderer/leaflet-map-renderer';
+import { LeafletMapRenderer } from './maps/renderer/map-renderer';
 import { normalizePluginSettings, type PluginSettings } from './settings/plugin-settings';
 import type { ConnectionProfile } from './settings/connection-profile';
 import { LoomTableSettingTab } from './settings/settings-tab';
-import { LOOMTABLE_VIEW_TYPE, LoomTableView } from './ui/loomtable-view';
+import { LOOMTABLE_VIEW_TYPE, LoomTableView, type MapRendererInstance } from './ui/loomtable-view';
 
 export default class LoomTablePlugin extends Plugin {
   override settings: PluginSettings = normalizePluginSettings(null);
   private credentials!: ProfileCredentialStore;
+  private tileCredentials!: TileCredentialStore;
+  private tileProviders!: TileProviderRegistry;
 
   override async onload(): Promise<void> {
     this.settings = normalizePluginSettings(await this.loadData());
@@ -24,6 +30,13 @@ export default class LoomTablePlugin extends Plugin {
       new SessionCredentialStore(),
       new ObsidianSecretCredentialStore(this.app.secretStorage),
     );
+    this.tileCredentials = new TileCredentialStore(
+      new ObsidianSecretCredentialStore(this.app.secretStorage),
+      () => this.settings.mapPresentation.credentialBindings,
+    );
+    this.tileProviders = new TileProviderRegistry({
+      customProfiles: () => this.settings.mapPresentation.customProfiles,
+    });
 
     this.registerView(
       LOOMTABLE_VIEW_TYPE,
@@ -33,6 +46,21 @@ export default class LoomTablePlugin extends Plugin {
           () => this.settings,
           () => createTranslator(this.settings.locale),
           (profile) => this.createClient(profile),
+          {
+            registry: this.tileProviders,
+            credentials: this.tileCredentials,
+            saveSettings: () => this.saveSettings(),
+            createRenderer: (): MapRendererInstance => {
+              const renderer = new LeafletMapRenderer(new LeafletMapAdapter());
+              return {
+                renderer,
+                viewport: {
+                  getViewport: () => renderer.getViewport(),
+                  getPixelSize: () => renderer.getPixelSize(),
+                },
+              };
+            },
+          },
         ),
     );
 
@@ -43,7 +71,9 @@ export default class LoomTablePlugin extends Plugin {
       name: createTranslator(this.settings.locale)('command.open'),
       callback: openView,
     });
-    this.addSettingTab(new LoomTableSettingTab(this.app, this, this.credentials));
+    this.addSettingTab(
+      new LoomTableSettingTab(this.app, this, this.credentials, this.tileCredentials),
+    );
   }
 
   async saveSettings(): Promise<void> {
@@ -81,3 +111,4 @@ export default class LoomTablePlugin extends Plugin {
     await this.app.workspace.revealLeaf(leaf);
   }
 }
+

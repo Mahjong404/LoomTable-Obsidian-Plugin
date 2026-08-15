@@ -24,6 +24,16 @@ import {
   type LoomTableClient,
   type LoomTableClientErrorDetails,
   type LoomTableRecord,
+  type MapClusterRecordsQueryRequest,
+  type MapCoordinate,
+  type MapFeature,
+  type MapPoint,
+  type MapQueryRequest,
+  type MapQueryResult,
+  type MapQuerySummary,
+  type MapSummaryResult,
+  type MapViewport,
+  type MapViewportBox,
   type MapViewConfig,
   type MutationCommandResult,
   type MutationRequest,
@@ -37,6 +47,7 @@ import {
   type ServerIncompatibility,
   type ServerMeta,
   type Table,
+  type UpdateViewRequest,
   type View,
   type Workspace,
 } from './loomtable-client';
@@ -44,6 +55,10 @@ import {
 type TransportServerMeta = components['schemas']['ServerMeta'];
 type TransportQueryRequest = components['schemas']['QueryRequest'];
 type TransportMutationRequest = components['schemas']['MutationRequest'];
+type TransportMapQueryRequest = components['schemas']['MapQueryRequest'];
+type TransportMapClusterRecordsQueryRequest =
+  components['schemas']['MapClusterRecordsQueryRequest'];
+type TransportUpdateViewRequest = components['schemas']['UpdateViewRequest'];
 
 export interface HttpLoomTableClientConfig {
   readonly serverOrigin: string;
@@ -82,6 +97,7 @@ const RETENTION_VALUES = new Set(['30d', '90d', '365d', 'forever']);
 const BOOTSTRAP_STATES = new Set(['required', 'complete', 'unknown']);
 const ATTACHMENT_SOURCES = new Set(['managed', 'vault']);
 const ATTACHMENT_STATUSES = new Set(['pending', 'ready']);
+const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
 const EMPTY_FIELD_TYPES = new Set([
   'text',
   'longText',
@@ -290,6 +306,110 @@ export class HttpLoomTableClient implements LoomTableClient {
       { method: 'POST', body, retryable: true },
     );
     return decodeMutationResult(value);
+  }
+
+  async getRecord(recordId: string): Promise<LoomTableRecord> {
+    const normalizedRecordId = recordId.trim();
+    if (normalizedRecordId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Record ID is required to read a Record.',
+      });
+    }
+    const value = await this.#requestJson(
+      `/v1/records/${encodeURIComponent(normalizedRecordId)}`,
+      this.#requireAccessToken(),
+    );
+    return decodeRecord(value);
+  }
+
+  async queryMap(viewId: string, request: MapQueryRequest): Promise<MapQueryResult> {
+    const normalizedViewId = viewId.trim();
+    if (normalizedViewId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A View ID is required to query a Map.',
+      });
+    }
+    validateMapQueryRequest(request);
+    const body: TransportMapQueryRequest = {
+      viewport: {
+        boxes: request.viewport.boxes.map((box) => ({ ...box })),
+      },
+      zoom: request.zoom,
+      pixelWidth: request.pixelWidth,
+      pixelHeight: request.pixelHeight,
+    };
+    const value = await this.#requestJson(
+      `/v1/views/${encodeURIComponent(normalizedViewId)}/map/query`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: true },
+    );
+    return decodeMapQueryResult(value);
+  }
+
+  async summarizeMap(viewId: string): Promise<MapSummaryResult> {
+    const normalizedViewId = viewId.trim();
+    if (normalizedViewId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A View ID is required to summarize a Map.',
+      });
+    }
+    const value = await this.#requestJson(
+      `/v1/views/${encodeURIComponent(normalizedViewId)}/map/summary`,
+      this.#requireAccessToken(),
+      { method: 'POST', retryable: true },
+    );
+    return decodeMapSummaryResult(value);
+  }
+
+  async queryMapClusterRecords(
+    viewId: string,
+    request: MapClusterRecordsQueryRequest,
+  ): Promise<QueryResult> {
+    const normalizedViewId = viewId.trim();
+    const clusterToken = request.clusterToken.trim();
+    if (normalizedViewId === '' || clusterToken === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A View ID and cluster token are required to read Cluster Records.',
+      });
+    }
+    const limit = request.limit ?? 100;
+    if (!isPositiveInteger(limit) || limit > 500) {
+      throw new LoomTableClientError('validation', {
+        message: 'Cluster Record query limit must be an integer between 1 and 500.',
+      });
+    }
+    const body: TransportMapClusterRecordsQueryRequest = {
+      clusterToken,
+      limit,
+      ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
+    };
+    const value = await this.#requestJson(
+      `/v1/views/${encodeURIComponent(normalizedViewId)}/map/cluster-records/query`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: true },
+    );
+    return decodeQueryResult(value);
+  }
+
+  async updateView(viewId: string, request: UpdateViewRequest): Promise<View> {
+    const normalizedViewId = viewId.trim();
+    if (normalizedViewId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A View ID is required to update a View.',
+      });
+    }
+    if (!isPositiveInteger(request.expectedRevision)) {
+      throw new LoomTableClientError('validation', {
+        message: 'View expectedRevision must be a positive integer.',
+      });
+    }
+    const body = { ...request } as TransportUpdateViewRequest;
+    const value = await this.#requestJson(
+      `/v1/views/${encodeURIComponent(normalizedViewId)}`,
+      this.#requireAccessToken(),
+      { method: 'PATCH', body, retryable: false },
+    );
+    return decodeView(value);
   }
 
   async initializeAttachment(
@@ -590,6 +710,196 @@ function decodeMutationResult(value: unknown): MutationResult {
   } catch (error) {
     if (error instanceof LoomTableClientError) throw error;
     throw invalidResource('mutation result');
+  }
+}
+
+function decodeMapQueryResult(value: unknown): MapQueryResult {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.features) ||
+    value.features.length > 500 ||
+    !isNonNegativeInteger(value.viewportRenderableRecordCount) ||
+    !isPositiveInteger(value.viewRevision) ||
+    typeof value.changeCursor !== 'string'
+  ) {
+    throw invalidResource('map query result');
+  }
+
+  const features: MapFeature[] = [];
+  const pointIds = new Set<string>();
+  const clusterIds = new Set<string>();
+  let representedRecordCount = 0;
+  for (const item of value.features) {
+    const feature = decodeMapFeature(item);
+    if (feature === null) throw invalidResource('map query result');
+    if (feature.kind === 'point') {
+      if (pointIds.has(feature.recordId)) throw invalidResource('map query result');
+      pointIds.add(feature.recordId);
+      representedRecordCount += 1;
+    } else {
+      if (clusterIds.has(feature.clusterId)) throw invalidResource('map query result');
+      clusterIds.add(feature.clusterId);
+      representedRecordCount += feature.pointCount;
+    }
+    features.push(feature);
+  }
+  if (representedRecordCount !== value.viewportRenderableRecordCount) {
+    throw invalidResource('map query result');
+  }
+  return {
+    features,
+    viewportRenderableRecordCount: value.viewportRenderableRecordCount,
+    viewRevision: value.viewRevision,
+    changeCursor: value.changeCursor,
+  };
+}
+
+function decodeMapSummaryResult(value: unknown): MapSummaryResult {
+  if (
+    !isRecord(value) ||
+    !isPositiveInteger(value.viewRevision) ||
+    typeof value.changeCursor !== 'string' ||
+    !isRecord(value.summary)
+  ) {
+    throw invalidResource('map summary result');
+  }
+  const summary = decodeMapQuerySummary(value.summary);
+  if (summary === null) throw invalidResource('map summary result');
+  return {
+    summary,
+    viewRevision: value.viewRevision,
+    changeCursor: value.changeCursor,
+  };
+}
+
+function decodeMapQuerySummary(value: Record<string, unknown>): MapQuerySummary | null {
+  if (
+    !isNonNegativeInteger(value.matchedRecordCount) ||
+    !isNonNegativeInteger(value.renderableRecordCount) ||
+    !isNonNegativeInteger(value.unlocatedRecordCount) ||
+    !isNonNegativeInteger(value.unrenderableRecordCount) ||
+    value.matchedRecordCount !==
+      value.renderableRecordCount + value.unlocatedRecordCount + value.unrenderableRecordCount
+  ) {
+    return null;
+  }
+  const dataBounds =
+    value.dataBounds === undefined ? undefined : decodeMapViewport(value.dataBounds);
+  if (value.dataBounds !== undefined && dataBounds === null) return null;
+  return {
+    matchedRecordCount: value.matchedRecordCount,
+    renderableRecordCount: value.renderableRecordCount,
+    unlocatedRecordCount: value.unlocatedRecordCount,
+    unrenderableRecordCount: value.unrenderableRecordCount,
+    ...(dataBounds === undefined || dataBounds === null ? {} : { dataBounds }),
+  };
+}
+
+function decodeMapFeature(value: unknown): MapFeature | null {
+  if (!isRecord(value) || typeof value.kind !== 'string') return null;
+  const position = decodeMapCoordinate(value.position);
+  if (position === null) return null;
+  if (value.kind === 'point') {
+    if (typeof value.recordId !== 'string' || typeof value.primaryFieldText !== 'string') {
+      return null;
+    }
+    return {
+      kind: 'point',
+      recordId: value.recordId,
+      position,
+      primaryFieldText: value.primaryFieldText,
+    } satisfies MapPoint;
+  }
+  if (
+    value.kind !== 'cluster' ||
+    typeof value.clusterId !== 'string' ||
+    !isPositiveInteger(value.pointCount) ||
+    value.pointCount < 2 ||
+    typeof value.recordsQueryToken !== 'string'
+  ) {
+    return null;
+  }
+  const bounds = decodeMapViewport(value.bounds);
+  if (bounds === null) return null;
+  if (value.expansionZoom !== undefined && !isNonNegativeFiniteNumber(value.expansionZoom)) {
+    return null;
+  }
+  return {
+    kind: 'cluster',
+    clusterId: value.clusterId,
+    position,
+    bounds,
+    pointCount: value.pointCount,
+    recordsQueryToken: value.recordsQueryToken,
+    ...(value.expansionZoom === undefined ? {} : { expansionZoom: value.expansionZoom }),
+  };
+}
+
+function decodeMapCoordinate(value: unknown): MapCoordinate | null {
+  if (
+    !isRecord(value) ||
+    !isFiniteNumber(value.lat) ||
+    !isFiniteNumber(value.lng) ||
+    value.lat < -MAX_RENDERABLE_LATITUDE ||
+    value.lat > MAX_RENDERABLE_LATITUDE ||
+    value.lng < -180 ||
+    value.lng > 180
+  ) {
+    return null;
+  }
+  return { lat: value.lat, lng: value.lng };
+}
+
+function decodeMapViewport(value: unknown): MapViewport | null {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.boxes) ||
+    value.boxes.length < 1 ||
+    value.boxes.length > 2
+  ) {
+    return null;
+  }
+  const boxes: MapViewportBox[] = [];
+  for (const item of value.boxes) {
+    if (
+      !isRecord(item) ||
+      !isFiniteNumber(item.west) ||
+      !isFiniteNumber(item.south) ||
+      !isFiniteNumber(item.east) ||
+      !isFiniteNumber(item.north) ||
+      item.west < -180 ||
+      item.west > 180 ||
+      item.east < -180 ||
+      item.east > 180 ||
+      item.south < -MAX_RENDERABLE_LATITUDE ||
+      item.south > MAX_RENDERABLE_LATITUDE ||
+      item.north < -MAX_RENDERABLE_LATITUDE ||
+      item.north > MAX_RENDERABLE_LATITUDE ||
+      item.west > item.east ||
+      item.south > item.north
+    ) {
+      return null;
+    }
+    boxes.push({
+      west: item.west,
+      south: item.south,
+      east: item.east,
+      north: item.north,
+    });
+  }
+  return { boxes };
+}
+
+function validateMapQueryRequest(request: MapQueryRequest): void {
+  if (
+    !isNonNegativeFiniteNumber(request.zoom) ||
+    !isPositiveInteger(request.pixelWidth) ||
+    !isPositiveInteger(request.pixelHeight) ||
+    decodeMapViewport(request.viewport) === null
+  ) {
+    throw new LoomTableClientError('validation', {
+      message: 'Map query viewport, zoom, and pixel dimensions are invalid.',
+    });
   }
 }
 
@@ -928,13 +1238,22 @@ function decodeMapViewConfig(value: Record<string, unknown>): MapViewConfig | nu
     if (
       !isRecord(value.center) ||
       !isFiniteNumber(value.center.lat) ||
-      !isFiniteNumber(value.center.lng)
+      !isFiniteNumber(value.center.lng) ||
+      value.center.lat < -MAX_RENDERABLE_LATITUDE ||
+      value.center.lat > MAX_RENDERABLE_LATITUDE ||
+      value.center.lng < -180 ||
+      value.center.lng > 180
     ) {
       return null;
     }
     center = { lat: value.center.lat, lng: value.center.lng };
   }
-  if (value.zoom !== undefined && !isFiniteNumber(value.zoom)) return null;
+  if (
+    (center === undefined) !== (value.zoom === undefined) ||
+    (value.zoom !== undefined && !isNonNegativeFiniteNumber(value.zoom))
+  ) {
+    return null;
+  }
   return {
     locationFieldId: value.locationFieldId,
     ...(filter === undefined || filter === null ? {} : { filter }),
@@ -1107,6 +1426,7 @@ interface ApiError {
   readonly message: string;
   readonly requestId: string;
   readonly conflict?: ConflictDetails;
+  readonly apiDetails?: Readonly<Record<string, unknown>>;
 }
 
 function decodeApiError(body: string): ApiError | null {
@@ -1122,11 +1442,13 @@ function decodeApiError(body: string): ApiError | null {
       return null;
     }
     const conflict = decodeConflictDetails(error);
+    const apiDetails = decodeApiErrorDetails(error.details);
     return {
       code: error.code,
       message: error.message,
       requestId: error.requestId,
       ...(conflict === undefined ? {} : { conflict }),
+      ...(apiDetails === undefined ? {} : { apiDetails }),
     };
   } catch {
     return null;
@@ -1138,6 +1460,7 @@ function errorFromResponse(status: number, apiError: ApiError | null): LoomTable
     message: apiError?.message ?? `The LoomTable Server returned HTTP ${status}.`,
     httpStatus: status,
     ...(apiError === null ? {} : { code: apiError.code, requestId: apiError.requestId }),
+    ...(apiError?.apiDetails === undefined ? {} : { apiDetails: apiError.apiDetails }),
   };
   if (status === 401) return new LoomTableClientError('authentication', details);
   if (status === 403) return new LoomTableClientError('forbidden', details);
@@ -1197,6 +1520,10 @@ function decodeConflictDetails(value: Record<string, unknown>): ConflictDetails 
     failedCommandIndex: value.failedCommandIndex,
     conflicts,
   };
+}
+
+function decodeApiErrorDetails(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return isRecord(value) ? { ...value } : undefined;
 }
 
 function getHeader(headers: Readonly<Record<string, string>>, name: string): string | undefined {
@@ -1326,6 +1653,10 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
+function isNonNegativeFiniteNumber(value: unknown): value is number {
+  return isFiniteNumber(value) && value >= 0;
+}
+
 function isPositiveInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
@@ -1380,3 +1711,4 @@ function isAttachmentSource(value: unknown): value is AttachmentSource {
 function isAttachmentStatus(value: unknown): value is AttachmentStatus {
   return typeof value === 'string' && ATTACHMENT_STATUSES.has(value);
 }
+
