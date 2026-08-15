@@ -1,6 +1,7 @@
 import type { Translator } from '../i18n';
 import type { Field, JsonValue, LoomTableRecord } from '../client/loomtable-client';
 import type { GridState, GridStatus } from './grid-view-controller';
+import { editorTextValue, isEditableField } from './field-value-editor';
 
 export interface GridRendererCallbacks {
   readonly onRefresh: () => void | Promise<void>;
@@ -10,6 +11,8 @@ export interface GridRendererCallbacks {
   readonly onViewChange: (viewId: string) => void | Promise<void>;
   readonly onLoadMore: () => void | Promise<void>;
   readonly onRecordOpen: (record: LoomTableRecord) => void;
+  readonly onCellEdit?: (recordId: string, fieldId: string, value: unknown) => void | Promise<void>;
+  readonly onConflictAction?: (recordId: string, action: 'use-server' | 'overwrite') => void;
 }
 
 interface VirtualGridRefs {
@@ -41,6 +44,8 @@ export class ReadonlyGridRenderer {
     this.#virtualGrid = null;
     const root = createElement('div', 'loom-grid-shell');
     root.append(this.#renderToolbar(state), this.#renderNavigation(state));
+    if (state.editError !== null) root.append(this.#renderEditError(state));
+    if (state.conflicts.length > 0) root.append(this.#renderConflicts(state));
 
     if (state.status === 'loading' && state.records.length === 0) {
       root.append(this.#renderStatus('loading', state));
@@ -177,6 +182,56 @@ export class ReadonlyGridRenderer {
     return wrapper;
   }
 
+  #renderEditError(state: GridState): HTMLElement {
+    const status = createElement('div', 'loom-status loom-grid-edit-status is-error');
+    status.append(createTextElement('p', state.editError?.message ?? ''));
+    if (state.editError?.code !== undefined) {
+      status.append(createTextElement('small', state.editError.code));
+    }
+    return status;
+  }
+
+  #renderConflicts(state: GridState): HTMLElement {
+    const box = createElement('div', 'loom-grid-conflicts');
+    for (const conflict of state.conflicts) {
+      const item = createElement('div', 'loom-grid-conflict');
+      item.append(createTextElement('strong', this.#translate('grid.editConflict')));
+      item.append(createTextElement('p', conflict.message));
+      const values = createElement('pre', 'loom-grid-conflict-values');
+      values.textContent = JSON.stringify(
+        {
+          recordId: conflict.recordId,
+          expectedRevision: conflict.expectedRevision,
+          currentRevision: conflict.currentRevision,
+          currentValues: conflict.currentValues,
+          submittedSet: conflict.submittedSet,
+        },
+        null,
+        2,
+      );
+      item.append(values);
+      const actions = createElement('div', 'loom-grid-conflict-actions');
+      const useServer = document.createElement('button');
+      useServer.type = 'button';
+      useServer.className = 'loom-button';
+      useServer.textContent = this.#translate('grid.useServer');
+      useServer.addEventListener('click', () =>
+        this.#callbacks.onConflictAction?.(conflict.recordId, 'use-server'),
+      );
+      const overwrite = document.createElement('button');
+      overwrite.type = 'button';
+      overwrite.className = 'loom-button mod-warning';
+      overwrite.textContent = this.#translate('grid.overwrite');
+      overwrite.addEventListener('click', () =>
+        this.#callbacks.onConflictAction?.(conflict.recordId, 'overwrite'),
+      );
+      actions.append(useServer, overwrite);
+      item.append(actions);
+      box.append(item);
+    }
+    return box;
+  }
+
   #renderVirtualRows(): void {
     const grid = this.#virtualGrid;
     if (grid === null) return;
@@ -200,6 +255,7 @@ export class ReadonlyGridRenderer {
     fields: readonly Field[],
     rowHeight: number,
   ): HTMLElement {
+    const gridState = this.#virtualGrid?.state;
     const row = createElement('div', 'loom-grid-row');
     row.setAttribute('role', 'row');
     row.tabIndex = 0;
@@ -227,8 +283,21 @@ export class ReadonlyGridRenderer {
         'loom-grid-cell',
       );
       cell.setAttribute('role', 'gridcell');
-      cell.setAttribute('aria-readonly', 'true');
+      if (!isEditableField(field)) cell.setAttribute('aria-readonly', 'true');
+      else cell.classList.add('loom-grid-editable');
       cell.dataset.fieldId = field.id;
+      const editStatus = gridState?.editStatuses[record.id];
+      if (editStatus !== undefined) cell.dataset.editState = editStatus;
+      if (isEditableField(field)) {
+        const beginEdit = (event: Event): void => {
+          event.stopPropagation();
+          this.#beginCellEdit(cell, record, field);
+        };
+        cell.addEventListener('click', beginEdit);
+        cell.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter') beginEdit(event);
+        });
+      }
       row.append(cell);
     }
 
@@ -245,6 +314,86 @@ export class ReadonlyGridRenderer {
       }
     });
     return row;
+  }
+
+  #beginCellEdit(cell: HTMLElement, record: LoomTableRecord, field: Field): void {
+    if (
+      !isEditableField(field) ||
+      this.#virtualGrid?.state.editStatuses[record.id] === 'conflict'
+    ) {
+      return;
+    }
+    if (cell.querySelector('input, textarea, select') !== null) return;
+
+    const editor = createEditor(field, record.values[field.id]);
+    editor.classList.add('loom-grid-editor');
+    editor.setAttribute('aria-label', field.name);
+    cell.replaceChildren(editor);
+    let composing = false;
+    let finished = false;
+    const finish = (commit: boolean): void => {
+      if (finished) return;
+      finished = true;
+      if (!commit) {
+        this.render(this.#virtualGrid?.state ?? this.#emptyState());
+        return;
+      }
+      const value =
+        editor instanceof HTMLInputElement && editor.type === 'checkbox'
+          ? editor.checked
+          : editor.value;
+      const result = this.#callbacks.onCellEdit?.(record.id, field.id, value);
+      if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+    };
+    editor.addEventListener('compositionstart', () => {
+      composing = true;
+    });
+    editor.addEventListener('compositionend', () => {
+      composing = false;
+    });
+    editor.addEventListener('keydown', (event) => {
+      const keyboardEvent = event as KeyboardEvent;
+      if (keyboardEvent.key === 'Escape') {
+        keyboardEvent.preventDefault();
+        finish(false);
+      } else if (keyboardEvent.key === 'Enter' && !composing) {
+        keyboardEvent.preventDefault();
+        finish(true);
+      } else if (keyboardEvent.key === 'Tab') {
+        keyboardEvent.preventDefault();
+        finish(true);
+      }
+    });
+    editor.focus();
+    if (editor instanceof HTMLInputElement || editor instanceof HTMLTextAreaElement) {
+      editor.select?.();
+    }
+  }
+
+  #emptyState(): GridState {
+    return {
+      status: 'idle',
+      phase: 'idle',
+      workspaces: [],
+      bases: [],
+      tables: [],
+      views: [],
+      fields: [],
+      selectedWorkspaceId: null,
+      selectedBaseId: null,
+      selectedTableId: null,
+      selectedViewId: null,
+      records: [],
+      hasMore: false,
+      nextCursor: null,
+      changeCursor: null,
+      totalCount: null,
+      emptyReason: null,
+      error: null,
+      editStatuses: {},
+      conflicts: [],
+      editError: null,
+    };
   }
 
   #focusAdjacentRow(rowIndex: number, offset: number): void {
@@ -395,6 +544,43 @@ function createGridCell(text: string, className: string): HTMLElement {
   return cell;
 }
 
+function createEditor(
+  field: Field,
+  value: JsonValue | undefined,
+): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
+  if (field.type === 'longText') {
+    const editor = document.createElement('textarea');
+    editor.value = editorTextValue(value, field);
+    return editor;
+  }
+  if (field.type === 'select') {
+    const editor = document.createElement('select');
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = '—';
+    editor.append(empty);
+    for (const option of field.config.options) {
+      const item = document.createElement('option');
+      item.value = option.id;
+      item.textContent = option.name;
+      editor.append(item);
+    }
+    editor.value = typeof value === 'string' ? value : '';
+    return editor;
+  }
+  if (field.type === 'checkbox') {
+    const editor = document.createElement('input');
+    editor.type = 'checkbox';
+    editor.checked = value === true;
+    return editor;
+  }
+  const editor = document.createElement('input');
+  editor.type =
+    field.type === 'number' || field.type === 'date' || field.type === 'url' ? field.type : 'text';
+  editor.value = editorTextValue(value, field);
+  return editor;
+}
+
 function createTextElement<K extends keyof HTMLElementTagNameMap>(
   tagName: K,
   text: string,
@@ -403,3 +589,4 @@ function createTextElement<K extends keyof HTMLElementTagNameMap>(
   element.textContent = text;
   return element;
 }
+

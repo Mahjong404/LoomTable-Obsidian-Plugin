@@ -19,7 +19,7 @@ describe('ReadonlyGridRenderer', () => {
     renderer.render(createState(1_000));
 
     expect(container.querySelectorAll('.loom-grid-row')).toHaveLength(14);
-    expect(container.querySelectorAll('[aria-readonly="true"]')).not.toHaveLength(0);
+    expect(container.querySelectorAll('.loom-grid-editable')).not.toHaveLength(0);
     expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
   });
 
@@ -50,6 +50,61 @@ describe('ReadonlyGridRenderer', () => {
 
     expect(container.querySelector('.loom-grid-status')?.textContent).toContain('offline');
   });
+
+  it('opens an editable Cell and commits after IME composition ends', () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1));
+    const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor).not.toBeNull();
+    if (editor === null) return;
+    editor.value = 'changed';
+    editor.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(callbacks.onCellEdit).not.toHaveBeenCalled();
+    editor.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true }));
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', 'changed');
+  });
+
+  it('shows Server and local values with explicit conflict actions', () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(
+      createState(1, {
+        conflicts: [
+          {
+            recordId: 'record_01',
+            clientMutationId: 'mutation_01',
+            expectedRevision: 1,
+            currentRevision: 2,
+            currentValues: { field_name: 'Server value' },
+            submittedSet: { field_name: 'Local value' },
+            message: 'Revision conflict.',
+          },
+        ],
+      }),
+    );
+
+    expect(container.querySelector('.loom-grid-conflict-values')?.textContent).toContain(
+      'Server value',
+    );
+    expect(container.querySelector('.loom-grid-conflict-values')?.textContent).toContain(
+      'Local value',
+    );
+    const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-grid-conflict button');
+    buttons[0]?.click();
+    buttons[1]?.click();
+    expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(1, 'record_01', 'use-server');
+    expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite');
+  });
 });
 
 describe('getVirtualRowRange', () => {
@@ -68,6 +123,8 @@ function rendererCallbacks() {
     onViewChange: vi.fn(),
     onLoadMore: vi.fn(),
     onRecordOpen: vi.fn(),
+    onCellEdit: vi.fn(),
+    onConflictAction: vi.fn(),
   };
 }
 
@@ -148,6 +205,10 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     totalCount: recordCount,
     emptyReason: null,
     error: null,
+    editStatuses: {},
+    conflicts: [],
+    editError: null,
     ...update,
   };
 }
+

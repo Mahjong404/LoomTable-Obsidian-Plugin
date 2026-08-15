@@ -2769,13 +2769,13 @@ export interface operations {
                     "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
-            /** @description At least one command has a revision conflict */
+            /** @description Revision conflict or reuse of a clientMutationId for a different request */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ConflictResponse"];
+                    "application/json": components["schemas"]["ConflictResponse"] | components["schemas"]["ErrorResponse"];
                 };
             };
             413: components["responses"]["PayloadTooLarge"];
@@ -3019,3 +3019,4 @@ export interface operations {
         };
     };
 }
+
