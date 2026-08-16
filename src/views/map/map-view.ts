@@ -1,10 +1,3 @@
-MethodException: 
-Line |
-   2 |  … w.ts' -Raw; $c = $c.Replace([char]13 + [char]10, [char]10).Replace([c …
-     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     | Cannot convert argument "oldChar", with value: "
-", for "Replace" to type "System.Char": "Cannot convert value "
-" to type "System.Char". Error: "String must be exactly one character long.""
 import type { Base, Table, View, Workspace } from '../../client/loomtable-client';
 import type {
   TileProviderRef,
@@ -255,4 +248,3 @@ function describeTileState(state: MapViewState): string {
   if (state.tileStatus === 'ready') return 'Tiles ready.';
   return '';
 }
-

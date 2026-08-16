@@ -1,10 +1,3 @@
-MethodException: 
-Line |
-   2 |  … s.ts' -Raw; $c = $c.Replace([char]13 + [char]10, [char]10).Replace([c …
-     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     | Cannot convert argument "oldChar", with value: "
-", for "Replace" to type "System.Char": "Cannot convert value "
-" to type "System.Char". Error: "String must be exactly one character long.""
 export const englishMessages = {
   'command.open': 'Open LoomTable',
   'common.add': 'Add',
@@ -93,4 +86,3 @@ export const englishMessages = {
 
 export type MessageKey = keyof typeof englishMessages;
 export type MessageCatalog = { readonly [Key in MessageKey]: string };
-

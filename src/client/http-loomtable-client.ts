@@ -1,10 +1,3 @@
-MethodException: 
-Line |
-   2 |  … t.ts' -Raw; $c = $c.Replace([char]13 + [char]10, [char]10).Replace([c …
-     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     | Cannot convert argument "oldChar", with value: "
-", for "Replace" to type "System.Char": "Cannot convert value "
-" to type "System.Char". Error: "String must be exactly one character long.""
 import type { components } from '../generated/transport';
 import type { HttpTransport, HttpTransportRequest, HttpTransportResponse } from './http-transport';
 import { normalizeServerOrigin } from './server-origin';
@@ -1718,4 +1711,3 @@ function isAttachmentSource(value: unknown): value is AttachmentSource {
 function isAttachmentStatus(value: unknown): value is AttachmentStatus {
   return typeof value === 'string' && ATTACHMENT_STATUSES.has(value);
 }
-

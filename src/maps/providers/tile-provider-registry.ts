@@ -1,10 +1,3 @@
-MethodException: 
-Line |
-   2 |  … y.ts' -Raw; $c = $c.Replace([char]13 + [char]10, [char]10).Replace([c …
-     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     | Cannot convert argument "oldChar", with value: "
-", for "Replace" to type "System.Char": "Cannot convert value "
-" to type "System.Char". Error: "String must be exactly one character long.""
 import { BUILT_IN_TILE_PROVIDERS } from './presets';
 import {
   credentialBindingKey,
@@ -211,4 +204,3 @@ function expandTemplate(template: string, credentials: ReadonlyMap<string, strin
   });
   return missing ? null : expanded;
 }
-

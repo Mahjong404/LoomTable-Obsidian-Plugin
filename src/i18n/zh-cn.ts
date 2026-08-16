@@ -1,10 +1,3 @@
-MethodException: 
-Line |
-   2 |  … n.ts' -Raw; $c = $c.Replace([char]13 + [char]10, [char]10).Replace([c …
-     |                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-     | Cannot convert argument "oldChar", with value: "
-", for "Replace" to type "System.Char": "Cannot convert value "
-" to type "System.Char". Error: "String must be exactly one character long.""
 import type { MessageCatalog } from './messages';
 
 export const simplifiedChineseMessages = {
@@ -87,4 +80,3 @@ export const simplifiedChineseMessages = {
   'view.ready': 'LoomTable 已准备好开始 Plugin 开发。',
   'view.title': 'LoomTable',
 } as const satisfies MessageCatalog;
-
