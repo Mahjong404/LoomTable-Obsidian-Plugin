@@ -26,11 +26,14 @@ export type LoomTableClientErrorKind =
   | 'timeout'
   | 'validation';
 
+export type LoomTableApiErrorDetails = Readonly<Record<string, unknown>>;
+
 export interface LoomTableClientErrorDetails {
   readonly message: string;
   readonly code?: string;
   readonly httpStatus?: number;
   readonly requestId?: string;
+  readonly apiDetails?: LoomTableApiErrorDetails;
 }
 
 export class LoomTableClientError extends Error {
@@ -353,6 +356,91 @@ export interface MapViewConfig {
   readonly zoom?: number;
 }
 
+export interface MapCoordinate {
+  readonly lat: number;
+  readonly lng: number;
+}
+
+export interface MapViewportBox {
+  readonly west: number;
+  readonly south: number;
+  readonly east: number;
+  readonly north: number;
+}
+
+export interface MapViewport {
+  readonly boxes: readonly MapViewportBox[];
+}
+
+export interface MapQueryRequest {
+  readonly viewport: MapViewport;
+  readonly zoom: number;
+  readonly pixelWidth: number;
+  readonly pixelHeight: number;
+}
+
+export interface MapPoint {
+  readonly kind: 'point';
+  readonly recordId: string;
+  readonly position: MapCoordinate;
+  readonly primaryFieldText: string;
+}
+
+export interface MapCluster {
+  readonly kind: 'cluster';
+  readonly clusterId: string;
+  readonly position: MapCoordinate;
+  readonly bounds: MapViewport;
+  readonly pointCount: number;
+  readonly expansionZoom?: number;
+  readonly recordsQueryToken: string;
+}
+
+export type MapFeature = MapPoint | MapCluster;
+
+export interface MapQuerySummary {
+  readonly matchedRecordCount: number;
+  readonly renderableRecordCount: number;
+  readonly unlocatedRecordCount: number;
+  readonly unrenderableRecordCount: number;
+  readonly dataBounds?: MapViewport;
+}
+
+export interface MapSummaryResult {
+  readonly summary: MapQuerySummary;
+  readonly viewRevision: number;
+  readonly changeCursor: string;
+}
+
+export interface MapQueryResult {
+  readonly features: readonly MapFeature[];
+  readonly viewportRenderableRecordCount: number;
+  readonly viewRevision: number;
+  readonly changeCursor: string;
+}
+
+export interface MapClusterRecordsQueryRequest {
+  readonly clusterToken: string;
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
+export interface UpdateMapViewRequest {
+  readonly type: 'map';
+  readonly name?: string;
+  readonly config: MapViewConfig;
+  readonly expectedRevision: number;
+}
+
+export interface UpdateGridViewRequest {
+  readonly type: 'grid';
+  readonly name?: string;
+  readonly config: GridViewConfig;
+  readonly expectedRevision: number;
+}
+
+export type UpdateViewRequest = UpdateMapViewRequest | UpdateGridViewRequest;
+
 export interface ViewBase {
   readonly id: string;
   readonly tableId: string;
@@ -377,6 +465,14 @@ export interface LoomTableClient {
   listViews(tableId: string, options?: ResourceListOptions): Promise<readonly View[]>;
   query(request: QueryRequest): Promise<QueryResult>;
   mutate(tableId: string, request: MutationRequest): Promise<MutationResult>;
+  getRecord(recordId: string): Promise<LoomTableRecord>;
+  queryMap(viewId: string, request: MapQueryRequest): Promise<MapQueryResult>;
+  summarizeMap(viewId: string): Promise<MapSummaryResult>;
+  queryMapClusterRecords(
+    viewId: string,
+    request: MapClusterRecordsQueryRequest,
+  ): Promise<QueryResult>;
+  updateView(viewId: string, request: UpdateViewRequest): Promise<View>;
   initializeAttachment(
     request: InitializeAttachmentRequest,
     idempotencyKey: string,

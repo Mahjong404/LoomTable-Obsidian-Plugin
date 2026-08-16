@@ -6,16 +6,31 @@ import {
   type ConnectionProfileDraft,
   type ConnectionProfileId,
 } from './connection-profile';
+import type {
+  CustomTileProviderProfileV1,
+  TileAttribution,
+  TileCredentialSlot,
+  TileProviderRef,
+} from '../maps/providers/tile-provider-schema';
 
 export const PLUGIN_SETTINGS_SCHEMA_VERSION = 1 as const;
 export const SUPPORTED_LOCALES = ['en', 'zh-CN'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+
+export interface MapPresentationSettingsV1 {
+  readonly schemaVersion: 1;
+  defaultProvider: TileProviderRef;
+  perViewProvider: Record<string, TileProviderRef>;
+  customProfiles: CustomTileProviderProfileV1[];
+  credentialBindings: Record<string, string>;
+}
 
 export interface PluginSettings {
   readonly schemaVersion: typeof PLUGIN_SETTINGS_SCHEMA_VERSION;
   locale: SupportedLocale;
   connectionProfiles: ConnectionProfile[];
   defaultConnectionProfileId: ConnectionProfileId | null;
+  mapPresentation: MapPresentationSettingsV1;
 }
 
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
@@ -23,6 +38,13 @@ export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
   locale: 'en',
   connectionProfiles: [],
   defaultConnectionProfileId: null,
+  mapPresentation: {
+    schemaVersion: 1,
+    defaultProvider: { kind: 'built-in', id: 'osm-standard' },
+    perViewProvider: {},
+    customProfiles: [],
+    credentialBindings: {},
+  },
 };
 
 export function normalizePluginSettings(value: unknown): PluginSettings {
@@ -43,6 +65,7 @@ export function normalizePluginSettings(value: unknown): PluginSettings {
     locale: isSupportedLocale(value.locale) ? value.locale : DEFAULT_PLUGIN_SETTINGS.locale,
     connectionProfiles: profiles,
     defaultConnectionProfileId,
+    mapPresentation: parseMapPresentation(value.mapPresentation),
   };
 }
 
@@ -121,6 +144,120 @@ function normalizeSecretId(value: unknown): string | null {
 
 function isSupportedLocale(value: unknown): value is SupportedLocale {
   return SUPPORTED_LOCALES.some((locale) => locale === value);
+}
+
+function parseMapPresentation(value: unknown): MapPresentationSettingsV1 {
+  if (!isRecord(value)) return structuredClone(DEFAULT_PLUGIN_SETTINGS.mapPresentation);
+  const defaultProvider = parseProviderRef(value.defaultProvider) ?? {
+    kind: 'built-in' as const,
+    id: 'osm-standard' as const,
+  };
+  const perViewProvider: Record<string, TileProviderRef> = {};
+  if (isRecord(value.perViewProvider)) {
+    for (const [viewId, candidate] of Object.entries(value.perViewProvider)) {
+      const provider = parseProviderRef(candidate);
+      if (provider !== null && viewId.trim() !== '') perViewProvider[viewId] = provider;
+    }
+  }
+  const customProfiles = Array.isArray(value.customProfiles)
+    ? value.customProfiles.flatMap(parseCustomProfile)
+    : [];
+  const credentialBindings: Record<string, string> = {};
+  if (isRecord(value.credentialBindings)) {
+    for (const [bindingKey, secretId] of Object.entries(value.credentialBindings)) {
+      if (typeof secretId === 'string' && bindingKey.trim() !== '' && secretId.trim() !== '') {
+        credentialBindings[bindingKey] = secretId.trim();
+      }
+    }
+  }
+  return {
+    schemaVersion: 1,
+    defaultProvider,
+    perViewProvider,
+    customProfiles,
+    credentialBindings,
+  };
+}
+
+function parseProviderRef(value: unknown): TileProviderRef | null {
+  if (!isRecord(value) || typeof value.kind !== 'string') return null;
+  if (
+    value.kind === 'built-in' &&
+    (value.id === 'osm-standard' ||
+      value.id === 'tianditu-vector' ||
+      value.id === 'tianditu-imagery' ||
+      value.id === 'tianditu-terrain')
+  ) {
+    return { kind: 'built-in', id: value.id };
+  }
+  if (value.kind === 'custom' && typeof value.profileId === 'string' && value.profileId !== '') {
+    return { kind: 'custom', profileId: value.profileId };
+  }
+  return null;
+}
+
+function parseCustomProfile(value: unknown): CustomTileProviderProfileV1[] {
+  if (
+    !isRecord(value) ||
+    value.schemaVersion !== 1 ||
+    typeof value.id !== 'string' ||
+    typeof value.name !== 'string' ||
+    typeof value.urlTemplate !== 'string' ||
+    typeof value.minZoom !== 'number' ||
+    !Number.isInteger(value.minZoom) ||
+    typeof value.maxZoom !== 'number' ||
+    !Number.isInteger(value.maxZoom) ||
+    (value.tileSize !== 256 && value.tileSize !== 512) ||
+    !Array.isArray(value.attribution)
+  ) {
+    return [];
+  }
+  const attribution = value.attribution.flatMap(parseAttribution);
+  const credentialSlots = Array.isArray(value.credentialSlots)
+    ? value.credentialSlots.flatMap(parseCredentialSlot)
+    : [];
+  if (attribution.length !== value.attribution.length) return [];
+  return [
+    {
+      schemaVersion: 1,
+      id: value.id,
+      name: value.name,
+      urlTemplate: value.urlTemplate,
+      ...(Array.isArray(value.subdomains)
+        ? {
+            subdomains: value.subdomains.filter((item): item is string => typeof item === 'string'),
+          }
+        : {}),
+      minZoom: value.minZoom,
+      maxZoom: value.maxZoom,
+      tileSize: value.tileSize,
+      attribution,
+      ...(credentialSlots.length === 0 ? {} : { credentialSlots }),
+    },
+  ];
+}
+
+function parseAttribution(value: unknown): TileAttribution[] {
+  if (!isRecord(value) || typeof value.label !== 'string') return [];
+  return [
+    {
+      label: value.label,
+      ...(typeof value.url === 'string' ? { url: value.url } : {}),
+      ...(typeof value.licenseUrl === 'string' ? { licenseUrl: value.licenseUrl } : {}),
+    },
+  ];
+}
+
+function parseCredentialSlot(value: unknown): TileCredentialSlot[] {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.displayName !== 'string' ||
+    typeof value.required !== 'boolean'
+  ) {
+    return [];
+  }
+  return [{ id: value.id, displayName: value.displayName, required: value.required }];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

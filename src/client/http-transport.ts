@@ -1,6 +1,6 @@
 export interface HttpTransportRequest {
   readonly url: string;
-  readonly method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  readonly method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   readonly headers: Readonly<Record<string, string>>;
   readonly body?: string | ArrayBuffer;
 }
