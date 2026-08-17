@@ -9,13 +9,24 @@ export interface MapCamera {
 export interface MapRendererError {
   readonly kind: 'tile' | 'renderer';
   readonly message: string;
+  readonly providerId?: string;
+  readonly layerId?: string;
 }
 
 export interface MapRendererEventListener {
   readonly cameraChanged?: (camera: MapCamera) => void;
   readonly pointSelected?: (recordId: string) => void;
   readonly clusterSelected?: (clusterId: string) => void;
+  readonly tileLoading?: (event: {
+    readonly providerId: string;
+    readonly layerCount: number;
+  }) => void;
+  readonly tileReady?: (event: { readonly providerId: string }) => void;
   readonly tileError?: (error: MapRendererError) => void;
+  readonly rendererSizeChanged?: (size: {
+    readonly width: number;
+    readonly height: number;
+  }) => void;
 }
 
 export interface MapRenderer {
@@ -57,6 +68,7 @@ export interface MapRendererAdapter {
     map: RendererMapHandle,
     layer: ResolvedTileLayer,
     attribution: string,
+    onLoad: () => void,
     onError: (message: string) => void,
   ): RendererLayerHandle;
   createPointFeature(
@@ -87,6 +99,14 @@ export class LeafletMapRenderer implements MapRenderer {
   #pendingCamera: MapCamera | null = null;
   #pendingFeatures: readonly MapFeature[] = [];
   #destroyed = false;
+  #resizeTimer: number | null = null;
+  #tileBatchId = 0;
+  #activeTileBatch: {
+    readonly id: number;
+    readonly providerId: string;
+    remaining: number;
+    failed: boolean;
+  } | null = null;
 
   constructor(adapter: MapRendererAdapter) {
     this.#adapter = adapter;
@@ -98,6 +118,14 @@ export class LeafletMapRenderer implements MapRenderer {
     }
     this.#listener = listener;
     this.#map = this.#adapter.createMap(container);
+    this.#map.invalidateSize();
+    this.#reportSize();
+    this.#resizeTimer = window.setTimeout(() => {
+      this.#resizeTimer = null;
+      if (this.#destroyed || this.#map === null) return;
+      this.#map.invalidateSize();
+      this.#reportSize();
+    }, 0);
     this.#cameraChangedHandler = (): void => {
       const camera = this.#map?.getCamera();
       if (camera !== undefined) this.#listener?.cameraChanged?.(camera);
@@ -125,6 +153,22 @@ export class LeafletMapRenderer implements MapRenderer {
       this.#pendingTilePlan = plan;
       return;
     }
+    const batchId = ++this.#tileBatchId;
+    this.#activeTileBatch =
+      plan.layers.length === 0
+        ? null
+        : {
+            id: batchId,
+            providerId: plan.providerId,
+            remaining: plan.layers.length,
+            failed: false,
+          };
+    if (plan.layers.length > 0) {
+      this.#listener?.tileLoading?.({
+        providerId: plan.providerId,
+        layerCount: plan.layers.length,
+      });
+    }
     const nextLayers: RendererLayerHandle[] = [];
     try {
       for (const layer of plan.layers) {
@@ -133,7 +177,8 @@ export class LeafletMapRenderer implements MapRenderer {
             this.#map,
             layer,
             plan.attribution.map((item) => item.label).join(' · '),
-            (message) => this.#listener?.tileError?.({ kind: 'tile', message }),
+            () => this.#onTileLoad(batchId),
+            (message) => this.#onTileError(batchId, plan.providerId, layer.id, message),
           ),
         );
       }
@@ -143,6 +188,7 @@ export class LeafletMapRenderer implements MapRenderer {
         kind: 'renderer',
         message: error instanceof Error ? error.message : 'Tile layers could not be created.',
       });
+      this.#activeTileBatch = null;
       return;
     }
     const previousLayers = this.#tileLayers;
@@ -157,6 +203,7 @@ export class LeafletMapRenderer implements MapRenderer {
         kind: 'renderer',
         message: error instanceof Error ? error.message : 'Tile layers could not be activated.',
       });
+      this.#activeTileBatch = null;
     }
   }
 
@@ -231,11 +278,15 @@ export class LeafletMapRenderer implements MapRenderer {
 
   invalidateSize(): void {
     this.#map?.invalidateSize();
+    this.#reportSize();
   }
 
   destroy(): void {
     if (this.#destroyed) return;
     this.#destroyed = true;
+    if (this.#resizeTimer !== null) window.clearTimeout(this.#resizeTimer);
+    this.#resizeTimer = null;
+    this.#activeTileBatch = null;
     if (this.#map !== null && this.#cameraChangedHandler !== null) {
       this.#map.offCameraChanged(this.#cameraChangedHandler);
     }
@@ -248,6 +299,25 @@ export class LeafletMapRenderer implements MapRenderer {
     this.#map = null;
     this.#listener = null;
     this.#cameraChangedHandler = null;
+  }
+
+  #onTileLoad(batchId: number): void {
+    const batch = this.#activeTileBatch;
+    if (batch === null || batch.id !== batchId || batch.failed || batch.remaining === 0) return;
+    batch.remaining -= 1;
+    if (batch.remaining === 0) this.#listener?.tileReady?.({ providerId: batch.providerId });
+  }
+
+  #onTileError(batchId: number, providerId: string, layerId: string, message: string): void {
+    const batch = this.#activeTileBatch;
+    if (batch === null || batch.id !== batchId) return;
+    batch.failed = true;
+    this.#listener?.tileError?.({ kind: 'tile', providerId, layerId, message });
+  }
+
+  #reportSize(): void {
+    const size = this.#map?.getPixelSize?.();
+    if (size !== undefined) this.#listener?.rendererSizeChanged?.(size);
   }
 }
 

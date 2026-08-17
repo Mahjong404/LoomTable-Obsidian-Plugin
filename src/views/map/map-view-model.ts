@@ -22,10 +22,12 @@ export type MapDataStatus =
   | 'server-error';
 
 export type MapTileStatus = 'idle' | 'loading' | 'ready' | 'configuration-required' | 'error';
+export type MapTilePlanStatus = 'idle' | 'ready' | 'configuration-required' | 'error';
 
 export interface MapViewState {
   readonly dataStatus: MapDataStatus;
   readonly tileStatus: MapTileStatus;
+  readonly tilePlanStatus: MapTilePlanStatus;
   readonly view: View;
   readonly fields: readonly Field[];
   readonly locationFieldId: string | null;
@@ -54,6 +56,7 @@ export function initialMapViewState(
   return {
     dataStatus: 'idle',
     tileStatus: 'idle',
+    tilePlanStatus: 'idle',
     view,
     fields,
     locationFieldId: view.type === 'map' ? view.config.locationFieldId : null,

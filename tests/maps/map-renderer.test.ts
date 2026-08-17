@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { MapCoordinate, MapFeature, MapViewport } from '../../src/client/loomtable-client';
 import {
@@ -45,6 +45,64 @@ describe('LeafletMapRenderer seam', () => {
     expect(previous?.addCalls).toBe(1);
     expect(previous?.removeCalls).toBe(0);
     expect(adapter.layers).toHaveLength(1);
+  });
+
+  it('reports loading until every tile layer emits load, then reports ready', () => {
+    const adapter = new FakeAdapter();
+    const events: string[] = [];
+    const renderer = new LeafletMapRenderer(adapter);
+    renderer.mount(document.createElement('div'), {
+      tileLoading: ({ providerId }) => events.push(`loading:${providerId}`),
+      tileReady: ({ providerId }) => events.push(`ready:${providerId}`),
+    });
+
+    renderer.setTilePlan(planWithLayers('osm-standard', 2));
+
+    expect(events).toEqual(['loading:osm-standard']);
+    adapter.layers[0]?.emitLoad();
+    expect(events).toEqual(['loading:osm-standard']);
+    adapter.layers[1]?.emitLoad();
+    expect(events).toEqual(['loading:osm-standard', 'ready:osm-standard']);
+  });
+
+  it('reports tile errors and ignores late loads from the failed batch', () => {
+    const adapter = new FakeAdapter();
+    const errors: string[] = [];
+    const ready: string[] = [];
+    const renderer = new LeafletMapRenderer(adapter);
+    renderer.mount(document.createElement('div'), {
+      tileError: (error) => errors.push(`${error.kind}:${error.message}`),
+      tileReady: ({ providerId }) => ready.push(providerId),
+    });
+
+    renderer.setTilePlan(plan('osm-standard'));
+    adapter.layers[0]?.emitError('network blocked');
+    adapter.layers[0]?.emitLoad();
+
+    expect(errors).toEqual(['tile:network blocked']);
+    expect(ready).toEqual([]);
+  });
+
+  it('invalidates after mount and reports the post-layout pixel size', () => {
+    vi.useFakeTimers();
+    try {
+      const adapter = new FakeAdapter();
+      const sizes: { width: number; height: number }[] = [];
+      const renderer = new LeafletMapRenderer(adapter);
+      renderer.mount(document.createElement('div'), {
+        rendererSizeChanged: (size) => sizes.push(size),
+      });
+
+      expect(adapter.map.invalidateCalls).toBe(1);
+      vi.runAllTimers();
+      expect(adapter.map.invalidateCalls).toBe(2);
+      expect(sizes).toEqual([
+        { width: 640, height: 480 },
+        { width: 640, height: 480 },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('reuses point and cluster renderer handles by their ephemeral response identity', () => {
@@ -111,12 +169,13 @@ class FakeAdapter implements MapRendererAdapter {
     _map: RendererMapHandle,
     layer: ResolvedTileLayer,
     _attribution: string,
-    _onError: (message: string) => void,
+    onLoad: () => void,
+    onError: (message: string) => void,
   ): RendererLayerHandle {
-    if (this.failProvider !== null && layer.id === this.failProvider) {
+    if (this.failProvider !== null && layer.id.startsWith(this.failProvider)) {
       throw new Error('provider failed');
     }
-    const handle = new FakeLayer(layer.id);
+    const handle = new FakeLayer(layer.id, onLoad, onError);
     this.layers.push(handle);
     return handle;
   }
@@ -148,6 +207,7 @@ class FakeMap implements RendererMapHandle {
   camera: MapCamera = { center: { lat: 0, lng: 0 }, zoom: 1 };
   removeCalls = 0;
   fitBoundsCalls: MapViewport[] = [];
+  invalidateCalls = 0;
   #listeners = new Set<() => void>();
 
   onCameraChanged(listener: () => void): void {
@@ -170,7 +230,13 @@ class FakeMap implements RendererMapHandle {
     this.fitBoundsCalls.push(bounds);
   }
 
-  invalidateSize(): void {}
+  invalidateSize(): void {
+    this.invalidateCalls += 1;
+  }
+
+  getPixelSize(): { readonly width: number; readonly height: number } {
+    return { width: 640, height: 480 };
+  }
 
   remove(): void {
     this.removeCalls += 1;
@@ -186,7 +252,11 @@ class FakeLayer implements RendererLayerHandle {
   addCalls = 0;
   removeCalls = 0;
 
-  constructor(readonly id: string) {}
+  constructor(
+    readonly id: string,
+    private readonly onLoad: () => void,
+    private readonly onError: (message: string) => void,
+  ) {}
 
   add(): void {
     this.addCalls += 1;
@@ -194,6 +264,14 @@ class FakeLayer implements RendererLayerHandle {
 
   remove(): void {
     this.removeCalls += 1;
+  }
+
+  emitLoad(): void {
+    this.onLoad();
+  }
+
+  emitError(message: string): void {
+    this.onError(message);
   }
 }
 
@@ -225,14 +303,20 @@ class FakeFeature implements RendererFeatureHandle {
 }
 
 function plan(providerId: string): ResolvedTilePlan {
+  return planWithLayers(providerId, 1);
+}
+
+function planWithLayers(providerId: string, layerCount: number): ResolvedTilePlan {
   return {
     providerId,
     displayName: providerId,
     protocol: 'xyz',
     crs: 'EPSG:3857',
-    layers: [
-      { id: providerId, role: 'base', urlTemplate: 'https://tiles.example/{z}/{x}/{y}.png' },
-    ],
+    layers: Array.from({ length: layerCount }, (_, index) => ({
+      id: `${providerId}-${index}`,
+      role: 'base' as const,
+      urlTemplate: 'https://tiles.example/{z}/{x}/{y}.png',
+    })),
     minZoom: 0,
     maxZoom: 18,
     attribution: [{ label: 'Example' }],

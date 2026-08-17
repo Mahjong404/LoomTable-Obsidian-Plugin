@@ -344,12 +344,14 @@
 }
 
 .loom-map-container {
+  height: min(60vh, 34rem);
   min-height: min(60vh, 34rem);
   border: 1px solid var(--background-modifier-border);
   background: var(--background-secondary);
 }
 
 .loom-map-container .leaflet-container {
+  height: 100%;
   min-height: min(60vh, 34rem);
   font-family: var(--font-interface);
 }

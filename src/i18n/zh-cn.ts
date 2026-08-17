@@ -63,6 +63,7 @@ export const simplifiedChineseMessages = {
   'grid.view': 'View',
   'grid.workspace': 'Workspace',
   'language.english': 'English',
+  'language.auto': '跟随 Obsidian（自动）',
   'language.label': '语言',
   'language.zhCN': '简体中文',
   'map.addCustom': '添加自定义 XYZ',

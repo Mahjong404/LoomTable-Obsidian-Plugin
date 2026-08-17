@@ -66,6 +66,7 @@ export const englishMessages = {
   'grid.view': 'View',
   'grid.workspace': 'Workspace',
   'language.english': 'English',
+  'language.auto': 'Obsidian language (auto)',
   'language.label': 'Language',
   'language.zhCN': '简体中文',
   'map.addCustom': 'Add custom XYZ',

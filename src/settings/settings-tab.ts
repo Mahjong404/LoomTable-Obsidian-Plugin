@@ -1,4 +1,5 @@
 import {
+  getLanguage,
   Notice,
   PluginSettingTab,
   SecretComponent,
@@ -34,7 +35,7 @@ import {
   addConnectionProfile,
   removeConnectionProfile,
   setDefaultConnectionProfile,
-  type SupportedLocale,
+  type LocalePreference,
 } from './plugin-settings';
 
 export class LoomTableSettingTab extends PluginSettingTab {
@@ -54,16 +55,17 @@ export class LoomTableSettingTab extends PluginSettingTab {
 
   override display(): void {
     this.containerEl.empty();
-    const t = createTranslator(this.loomTablePlugin.settings.locale);
+    const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
     new Setting(this.containerEl).setName(t('settings.title')).setHeading();
 
     new Setting(this.containerEl).setName(t('language.label')).addDropdown((dropdown) =>
       dropdown
+        .addOption('auto', t('language.auto'))
         .addOption('en', t('language.english'))
         .addOption('zh-CN', t('language.zhCN'))
         .setValue(this.loomTablePlugin.settings.locale)
         .onChange(async (locale) => {
-          this.loomTablePlugin.settings.locale = locale as SupportedLocale;
+          this.loomTablePlugin.settings.locale = locale as LocalePreference;
           await this.loomTablePlugin.saveSettings();
           this.display();
           this.loomTablePlugin.refreshViews();
@@ -100,7 +102,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
   }
 
   private renderProfile(profile: ConnectionProfile): void {
-    const t = createTranslator(this.loomTablePlugin.settings.locale);
+    const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
     const section = this.containerEl.createDiv({ cls: 'loom-profile' });
     let refreshConnectionCheck = (): void => undefined;
     new Setting(section).setName(profile.name).setHeading();
@@ -192,7 +194,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
   }
 
   private async saveServerOrigin(profile: ConnectionProfile, text: TextComponent): Promise<void> {
-    const t = createTranslator(this.loomTablePlugin.settings.locale);
+    const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
     try {
       profile.serverOrigin = normalizeServerOrigin(text.getValue());
       this.invalidateConnectionCheck(profile);
@@ -206,7 +208,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
   }
 
   private renderMapSettings(): void {
-    const t = createTranslator(this.loomTablePlugin.settings.locale);
+    const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
     const section = this.containerEl.createDiv({ cls: 'loom-map-settings' });
     new Setting(section).setName(t('map.settings')).setHeading();
     const registry = new TileProviderRegistry({
@@ -301,7 +303,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
   }
 
   private renderCustomProfile(section: HTMLElement, profile: CustomTileProviderProfileV1): void {
-    const t = createTranslator(this.loomTablePlugin.settings.locale);
+    const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
     new Setting(section)
       .setName(profile.name)
       .setDesc(profile.urlTemplate)
@@ -327,7 +329,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
     slotId: string,
     slotName: string,
   ): void {
-    const t = createTranslator(this.loomTablePlugin.settings.locale);
+    const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
     const bindingKey = credentialBindingKey(ref, slotId);
     const settings = this.loomTablePlugin.settings.mapPresentation;
     new Setting(section)
@@ -354,7 +356,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
   }
 
   private renderConnectionCheck(section: HTMLElement, profile: ConnectionProfile): () => void {
-    const t = createTranslator(this.loomTablePlugin.settings.locale);
+    const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
     const status = new Setting(section).setName(t('connection.test'));
     status.settingEl.addClass('loom-connection-check');
     let refresh = (): void => undefined;

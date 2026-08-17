@@ -1,4 +1,4 @@
-import { Plugin } from 'obsidian';
+import { getLanguage, Plugin } from 'obsidian';
 
 import { HttpLoomTableClient } from './client/http-loomtable-client';
 import type { ConnectionCheckResult } from './client/loomtable-client';
@@ -44,7 +44,7 @@ export default class LoomTablePlugin extends Plugin {
         new LoomTableView(
           leaf,
           () => this.settings,
-          () => createTranslator(this.settings.locale),
+          () => createTranslator(this.settings.locale, getLanguage),
           (profile) => this.createClient(profile),
           {
             registry: this.tileProviders,
@@ -65,10 +65,14 @@ export default class LoomTablePlugin extends Plugin {
     );
 
     const openView = async (): Promise<void> => this.activateView();
-    this.addRibbonIcon('table-2', createTranslator(this.settings.locale)('command.open'), openView);
+    this.addRibbonIcon(
+      'table-2',
+      createTranslator(this.settings.locale, getLanguage)('command.open'),
+      openView,
+    );
     this.addCommand({
       id: 'open',
-      name: createTranslator(this.settings.locale)('command.open'),
+      name: createTranslator(this.settings.locale, getLanguage)('command.open'),
       callback: openView,
     });
     this.addSettingTab(
