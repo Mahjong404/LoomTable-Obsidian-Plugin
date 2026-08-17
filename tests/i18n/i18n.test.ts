@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createTranslator } from '../../src/i18n';
 import {
   DEFAULT_PLUGIN_SETTINGS,
+  LOCALE_PREFERENCES,
   normalizePluginSettings,
   resolveLocale,
 } from '../../src/settings/plugin-settings';
@@ -17,7 +18,7 @@ describe('i18n', () => {
     let language = 'en';
     const translate = createTranslator('auto', () => language);
 
-    expect(translate('language.auto')).toBe('Obsidian language (auto)');
+    expect(translate('language.auto')).toBe('Follow Obsidian');
     language = 'zh-CN';
     expect(translate('language.auto')).toBe('跟随 Obsidian（自动）');
   });
@@ -32,7 +33,9 @@ describe('i18n', () => {
   });
 
   it('defaults new settings to auto and preserves explicit legacy locale values', () => {
+    expect(LOCALE_PREFERENCES).toEqual(['auto', 'en', 'zh-CN']);
     expect(DEFAULT_PLUGIN_SETTINGS.locale).toBe('auto');
+    expect(normalizePluginSettings({ locale: 'auto' }).locale).toBe('auto');
     expect(normalizePluginSettings({ locale: 'en' }).locale).toBe('en');
     expect(normalizePluginSettings({ locale: 'zh-CN' }).locale).toBe('zh-CN');
     expect(normalizePluginSettings({ locale: 'unsupported' }).locale).toBe('auto');
