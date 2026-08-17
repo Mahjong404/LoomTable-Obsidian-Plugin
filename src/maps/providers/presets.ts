@@ -81,4 +81,3 @@ export const BUILT_IN_TILE_PROVIDERS: readonly TileProviderDefinition[] = [
   tiandituDefinition('tianditu-imagery', '天地图影像', 'img', 'cia'),
   tiandituDefinition('tianditu-terrain', '天地图地形', 'ter', 'cta'),
 ];
-

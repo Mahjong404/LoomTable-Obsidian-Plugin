@@ -379,4 +379,3 @@ function invalidProfile(providerId: string, message: string): TileProviderError 
 function invalidTemplate(): TileProviderError {
   return { kind: 'invalid-template', providerId: '', message: 'Tile URL template is invalid.' };
 }
-

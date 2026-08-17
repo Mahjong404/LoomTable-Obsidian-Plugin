@@ -387,4 +387,3 @@ Default Camera 是共享 View Config，临时相机是单个 Plugin 窗口状态
 - [天地图 LBS 服务文档（Key 与权限）](https://lbs.tianditu.gov.cn/server/search2.html)
 - [天地图 MapOptions（投影）](https://lbs.tianditu.gov.cn/api/js4.0/pages-class/MapOptions.html)
 - [Obsidian `requestUrl` 类型定义](https://github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts)
-

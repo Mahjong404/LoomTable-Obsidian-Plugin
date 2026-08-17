@@ -89,4 +89,3 @@ export const simplifiedChineseMessages = {
   'view.ready': 'LoomTable 已准备好开始 Plugin 开发。',
   'view.title': 'LoomTable',
 } as const satisfies MessageCatalog;
-

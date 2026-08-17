@@ -17,4 +17,3 @@ describe('map credential settings entries', () => {
     );
   });
 });
-
