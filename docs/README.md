@@ -2,6 +2,7 @@
 
 ## 产品和交互
 
+- [v0.1.1 发布说明](./releases/v0.1.1.md)
 - [Plugin 概要设计](./design/overview.md)
 - [Plugin 详细设计](./design/detailed.md)
 - [产品范围](./product/scope.md)
