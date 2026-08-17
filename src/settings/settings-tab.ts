@@ -21,6 +21,7 @@ import {
   type TileProviderRef,
 } from '../maps/providers/tile-provider-schema';
 import { createTranslator } from '../i18n';
+import { getLocaleOptions } from './locale-options';
 import {
   connectionCheckTone,
   describeConnectionCheck,
@@ -60,9 +61,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
 
     new Setting(this.containerEl).setName(t('language.label')).addDropdown((dropdown) =>
       dropdown
-        .addOption('auto', t('language.auto'))
-        .addOption('en', t('language.english'))
-        .addOption('zh-CN', t('language.zhCN'))
+        .addOptions(getLocaleOptions(t))
         .setValue(this.loomTablePlugin.settings.locale)
         .onChange(async (locale) => {
           this.loomTablePlugin.settings.locale = locale as LocalePreference;
