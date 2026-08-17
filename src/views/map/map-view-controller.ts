@@ -87,7 +87,10 @@ export class MapViewController {
       cameraChanged: (camera) => this.onCameraChanged(camera),
       pointSelected: (recordId) => void this.openRecord(recordId),
       clusterSelected: (clusterId) => void this.openCluster(clusterId),
+      tileLoading: ({ providerId }) => this.onTileLoading(providerId),
+      tileReady: ({ providerId }) => this.onTileReady(providerId),
       tileError: (error) => this.onTileError(error),
+      rendererSizeChanged: (size) => this.onRendererSizeChanged(size),
     });
   }
 
@@ -102,10 +105,14 @@ export class MapViewController {
     const provider = this.#options.registry.resolve(this.#providerRef, this.#options.credentials);
     if (!provider.ok) {
       this.clearTilePlan(provider.error.providerId);
-      this.publish({ tileStatus: 'configuration-required', tileError: provider.error });
+      this.publish({
+        tilePlanStatus: 'configuration-required',
+        tileStatus: 'configuration-required',
+        tileError: provider.error,
+      });
     } else {
       this.#providerMaxZoom = provider.plan.maxZoom;
-      this.publish({ tileStatus: 'ready', tileError: null });
+      this.publish({ tilePlanStatus: 'ready', tileStatus: 'loading', tileError: null });
       this.#options.renderer.setTilePlan(provider.plan);
     }
     this.#options.renderer.setCamera(this.#state.camera);
@@ -201,11 +208,15 @@ export class MapViewController {
     const resolved = this.#options.registry.resolve(provider, this.#options.credentials);
     if (!resolved.ok) {
       this.clearTilePlan(resolved.error.providerId);
-      this.publish({ tileStatus: 'configuration-required', tileError: resolved.error });
+      this.publish({
+        tilePlanStatus: 'configuration-required',
+        tileStatus: 'configuration-required',
+        tileError: resolved.error,
+      });
       return;
     }
     this.#providerMaxZoom = resolved.plan.maxZoom;
-    this.publish({ tileStatus: 'ready', tileError: null });
+    this.publish({ tilePlanStatus: 'ready', tileStatus: 'loading', tileError: null });
     this.#options.renderer.setTilePlan(resolved.plan);
   }
 
@@ -291,12 +302,46 @@ export class MapViewController {
 
   private onTileError(error: MapRendererError): void {
     this.publish({
+      tilePlanStatus: error.kind === 'renderer' ? 'error' : 'ready',
       tileStatus: 'error',
       tileError: {
         kind: 'tile-error',
         providerId:
           this.#providerRef.kind === 'custom' ? this.#providerRef.profileId : this.#providerRef.id,
         message: error.message,
+      },
+    });
+  }
+
+  private onTileLoading(providerId: string): void {
+    this.publish({
+      tilePlanStatus: 'ready',
+      tileStatus: 'loading',
+      tileError: null,
+    });
+    void providerId;
+  }
+
+  private onTileReady(providerId: string): void {
+    this.publish({
+      tilePlanStatus: 'ready',
+      tileStatus: 'ready',
+      tileError: null,
+    });
+    void providerId;
+  }
+
+  private onRendererSizeChanged(size: { readonly width: number; readonly height: number }): void {
+    if (size.width > 0 && size.height > 0) return;
+    this.publish({
+      tilePlanStatus: 'ready',
+      tileStatus: 'error',
+      tileError: {
+        kind: 'tile-error',
+        providerId:
+          this.#providerRef.kind === 'custom' ? this.#providerRef.profileId : this.#providerRef.id,
+        message:
+          'The Map container has zero size, so tiles cannot be rendered. Check the view layout.',
       },
     });
   }

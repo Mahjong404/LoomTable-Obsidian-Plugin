@@ -16,6 +16,8 @@ import type {
 export const PLUGIN_SETTINGS_SCHEMA_VERSION = 1 as const;
 export const SUPPORTED_LOCALES = ['en', 'zh-CN'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
+export const LOCALE_PREFERENCES = ['auto', ...SUPPORTED_LOCALES] as const;
+export type LocalePreference = (typeof LOCALE_PREFERENCES)[number];
 
 export interface MapPresentationSettingsV1 {
   readonly schemaVersion: 1;
@@ -27,7 +29,7 @@ export interface MapPresentationSettingsV1 {
 
 export interface PluginSettings {
   readonly schemaVersion: typeof PLUGIN_SETTINGS_SCHEMA_VERSION;
-  locale: SupportedLocale;
+  locale: LocalePreference;
   connectionProfiles: ConnectionProfile[];
   defaultConnectionProfileId: ConnectionProfileId | null;
   mapPresentation: MapPresentationSettingsV1;
@@ -35,7 +37,7 @@ export interface PluginSettings {
 
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
   schemaVersion: PLUGIN_SETTINGS_SCHEMA_VERSION,
-  locale: 'en',
+  locale: 'auto',
   connectionProfiles: [],
   defaultConnectionProfileId: null,
   mapPresentation: {
@@ -62,7 +64,7 @@ export function normalizePluginSettings(value: unknown): PluginSettings {
 
   return {
     schemaVersion: PLUGIN_SETTINGS_SCHEMA_VERSION,
-    locale: isSupportedLocale(value.locale) ? value.locale : DEFAULT_PLUGIN_SETTINGS.locale,
+    locale: isLocalePreference(value.locale) ? value.locale : DEFAULT_PLUGIN_SETTINGS.locale,
     connectionProfiles: profiles,
     defaultConnectionProfileId,
     mapPresentation: parseMapPresentation(value.mapPresentation),
@@ -142,8 +144,14 @@ function normalizeSecretId(value: unknown): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
-function isSupportedLocale(value: unknown): value is SupportedLocale {
-  return SUPPORTED_LOCALES.some((locale) => locale === value);
+export function resolveLocale(preference: LocalePreference, language: string): SupportedLocale {
+  if (preference !== 'auto') return preference;
+  const normalized = language.trim().toLowerCase().replace('_', '-');
+  return normalized === 'zh' || normalized.startsWith('zh-') ? 'zh-CN' : 'en';
+}
+
+function isLocalePreference(value: unknown): value is LocalePreference {
+  return LOCALE_PREFERENCES.some((locale) => locale === value);
 }
 
 function parseMapPresentation(value: unknown): MapPresentationSettingsV1 {

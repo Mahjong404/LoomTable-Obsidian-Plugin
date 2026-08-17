@@ -15,6 +15,7 @@ import type {
   MapCamera,
   MapRenderer,
   MapRendererEventListener,
+  MapRendererError,
 } from '../../src/maps/renderer/map-renderer';
 import { MapViewController } from '../../src/views/map/map-view-controller';
 
@@ -55,6 +56,42 @@ describe('MapViewController', () => {
     });
     expect(controller.state.tileError).toMatchObject({ providerId: 'tianditu-vector' });
     expect(renderer.tilePlans[0]?.layers).toEqual([]);
+  });
+
+  it('keeps the tile plan ready state separate from first-batch loading', async () => {
+    const renderer = new FakeRenderer();
+    const controller = createController(
+      createClient(),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { renderer },
+    );
+    controller.mount(document.createElement('div'));
+
+    await controller.load();
+
+    expect(controller.state.tilePlanStatus).toBe('ready');
+    expect(controller.state.tileStatus).toBe('loading');
+    renderer.emitTileReady('osm-standard');
+    expect(controller.state.tileStatus).toBe('ready');
+  });
+
+  it('surfaces tile errors and zero-sized renderer diagnostics without claiming ready', async () => {
+    const renderer = new FakeRenderer();
+    const controller = createController(
+      createClient(),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { renderer },
+    );
+    controller.mount(document.createElement('div'));
+    await controller.load();
+
+    renderer.emitTileError({ kind: 'tile', message: 'CSP blocked tiles' });
+    expect(controller.state.tileStatus).toBe('error');
+    expect(controller.state.tileError?.message).toBe('CSP blocked tiles');
+    renderer.emitSize({ width: 0, height: 0 });
+    expect(controller.state.tileError?.message).toContain('zero size');
   });
 
   it('does not send Map data requests while the client is offline', async () => {
@@ -308,6 +345,18 @@ class FakeRenderer implements MapRenderer {
   emitCamera(camera: MapCamera): void {
     this.camera = camera;
     this.listener.cameraChanged?.(camera);
+  }
+
+  emitTileReady(providerId: string): void {
+    this.listener.tileReady?.({ providerId });
+  }
+
+  emitTileError(error: MapRendererError): void {
+    this.listener.tileError?.(error);
+  }
+
+  emitSize(size: { readonly width: number; readonly height: number }): void {
+    this.listener.rendererSizeChanged?.(size);
   }
 }
 

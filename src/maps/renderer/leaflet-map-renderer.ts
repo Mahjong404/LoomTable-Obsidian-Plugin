@@ -19,6 +19,7 @@ export class LeafletMapAdapter implements MapRendererAdapter {
     map: RendererMapHandle,
     layer: ResolvedTileLayer,
     attribution: string,
+    onLoad: () => void,
     onError: (message: string) => void,
   ): RendererLayerHandle {
     const leafletMap = unwrapMap(map);
@@ -27,7 +28,12 @@ export class LeafletMapAdapter implements MapRendererAdapter {
       tileSize: layer.tileSize,
       subdomains: layer.subdomains === undefined ? undefined : [...layer.subdomains],
     });
-    tileLayer.on('tileerror', () => onError(`Tile layer ${layer.id} failed to load.`));
+    tileLayer.on('load', onLoad);
+    tileLayer.on('tileerror', () =>
+      onError(
+        `Tile layer ${layer.id} failed to load. Check network access, Content Security Policy, provider credentials, and HTTPS origin.`,
+      ),
+    );
     return new LeafletLayerHandle(leafletMap, tileLayer);
   }
 
