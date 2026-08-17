@@ -440,7 +440,7 @@
 }
 
 .leaflet-tile-loaded {
-  visibility: inherit;
+  visibility: visible !important;
 }
 
 .leaflet-map-pane,
