@@ -11,13 +11,12 @@ import {
 import type LoomTablePlugin from '../main';
 import type { ProfileCredentialStore } from '../credentials/profile-credential-store';
 import type { TileCredentialStore } from '../maps/credentials/tile-credential-store';
-import { BUILT_IN_TILE_PROVIDERS } from '../maps/providers/presets';
+import { getBuiltInMapCredentialEntries } from './map-credential-entries';
 import { TileProviderRegistry } from '../maps/providers/tile-provider-registry';
 import {
   credentialBindingKey,
   validateCustomTileProviderProfile,
   type CustomTileProviderProfileV1,
-  type BuiltInTileProviderId,
   type TileProviderRef,
 } from '../maps/providers/tile-provider-schema';
 import { createTranslator } from '../i18n';
@@ -231,19 +230,15 @@ export class LoomTableSettingTab extends PluginSettingTab {
         });
     });
 
-    for (const definition of BUILT_IN_TILE_PROVIDERS) {
-      for (const slot of definition.credentialSlots ?? []) {
-        this.renderCredential(
-          section,
-          definition.displayName,
-          {
-            kind: 'built-in',
-            id: definition.id as BuiltInTileProviderId,
-          },
-          slot.id,
-          slot.displayName,
-        );
-      }
+    for (const entry of getBuiltInMapCredentialEntries()) {
+      this.renderCredential(
+        section,
+        t('map.tiandituToken'),
+        entry.ref,
+        entry.slotId,
+        entry.slotName,
+        t('map.tiandituCredentialDescription'),
+      );
     }
     for (const profile of this.loomTablePlugin.settings.mapPresentation.customProfiles) {
       this.renderCustomProfile(section, profile);
@@ -329,13 +324,14 @@ export class LoomTableSettingTab extends PluginSettingTab {
     ref: TileProviderRef,
     slotId: string,
     slotName: string,
+    description?: string,
   ): void {
     const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
     const bindingKey = credentialBindingKey(ref, slotId);
     const settings = this.loomTablePlugin.settings.mapPresentation;
     new Setting(section)
-      .setName(`${providerName} · ${slotName}`)
-      .setDesc(t('map.credentialDescription'))
+      .setName(slotName === '' ? providerName : `${providerName} · ${slotName}`)
+      .setDesc(description ?? t('map.credentialDescription'))
       .addText((text) => {
         text.inputEl.type = 'password';
         text.inputEl.autocomplete = 'off';

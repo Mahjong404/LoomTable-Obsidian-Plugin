@@ -1,5 +1,14 @@
 export const TILE_PROVIDER_SCHEMA_VERSION = 1 as const;
 
+export const TIANDITU_CREDENTIAL_SLOT_ID = 'tianditu-token' as const;
+export const TIANDITU_CREDENTIAL_BINDING_KEY = 'built-in:tianditu:tianditu-token' as const;
+
+export const TIANDITU_PROVIDER_IDS = [
+  'tianditu-vector',
+  'tianditu-imagery',
+  'tianditu-terrain',
+] as const;
+
 export type BuiltInTileProviderId =
   'osm-standard' | 'tianditu-vector' | 'tianditu-imagery' | 'tianditu-terrain';
 
@@ -113,9 +122,22 @@ const COORDINATE_PLACEHOLDERS = new Set(['x', 'y', 'z', 's']);
 const SENSITIVE_QUERY_KEYS = new Set(['token', 'access_token', 'apikey', 'api_key', 'key', 'tk']);
 
 export function credentialBindingKey(ref: TileProviderRef, slotId: string): string {
+  if (
+    ref.kind === 'built-in' &&
+    isTiandituProviderId(ref.id) &&
+    slotId === TIANDITU_CREDENTIAL_SLOT_ID
+  ) {
+    return TIANDITU_CREDENTIAL_BINDING_KEY;
+  }
   return ref.kind === 'built-in'
     ? `built-in:${ref.id}:${slotId}`
     : `custom:${ref.profileId}:${slotId}`;
+}
+
+export function isTiandituProviderId(
+  value: string,
+): value is (typeof TIANDITU_PROVIDER_IDS)[number] {
+  return TIANDITU_PROVIDER_IDS.some((providerId) => providerId === value);
 }
 
 export function validateCustomTileProviderProfile(

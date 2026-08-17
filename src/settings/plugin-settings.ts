@@ -6,11 +6,14 @@ import {
   type ConnectionProfileDraft,
   type ConnectionProfileId,
 } from './connection-profile';
-import type {
-  CustomTileProviderProfileV1,
-  TileAttribution,
-  TileCredentialSlot,
-  TileProviderRef,
+import {
+  TIANDITU_CREDENTIAL_BINDING_KEY,
+  TIANDITU_CREDENTIAL_SLOT_ID,
+  TIANDITU_PROVIDER_IDS,
+  type CustomTileProviderProfileV1,
+  type TileAttribution,
+  type TileCredentialSlot,
+  type TileProviderRef,
 } from '../maps/providers/tile-provider-schema';
 
 export const PLUGIN_SETTINGS_SCHEMA_VERSION = 1 as const;
@@ -170,11 +173,11 @@ function parseMapPresentation(value: unknown): MapPresentationSettingsV1 {
   const customProfiles = Array.isArray(value.customProfiles)
     ? value.customProfiles.flatMap(parseCustomProfile)
     : [];
-  const credentialBindings: Record<string, string> = {};
+  const rawCredentialBindings: Record<string, string> = {};
   if (isRecord(value.credentialBindings)) {
     for (const [bindingKey, secretId] of Object.entries(value.credentialBindings)) {
       if (typeof secretId === 'string' && bindingKey.trim() !== '' && secretId.trim() !== '') {
-        credentialBindings[bindingKey] = secretId.trim();
+        rawCredentialBindings[bindingKey] = secretId.trim();
       }
     }
   }
@@ -183,8 +186,37 @@ function parseMapPresentation(value: unknown): MapPresentationSettingsV1 {
     defaultProvider,
     perViewProvider,
     customProfiles,
-    credentialBindings,
+    credentialBindings: migrateTiandituCredentialBindings(rawCredentialBindings),
   };
+}
+
+export function migrateTiandituCredentialBindings(
+  bindings: Readonly<Record<string, string>>,
+): Record<string, string> {
+  const migrated: Record<string, string> = {};
+  const legacyKeys = new Set(
+    TIANDITU_PROVIDER_IDS.map(
+      (providerId) => `built-in:${providerId}:${TIANDITU_CREDENTIAL_SLOT_ID}`,
+    ),
+  );
+  const sharedSecretId = bindings[TIANDITU_CREDENTIAL_BINDING_KEY]?.trim();
+  if (sharedSecretId !== undefined && sharedSecretId !== '') {
+    migrated[TIANDITU_CREDENTIAL_BINDING_KEY] = sharedSecretId;
+  } else {
+    for (const providerId of TIANDITU_PROVIDER_IDS) {
+      const legacyKey = `built-in:${providerId}:${TIANDITU_CREDENTIAL_SLOT_ID}`;
+      const legacySecretId = bindings[legacyKey]?.trim();
+      if (legacySecretId !== undefined && legacySecretId !== '') {
+        migrated[TIANDITU_CREDENTIAL_BINDING_KEY] = legacySecretId;
+        break;
+      }
+    }
+  }
+  for (const [bindingKey, secretId] of Object.entries(bindings)) {
+    if (bindingKey === TIANDITU_CREDENTIAL_BINDING_KEY || legacyKeys.has(bindingKey)) continue;
+    migrated[bindingKey] = secretId;
+  }
+  return migrated;
 }
 
 function parseProviderRef(value: unknown): TileProviderRef | null {

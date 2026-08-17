@@ -1,8 +1,8 @@
-import type { TileProviderDefinition } from './tile-provider-schema';
+import { TIANDITU_CREDENTIAL_SLOT_ID, type TileProviderDefinition } from './tile-provider-schema';
 
 const TIANDITU_SUBDOMAINS = ['t0', 't1', 't2', 't3', 't4', 't5', 't6', 't7'] as const;
 const TIANDITU_CREDENTIAL_SLOT = {
-  id: 'tianditu-token',
+  id: TIANDITU_CREDENTIAL_SLOT_ID,
   displayName: '天地图 Token',
   required: true,
 } as const;
