@@ -23,11 +23,7 @@ export class LeafletMapAdapter implements MapRendererAdapter {
     onError: (message: string) => void,
   ): RendererLayerHandle {
     const leafletMap = unwrapMap(map);
-    const tileLayer = L.tileLayer(layer.urlTemplate, {
-      attribution,
-      tileSize: layer.tileSize,
-      subdomains: layer.subdomains === undefined ? undefined : [...layer.subdomains],
-    });
+    const tileLayer = L.tileLayer(layer.urlTemplate, createTileLayerOptions(layer, attribution));
     tileLayer.on('load', onLoad);
     tileLayer.on('tileerror', () =>
       onError(
@@ -68,6 +64,17 @@ export class LeafletMapAdapter implements MapRendererAdapter {
     marker.addTo(unwrapMap(map));
     return new LeafletFeatureHandle(marker, label);
   }
+}
+
+export function createTileLayerOptions(
+  layer: ResolvedTileLayer,
+  attribution: string,
+): L.TileLayerOptions {
+  return {
+    attribution,
+    tileSize: layer.tileSize,
+    ...(layer.subdomains === undefined ? {} : { subdomains: [...layer.subdomains] }),
+  };
 }
 
 class LeafletMapHandle implements RendererMapHandle {
