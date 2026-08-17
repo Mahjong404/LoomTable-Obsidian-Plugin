@@ -80,22 +80,24 @@ export class LoomTableSettingTab extends PluginSettingTab {
       this.renderProfile(profile);
     }
 
-    new Setting(this.containerEl).addButton((button) =>
-      button
-        .setButtonText(t('common.add'))
-        .setCta()
-        .onClick(async () => {
-          addConnectionProfile(this.loomTablePlugin.settings, {
-            name: t('connection.newName'),
-            serverOrigin: DEFAULT_SERVER_ORIGIN,
-            rememberToken: false,
-            tokenSecretId: null,
-          });
-          await this.loomTablePlugin.saveSettings();
-          this.display();
-          this.loomTablePlugin.refreshViews();
-        }),
-    );
+    new Setting(this.containerEl)
+      .setDesc(t('connection.addProfileDescription'))
+      .addButton((button) =>
+        button
+          .setButtonText(t('connection.addProfile'))
+          .setCta()
+          .onClick(async () => {
+            addConnectionProfile(this.loomTablePlugin.settings, {
+              name: t('connection.newName'),
+              serverOrigin: DEFAULT_SERVER_ORIGIN,
+              rememberToken: false,
+              tokenSecretId: null,
+            });
+            await this.loomTablePlugin.saveSettings();
+            this.display();
+            this.loomTablePlugin.refreshViews();
+          }),
+      );
 
     this.renderMapSettings();
   }
@@ -177,9 +179,9 @@ export class LoomTableSettingTab extends PluginSettingTab {
 
     refreshConnectionCheck = this.renderConnectionCheck(section, profile);
 
-    new Setting(section).addButton((button) =>
+    new Setting(section).setDesc(t('connection.deleteProfileDescription')).addButton((button) =>
       button
-        .setButtonText(t('common.delete'))
+        .setButtonText(t('connection.deleteProfile'))
         .setWarning()
         .onClick(async () => {
           this.invalidateConnectionCheck(profile);
