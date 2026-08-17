@@ -8,6 +8,8 @@ LoomTable 的 Obsidian 前端插件。Plugin 使用 TypeScript，通过 LoomTabl
 
 P0 Plugin 已完成并进入 `v0.1.1` 发布闭环：设置页支持 `/v1/meta` 兼容性检测、只读认证探测和跟随 Obsidian 的语言选择；Workspace → Base → Table → View 导航、只读/编辑 Grid、Mutation Queue、Conflict UI、Map View 与客户端瓦片 Provider 均已合并并通过 CI。当前文档只把已实际验证的平台和图层列为通过项，详见 [v0.1.1 发布说明](./docs/releases/v0.1.1.md)。
 
+Map 默认使用 OpenStreetMap。天地图矢量、影像、地形及注记预设共用一个 Token 设置入口；Plugin 直连必须使用天地图浏览器端应用 Key，标准 WMTS `tk` 请求不需要安全密钥。仓库、测试和日志不包含真实 Key。
+
 ## 开发
 
 需要 Node.js 24 和 pnpm 11.16.0：
@@ -46,3 +48,4 @@ pnpm api:generate
 - 生产数据通过 LoomTable Server 获取；本地缓存不是真实数据来源。
 
 许可证：MIT License。
+

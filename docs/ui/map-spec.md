@@ -183,9 +183,9 @@ P0 不发布供第三方 Plugin 调用的公共 JavaScript API。新增普通服
 | Preset ID | 图层 | Credential | P0 说明 |
 |---|---|---|---|
 | `osm-standard` | OpenStreetMap Standard | 无 | 首次安装默认；仅交互浏览 |
-| `tianditu-vector` | `vec_w` + `cva_w` 注记 | 用户自己的天地图 Token | Web Mercator |
-| `tianditu-imagery` | `img_w` + `cia_w` 注记 | 用户自己的天地图 Token | Web Mercator |
-| `tianditu-terrain` | `ter_w` + `cta_w` 注记 | 用户自己的天地图 Token | Web Mercator |
+| `tianditu-vector` | `vec_w` + `cva_w` 注记 | 与其他天地图预设共用一个用户 Token | Web Mercator |
+| `tianditu-imagery` | `img_w` + `cia_w` 注记 | 与其他天地图预设共用一个用户 Token | Web Mercator |
+| `tianditu-terrain` | `ter_w` + `cta_w` 注记 | 与其他天地图预设共用一个用户 Token | Web Mercator |
 
 ### OpenStreetMap Standard
 
@@ -205,7 +205,7 @@ https://tile.openstreetmap.org/{z}/{x}/{y}.png
 
 ### 天地图
 
-天地图预设使用 HTTPS 和用户自己的 Token。Plugin 不附带共享 Token。由于 Plugin 在 `app://obsidian.md` Origin 下直接请求瓦片，必须使用天地图“浏览器端”应用 Key；“服务器端”应用 Key 只适用于无 Origin 的服务端请求或服务端代理，桌面直连会返回 `301013` 权限类型错误。当前验证不需要安全密钥才能使用标准 WMTS `tk` 请求；不要把任何真实 Key 写入仓库、文档、测试或日志。初始 WMTS 模板由 Provider Definition 生成，等价于：
+天地图三个内置预设共用一个用户 Token，Plugin 不附带共享 Token。由于 Plugin 在 `app://obsidian.md` Origin 下直接请求瓦片，必须使用天地图“浏览器端”应用 Key。标准 WMTS `tk` 请求只需要 Token，不需要安全密钥；不要把任何真实 Key 写入仓库、文档、测试或日志。初始 WMTS 模板由 Provider Definition 生成，等价于：
 
 ```text
 https://t{s}.tianditu.gov.cn/{layer}_w/wmts
@@ -222,7 +222,7 @@ https://t{s}.tianditu.gov.cn/{layer}_w/wmts
   &tk={credential:tianditu-token}
 ```
 
-其中 `{layer}` 由预设控制，`{s}` 只能从预设允许的子域列表选择，Credential Placeholder 只在内存中展开。发布前使用用户提供的测试 Token 验证当前端点、权限、Zoom 范围、基础层与注记层组合、Attribution 和服务条款；预设端点不能被视为永久合同。
+其中 `{layer}` 由预设控制，三个预设使用同一个 `tianditu-token` Credential Placeholder；`{s}` 只能从预设允许的子域列表选择，Credential Placeholder 只在内存中展开。发布前使用用户提供的测试 Token 验证当前端点、权限、Zoom 范围、基础层与注记层组合、Attribution 和服务条款；预设端点不能被视为永久合同。
 
 P0 只启用 `_w` Web Mercator 预设，不启用 `_c` 经纬度瓦片，也不在渲染过程中隐式切换 CRS。
 
@@ -374,8 +374,8 @@ Default Camera 是共享 View Config，临时相机是单个 Plugin 窗口状态
 ### 发布前 Live Smoke Test
 
 - Obsidian Desktop 已验证 OSM 加载、`Tiles ready`、Fit all 后的可渲染记录和可见 Attribution。
-- Obsidian Desktop 的 `app://obsidian.md` Origin 已使用浏览器端 Key 验证天地图矢量与注记层返回 200 PNG 并成功显示；服务器端 Key 仅在无 Origin 的服务端请求中验证可用，桌面直连被 `301013` 拒绝。
-- Android、iOS、天地图影像层和地形层不在本次已通过范围内。
+- Obsidian Desktop 的 `app://obsidian.md` Origin 已使用同一个浏览器端 Key 验证天地图矢量、影像、地形及相应注记层返回 200 PNG 并成功显示。
+- Android、iOS Obsidian smoke 不在本次已通过范围内。
 - 验证无 Token、无权限 Token、限流和 Provider 暂时不可用。
 - 检查 Network/日志/诊断导出中不存在明文 Token。
 - Live Test 不进入普通 CI 的必过链路，因为公共 Provider 无 SLA 且天地图需要私有 Token。
@@ -387,3 +387,4 @@ Default Camera 是共享 View Config，临时相机是单个 Plugin 窗口状态
 - [天地图 LBS 服务文档（Key 与权限）](https://lbs.tianditu.gov.cn/server/search2.html)
 - [天地图 MapOptions（投影）](https://lbs.tianditu.gov.cn/api/js4.0/pages-class/MapOptions.html)
 - [Obsidian `requestUrl` 类型定义](https://github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts)
+

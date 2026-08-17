@@ -40,21 +40,33 @@ describe('TileProviderRegistry', () => {
 
   it('requires a Tianditu token and expands it only in the in-memory plan', () => {
     const registry = new TileProviderRegistry();
-    const ref: TileProviderRef = { kind: 'built-in', id: 'tianditu-vector' };
-    const binding = credentialBindingKey(ref, 'tianditu-token');
+    const refs: TileProviderRef[] = [
+      { kind: 'built-in', id: 'tianditu-vector' },
+      { kind: 'built-in', id: 'tianditu-imagery' },
+      { kind: 'built-in', id: 'tianditu-terrain' },
+    ];
+    const binding = credentialBindingKey(refs[0]!, 'tianditu-token');
 
-    expect(registry.resolve(ref, reader({}))).toMatchObject({
+    expect(refs.map((ref) => credentialBindingKey(ref, 'tianditu-token'))).toEqual([
+      binding,
+      binding,
+      binding,
+    ]);
+
+    expect(registry.resolve(refs[0]!, reader({}))).toMatchObject({
       ok: false,
       error: { kind: 'configuration-required', credentialSlotId: 'tianditu-token' },
     });
 
-    const resolution = registry.resolve(ref, reader({ [binding]: 'secret-token' }));
-    expect(resolution.ok).toBe(true);
-    if (!resolution.ok) return;
-    expect(resolution.plan.layers[0]?.urlTemplate).toContain('tk=secret-token');
-    expect(JSON.stringify(summarizeResolvedTilePlan(resolution.plan))).not.toContain(
-      'secret-token',
-    );
+    for (const ref of refs) {
+      const resolution = registry.resolve(ref, reader({ [binding]: 'secret-token' }));
+      expect(resolution.ok).toBe(true);
+      if (!resolution.ok) continue;
+      expect(resolution.plan.layers[0]?.urlTemplate).toContain('tk=secret-token');
+      expect(JSON.stringify(summarizeResolvedTilePlan(resolution.plan))).not.toContain(
+        'secret-token',
+      );
+    }
   });
 
   it('accepts a loopback custom XYZ profile but rejects unsafe origins and literal keys', () => {
@@ -114,3 +126,4 @@ function customProfile(
     ...overrides,
   };
 }
+

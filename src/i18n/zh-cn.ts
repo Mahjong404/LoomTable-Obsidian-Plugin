@@ -74,15 +74,19 @@ export const simplifiedChineseMessages = {
   'map.addCustom': '添加自定义 XYZ',
   'map.credentialDescription':
     '默认仅保存在本次会话；选择 Secret Storage 条目后才会记住。Vault 同步或备份可能包含引用或配置。',
+  'map.tiandituCredentialDescription':
+    '天地图直连必须使用浏览器端应用 Key。默认仅保存在本次会话；选择 Secret Storage 条目后才会记住。标准 WMTS tk 请求不需要安全密钥。',
   'map.customName': '自定义提供方名称',
   'map.customProfile': '自定义 XYZ 配置档',
   'map.customUrl': 'XYZ URL 模板',
   'map.customUrlDescription': '必须包含 {z}、{x}、{y}；非回环地址必须使用 HTTPS。',
   'map.defaultProvider': '默认瓦片提供方',
   'map.settings': '地图与瓦片提供方',
+  'map.tiandituToken': '天地图 Token',
   'settings.connections': '连接档案',
   'settings.title': 'LoomTable',
   'view.configure': '请先在 LoomTable 设置中配置连接档案。',
   'view.ready': 'LoomTable 已准备好开始 Plugin 开发。',
   'view.title': 'LoomTable',
 } as const satisfies MessageCatalog;
+

@@ -78,12 +78,15 @@ export const englishMessages = {
   'map.addCustom': 'Add custom XYZ',
   'map.credentialDescription':
     'Session-only by default. Select a Secret Storage entry to remember it; Vault sync or backups may include the reference/configuration.',
+  'map.tiandituCredentialDescription':
+    'Use a TianDiTu browser-side application Key for direct Obsidian tile requests. Session-only by default; select a Secret Storage entry to remember it. Standard WMTS tk requests do not require a security key.',
   'map.customName': 'Custom provider name',
   'map.customProfile': 'Custom XYZ profiles',
   'map.customUrl': 'XYZ URL template',
   'map.customUrlDescription': 'Use {z}, {x}, and {y}; non-loopback origins must use HTTPS.',
   'map.defaultProvider': 'Default tile provider',
   'map.settings': 'Map and tile providers',
+  'map.tiandituToken': 'TianDiTu Token',
   'settings.connections': 'Connection profiles',
   'settings.title': 'LoomTable',
   'view.configure': 'Configure a connection profile in LoomTable settings to get started.',
@@ -93,3 +96,4 @@ export const englishMessages = {
 
 export type MessageKey = keyof typeof englishMessages;
 export type MessageCatalog = { readonly [Key in MessageKey]: string };
+
