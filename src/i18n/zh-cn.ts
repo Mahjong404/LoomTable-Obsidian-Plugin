@@ -7,6 +7,11 @@ export const simplifiedChineseMessages = {
   'common.delete': '删除',
   'common.save': '保存',
   'connection.default': '默认',
+  'connection.addProfile': '添加连接档案',
+  'connection.addProfileDescription': '添加 Server 连接档案；不会创建或删除 Server 数据。',
+  'connection.deleteProfile': '删除此连接档案',
+  'connection.deleteProfileDescription':
+    '从 Plugin 中移除此 Server 连接档案；不会影响 Server 数据。',
   'connection.empty': '尚未配置连接档案。',
   'connection.name': '名称',
   'connection.newName': 'LoomTable Server',

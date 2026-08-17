@@ -5,6 +5,12 @@ export const englishMessages = {
   'common.delete': 'Delete',
   'common.save': 'Save',
   'connection.default': 'Default',
+  'connection.addProfile': 'Add connection profile',
+  'connection.addProfileDescription':
+    'Add a Server connection profile; this does not create or delete Server data.',
+  'connection.deleteProfile': 'Delete this connection profile',
+  'connection.deleteProfileDescription':
+    'Remove this Server connection profile from the Plugin; Server data is not affected.',
   'connection.empty': 'No connection profile is configured.',
   'connection.name': 'Name',
   'connection.newName': 'LoomTable Server',
