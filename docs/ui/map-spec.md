@@ -205,7 +205,7 @@ https://tile.openstreetmap.org/{z}/{x}/{y}.png
 
 ### 天地图
 
-天地图预设使用 HTTPS 和用户自己的 Token。Plugin 不附带共享 Token。初始 WMTS 模板由 Provider Definition 生成，等价于：
+天地图预设使用 HTTPS 和用户自己的 Token。Plugin 不附带共享 Token。由于 Plugin 在 `app://obsidian.md` Origin 下直接请求瓦片，必须使用天地图“浏览器端”应用 Key；“服务器端”应用 Key 只适用于无 Origin 的服务端请求或服务端代理，桌面直连会返回 `301013` 权限类型错误。当前验证不需要安全密钥才能使用标准 WMTS `tk` 请求；不要把任何真实 Key 写入仓库、文档、测试或日志。初始 WMTS 模板由 Provider Definition 生成，等价于：
 
 ```text
 https://t{s}.tianditu.gov.cn/{layer}_w/wmts
@@ -373,8 +373,9 @@ Default Camera 是共享 View Config，临时相机是单个 Plugin 窗口状态
 
 ### 发布前 Live Smoke Test
 
-- Obsidian Desktop、Android 和 iOS 各验证 OSM 加载、缓存和可见 Attribution。
-- 使用测试 Token 验证天地图矢量、影像、地形及对应注记层。
+- Obsidian Desktop 已验证 OSM 加载、`Tiles ready`、Fit all 后的可渲染记录和可见 Attribution。
+- Obsidian Desktop 的 `app://obsidian.md` Origin 已使用浏览器端 Key 验证天地图矢量与注记层返回 200 PNG 并成功显示；服务器端 Key 仅在无 Origin 的服务端请求中验证可用，桌面直连被 `301013` 拒绝。
+- Android、iOS、天地图影像层和地形层不在本次已通过范围内。
 - 验证无 Token、无权限 Token、限流和 Provider 暂时不可用。
 - 检查 Network/日志/诊断导出中不存在明文 Token。
 - Live Test 不进入普通 CI 的必过链路，因为公共 Provider 无 SLA 且天地图需要私有 Token。
