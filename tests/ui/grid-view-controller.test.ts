@@ -126,6 +126,25 @@ describe('GridViewController', () => {
     expect(controller.state.editError?.message).toContain('control characters');
   });
 
+  it('rejects Cell edits while offline before sending a Mutation', async () => {
+    const data = createData(createRecords(1), createGridConfig(false));
+    const mutate = vi
+      .fn<(tableId: string, request: MutationRequest) => Promise<MutationResult>>()
+      .mockResolvedValue(mutationResult('mutation_01', 'Local value', 2));
+    const controller = new GridViewController(withMutation(data, mutate), {
+      isOffline: () => true,
+    });
+    await controller.load();
+
+    expect(controller.state.status).toBe('ready');
+    await expect(
+      controller.editCell('record_01', 'field_name', 'Local value'),
+    ).rejects.toMatchObject({ kind: 'validation' });
+
+    expect(mutate).not.toHaveBeenCalled();
+    expect(controller.state.editError?.message).toContain('offline');
+  });
+
   it('keeps an optimistic value while the mutation is in flight and applies the Server Record', async () => {
     const data = createData(createRecords(1), createGridConfig(false));
     let resolveMutation: ((result: MutationResult) => void) | undefined;
