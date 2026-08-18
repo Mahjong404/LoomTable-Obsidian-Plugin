@@ -323,6 +323,7 @@ export class ReadonlyGridRenderer {
   #beginCellEdit(cell: HTMLElement, record: LoomTableRecord, field: Field): void {
     if (
       !isEditableField(field) ||
+      this.#virtualGrid?.state.status !== 'ready' ||
       this.#virtualGrid?.state.editStatuses[record.id] === 'conflict'
     ) {
       return;
