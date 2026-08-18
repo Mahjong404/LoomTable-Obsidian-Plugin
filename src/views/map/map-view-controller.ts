@@ -143,7 +143,10 @@ export class MapViewController {
       return;
     }
     try {
-      const stale = await this.revalidateChanges(sequence);
+      let stale = false;
+      if (this.#state.changeCursor !== null) {
+        stale = await this.revalidateChanges(sequence);
+      }
       if (stale || this.#destroyed || sequence !== this.#querySequence) return;
       await this.queryViewport(sequence);
     } catch (error) {
