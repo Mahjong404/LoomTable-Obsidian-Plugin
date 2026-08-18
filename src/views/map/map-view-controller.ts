@@ -125,7 +125,7 @@ export class MapViewController {
     try {
       const summary = await this.#client.summarizeMap(this.#view.id);
       if (summary.viewRevision !== this.#view.revision) return;
-      this.publish({ summary: summary.summary });
+      this.publish({ summary: summary.summary, changeCursor: summary.changeCursor });
       if (!hasSavedCamera(this.#view) && summary.summary.dataBounds !== undefined) {
         this.#options.renderer.fitBounds(summary.summary.dataBounds);
       }
@@ -146,7 +146,7 @@ export class MapViewController {
     try {
       const result = await this.#client.summarizeMap(this.#view.id);
       if (result.viewRevision !== this.#view.revision) return;
-      this.publish({ summary: result.summary });
+      this.publish({ summary: result.summary, changeCursor: result.changeCursor });
       if (result.summary.dataBounds === undefined) {
         this.#options.renderer.setCamera(DEFAULT_MAP_CAMERA);
       } else {
@@ -277,6 +277,7 @@ export class MapViewController {
         clusterRecords: result.items,
         clusterToken: token,
         clusterCursor: result.nextCursor ?? null,
+        changeCursor: result.changeCursor,
       });
       this.#options.onClusterRecords?.(result.items);
     } catch (error) {
@@ -291,11 +292,17 @@ export class MapViewController {
   }
 
   private applyQueryResult(result: MapQueryResult): void {
-    this.#options.renderer.setFeatures(result.features);
+    const features = result.features.map((feature) =>
+      feature.kind === 'point' && feature.primaryFieldText.trim() === ''
+        ? { ...feature, primaryFieldText: feature.recordId }
+        : feature,
+    );
+    this.#options.renderer.setFeatures(features);
     this.publish({
       dataStatus: result.viewportRenderableRecordCount === 0 ? 'empty' : 'ready',
-      features: result.features,
+      features,
       viewportRenderableRecordCount: result.viewportRenderableRecordCount,
+      changeCursor: result.changeCursor,
       error: null,
     });
   }
@@ -369,7 +376,11 @@ export class MapViewController {
     }
     const locationFieldId = view.config.locationFieldId;
     const locationField = this.#fields.find((field) => field.id === locationFieldId);
-    if (locationField?.type !== 'location') {
+    if (
+      locationField?.type !== 'location' ||
+      locationField.tableId !== view.tableId ||
+      locationField.deletedAt !== undefined
+    ) {
       return {
         message: 'The Map View requires an available Location Field.',
         code: 'VIEW_CONFIGURATION_REQUIRED',
