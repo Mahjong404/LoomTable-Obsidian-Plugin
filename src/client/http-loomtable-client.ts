@@ -1470,8 +1470,9 @@ function errorFromResponse(status: number, apiError: ApiError | null): LoomTable
   }
   if (status === 501) return new LoomTableClientError('capability', details);
   if (
-    status === 410 &&
-    (apiError?.code === 'CURSOR_EXPIRED' || apiError?.code === 'QUERY_SNAPSHOT_EXPIRED')
+    (status === 400 && apiError?.code === 'INVALID_CURSOR') ||
+    (status === 410 &&
+      (apiError?.code === 'CURSOR_EXPIRED' || apiError?.code === 'QUERY_SNAPSHOT_EXPIRED'))
   ) {
     return new LoomTableClientError('cursor-expired', details);
   }
