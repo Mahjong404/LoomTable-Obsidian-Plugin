@@ -123,23 +123,23 @@ Cell Editor
 
 每个 Cell 编辑必须可以独立失败，不得因为一个 Cell 失败而重新加载整张 Table。
 
-同一 Record 的 Mutation 按 FIFO 串行执行，确保后续编辑使用前一次成功返回的新 Revision；不同 Record 的队列可以并行。Conflict 只暂停发生冲突的 Record 队列，不阻塞其他 Record。
+当前 main 已交付的 P1 Grid mutation 切片只为现有 Record 发送单条 `UpdateRecord`。同一 Record 的 Mutation 按 FIFO 串行执行，确保后续编辑使用前一次成功返回的新 Revision；不同 Record 的队列可以并行。Conflict 只暂停发生冲突的 Record 队列，不阻塞其他 Record。
 
-Conflict UI 必须展示本地提交值和服务端当前值，并提供：放弃本地修改、采用服务端值、明确确认后覆盖服务端值、逐字段选择。覆盖和逐字段合并都必须形成一次使用当前 Revision 的新 Mutation，不能由网络重试隐式完成。
+Conflict UI 必须展示本地提交值和服务端当前值，并提供：放弃本地修改、采用服务端值（use-server）、明确确认后覆盖服务端值（overwrite）。覆盖必须形成一次使用当前 Revision 的新 Mutation，不能由网络重试隐式完成。逐字段 Conflict merge、create/delete/restore 不属于当前 Plugin 交付，保留为 backlog/设计约束。
 
 ## 6. 缓存策略
 
 - 缓存最近访问的 Workspace、Base、Table 和 View 元数据。
 - 缓存当前 View 的可见页和相邻页。
 - 缓存不拥有 Record 的事实来源权。
-- 服务不可用时允许读取缓存，但第一阶段不允许离线写入。
+- 服务不可用时允许读取缓存；Personal P1 不允许离线写入。
 - 缓存必须带 Server URL、API 版本和数据版本标识。
 - 切换账号或 Server 时不得混用缓存。
 - Workspace、Base、Table 和 View 元数据保存在 Plugin Data；Record 页面保存在有容量上限的 IndexedDB Page Cache。
 - 缓存键至少包含规范化 `serverOrigin`、API 版本、Actor/连接身份、Table ID、View ID 和等价 Query 指纹。
 - 打开 View、View 重新获得焦点和用户手动刷新时检查变化；可见的活动 View 默认每 30 秒低频轮询，隐藏、休眠或卸载时暂停。
 - Change 命中当前 Table 后，先使受影响的缓存页失效，再按当前 Query 定向重新请求；不能在 Plugin 中重算服务端 Filter 和 Sort。
-- P0 不支持离线写入，也不在重新联网后自动重放本地编辑。
+- Mutation Queue 当前仅驻留内存，不做重启后持久化；Personal P1 不支持离线写入，也不在重新联网后自动重放本地编辑。
 
 ## 7. 响应式实现
 

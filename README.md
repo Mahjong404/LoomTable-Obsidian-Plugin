@@ -6,7 +6,7 @@ LoomTable 的 Obsidian 前端插件。Plugin 使用 TypeScript，通过 LoomTabl
 
 新建 Connection Profile 默认连接本机 Server 地址 `http://127.0.0.1:31201`；已有 Profile 会保留用户已保存的地址，不会静默迁移。
 
-P0 Plugin 已完成并进入 `v0.1.1` 发布闭环：设置页支持 `/v1/meta` 兼容性检测、只读认证探测和跟随 Obsidian 的语言选择；Workspace → Base → Table → View 导航、只读/编辑 Grid、Mutation Queue、Conflict UI、Map View 与客户端瓦片 Provider 均已合并并通过 CI。当前文档只把已实际验证的平台和图层列为通过项，详见 [v0.1.1 发布说明](./docs/releases/v0.1.1.md)。
+P0 Plugin 已完成并进入 `v0.1.1` 发布闭环：设置页支持 `/v1/meta` 兼容性检测、只读认证探测和跟随 Obsidian 的语言选择；Workspace → Base → Table → View 导航、Grid、Mutation Queue、Conflict UI、Map View 与客户端瓦片 Provider 均已合并并通过 CI。当前 main 已交付的 P1 Grid 编辑切片仅支持对现有 Record 的单条 `UpdateRecord`：同一 Record 按 FIFO 串行、不同 Record 可并行，Mutation 使用稳定 `clientMutationId` 做有限重试；Conflict UI 提供采用服务端值（use-server）和明确确认后的 overwrite。离线时 Grid 保持只读，UI 与 controller 都禁止进入编辑或发送 Mutation。Record create/delete/restore、逐字段 Conflict merge、离线写入以及重启后队列持久化仍是 backlog/设计约束，不属于当前交付。详见 [v0.1.1 发布说明](./docs/releases/v0.1.1.md)。
 
 Map 默认使用 OpenStreetMap。天地图矢量、影像、地形及注记预设共用一个 Token 设置入口；Plugin 直连必须使用天地图浏览器端应用 Key，标准 WMTS `tk` 请求不需要安全密钥。仓库、测试和日志不包含真实 Key。
 

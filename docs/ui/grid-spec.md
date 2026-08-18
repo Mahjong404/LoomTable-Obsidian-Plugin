@@ -4,7 +4,7 @@
 
 Grid View 是第一阶段的核心交互。它必须支持约 20k Records 的浏览、筛选、排序和编辑，同时避免把完整数据集转换成完整 DOM。
 
-当前实现切片是 `feature/grid-readonly`：先交付 Workspace/Base/Table/Grid View 导航、服务端 Query/Filter/Sort/Cursor、只读 Cell、固定行高原生 DOM 虚拟化、刷新、详情入口和连接/空态/错误态。编辑、Mutation Queue、Conflict UI 和列虚拟化不属于本切片；它们保留在本规范中作为后续接口约束。
+当前 main 已交付的 Grid 编辑 P1 最小切片是在只读 Grid 基础上增加：单条 `UpdateRecord`；同一 Record 的 FIFO Mutation Queue 与不同 Record 的并行；复用稳定 `clientMutationId` 的有限网络重试；Conflict UI 的 use-server/明确确认后的 overwrite；以及离线只读闸门（UI 与 controller 均禁止编辑和发送 Mutation）。create/delete/restore、逐字段 Conflict merge、离线写入和重启后队列持久化不属于当前切片，保留为 backlog/设计约束。列虚拟化仍为后续接口约束。
 
 ## 结构
 
@@ -87,11 +87,11 @@ P0 剪贴板只支持单个 Cell 的复制和粘贴。矩形 TSV 多 Cell 粘贴
 
 单元格失败不能导致整张 Table 重新加载。
 
-同一 Record 的编辑进入 FIFO Mutation Queue，不同 Record 可以并行保存。当前 Record 发生 Conflict 后暂停其后续 Mutation，直到用户放弃本地修改、采用服务端值、明确覆盖或逐字段合并。覆盖与合并必须创建新的 Mutation。
+同一 Record 的编辑进入 FIFO Mutation Queue，不同 Record 可以并行保存。当前 Record 发生 Conflict 后暂停其后续 Mutation，直到用户放弃本地修改、采用服务端值（use-server）或明确覆盖（overwrite）。当前切片不提供逐字段合并；它保留为 backlog。覆盖必须创建一次使用当前 Revision 的新 Mutation。
 
 ## Record 生命周期
 
-P0 Grid 支持创建、编辑、软删除和恢复 Record。软删除前必须确认；P0 不提供不可恢复的硬删除入口。删除和恢复均携带 `expectedRevision`，并遵守与 Cell 编辑相同的 Conflict 处理规则。
+当前 P1 Grid 只支持对已存在 Record 的单条 `UpdateRecord`。create/delete/restore 不属于当前 Plugin UI/Mutation Queue 交付，保留为 backlog；未来实现时仍须携带 `expectedRevision` 并遵守与 Cell 编辑相同的 Conflict 处理规则。
 
 ## Filter、Sort 和 Search
 
