@@ -284,6 +284,36 @@ export interface QueryResult {
   readonly totalCount?: number;
 }
 
+export type ChangeKind =
+  | 'recordCreated'
+  | 'recordUpdated'
+  | 'recordDeleted'
+  | 'recordRestored'
+  | 'schemaChanged'
+  | 'viewChanged';
+
+export interface Change {
+  readonly id: string;
+  readonly kind: ChangeKind;
+  readonly tableId: string;
+  readonly recordId?: string;
+  readonly objectId?: string;
+  readonly revision: number;
+  readonly actorId?: string;
+  readonly occurredAt: string;
+}
+
+export interface PullChangesRequest {
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
+export interface ChangePage {
+  readonly items: readonly Change[];
+  readonly nextCursor: string;
+  readonly hasMore: boolean;
+}
+
 export type MutationValue = JsonValue;
 
 export interface CreateRecordCommand {
@@ -464,6 +494,7 @@ export interface LoomTableClient {
   listFields(tableId: string, options?: ResourceListOptions): Promise<readonly Field[]>;
   listViews(tableId: string, options?: ResourceListOptions): Promise<readonly View[]>;
   query(request: QueryRequest): Promise<QueryResult>;
+  pullChanges(tableId: string, request?: PullChangesRequest): Promise<ChangePage>;
   mutate(tableId: string, request: MutationRequest): Promise<MutationResult>;
   getRecord(recordId: string): Promise<LoomTableRecord>;
   queryMap(viewId: string, request: MapQueryRequest): Promise<MapQueryResult>;
