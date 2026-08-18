@@ -36,6 +36,9 @@ export class MapView {
   #status: HTMLElement | null = null;
   #tileStatus: HTMLElement | null = null;
   #details: HTMLElement | null = null;
+  #refreshButton: HTMLButtonElement | null = null;
+  #fitAllButton: HTMLButtonElement | null = null;
+  #saveCameraButton: HTMLButtonElement | null = null;
 
   constructor(
     container: HTMLElement,
@@ -91,6 +94,9 @@ export class MapView {
     this.#status = status;
     this.#tileStatus = tileStatus;
     this.#details = details;
+    this.#refreshButton = refresh;
+    this.#fitAllButton = fitAll;
+    this.#saveCameraButton = saveCamera;
     this.#unsubscribe = this.#controller.subscribe((state) => this.renderState(state));
     this.#controller.mount(mapContainer);
     void this.#controller.load();
@@ -103,11 +109,18 @@ export class MapView {
     this.#status = null;
     this.#tileStatus = null;
     this.#details = null;
+    this.#refreshButton = null;
+    this.#fitAllButton = null;
+    this.#saveCameraButton = null;
     this.#container.replaceChildren();
   }
 
   renderState(state: MapViewState): void {
     if (this.#status === null || this.#tileStatus === null) return;
+    const offline = state.dataStatus === 'offline';
+    this.#refreshButton?.toggleAttribute('disabled', offline);
+    this.#fitAllButton?.toggleAttribute('disabled', offline);
+    this.#saveCameraButton?.toggleAttribute('disabled', offline);
     this.#status.dataset.status = state.dataStatus;
     this.#status.textContent = describeDataState(state);
     this.#tileStatus.dataset.status = state.tileStatus;
@@ -138,7 +151,11 @@ export class MapView {
       cluster.append(title, records);
       if (state.clusterCursor !== null) {
         cluster.append(
-          button('Load more cluster records', () => void this.options.onClusterNextPage?.()),
+          button(
+            'Load more cluster records',
+            () => void this.options.onClusterNextPage?.(),
+            state.dataStatus === 'offline',
+          ),
         );
       }
       this.#details.append(cluster);
@@ -217,11 +234,16 @@ function providerKey(provider: TileProviderRef): string {
   return provider.kind === 'built-in' ? `built-in:${provider.id}` : `custom:${provider.profileId}`;
 }
 
-function button(label: string, onClick: () => void): HTMLButtonElement {
+function button(
+  label: string,
+  onClick: () => void,
+  disabled = false,
+): HTMLButtonElement {
   const element = document.createElement('button');
   element.type = 'button';
   element.className = 'loom-button';
   element.textContent = label;
+  element.disabled = disabled;
   element.addEventListener('click', onClick);
   return element;
 }
