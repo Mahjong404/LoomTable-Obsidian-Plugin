@@ -108,7 +108,9 @@ function createController(
   });
 }
 
-function createClient(overrides: Partial<Record<keyof LoomTableClient, unknown>> = {}): LoomTableClient {
+function createClient(
+  overrides: Partial<Record<keyof LoomTableClient, unknown>> = {},
+): LoomTableClient {
   return {
     getMeta: vi.fn(),
     checkConnection: vi.fn(),
