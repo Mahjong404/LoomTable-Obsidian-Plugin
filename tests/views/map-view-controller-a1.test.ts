@@ -194,4 +194,3 @@ function clusterResult(changeCursor: string): MapQueryResult {
     changeCursor,
   };
 }
-

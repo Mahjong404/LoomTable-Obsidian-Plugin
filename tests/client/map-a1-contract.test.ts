@@ -84,4 +84,3 @@ function queuedTransport(
 function jsonResponse(status: number, body: unknown): HttpTransportResponse {
   return { status, headers: {}, body: JSON.stringify(body) };
 }
-
