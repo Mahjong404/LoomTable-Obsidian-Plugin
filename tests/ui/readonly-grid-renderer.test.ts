@@ -51,6 +51,23 @@ describe('ReadonlyGridRenderer', () => {
     expect(container.querySelector('.loom-grid-status')?.textContent).toContain('offline');
   });
 
+  it('keeps offline Grid Cells read-only and does not start an editor', () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1, { status: 'offline', error: { message: 'offline' } }));
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_name"]',
+    );
+    expect(cell?.getAttribute('aria-readonly')).toBe('true');
+    cell?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
+    expect(callbacks.onCellEdit).not.toHaveBeenCalled();
+  });
+
   it('opens an editable Cell and commits after IME composition ends', () => {
     const container = document.createElement('div');
     const callbacks = rendererCallbacks();

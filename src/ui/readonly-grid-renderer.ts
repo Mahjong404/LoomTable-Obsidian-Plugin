@@ -283,12 +283,16 @@ export class ReadonlyGridRenderer {
         'loom-grid-cell',
       );
       cell.setAttribute('role', 'gridcell');
-      if (!isEditableField(field)) cell.setAttribute('aria-readonly', 'true');
-      else cell.classList.add('loom-grid-editable');
+      const canEdit = gridState?.status === 'ready';
+      if (!isEditableField(field) || !canEdit) {
+        cell.setAttribute('aria-readonly', 'true');
+      } else {
+        cell.classList.add('loom-grid-editable');
+      }
       cell.dataset.fieldId = field.id;
       const editStatus = gridState?.editStatuses[record.id];
       if (editStatus !== undefined) cell.dataset.editState = editStatus;
-      if (isEditableField(field)) {
+      if (isEditableField(field) && canEdit) {
         const beginEdit = (event: Event): void => {
           event.stopPropagation();
           this.#beginCellEdit(cell, record, field);
@@ -319,6 +323,7 @@ export class ReadonlyGridRenderer {
   #beginCellEdit(cell: HTMLElement, record: LoomTableRecord, field: Field): void {
     if (
       !isEditableField(field) ||
+      this.#virtualGrid?.state.status !== 'ready' ||
       this.#virtualGrid?.state.editStatuses[record.id] === 'conflict'
     ) {
       return;

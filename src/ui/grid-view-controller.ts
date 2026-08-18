@@ -180,6 +180,14 @@ export class GridViewController {
     if (field === undefined || record === undefined || tableId === null) {
       throw this.#publishEditFailure('The selected Grid Cell is no longer available.');
     }
+    const offline = this.#isOffline();
+    if (offline || this.#state.status !== 'ready') {
+      throw this.#publishEditFailure(
+        offline || this.#state.status === 'offline'
+          ? 'Grid editing is unavailable while offline.'
+          : 'Grid editing is unavailable until the Grid is ready.',
+      );
+    }
     const normalized = normalizeCellValue(field, rawValue);
     if (!normalized.ok) throw this.#publishEditFailure(normalized.message);
     if (this.#queue === null) {
