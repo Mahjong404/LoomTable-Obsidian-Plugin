@@ -34,8 +34,9 @@ export interface MapViewState {
   readonly camera: MapCamera;
   readonly features: readonly MapFeature[];
   readonly viewportRenderableRecordCount: number;
-  readonly changeCursor: string | null;
   readonly summary: MapQuerySummary | null;
+  readonly changeCursor: string | null;
+  readonly viewRevision: number | null;
   readonly selectedRecord: LoomTableRecord | null;
   readonly clusterRecords: readonly LoomTableRecord[];
   readonly clusterToken: string | null;
@@ -64,8 +65,9 @@ export function initialMapViewState(
     camera,
     features: [],
     viewportRenderableRecordCount: 0,
-    changeCursor: null,
     summary: null,
+    changeCursor: null,
+    viewRevision: null,
     selectedRecord: null,
     clusterRecords: [],
     clusterToken: null,
