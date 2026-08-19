@@ -41,6 +41,25 @@ describe('MapView', () => {
     expect(container.childElementCount).toBe(0);
   });
 
+  it('disables Map server actions in offline state', () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const view = new MapView(container, controller as unknown as MapViewController);
+    view.mount();
+
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'offline',
+    });
+
+    const buttons = [...container.querySelectorAll('button')];
+    expect(buttons.find((button) => button.textContent === 'Refresh')?.disabled).toBe(true);
+    expect(buttons.find((button) => button.textContent === 'Fit all')?.disabled).toBe(true);
+    expect(buttons.find((button) => button.textContent === 'Save current camera')?.disabled).toBe(
+      true,
+    );
+  });
+
   it('keeps selected Record details visible independently of tile status', () => {
     const container = document.createElement('div');
     const controller = fakeController();

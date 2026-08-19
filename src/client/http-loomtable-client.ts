@@ -11,6 +11,8 @@ import {
   type AttachmentSource,
   type AttachmentStatus,
   type Base,
+  type Change,
+  type ChangePage,
   type BootstrapState,
   type ConnectionCheckResult,
   type ConflictBody,
@@ -40,6 +42,7 @@ import {
   type MutationResult,
   type QueryRequest,
   type QueryResult,
+  type PullChangesRequest,
   type ResourceListOptions,
   type SelectFieldConfig,
   type SelectOption,
@@ -89,6 +92,7 @@ interface RawRequestOptions {
 }
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 10_000;
+const DEFAULT_CHANGE_PAGE_LIMIT = 100;
 const MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 250;
 const MAX_RETRY_AFTER_MS = 30_000;
@@ -276,6 +280,32 @@ export class HttpLoomTableClient implements LoomTableClient {
       { method: 'POST', body, retryable: true },
     );
     return decodeQueryResult(value);
+  }
+
+  async pullChanges(tableId: string, request: PullChangesRequest = {}): Promise<ChangePage> {
+    const normalizedTableId = tableId.trim();
+    if (normalizedTableId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Table ID is required to pull Changes.',
+      });
+    }
+    const limit = request.limit ?? DEFAULT_CHANGE_PAGE_LIMIT;
+    if (!isPositiveInteger(limit) || limit > 500) {
+      throw new LoomTableClientError('validation', {
+        message: 'Change page limit must be an integer between 1 and 500.',
+      });
+    }
+    const value = await this.#requestJson(
+      `/v1/tables/${encodeURIComponent(normalizedTableId)}/changes`,
+      this.#requireAccessToken(),
+      {
+        query: {
+          cursor: request.cursor,
+          limit: String(limit),
+        },
+      },
+    );
+    return decodeChangePage(value);
   }
 
   async mutate(tableId: string, request: MutationRequest): Promise<MutationResult> {
@@ -675,6 +705,65 @@ function decodeQueryResult(value: unknown): QueryResult {
     if (error instanceof LoomTableClientError) throw error;
     throw invalidResource('query result');
   }
+}
+
+function decodeChangePage(value: unknown): ChangePage {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.items) ||
+    typeof value.nextCursor !== 'string' ||
+    typeof value.hasMore !== 'boolean'
+  ) {
+    throw invalidResource('change page');
+  }
+
+  try {
+    return {
+      items: value.items.map(decodeChange),
+      nextCursor: value.nextCursor,
+      hasMore: value.hasMore,
+    };
+  } catch (error) {
+    if (error instanceof LoomTableClientError) throw error;
+    throw invalidResource('change page');
+  }
+}
+
+function decodeChange(value: unknown): Change {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    !isChangeKind(value.kind) ||
+    typeof value.tableId !== 'string' ||
+    !isOptionalString(value.recordId) ||
+    !isOptionalString(value.objectId) ||
+    !isPositiveInteger(value.revision) ||
+    !isOptionalString(value.actorId) ||
+    typeof value.occurredAt !== 'string'
+  ) {
+    throw invalidResource('change');
+  }
+  return {
+    id: value.id,
+    kind: value.kind,
+    tableId: value.tableId,
+    revision: value.revision,
+    occurredAt: value.occurredAt,
+    ...(value.recordId === undefined ? {} : { recordId: value.recordId }),
+    ...(value.objectId === undefined ? {} : { objectId: value.objectId }),
+    ...(value.actorId === undefined ? {} : { actorId: value.actorId }),
+  };
+}
+
+function isChangeKind(value: unknown): value is Change['kind'] {
+  return (
+    value === 'recordCreated' ||
+    value === 'recordUpdated' ||
+    value === 'recordDeleted' ||
+    value === 'recordRestored' ||
+    value === 'schemaChanged' ||
+    value === 'viewChanged'
+  );
 }
 
 function decodeMutationResult(value: unknown): MutationResult {

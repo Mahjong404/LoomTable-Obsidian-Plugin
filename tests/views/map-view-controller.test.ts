@@ -196,6 +196,192 @@ describe('MapViewController', () => {
     expect(onClusterRecords).toHaveBeenCalledWith([record]);
   });
 
+  it('stores the latest Map cursor and revalidates before an explicit refresh', async () => {
+    const summarizeMap = vi.fn().mockResolvedValue(summaryResult());
+    const pullChanges = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'change_02',
+          kind: 'recordUpdated',
+          tableId: 'table_01',
+          recordId: 'record_01',
+          revision: 2,
+          occurredAt: '2026-08-18T00:00:00Z',
+        },
+      ],
+      nextCursor: 'change_02',
+      hasMore: false,
+    });
+    const queryMap = vi.fn().mockResolvedValue(queryResult('record_new', 1));
+    const client = createClient({ summarizeMap, pullChanges, queryMap });
+    const controller = createController(client, createMapView('field_location'), [
+      createField('field_location'),
+    ]);
+
+    await controller.load();
+    expect(controller.state.changeCursor).toBe('change_query');
+    expect(controller.state.viewRevision).toBe(1);
+    pullChanges.mockClear();
+    queryMap.mockClear();
+
+    await controller.refreshCurrentViewport();
+
+    expect(pullChanges).toHaveBeenCalledWith('table_01', { cursor: 'change_query' });
+    expect(queryMap).toHaveBeenCalledTimes(1);
+    expect(summarizeMap).toHaveBeenCalledTimes(1);
+    expect(controller.state.changeCursor).toBe('change_query');
+    expect(controller.state.viewRevision).toBe(1);
+  });
+
+  it('refreshes Summary when the current saved Map View changes', async () => {
+    const summarizeMap = vi
+      .fn()
+      .mockResolvedValueOnce(summaryResult('change_summary'))
+      .mockResolvedValueOnce(summaryResult('change_view'));
+    const pullChanges = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'change_view',
+          kind: 'viewChanged',
+          tableId: 'table_01',
+          objectId: 'view_map',
+          revision: 2,
+          occurredAt: '2026-08-18T00:00:00Z',
+        },
+      ],
+      nextCursor: 'change_view',
+      hasMore: false,
+    });
+    const queryMap = vi.fn().mockResolvedValue(queryResult('record_new', 1));
+    const controller = createController(
+      createClient({ summarizeMap, pullChanges, queryMap }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.load();
+    await controller.refreshCurrentViewport();
+
+    expect(summarizeMap).toHaveBeenCalledTimes(2);
+    expect(queryMap).toHaveBeenCalledTimes(2);
+    expect(controller.state.changeCursor).toBe('change_query');
+  });
+
+  it('rebuilds the Map baseline after the table Change Cursor expires', async () => {
+    const summarizeMap = vi
+      .fn()
+      .mockResolvedValueOnce(summaryResult('change_summary'))
+      .mockResolvedValueOnce(summaryResult('change_rebased'));
+    const pullChanges = vi.fn().mockRejectedValue(
+      new LoomTableClientError('cursor-expired', {
+        code: 'CURSOR_EXPIRED',
+        httpStatus: 410,
+        message: 'Change Cursor expired.',
+      }),
+    );
+    const queryMap = vi
+      .fn()
+      .mockResolvedValueOnce(queryResult('record_old', 1))
+      .mockResolvedValueOnce(queryResult('record_rebased', 1));
+    const controller = createController(
+      createClient({ summarizeMap, pullChanges, queryMap }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.load();
+    await controller.refreshCurrentViewport();
+
+    expect(summarizeMap).toHaveBeenCalledTimes(2);
+    expect(queryMap).toHaveBeenCalledTimes(2);
+    expect(controller.state.features).toEqual(queryResult('record_rebased', 1).features);
+  });
+
+  it('requeries the viewport after a cluster snapshot expires', async () => {
+    const pullChanges = vi.fn().mockResolvedValue({
+      items: [],
+      nextCursor: 'change_query',
+      hasMore: false,
+    });
+    const queryMap = vi
+      .fn()
+      .mockResolvedValueOnce(queryResult('record_01', 1))
+      .mockResolvedValueOnce(queryResult('record_refreshed', 1));
+    const queryMapClusterRecords = vi.fn().mockRejectedValue(
+      new LoomTableClientError('cursor-expired', {
+        code: 'QUERY_SNAPSHOT_EXPIRED',
+        httpStatus: 410,
+        message: 'Cluster snapshot expired.',
+      }),
+    );
+    const controller = createController(
+      createClient({ pullChanges, queryMap, queryMapClusterRecords }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.refreshCurrentViewport();
+    await controller.openCluster('cluster_01');
+
+    expect(queryMapClusterRecords).toHaveBeenCalledTimes(1);
+    expect(pullChanges).toHaveBeenCalledWith('table_01', { cursor: 'change_query' });
+    expect(queryMap).toHaveBeenCalledTimes(2);
+    expect(controller.state.features).toEqual(queryResult('record_refreshed', 1).features);
+  });
+
+  it('does not issue Map reads while offline after an online result exists', async () => {
+    let offline = false;
+    const summarizeMap = vi.fn().mockResolvedValue(summaryResult());
+    const pullChanges = vi.fn().mockResolvedValue({
+      items: [],
+      nextCursor: 'change_query',
+      hasMore: false,
+    });
+    const queryMap = vi.fn().mockResolvedValue(queryResult('record_01', 1));
+    const queryMapClusterRecords = vi.fn();
+    const getRecord = vi.fn();
+    const controller = createController(
+      createClient({
+        summarizeMap,
+        pullChanges,
+        queryMap,
+        queryMapClusterRecords,
+        getRecord,
+      }),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { isOffline: () => offline },
+    );
+
+    await controller.refreshCurrentViewport();
+    offline = true;
+    await controller.refreshCurrentViewport();
+    await controller.fitAll();
+    await controller.openRecord('record_01');
+    await controller.openCluster('cluster_01');
+
+    expect(pullChanges).toHaveBeenCalledTimes(0);
+    expect(queryMap).toHaveBeenCalledTimes(1);
+    expect(summarizeMap).toHaveBeenCalledTimes(0);
+    expect(getRecord).not.toHaveBeenCalled();
+    expect(queryMapClusterRecords).not.toHaveBeenCalled();
+    expect(controller.state.dataStatus).toBe('offline');
+  });
+
+  it('discards a query result whose View revision is no longer current', async () => {
+    const queryMap = vi.fn().mockResolvedValue(queryResult('record_stale', 2));
+    const controller = createController(
+      createClient({ queryMap }),
+      createMapView('field_location', 1),
+      [createField('field_location')],
+    );
+
+    await controller.refreshCurrentViewport();
+
+    expect(controller.state.features).toEqual([]);
+    expect(controller.state.viewRevision).toBeNull();
+  });
+
   it('saves only an explicit camera action through the View revision contract', async () => {
     const updated = createMapView('field_location', 2);
     const updateView = vi.fn().mockResolvedValue(updated);
@@ -268,11 +454,8 @@ function createController(
       : { onClusterRecords: options.onClusterRecords }),
   });
 }
-
-function createClient(
-  overrides: Partial<Record<keyof LoomTableClient, unknown>> = {},
-): LoomTableClient {
-  const summary: MapSummaryResult = {
+function summaryResult(changeCursor = 'change_summary', viewRevision = 1): MapSummaryResult {
+  return {
     summary: {
       matchedRecordCount: 1,
       renderableRecordCount: 1,
@@ -280,9 +463,15 @@ function createClient(
       unrenderableRecordCount: 0,
       dataBounds: { boxes: [{ west: 0, south: 0, east: 1, north: 1 }] },
     },
-    viewRevision: 1,
-    changeCursor: 'change_summary',
+    viewRevision,
+    changeCursor,
   };
+}
+
+function createClient(
+  overrides: Partial<Record<keyof LoomTableClient, unknown>> = {},
+): LoomTableClient {
+  const summary = summaryResult();
   return {
     getMeta: vi.fn(),
     checkConnection: vi.fn(),
@@ -292,6 +481,11 @@ function createClient(
     listFields: vi.fn(),
     listViews: vi.fn(),
     query: vi.fn(),
+    pullChanges: vi.fn().mockResolvedValue({
+      items: [],
+      nextCursor: 'change_tail',
+      hasMore: false,
+    }),
     mutate: vi.fn(),
     getRecord: vi.fn().mockResolvedValue(createRecord('record_01')),
     queryMap: vi.fn().mockResolvedValue(queryResult('record_01', 1)),

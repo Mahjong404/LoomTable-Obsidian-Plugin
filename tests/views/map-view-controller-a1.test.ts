@@ -120,6 +120,11 @@ function createClient(
     listFields: vi.fn(),
     listViews: vi.fn(),
     query: vi.fn(),
+    pullChanges: vi.fn().mockResolvedValue({
+      items: [],
+      nextCursor: 'change_tail',
+      hasMore: false,
+    }),
     mutate: vi.fn(),
     getRecord: vi.fn(),
     queryMap: vi.fn().mockResolvedValue(clusterResult('change_query_00')),
