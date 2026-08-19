@@ -272,15 +272,13 @@ describe('MapViewController', () => {
       .fn()
       .mockResolvedValueOnce(summaryResult('change_summary'))
       .mockResolvedValueOnce(summaryResult('change_rebased'));
-    const pullChanges = vi
-      .fn()
-      .mockRejectedValue(
-        new LoomTableClientError('cursor-expired', {
-          code: 'CURSOR_EXPIRED',
-          httpStatus: 410,
-          message: 'Change Cursor expired.',
-        }),
-      );
+    const pullChanges = vi.fn().mockRejectedValue(
+      new LoomTableClientError('cursor-expired', {
+        code: 'CURSOR_EXPIRED',
+        httpStatus: 410,
+        message: 'Change Cursor expired.',
+      }),
+    );
     const queryMap = vi
       .fn()
       .mockResolvedValueOnce(queryResult('record_old', 1))
@@ -456,11 +454,7 @@ function createController(
       : { onClusterRecords: options.onClusterRecords }),
   });
 }
-
-function summaryResult(
-  changeCursor = 'change_summary',
-  viewRevision = 1,
-): MapSummaryResult {
+function summaryResult(changeCursor = 'change_summary', viewRevision = 1): MapSummaryResult {
   return {
     summary: {
       matchedRecordCount: 1,
