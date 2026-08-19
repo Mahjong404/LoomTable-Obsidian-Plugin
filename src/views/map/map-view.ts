@@ -20,7 +20,6 @@ export interface MapViewNavigation {
   readonly onTableChange: (tableId: string) => void | Promise<void>;
   readonly onViewChange: (viewId: string) => void | Promise<void>;
 }
-
 export interface MapViewOptions {
   readonly navigation?: MapViewNavigation;
   readonly onClusterNextPage?: () => void | Promise<void>;
@@ -234,11 +233,7 @@ function providerKey(provider: TileProviderRef): string {
   return provider.kind === 'built-in' ? `built-in:${provider.id}` : `custom:${provider.profileId}`;
 }
 
-function button(
-  label: string,
-  onClick: () => void,
-  disabled = false,
-): HTMLButtonElement {
+function button(label: string, onClick: () => void, disabled = false): HTMLButtonElement {
   const element = document.createElement('button');
   element.type = 'button';
   element.className = 'loom-button';
