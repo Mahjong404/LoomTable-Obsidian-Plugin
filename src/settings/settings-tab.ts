@@ -408,4 +408,3 @@ export class LoomTableSettingTab extends PluginSettingTab {
 function providerKey(ref: TileProviderRef): string {
   return ref.kind === 'built-in' ? `built-in:${ref.id}` : `custom:${ref.profileId}`;
 }
-
