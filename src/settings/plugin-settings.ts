@@ -29,7 +29,6 @@ export interface MapPresentationSettingsV1 {
   customProfiles: CustomTileProviderProfileV1[];
   credentialBindings: Record<string, string>;
 }
-
 export interface PluginSettings {
   readonly schemaVersion: typeof PLUGIN_SETTINGS_SCHEMA_VERSION;
   locale: LocalePreference;
@@ -91,6 +90,18 @@ export function addConnectionProfile(
   settings.connectionProfiles.push(profile);
   settings.defaultConnectionProfileId ??= profile.id;
   return profile;
+}
+
+export function setConnectionProfileRemembered(
+  profile: ConnectionProfile,
+  remember: boolean,
+): void {
+  if (!remember) {
+    profile.rememberToken = false;
+    profile.tokenSecretId = null;
+    return;
+  }
+  profile.rememberToken = profile.tokenSecretId !== null;
 }
 
 export function removeConnectionProfile(
