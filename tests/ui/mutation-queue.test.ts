@@ -39,7 +39,7 @@ describe('MutationQueue', () => {
     await queue.enqueue(job('record_01', 'field_a', 'one'));
 
     expect(client.mutate.mock.calls[0]?.[1].clientMutationId).toMatch(
-      /^mut_[0-9A-HJKMNP-TV-Z]{26}$/,,
+      /^mut_[0-9A-HJKMNP-TV-Z]{26}$/,
     );
   });
 
