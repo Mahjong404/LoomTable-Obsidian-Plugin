@@ -104,5 +104,5 @@ describe('map credential binding migration', () => {
       tokenSecretId: null,
     });
   });
-
 });
+
