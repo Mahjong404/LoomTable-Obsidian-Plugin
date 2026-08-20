@@ -34,6 +34,7 @@ import {
 import {
   addConnectionProfile,
   removeConnectionProfile,
+  setConnectionProfileRemembered,
   setDefaultConnectionProfile,
   type LocalePreference,
 } from './plugin-settings';
@@ -130,6 +131,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
         text.setValue(this.credentials.getSession(profile) ?? '').onChange((token) => {
           this.invalidateConnectionCheck(profile);
           this.credentials.setSession(profile, token);
+          if (profile.rememberToken) this.credentials.rememberSessionToken(profile);
           refreshConnectionCheck();
         });
       });
@@ -143,7 +145,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
           .onChange(async (secretId) => {
             this.invalidateConnectionCheck(profile);
             profile.tokenSecretId = secretId === '' ? null : secretId;
-            profile.rememberToken = profile.tokenSecretId !== null;
+            setConnectionProfileRemembered(profile, profile.tokenSecretId !== null);
             await this.loomTablePlugin.saveSettings();
             this.display();
           }),
@@ -158,8 +160,8 @@ export class LoomTableSettingTab extends PluginSettingTab {
           .setDisabled(profile.tokenSecretId === null)
           .onChange(async (rememberToken) => {
             this.invalidateConnectionCheck(profile);
-            profile.rememberToken = rememberToken;
-            if (!rememberToken) profile.tokenSecretId = null;
+            setConnectionProfileRemembered(profile, rememberToken);
+            if (rememberToken) this.credentials.rememberSessionToken(profile);
             await this.loomTablePlugin.saveSettings();
             this.display();
           }),
