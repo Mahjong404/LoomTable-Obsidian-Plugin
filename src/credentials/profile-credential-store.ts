@@ -37,4 +37,3 @@ export class ProfileCredentialStore {
     this.sessionStore.delete(profile.id);
   }
 }
-
