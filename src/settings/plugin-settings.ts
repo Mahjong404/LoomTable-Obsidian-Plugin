@@ -29,7 +29,6 @@ export interface MapPresentationSettingsV1 {
   customProfiles: CustomTileProviderProfileV1[];
   credentialBindings: Record<string, string>;
 }
-
 export interface PluginSettings {
   readonly schemaVersion: typeof PLUGIN_SETTINGS_SCHEMA_VERSION;
   locale: LocalePreference;
@@ -315,3 +314,4 @@ function parseCredentialSlot(value: unknown): TileCredentialSlot[] {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+
