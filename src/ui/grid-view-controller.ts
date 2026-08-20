@@ -133,7 +133,7 @@ export class GridViewController {
     this.#pageSize = normalizePageSize(options.pageSize ?? DEFAULT_GRID_PAGE_SIZE);
     this.#isOffline = options.isOffline ?? defaultOfflineCheck;
     this.#onNonGridViewSelected = options.onNonGridViewSelected;
-    const mutate = client.mutate;
+    const mutate = client.mutate?.bind(client);
     this.#queue =
       mutate === undefined
         ? null
