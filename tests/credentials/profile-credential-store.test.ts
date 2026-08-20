@@ -160,4 +160,3 @@ describe('profile credential policy', () => {
     expect(store.get(missing)).toBeNull();
   });
 });
-

@@ -50,4 +50,3 @@ export class ObsidianSecretCredentialStore implements CredentialStore {
     void _secretId;
   }
 }
-

@@ -150,4 +150,3 @@ describe('map credential binding migration', () => {
     });
   });
 });
-

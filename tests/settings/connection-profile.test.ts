@@ -117,4 +117,3 @@ describe('connection profiles', () => {
     expect(settings.defaultConnectionProfileId).toBe(second.id);
   });
 });
-

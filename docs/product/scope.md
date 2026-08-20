@@ -102,4 +102,3 @@ Obsidian 插件是主要前端，LoomTable Server 是数据事实来源。Person
 - Redis 或其他协调组件。
 - 后台任务和通知。
 - 对象存储和更完整的审计能力。
-

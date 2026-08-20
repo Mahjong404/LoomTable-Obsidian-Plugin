@@ -241,4 +241,3 @@ Filter Builder 已支持递归 `AND`/`OR` Group；每个 Group 至少一个子�
 - Provider 故障不改变 LoomTable 数据连接状态，也不静默切换到其他外部服务。
 
 详细的类型、模块边界、预设模板、自定义配置、安全与测试合同见 [Map View 与瓦片提供方规范](../ui/map-spec.md)。
-

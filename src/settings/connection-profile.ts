@@ -35,4 +35,3 @@ export function createConnectionProfileSecretId(profileId: ConnectionProfileId):
 export function isConnectionProfileId(value: unknown): value is ConnectionProfileId {
   return typeof value === 'string' && PROFILE_ID_PATTERN.test(value);
 }
-

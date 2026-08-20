@@ -58,4 +58,3 @@ export class ProfileCredentialStore {
     this.disconnect(profile);
   }
 }
-

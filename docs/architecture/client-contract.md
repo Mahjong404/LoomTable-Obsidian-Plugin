@@ -150,4 +150,3 @@ Grid、Map、Field Editor 和 Component Gallery 不应自行使用 `fetch` 或�
 ## OpenAPI 来源
 
 Plugin 仓库提交 `openapi/loomtable-server.openapi.yaml` 和 `src/generated/transport.ts`，并在 `openapi/source.json` 记录来源 Server 的完整 Commit SHA。`api:sync` 负责显式下载指定提交，`api:generate` 负责生成 Transport Types，CI 拒绝生成结果漂移。日常安装、构建和测试不依赖同级 Server 工作树，也不访问网络获取 API 合同。
-

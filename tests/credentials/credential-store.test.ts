@@ -27,4 +27,3 @@ describe('Obsidian SecretStorage adapter', () => {
     );
   });
 });
-
