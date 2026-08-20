@@ -180,7 +180,7 @@ describe('GridViewController', () => {
         },
       ],
     };
-    const unbound = client.mutate;
+    const unbound = client.mutate.bind(undefined);
     await expect(unbound('table_01', request)).rejects.toThrow(TypeError);
 
     const controller = new GridViewController(client);
