@@ -267,9 +267,45 @@ function asClientError(error: unknown): LoomTableClientError {
   });
 }
 
+const ULID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 let mutationSequence = 0;
 
 function createMutationId(): string {
   mutationSequence += 1;
-  return `plugin-mutation-${Date.now().toString(36)}-${mutationSequence.toString(36)}`;
+  const random = new Uint8Array(10);
+  if (globalThis.crypto?.getRandomValues !== undefined) {
+    globalThis.crypto.getRandomValues(random);
+  } else {
+    let value = (Date.now() + mutationSequence) >>> 0;
+    for (let index = 0; index < random.length; index += 1) {
+      value = (value * 1_664_525 + 1_013_904_223) >>> 0;
+      random[index] = value >>> 24;
+    }
+  }
+  return `mut_${encodeUlidTimestamp(Date.now())}${encodeUlidRandom(random)}`;
+}
+
+function encodeUlidTimestamp(timestamp: number): string {
+  let value = timestamp;
+  let encoded = '';
+  for (let index = 0; index < 10; index += 1) {
+    encoded = ULID_ALPHABET[value % 32] + encoded;
+    value = Math.floor(value / 32);
+  }
+  return encoded;
+}
+
+function encodeUlidRandom(random: Uint8Array): string {
+  let buffer = 0;
+  let bits = 0;
+  let encoded = '';
+  for (const byte of random) {
+    buffer = (buffer << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      bits -= 5;
+      encoded += ULID_ALPHABET[(buffer >>> bits) & 31];
+    }
+  }
+  return encoded;
 }

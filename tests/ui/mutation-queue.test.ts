@@ -28,6 +28,21 @@ describe('MutationQueue', () => {
     expect(calls[0]?.id).not.toBe(calls[1]?.id);
   });
 
+  it('generates a Server-compatible typed mutation ID by default', async () => {
+    const client = {
+      mutate: vi.fn(async (_tableId: string, request: MutationRequestLike) =>
+        result(request.clientMutationId, 2),
+      ),
+    };
+    const queue = new MutationQueue(client);
+
+    await queue.enqueue(job('record_01', 'field_a', 'one'));
+
+    expect(client.mutate.mock.calls[0]?.[1].clientMutationId).toMatch(
+      /^mut_[0-9A-HJKMNP-TV-Z]{26}$/,,
+    );
+  });
+
   it('runs different Record queues in parallel', async () => {
     const gates = new Map<string, () => void>();
     const started = new Set<string>();

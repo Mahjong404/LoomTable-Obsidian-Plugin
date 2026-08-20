@@ -166,6 +166,29 @@ describe('GridViewController', () => {
     expect(controller.state.editStatuses.record_01).toBeUndefined();
   });
 
+  it('rolls back an optimistic value while preserving the mutation error state', async () => {
+    const data = createData(createRecords(1), createGridConfig(false));
+    const mutate = vi.fn().mockRejectedValue(
+      new LoomTableClientError('validation', {
+        code: 'BAD_REQUEST',
+        message: 'The clientMutationId is invalid.',
+      }),
+    );
+    const controller = new GridViewController(withMutation(data, mutate));
+    await controller.load();
+
+    await expect(
+      controller.editCell('record_01', 'field_name', 'Optimistic'),
+    ).rejects.toMatchObject({ kind: 'validation' });
+
+    expect(controller.state.records[0]?.values.field_name).toBe('Record 1');
+    expect(controller.state.editStatuses.record_01).toBe('error');
+    expect(controller.state.editError).toMatchObject({
+      code: 'BAD_REQUEST',
+      message: 'The clientMutationId is invalid.',
+    });
+  });
+
   it('binds a prototype mutation method and accepts an unchanged response', async () => {
     const data = createData(createRecords(1), createGridConfig(false));
     const client = new PrototypeMutationClient(data, data.records[0]);
