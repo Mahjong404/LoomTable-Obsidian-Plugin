@@ -59,6 +59,51 @@ describe('map credential binding migration', () => {
     });
   });
 
+  it('defaults a legacy profile without rememberToken to a stable binding and is idempotent', () => {
+    const migrated = normalizePluginSettings({
+      schemaVersion: 1,
+      connectionProfiles: [
+        {
+          id: 'profile-00112233445566778899aabbccddeeff',
+          name: 'Remote',
+          serverOrigin: 'https://loom.example',
+        },
+      ],
+      accessToken: 'legacy-plaintext-must-not-survive',
+    });
+
+    expect(migrated).toMatchObject({
+      schemaVersion: 2,
+      connectionProfiles: [
+        {
+          rememberToken: true,
+          tokenSecretId: 'loomtable:profile-00112233445566778899aabbccddeeff:server-token',
+        },
+      ],
+    });
+    expect(JSON.stringify(migrated)).not.toContain('legacy-plaintext-must-not-survive');
+    expect(normalizePluginSettings(migrated)).toEqual(migrated);
+  });
+
+  it('honors an explicit rememberToken false and detaches a stale binding', () => {
+    const migrated = normalizePluginSettings({
+      connectionProfiles: [
+        {
+          id: 'profile-00112233445566778899aabbccddeeff',
+          name: 'Remote',
+          serverOrigin: 'https://loom.example',
+          rememberToken: false,
+          tokenSecretId: 'stale-secret-id',
+        },
+      ],
+    });
+
+    expect(migrated.connectionProfiles[0]).toMatchObject({
+      rememberToken: false,
+      tokenSecretId: null,
+    });
+  });
+
   it('detaches the Secret ID when remembering is turned off', () => {
     const settings = normalizePluginSettings({
       connectionProfiles: [
@@ -82,7 +127,7 @@ describe('map credential binding migration', () => {
     });
   });
 
-  it('does not enable remembering without a Secret ID', () => {
+  it('assigns a stable Secret ID when remembering is enabled without one', () => {
     const settings = normalizePluginSettings({
       connectionProfiles: [
         {
@@ -100,8 +145,8 @@ describe('map credential binding migration', () => {
     setConnectionProfileRemembered(profile, true);
 
     expect(profile).toMatchObject({
-      rememberToken: false,
-      tokenSecretId: null,
+      rememberToken: true,
+      tokenSecretId: 'loomtable:profile-00112233445566778899aabbccddeeff:server-token',
     });
   });
 });

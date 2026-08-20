@@ -18,11 +18,16 @@ export const simplifiedChineseMessages = {
   'connection.origin': 'Server 地址',
   'connection.profile': '连接档案',
   'connection.rememberToken': '记住 Token',
+  'connection.rememberTokenFailed':
+    '无法将 Token 保存到 Obsidian Secret Storage；本次会话 Token 已保留。',
   'connection.rememberTokenWarning':
     'Token 保存在 Obsidian Secret Storage 中；Vault 或应用配置仍可能被设备备份或同步。',
   'connection.rememberedToken': '已记住的 Token Secret',
   'connection.token': '访问 Token',
-  'connection.tokenSession': '除非启用记住 Token，否则仅在本次 Obsidian 会话中保留。',
+  'connection.tokenSession': 'Token 默认保存在 Obsidian Secret Storage；关闭后仅保留在本次会话中。',
+  'connection.disconnect': '断开本次会话',
+  'connection.disconnectDescription':
+    '清除本次会话 Token，但不会删除用户拥有的 Secret Storage 条目。',
   'connection.test': '测试连接',
   'connection.testing': '正在测试…',
   'connection.status.authenticationFailed': '访问 Token 被拒绝；请更换 Token 后重试。',

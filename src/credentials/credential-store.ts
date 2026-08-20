@@ -33,7 +33,12 @@ export class ObsidianSecretCredentialStore implements CredentialStore {
   constructor(private readonly storage: SecretStorage) {}
 
   get(secretId: string): string | null {
-    return secretId === '' ? null : this.storage.getSecret(secretId);
+    if (secretId === '') return null;
+    try {
+      return this.storage.getSecret(secretId);
+    } catch {
+      return null;
+    }
   }
 
   set(secretId: string, token: string): void {

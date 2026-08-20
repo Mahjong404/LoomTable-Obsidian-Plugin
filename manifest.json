@@ -1,7 +1,7 @@
 {
   "id": "loomtable",
   "name": "LoomTable",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "minAppVersion": "1.11.5",
   "description": "Browse and edit LoomTable data from Obsidian.",
   "author": "Mahjong404",
