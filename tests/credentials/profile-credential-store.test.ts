@@ -84,7 +84,9 @@ describe('profile credential policy', () => {
 
     expect(store.rememberSessionToken(profile)).toBe(false);
     expect(persistent.values).toEqual(new Map());
-    expect(new ProfileCredentialStore(new SessionCredentialStore(), persistent).get(profile)).toBeNull();
+    expect(
+      new ProfileCredentialStore(new SessionCredentialStore(), persistent).get(profile),
+    ).toBeNull();
   });
 
   it('does not read a SecretStorage binding after remembering is disabled', () => {
@@ -117,5 +119,5 @@ describe('profile credential policy', () => {
 
     expect(store.get(missing)).toBeNull();
   });
-
 });
+
