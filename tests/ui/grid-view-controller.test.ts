@@ -166,6 +166,46 @@ describe('GridViewController', () => {
     expect(controller.state.editStatuses.record_01).toBeUndefined();
   });
 
+  it('binds a prototype mutation method and accepts an unchanged response', async () => {
+    const data = createData(createRecords(1), createGridConfig(false));
+    const client = new PrototypeMutationClient(data, data.records[0]);
+    const request: MutationRequest = {
+      clientMutationId: 'unbound_mutation',
+      commands: [
+        {
+          kind: 'updateRecord',
+          recordId: 'record_01',
+          expectedRevision: 1,
+          set: { field_name: 'Record 1' },
+        },
+      ],
+    };
+    const unbound = client.mutate;
+    await expect(unbound('table_01', request)).rejects.toThrow(TypeError);
+
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    await expect(
+      controller.editCell('record_01', 'field_name', 'Record 1'),
+    ).resolves.toBeUndefined();
+
+    expect(client.mutationRequests).toHaveLength(1);
+    expect(client.mutationRequests[0]?.request.commands[0]).toMatchObject({
+      kind: 'updateRecord',
+      recordId: 'record_01',
+      expectedRevision: 1,
+      set: { field_name: 'Record 1' },
+    });
+    expect(controller.state.records[0]).toMatchObject({
+      id: 'record_01',
+      revision: 1,
+      values: { field_name: 'Record 1' },
+    });
+    expect(controller.state.editStatuses.record_01).toBeUndefined();
+    expect(controller.state.editError).toBeNull();
+  });
+
   it('surfaces a conflict and supports explicit overwrite using the Server revision', async () => {
     const data = createData(createRecords(1), createGridConfig(false));
     const conflict = new LoomTableClientError(
@@ -251,6 +291,25 @@ describe('createGridQuery', () => {
     });
   });
 });
+
+class PrototypeMutationClient extends InMemoryLoomTableClient {
+  readonly #unchangedRecord: LoomTableRecord;
+
+  constructor(data: InMemoryGridData, unchangedRecord: LoomTableRecord | undefined) {
+    super(data);
+    if (unchangedRecord === undefined) throw new Error('A fixture Record is required.');
+    this.#unchangedRecord = unchangedRecord;
+  }
+
+  override async mutate(tableId: string, request: MutationRequest): Promise<MutationResult> {
+    this.mutationRequests.push({ tableId, request });
+    return {
+      clientMutationId: request.clientMutationId,
+      results: [{ index: 0, status: 'unchanged', record: this.#unchangedRecord }],
+      changeCursor: 'change_01',
+    };
+  }
+}
 
 function createData(
   records: readonly LoomTableRecord[],
