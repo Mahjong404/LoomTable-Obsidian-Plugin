@@ -93,6 +93,18 @@ export function addConnectionProfile(
   return profile;
 }
 
+export function setConnectionProfileRemembered(
+  profile: ConnectionProfile,
+  remember: boolean,
+): void {
+  if (!remember) {
+    profile.rememberToken = false;
+    profile.tokenSecretId = null;
+    return;
+  }
+  profile.rememberToken = profile.tokenSecretId !== null;
+}
+
 export function removeConnectionProfile(
   settings: PluginSettings,
   profileId: ConnectionProfileId,
