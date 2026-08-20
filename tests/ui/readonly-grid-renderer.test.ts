@@ -23,6 +23,20 @@ describe('ReadonlyGridRenderer', () => {
     expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
   });
 
+  it('positions virtual rows at their vertical offsets', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(createState(3));
+
+    const rows = [...container.querySelectorAll<HTMLElement>('.loom-grid-row')];
+    expect(rows.map((row) => row.style.top)).toEqual(['0px', '36px', '72px']);
+  });
+
   it('exposes a keyboard detail entry for a read-only row', () => {
     const container = document.createElement('div');
     const callbacks = rendererCallbacks();

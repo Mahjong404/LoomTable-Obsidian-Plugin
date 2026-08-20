@@ -262,6 +262,7 @@ export class ReadonlyGridRenderer {
     row.dataset.rowIndex = String(rowIndex);
     row.style.gridTemplateColumns = columnTemplateFor(fields, this.#virtualGrid?.state);
     row.style.height = `${rowHeight}px`;
+    row.style.top = `${rowIndex * rowHeight}px`;
     row.title = this.#translate('grid.openDetails');
 
     const indexCell = createElement('div', 'loom-grid-index-cell');
