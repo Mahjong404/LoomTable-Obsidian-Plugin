@@ -17,11 +17,17 @@ export const englishMessages = {
   'connection.origin': 'Server origin',
   'connection.profile': 'Connection profile',
   'connection.rememberToken': 'Remember token',
+  'connection.rememberTokenFailed':
+    'The token could not be stored in Obsidian Secret Storage; the session token was kept.',
   'connection.rememberTokenWarning':
     'Stored in Obsidian Secret Storage. Your vault or app configuration may still be included in device backups or sync.',
   'connection.rememberedToken': 'Remembered token secret',
   'connection.token': 'Access token',
-  'connection.tokenSession': 'The token is kept only for this Obsidian session unless remembered.',
+  'connection.tokenSession':
+    'The token is remembered by default in Obsidian Secret Storage; turn it off to keep it session-only.',
+  'connection.disconnect': 'Disconnect this session',
+  'connection.disconnectDescription':
+    'Clear this session token without deleting the user-owned Secret Storage entry.',
   'connection.test': 'Test connection',
   'connection.testing': 'Testing…',
   'connection.status.authenticationFailed': 'The access token was rejected. Replace it and retry.',
@@ -96,3 +102,4 @@ export const englishMessages = {
 
 export type MessageKey = keyof typeof englishMessages;
 export type MessageCatalog = { readonly [Key in MessageKey]: string };
+

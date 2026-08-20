@@ -12,7 +12,7 @@ Obsidian 插件是主要前端，LoomTable Server 是数据事实来源。Person
 - Plugin 不直接连接 PostgreSQL。
 - View 只保存查询和展示配置，不复制 Record。
 - 瓦片服务是可替换的客户端展示依赖；LoomTable Server 不代理瓦片，也不保存 Provider Credential。
-- P0 要求 Obsidian `1.11.5` 或更高版本，并使用 SecretStorage 保存用户明确要求记住的 Server Token 与瓦片 Credential。
+- P0 要求 Obsidian `1.11.5` 或更高版本，并使用 SecretStorage 保存 Server Token；用户可显式关闭记住语义，瓦片 Credential 仍按独立的会话/记住策略处理。
 - Record 和 Field 使用稳定 ID，显示名称可以修改。
 - 所有危险修改都必须可恢复或提供明确确认。
 - 第一阶段不实现实时协作，但从第一天保留 Revision 和 Change Cursor。
@@ -102,3 +102,4 @@ Obsidian 插件是主要前端，LoomTable Server 是数据事实来源。Person
 - Redis 或其他协调组件。
 - 后台任务和通知。
 - 对象存储和更完整的审计能力。
+

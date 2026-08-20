@@ -1,5 +1,6 @@
 import {
   createConnectionProfileId,
+  createConnectionProfileSecretId,
   isConnectionProfileId,
   normalizeServerOrigin,
   type ConnectionProfile,
@@ -16,7 +17,7 @@ import {
   type TileProviderRef,
 } from '../maps/providers/tile-provider-schema';
 
-export const PLUGIN_SETTINGS_SCHEMA_VERSION = 1 as const;
+export const PLUGIN_SETTINGS_SCHEMA_VERSION = 2 as const;
 export const SUPPORTED_LOCALES = ['en', 'zh-CN'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 export const LOCALE_PREFERENCES = ['auto', ...SUPPORTED_LOCALES] as const;
@@ -78,13 +79,17 @@ export function addConnectionProfile(
   draft: ConnectionProfileDraft,
   createId: () => ConnectionProfileId = createConnectionProfileId,
 ): ConnectionProfile {
-  const tokenSecretId = normalizeSecretId(draft.tokenSecretId);
+  const id = createId();
+  const rememberToken = draft.rememberToken ?? true;
+  const tokenSecretId = rememberToken
+    ? (normalizeSecretId(draft.tokenSecretId) ?? createConnectionProfileSecretId(id))
+    : null;
   const profile: ConnectionProfile = {
     ...draft,
-    id: createId(),
+    id,
     name: draft.name.trim(),
     serverOrigin: normalizeServerOrigin(draft.serverOrigin),
-    rememberToken: tokenSecretId !== null,
+    rememberToken,
     tokenSecretId,
   };
   settings.connectionProfiles.push(profile);
@@ -101,7 +106,8 @@ export function setConnectionProfileRemembered(
     profile.tokenSecretId = null;
     return;
   }
-  profile.rememberToken = profile.tokenSecretId !== null;
+  profile.tokenSecretId ??= createConnectionProfileSecretId(profile.id);
+  profile.rememberToken = true;
 }
 
 export function removeConnectionProfile(
@@ -137,13 +143,16 @@ function parseProfile(value: unknown): ConnectionProfile[] {
   }
 
   try {
-    const tokenSecretId = normalizeSecretId(value.tokenSecretId);
+    const rememberToken = typeof value.rememberToken === 'boolean' ? value.rememberToken : true;
+    const tokenSecretId = rememberToken
+      ? (normalizeSecretId(value.tokenSecretId) ?? createConnectionProfileSecretId(value.id))
+      : null;
     return [
       {
         id: value.id,
         name: value.name.trim() || 'LoomTable Server',
         serverOrigin: normalizeServerOrigin(value.serverOrigin),
-        rememberToken: tokenSecretId !== null,
+        rememberToken,
         tokenSecretId,
       },
     ];
@@ -314,3 +323,4 @@ function parseCredentialSlot(value: unknown): TileCredentialSlot[] {
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
+

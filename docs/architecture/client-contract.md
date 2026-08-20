@@ -77,9 +77,9 @@ P0 的 View、CreateViewRequest 和 UpdateViewRequest 是以 `type` 为判别字
 
 - 新建 Connection Profile 默认使用 Server 原生本地地址 `http://127.0.0.1:31201`；已有 Profile 的地址保持不变。
 
-- Token 默认只保存在当前 Obsidian 会话的内存中，退出或重新加载 Plugin 后清除。
+- Token 默认绑定到每个 Connection Profile 的稳定 SecretStorage ID，Plugin 更新、重载或重启后可恢复；用户关闭“记住 Token”后才退回会话内存语义。
 - P0 的最低 Obsidian 版本是 `1.11.5`，持久化密钥统一使用 `app.secretStorage`；不存在把明文 Token 写入 Plugin Data 的兼容回退。
-- 连接设置使用 Obsidian `SecretComponent` 提供“记住 Token”：用户选择或创建可共享的 SecretStorage 条目，Plugin Data 只保存 Secret ID 引用，Plugin 不声明该 Secret 本体的独占所有权。
+- 连接设置使用 Obsidian `SecretComponent` 管理“记住 Token”：新 Profile 使用不含 Plugin 版本的稳定 SecretStorage ID，用户也可以选择或创建可共享条目；Plugin Data 只保存 Secret ID 引用，Plugin 不声明该 Secret 本体的独占所有权。
 - 关闭“记住 Token”时立即删除 Plugin Data 中的绑定，但保留当前会话值直到断开或 Plugin 卸载；“断开连接”同时清除会话值。Secret 本体由用户在 Obsidian 的 Secret 管理界面管理，Plugin 不擅自覆盖或删除。
 - 读取 Secret 失败、引用不存在或值为空时，连接进入 `authentication-required`，要求用户重新输入；不得回退到 Plugin Data 明文保存。
 - Client 使用 Obsidian 官方 HTTP 能力，不允许 Grid、Map 或其他 UI 模块直接调用 `fetch`。
@@ -150,3 +150,4 @@ Grid、Map、Field Editor 和 Component Gallery 不应自行使用 `fetch` 或�
 ## OpenAPI 来源
 
 Plugin 仓库提交 `openapi/loomtable-server.openapi.yaml` 和 `src/generated/transport.ts`，并在 `openapi/source.json` 记录来源 Server 的完整 Commit SHA。`api:sync` 负责显式下载指定提交，`api:generate` 负责生成 Transport Types，CI 拒绝生成结果漂移。日常安装、构建和测试不依赖同级 Server 工作树，也不访问网络获取 API 合同。
+

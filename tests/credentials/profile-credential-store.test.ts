@@ -9,12 +9,16 @@ import type { ConnectionProfile } from '../../src/settings/connection-profile';
 
 class MemoryCredentialStore implements CredentialStore {
   readonly values = new Map<string, string>();
+  throwOnGet = false;
+  throwOnSet = false;
 
   get(key: string): string | null {
+    if (this.throwOnGet) throw new Error('SecretStorage read failed');
     return this.values.get(key) ?? null;
   }
 
   set(key: string, token: string): void {
+    if (this.throwOnSet) throw new Error('SecretStorage write failed');
     this.values.set(key, token);
   }
 
@@ -105,11 +109,47 @@ describe('profile credential policy', () => {
     persistent.set('server-token', 'remembered-secret');
     store.setSession(remembered, 'session-secret');
 
-    store.delete(remembered);
+    store.disconnect(remembered);
 
     expect(store.getSession(remembered)).toBeNull();
     expect(persistent.get('server-token')).toBe('remembered-secret');
-    expect(store.get(remembered)).toBe('remembered-secret');
+    expect(store.get(remembered)).toBeNull();
+    expect(
+      new ProfileCredentialStore(new SessionCredentialStore(), persistent).get(remembered),
+    ).toBe('remembered-secret');
+  });
+
+  it('allows a new session token to reconnect after an explicit disconnect', () => {
+    const persistent = new MemoryCredentialStore();
+    const store = new ProfileCredentialStore(new SessionCredentialStore(), persistent);
+    const remembered = { ...profile, rememberToken: true, tokenSecretId: 'server-token' };
+    persistent.set('server-token', 'remembered-secret');
+
+    store.disconnect(remembered);
+    store.setSession(remembered, 'new-session-secret');
+
+    expect(store.get(remembered)).toBe('new-session-secret');
+  });
+
+  it('treats SecretStorage read errors as an authentication-required state', () => {
+    const persistent = new MemoryCredentialStore();
+    const store = new ProfileCredentialStore(new SessionCredentialStore(), persistent);
+    const remembered = { ...profile, rememberToken: true, tokenSecretId: 'server-token' };
+    persistent.throwOnGet = true;
+
+    expect(store.get(remembered)).toBeNull();
+  });
+
+  it('keeps the session token when SecretStorage write fails', () => {
+    const persistent = new MemoryCredentialStore();
+    const store = new ProfileCredentialStore(new SessionCredentialStore(), persistent);
+    const remembered = { ...profile, rememberToken: true, tokenSecretId: 'server-token' };
+    persistent.throwOnSet = true;
+    store.setSession(remembered, 'session-secret');
+
+    expect(store.rememberSessionToken(remembered)).toBe(false);
+    expect(store.getSession(remembered)).toBe('session-secret');
+    expect(store.get(remembered)).toBe('session-secret');
   });
 
   it('treats a missing SecretStorage reference as no credential', () => {
@@ -120,3 +160,4 @@ describe('profile credential policy', () => {
     expect(store.get(missing)).toBeNull();
   });
 });
+

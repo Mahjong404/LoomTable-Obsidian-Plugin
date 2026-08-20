@@ -90,8 +90,6 @@ export class LoomTableSettingTab extends PluginSettingTab {
             addConnectionProfile(this.loomTablePlugin.settings, {
               name: t('connection.newName'),
               serverOrigin: DEFAULT_SERVER_ORIGIN,
-              rememberToken: false,
-              tokenSecretId: null,
             });
             await this.loomTablePlugin.saveSettings();
             this.display();
@@ -131,7 +129,13 @@ export class LoomTableSettingTab extends PluginSettingTab {
         text.setValue(this.credentials.getSession(profile) ?? '').onChange((token) => {
           this.invalidateConnectionCheck(profile);
           this.credentials.setSession(profile, token);
-          if (profile.rememberToken) this.credentials.rememberSessionToken(profile);
+          if (
+            profile.rememberToken &&
+            token.trim() !== '' &&
+            !this.credentials.rememberSessionToken(profile)
+          ) {
+            new Notice(t('connection.rememberTokenFailed'));
+          }
           refreshConnectionCheck();
         });
       });
@@ -144,10 +148,30 @@ export class LoomTableSettingTab extends PluginSettingTab {
           .setValue(profile.tokenSecretId ?? '')
           .onChange(async (secretId) => {
             this.invalidateConnectionCheck(profile);
-            profile.tokenSecretId = secretId === '' ? null : secretId;
+            const previous = {
+              rememberToken: profile.rememberToken,
+              tokenSecretId: profile.tokenSecretId,
+            };
+            profile.tokenSecretId = secretId.trim() === '' ? null : secretId.trim();
             setConnectionProfileRemembered(profile, profile.tokenSecretId !== null);
-            await this.loomTablePlugin.saveSettings();
-            this.display();
+            if (
+              profile.rememberToken &&
+              this.credentials.getSession(profile) !== null &&
+              !this.credentials.rememberSessionToken(profile)
+            ) {
+              profile.rememberToken = previous.rememberToken;
+              profile.tokenSecretId = previous.tokenSecretId;
+              new Notice(t('connection.rememberTokenFailed'));
+              return;
+            }
+            try {
+              await this.loomTablePlugin.saveSettings();
+              this.display();
+            } catch {
+              profile.rememberToken = previous.rememberToken;
+              profile.tokenSecretId = previous.tokenSecretId;
+              new Notice(t('connection.rememberTokenFailed'));
+            }
           }),
       );
 
@@ -160,11 +184,43 @@ export class LoomTableSettingTab extends PluginSettingTab {
           .setDisabled(profile.tokenSecretId === null)
           .onChange(async (rememberToken) => {
             this.invalidateConnectionCheck(profile);
+            const previous = {
+              rememberToken: profile.rememberToken,
+              tokenSecretId: profile.tokenSecretId,
+            };
             setConnectionProfileRemembered(profile, rememberToken);
-            if (rememberToken) this.credentials.rememberSessionToken(profile);
-            await this.loomTablePlugin.saveSettings();
-            this.display();
+            if (
+              rememberToken &&
+              this.credentials.getSession(profile) !== null &&
+              !this.credentials.rememberSessionToken(profile)
+            ) {
+              profile.rememberToken = previous.rememberToken;
+              profile.tokenSecretId = previous.tokenSecretId;
+              new Notice(t('connection.rememberTokenFailed'));
+              this.display();
+              return;
+            }
+            try {
+              await this.loomTablePlugin.saveSettings();
+              this.display();
+            } catch {
+              profile.rememberToken = previous.rememberToken;
+              profile.tokenSecretId = previous.tokenSecretId;
+              new Notice(t('connection.rememberTokenFailed'));
+            }
           }),
+      );
+
+    new Setting(section)
+      .setName(t('connection.disconnect'))
+      .setDesc(t('connection.disconnectDescription'))
+      .addButton((button) =>
+        button.setButtonText(t('connection.disconnect')).onClick(() => {
+          this.invalidateConnectionCheck(profile);
+          this.credentials.disconnect(profile);
+          this.display();
+          this.loomTablePlugin.refreshViews();
+        }),
       );
 
     new Setting(section).setName(t('connection.default')).addToggle((toggle) =>
@@ -408,3 +464,4 @@ export class LoomTableSettingTab extends PluginSettingTab {
 function providerKey(ref: TileProviderRef): string {
   return ref.kind === 'built-in' ? `built-in:${ref.id}` : `custom:${ref.profileId}`;
 }
+

@@ -162,7 +162,7 @@ Conflict UI 必须展示本地提交值和服务端当前值，并提供：放�
 
 内部日志不得记录 Token、瓦片 Credential、展开后的带密钥瓦片 URL、完整 Record 内容或附件内容。
 
-Server Token 和瓦片 Credential 默认只存在于会话内存。用户显式选择“记住”时，通过 Obsidian `SecretComponent` 选择或创建可共享 Secret，Plugin Data 只保存 Secret ID 引用；停止记住只移除绑定，断开连接再清除会话值。Secret 读取失败时必须回到要求输入的状态。
+Server Token 默认绑定到不含 Plugin 版本的稳定 SecretStorage ID，Plugin Data 只保存 Secret ID 引用，因此更新、重载或重启后不要求重复输入。用户可显式关闭“记住”以退回会话内存；停止记住只移除绑定，断开连接清除当前会话值但不删除用户拥有的 Secret。Secret 读取失败时必须回到要求输入的状态。瓦片 Credential 仍默认只存在于会话内存。
 
 ## 9. View 身份和导航
 
@@ -241,3 +241,4 @@ Filter Builder 已支持递归 `AND`/`OR` Group；每个 Group 至少一个子�
 - Provider 故障不改变 LoomTable 数据连接状态，也不静默切换到其他外部服务。
 
 详细的类型、模块边界、预设模板、自定义配置、安全与测试合同见 [Map View 与瓦片提供方规范](../ui/map-spec.md)。
+

@@ -4,6 +4,7 @@ import {
   DEFAULT_SERVER_ORIGIN,
   type ConnectionProfileId,
   createConnectionProfileId,
+  createConnectionProfileSecretId,
   normalizeServerOrigin,
 } from '../../src/settings/connection-profile';
 import {
@@ -42,6 +43,31 @@ describe('connection profiles', () => {
     expect(createConnectionProfileId(() => '00112233-4455-6677-8899-aabbccddeeff')).toBe(
       'profile-00112233445566778899aabbccddeeff',
     );
+  });
+
+  it('derives a SecretStorage id without using the Plugin version', () => {
+    const profileId = 'profile-00112233445566778899aabbccddeeff' as ConnectionProfileId;
+
+    expect(createConnectionProfileSecretId(profileId)).toBe(
+      'loomtable:profile-00112233445566778899aabbccddeeff:server-token',
+    );
+  });
+
+  it('defaults a new profile to a stable remembered Secret binding', () => {
+    const settings = normalizePluginSettings(null);
+    const profile = addConnectionProfile(
+      settings,
+      {
+        name: 'Remote',
+        serverOrigin: 'https://loom.example',
+      },
+      () => 'profile-00112233445566778899aabbccddeeff' as ConnectionProfileId,
+    );
+
+    expect(profile).toMatchObject({
+      rememberToken: true,
+      tokenSecretId: 'loomtable:profile-00112233445566778899aabbccddeeff:server-token',
+    });
   });
 
   it('selects the first valid profile when a persisted default is invalid', () => {
@@ -91,3 +117,4 @@ describe('connection profiles', () => {
     expect(settings.defaultConnectionProfileId).toBe(second.id);
   });
 });
+

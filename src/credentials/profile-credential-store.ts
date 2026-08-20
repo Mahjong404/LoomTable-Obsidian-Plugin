@@ -1,19 +1,26 @@
-import type { ConnectionProfile } from '../settings/connection-profile';
+import type { ConnectionProfile, ConnectionProfileId } from '../settings/connection-profile';
 import type { CredentialStore } from './credential-store';
 
 export class ProfileCredentialStore {
+  readonly #disconnected = new Set<ConnectionProfileId>();
+
   constructor(
     private readonly sessionStore: CredentialStore,
     private readonly persistentStore: CredentialStore,
   ) {}
 
   get(profile: ConnectionProfile): string | null {
+    if (this.#disconnected.has(profile.id)) return null;
     const sessionToken = this.sessionStore.get(profile.id);
     if (sessionToken !== null) return sessionToken;
     if (!profile.rememberToken || profile.tokenSecretId === null) return null;
 
-    const rememberedToken = this.persistentStore.get(profile.tokenSecretId);
-    return rememberedToken === null || rememberedToken.trim() === '' ? null : rememberedToken;
+    try {
+      const rememberedToken = this.persistentStore.get(profile.tokenSecretId);
+      return rememberedToken === null || rememberedToken.trim() === '' ? null : rememberedToken;
+    } catch {
+      return null;
+    }
   }
 
   getSession(profile: ConnectionProfile): string | null {
@@ -21,6 +28,11 @@ export class ProfileCredentialStore {
   }
 
   setSession(profile: ConnectionProfile, token: string): void {
+    if (token.trim() === '') {
+      this.disconnect(profile);
+      return;
+    }
+    this.#disconnected.delete(profile.id);
     this.sessionStore.set(profile.id, token);
   }
 
@@ -29,11 +41,21 @@ export class ProfileCredentialStore {
     const sessionToken = this.sessionStore.get(profile.id);
     if (sessionToken === null || sessionToken.trim() === '') return false;
 
-    this.persistentStore.set(profile.tokenSecretId, sessionToken);
-    return true;
+    try {
+      this.persistentStore.set(profile.tokenSecretId, sessionToken);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  disconnect(profile: ConnectionProfile): void {
+    this.sessionStore.delete(profile.id);
+    this.#disconnected.add(profile.id);
   }
 
   delete(profile: ConnectionProfile): void {
-    this.sessionStore.delete(profile.id);
+    this.disconnect(profile);
   }
 }
+
