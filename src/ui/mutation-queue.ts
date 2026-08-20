@@ -273,8 +273,9 @@ let mutationSequence = 0;
 function createMutationId(): string {
   mutationSequence += 1;
   const random = new Uint8Array(10);
-  if (globalThis.crypto?.getRandomValues !== undefined) {
-    globalThis.crypto.getRandomValues(random);
+  const cryptoObject = typeof window === 'undefined' ? undefined : window.crypto;
+  if (cryptoObject?.getRandomValues !== undefined) {
+    cryptoObject.getRandomValues(random);
   } else {
     let value = (Date.now() + mutationSequence) >>> 0;
     for (let index = 0; index < random.length; index += 1) {
