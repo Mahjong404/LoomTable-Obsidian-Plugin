@@ -348,4 +348,3 @@ function describeTileState(state: MapViewState): string {
   if (state.tileStatus === 'ready') return 'Tiles ready.';
   return '';
 }
-

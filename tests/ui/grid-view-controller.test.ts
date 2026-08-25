@@ -736,4 +736,3 @@ function mutationResult(clientMutationId: string, value: string, revision: numbe
     changeCursor: 'change_02',
   };
 }
-

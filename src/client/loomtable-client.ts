@@ -528,4 +528,3 @@ export interface LoomTableClient {
   ): Promise<Attachment>;
   downloadAttachmentContent(attachmentId: string): Promise<AttachmentDownload>;
 }
-

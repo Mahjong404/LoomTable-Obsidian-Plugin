@@ -349,4 +349,3 @@ function locationState(value: JsonValue | undefined): GridState {
     records: [{ ...record, values: value === undefined ? {} : { field_location: value } }],
   };
 }
-

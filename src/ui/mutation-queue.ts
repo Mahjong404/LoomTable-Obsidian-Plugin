@@ -325,4 +325,3 @@ function encodeUlidRandom(random: Uint8Array): string {
   }
   return encoded;
 }
-

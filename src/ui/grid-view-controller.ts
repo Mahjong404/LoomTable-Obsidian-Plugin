@@ -789,4 +789,3 @@ function gridSaveStatus(state: GridState, offline: boolean): ViewSaveStatus {
   }
   return 'saved';
 }
-
