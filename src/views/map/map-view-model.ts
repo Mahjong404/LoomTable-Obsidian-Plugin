@@ -8,6 +8,7 @@ import type {
 } from '../../client/loomtable-client';
 import type { MapCamera } from '../../maps/renderer/map-renderer';
 import type { TileProviderError } from '../../maps/providers/tile-provider-schema';
+import type { ViewSaveStatus } from '../../ui/save-status';
 
 export type MapDataStatus =
   | 'idle'
@@ -43,6 +44,7 @@ export interface MapViewState {
   readonly clusterCursor: string | null;
   readonly error: LoomTableClientErrorDetails | null;
   readonly tileError: TileProviderError | LoomTableClientErrorDetails | null;
+  readonly saveStatus: ViewSaveStatus;
 }
 
 export const DEFAULT_MAP_CAMERA: MapCamera = {
@@ -74,5 +76,7 @@ export function initialMapViewState(
     clusterCursor: null,
     error: null,
     tileError: null,
+    saveStatus: 'saved',
   };
 }
+

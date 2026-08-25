@@ -1,4 +1,4 @@
-import type { Field, JsonValue, MutationValue } from '../client/loomtable-client';
+import type { Field, JsonValue, LocationValue, MutationValue } from '../client/loomtable-client';
 
 type SelectField = Field & {
   readonly type: 'select' | 'multiSelect';
@@ -22,6 +22,11 @@ export interface CellValueFailure {
 }
 
 export type CellValueResult = CellValueSuccess | CellValueFailure;
+
+export type LocationEditIntent =
+  | { readonly kind: 'set'; readonly value: LocationValue }
+  | { readonly kind: 'clear' }
+  | { readonly kind: 'unset' };
 
 const EDITABLE_TYPES = new Set<EditableFieldType>([
   'text',
@@ -64,6 +69,61 @@ export function normalizeCellValue(field: Field, raw: unknown): CellValueResult 
     case 'location':
       return { ok: false, message: `${field.type} cells are edited from Record details.` };
   }
+}
+
+export function normalizeLocationValue(raw: unknown): CellValueResult {
+  if (raw === null) return { ok: true, value: null };
+  if (!isPlainObject(raw)) return { ok: false, message: 'Location must be an object or cleared.' };
+
+  const allowedKeys = new Set(['label', 'address', 'provider', 'lat', 'lng', 'precision']);
+  if (Object.keys(raw).some((key) => !allowedKeys.has(key))) {
+    return { ok: false, message: 'Location contains an unsupported member.' };
+  }
+
+  const result: Record<string, JsonValue> = {};
+  for (const key of ['label', 'address', 'provider'] as const) {
+    const value = raw[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'string') {
+      return { ok: false, message: `Location ${key} must be text.` };
+    }
+    const normalized = value.trim().normalize('NFC');
+    if (hasForbiddenControl(normalized)) {
+      return { ok: false, message: `Location ${key} contains unsupported control characters.` };
+    }
+    if (normalized !== '') result[key] = normalized;
+  }
+
+  const lat = normalizeCoordinate(raw.lat, 'latitude');
+  const lng = normalizeCoordinate(raw.lng, 'longitude');
+  if (!lat.ok) return lat;
+  if (!lng.ok) return lng;
+  if ((lat.value === undefined) !== (lng.value === undefined)) {
+    return { ok: false, message: 'Location latitude and longitude must be provided together.' };
+  }
+  if (lat.value !== undefined && lng.value !== undefined) {
+    result.lat = lat.value;
+    result.lng = lng.value;
+  }
+
+  if (raw.precision !== undefined) {
+    if (
+      raw.precision !== 'exact' &&
+      raw.precision !== 'rooftop' &&
+      raw.precision !== 'approximate'
+    ) {
+      return { ok: false, message: 'Location precision is not valid.' };
+    }
+    result.precision = raw.precision;
+  }
+
+  if (Object.keys(result).length === 0) {
+    return { ok: false, message: 'Location needs a name, address, provider, or coordinates.' };
+  }
+  if (result.precision !== undefined && Object.keys(result).length === 1) {
+    return { ok: false, message: 'Location precision needs another Location member.' };
+  }
+  return { ok: true, value: result as LocationValue };
 }
 
 export function editorTextValue(value: JsonValue | undefined, field: Field): string {
@@ -189,3 +249,28 @@ function hasForbiddenControl(value: string): boolean {
     return (code < 0x20 && code !== 0x09 && code !== 0x0a && code !== 0x0d) || code === 0x7f;
   });
 }
+
+function normalizeCoordinate(
+  raw: unknown,
+  label: 'latitude' | 'longitude',
+):
+  | { readonly ok: true; readonly value: number | undefined }
+  | { readonly ok: false; readonly message: string } {
+  if (raw === undefined || raw === '') return { ok: true, value: undefined };
+  const value =
+    typeof raw === 'number'
+      ? raw
+      : typeof raw === 'string' && raw.trim() !== ''
+        ? Number(raw)
+        : NaN;
+  const maximum = label === 'latitude' ? 90 : 180;
+  if (!Number.isFinite(value) || value < -maximum || value > maximum) {
+    return { ok: false, message: `Location ${label} must be between ${-maximum} and ${maximum}.` };
+  }
+  return { ok: true, value };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+

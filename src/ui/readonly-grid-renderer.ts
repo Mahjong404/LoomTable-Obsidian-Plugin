@@ -2,6 +2,7 @@ import type { Translator } from '../i18n';
 import type { Field, JsonValue, LoomTableRecord } from '../client/loomtable-client';
 import type { GridState, GridStatus } from './grid-view-controller';
 import { editorTextValue, isEditableField } from './field-value-editor';
+import { renderSaveStatus } from './save-status';
 
 export interface GridRendererCallbacks {
   readonly onRefresh: () => void | Promise<void>;
@@ -13,6 +14,7 @@ export interface GridRendererCallbacks {
   readonly onRecordOpen: (record: LoomTableRecord) => void;
   readonly onCellEdit?: (recordId: string, fieldId: string, value: unknown) => void | Promise<void>;
   readonly onConflictAction?: (recordId: string, action: 'use-server' | 'overwrite') => void;
+  readonly onRetryEdit?: (recordId: string) => void;
 }
 
 interface VirtualGridRefs {
@@ -86,7 +88,9 @@ export class ReadonlyGridRenderer {
     refresh.textContent = this.#translate('grid.refresh');
     refresh.disabled = state.status === 'loading';
     refresh.addEventListener('click', () => void this.#callbacks.onRefresh());
-    toolbar.append(title, refresh);
+    const saveStatus = createElement('span', 'loom-save-status');
+    renderSaveStatus(saveStatus, state.saveStatus, this.#translate);
+    toolbar.append(title, saveStatus, refresh);
     return toolbar;
   }
 
@@ -188,6 +192,16 @@ export class ReadonlyGridRenderer {
     if (state.editError?.code !== undefined) {
       status.append(createTextElement('small', state.editError.code));
     }
+    const failedRecordId = Object.entries(state.editStatuses).find(
+      ([, status]) => status === 'error',
+    )?.[0];
+    if (failedRecordId !== undefined) {
+      const retry = createElement('button', 'loom-button');
+      retry.type = 'button';
+      retry.textContent = this.#translate('grid.retry');
+      retry.addEventListener('click', () => this.#callbacks.onRetryEdit?.(failedRecordId));
+      status.append(retry);
+    }
     return status;
   }
 
@@ -280,7 +294,7 @@ export class ReadonlyGridRenderer {
 
     for (const field of fields) {
       const cell = createGridCell(
-        formatCellValue(record.values[field.id], field),
+        formatCellValue(record.values[field.id], field, this.#translate),
         'loom-grid-cell',
       );
       cell.setAttribute('role', 'gridcell');
@@ -399,6 +413,7 @@ export class ReadonlyGridRenderer {
       editStatuses: {},
       conflicts: [],
       editError: null,
+      saveStatus: 'saved',
     };
   }
 
@@ -474,8 +489,15 @@ function clampColumnWidth(width: number): number {
   return Math.max(80, Math.min(500, Math.round(width)));
 }
 
-function formatCellValue(value: JsonValue | undefined, field: Field): string {
-  if (value === undefined || value === null) return '—';
+function formatCellValue(
+  value: JsonValue | undefined,
+  field: Field,
+  translate: Translator,
+): string {
+  if (value === undefined) {
+    return field.type === 'location' ? translate('record.field.unset') : '—';
+  }
+  if (value === null) return field.type === 'location' ? translate('record.field.cleared') : '—';
   if (field.type === 'checkbox' && typeof value === 'boolean') return value ? '✓' : '—';
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
@@ -489,17 +511,24 @@ function formatCellValue(value: JsonValue | undefined, field: Field): string {
       .join(', ');
   }
   if (isLocationValue(value)) {
+    const coordinates = locationCoordinates(value);
+    if (coordinates === null) return translate('record.location.unlocated');
+    if (Math.abs(coordinates.lat) > 85.0511287798066) {
+      return translate('record.location.unrenderable');
+    }
     if (typeof value.label === 'string') return value.label;
     if (typeof value.address === 'string') return value.address;
-    return formatCoordinates(value) ?? '—';
+    return `${coordinates.lat}, ${coordinates.lng}`;
   }
   return JSON.stringify(value);
 }
 
-function formatCoordinates(value: Readonly<Record<string, JsonValue>>): string | null {
+function locationCoordinates(
+  value: Readonly<Record<string, JsonValue>>,
+): { readonly lat: number; readonly lng: number } | null {
   const lat = value.lat;
   const lng = value.lng;
-  return typeof lat === 'number' && typeof lng === 'number' ? `${lat}, ${lng}` : null;
+  return typeof lat === 'number' && typeof lng === 'number' ? { lat, lng } : null;
 }
 
 function isAttachmentReference(value: JsonValue): value is Readonly<Record<string, JsonValue>> & {
@@ -595,3 +624,4 @@ function createTextElement<K extends keyof HTMLElementTagNameMap>(
   element.textContent = text;
   return element;
 }
+

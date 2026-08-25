@@ -233,6 +233,47 @@ describe('MapViewController', () => {
     expect(controller.state.viewRevision).toBe(1);
   });
 
+  it('keeps Summary and Query calls separate for load, camera movement, refresh, and fit-all', async () => {
+    vi.useFakeTimers();
+    try {
+      const summarizeMap = vi.fn().mockResolvedValue(summaryResult());
+      const queryMap = vi.fn().mockResolvedValue(queryResult('record_01', 1));
+      const pullChanges = vi.fn().mockResolvedValue({
+        items: [],
+        nextCursor: 'change_tail',
+        hasMore: false,
+      });
+      const renderer = new FakeRenderer();
+      const controller = createController(
+        createClient({ summarizeMap, queryMap, pullChanges }),
+        createMapView('field_location'),
+        [createField('field_location')],
+        { renderer, debounceMs: 25 },
+      );
+      controller.mount(document.createElement('div'));
+
+      await controller.load();
+      expect(summarizeMap).toHaveBeenCalledTimes(1);
+      expect(queryMap).toHaveBeenCalledTimes(1);
+
+      renderer.emitCamera({ center: { lat: 10, lng: 20 }, zoom: 6 });
+      await vi.advanceTimersByTimeAsync(25);
+      expect(summarizeMap).toHaveBeenCalledTimes(1);
+      expect(queryMap).toHaveBeenCalledTimes(2);
+
+      await controller.refreshCurrentViewport();
+      expect(pullChanges).toHaveBeenCalledWith('table_01', { cursor: 'change_query' });
+      expect(summarizeMap).toHaveBeenCalledTimes(1);
+      expect(queryMap).toHaveBeenCalledTimes(3);
+
+      await controller.fitAll();
+      expect(summarizeMap).toHaveBeenCalledTimes(2);
+      expect(queryMap).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('refreshes Summary when the current saved Map View changes', async () => {
     const summarizeMap = vi
       .fn()
@@ -295,6 +336,29 @@ describe('MapViewController', () => {
     expect(summarizeMap).toHaveBeenCalledTimes(2);
     expect(queryMap).toHaveBeenCalledTimes(2);
     expect(controller.state.features).toEqual(queryResult('record_rebased', 1).features);
+  });
+
+  it('surfaces the published brokenFieldIds when the Server rejects Map configuration', async () => {
+    const summarizeMap = vi.fn().mockRejectedValue(
+      new LoomTableClientError('validation', {
+        code: 'VIEW_CONFIGURATION_REQUIRED',
+        message: 'The Map View requires a Location Field.',
+        apiDetails: { viewId: 'view_map', brokenFieldIds: ['field_location'] },
+      }),
+    );
+    const controller = createController(
+      createClient({ summarizeMap }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.load();
+
+    expect(controller.state.dataStatus).toBe('configuration-required');
+    expect(controller.state.error).toMatchObject({
+      code: 'VIEW_CONFIGURATION_REQUIRED',
+      apiDetails: { brokenFieldIds: ['field_location'] },
+    });
   });
 
   it('requeries the viewport after a cluster snapshot expires', async () => {
@@ -406,6 +470,22 @@ describe('MapViewController', () => {
     });
     expect(JSON.stringify(updateView.mock.calls[0]?.[1])).toContain('"lat":35');
     expect(controller.state.view.revision).toBe(2);
+    expect(controller.state.saveStatus).toBe('saved');
+  });
+
+  it('does not save the camera while offline and exposes read-only status', async () => {
+    const updateView = vi.fn();
+    const controller = createController(
+      createClient({ updateView }),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { isOffline: () => true },
+    );
+
+    await controller.saveDefaultCamera();
+
+    expect(updateView).not.toHaveBeenCalled();
+    expect(controller.state.saveStatus).toBe('offline-readonly');
   });
 
   it.each([
@@ -625,3 +705,4 @@ function deferred<T>(): {
   });
   return { promise, resolve: resolvePromise };
 }
+

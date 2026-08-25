@@ -50,6 +50,7 @@ describe('MapView', () => {
     view.renderState({
       ...initialMapViewState(createMapView()),
       dataStatus: 'offline',
+      saveStatus: 'offline-readonly',
     });
 
     const buttons = [...container.querySelectorAll('button')];
@@ -58,6 +59,7 @@ describe('MapView', () => {
     expect(buttons.find((button) => button.textContent === 'Save current camera')?.disabled).toBe(
       true,
     );
+    expect(container.querySelector('.loom-save-status')?.textContent).toContain('Offline');
   });
 
   it('keeps selected Record details visible independently of tile status', () => {
@@ -129,3 +131,4 @@ function createMapView() {
     updatedAt: '',
   };
 }
+
