@@ -1,5 +1,7 @@
 # LoomTable UI Design System
 
+> 本文档记录 UI Token、CSS 层次和组件实现建议。规范性行为、状态、键盘、触控、可访问性和验收要求以 [LoomTable Interaction HIG](./interaction-hig.md) 为准；实施顺序见 [HIG 落地计划](./interaction-hig-rollout.md)。
+
 ## 目标
 
 LoomTable 的 UI 使用 Obsidian 的主题语义，同时保留自己的组件行为、状态和命名空间。用户应用任意 Obsidian 主题后，LoomTable 应继承该主题的整体视觉，而不是只适配某一个主题。
