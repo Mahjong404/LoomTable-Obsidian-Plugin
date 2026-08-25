@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type {
   Field,
   GridViewConfig,
+  JsonValue,
   LoomTableRecord,
   View,
 } from '../../src/client/loomtable-client';
@@ -63,6 +64,64 @@ describe('ReadonlyGridRenderer', () => {
     renderer.render(state);
 
     expect(container.querySelector('.loom-grid-status')?.textContent).toContain('offline');
+  });
+
+  it('renders the View save status as an accessible live value', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(createState(1, { saveStatus: 'saving' }));
+
+    const status = container.querySelector<HTMLElement>('.loom-save-status');
+    expect(status?.getAttribute('aria-live')).toBe('polite');
+    expect(status?.dataset.status).toBe('saving');
+    expect(status?.textContent).toContain('Saving');
+  });
+
+  it('collapses Saved to an accessible icon after a short delay', () => {
+    vi.useFakeTimers();
+    try {
+      const container = document.createElement('div');
+      const renderer = new ReadonlyGridRenderer(
+        container,
+        createTranslator('en'),
+        rendererCallbacks(),
+      );
+
+      renderer.render(createState(1));
+      const status = container.querySelector<HTMLElement>('.loom-save-status');
+      expect(status?.textContent).toBe('Saved');
+      vi.advanceTimersByTime(1_200);
+      expect(status?.textContent).toBe('✓');
+      expect(status?.getAttribute('aria-label')).toBe('Saved');
+      expect(status?.title).toBe('Saved');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('distinguishes Location values that are unset, unlocated, and not renderable', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(locationState(undefined));
+    expect(container.querySelector('[data-field-id="field_location"]')?.textContent).toBe('Unset');
+    renderer.render(locationState({ label: 'No coordinates' }));
+    expect(container.querySelector('[data-field-id="field_location"]')?.textContent).toBe(
+      'Unlocated',
+    );
+    renderer.render(locationState({ lat: 90, lng: 0 }));
+    expect(container.querySelector('[data-field-id="field_location"]')?.textContent).toContain(
+      'Not renderable',
+    );
   });
 
   it('keeps offline Grid Cells read-only and does not start an editor', () => {
@@ -136,6 +195,23 @@ describe('ReadonlyGridRenderer', () => {
     expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(1, 'record_01', 'use-server');
     expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite');
   });
+
+  it('offers an explicit retry action for a failed save', () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(
+      createState(1, {
+        editError: { message: 'The value is invalid.' },
+        editStatuses: { record_01: 'error' },
+        saveStatus: 'error',
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('.loom-grid-edit-status button')?.click();
+    expect(callbacks.onRetryEdit).toHaveBeenCalledWith('record_01');
+  });
 });
 
 describe('getVirtualRowRange', () => {
@@ -156,6 +232,7 @@ function rendererCallbacks() {
     onRecordOpen: vi.fn(),
     onCellEdit: vi.fn(),
     onConflictAction: vi.fn(),
+    onRetryEdit: vi.fn(),
   };
 }
 
@@ -239,6 +316,36 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     editStatuses: {},
     conflicts: [],
     editError: null,
+    saveStatus: 'saved',
     ...update,
+  };
+}
+
+function locationState(value: JsonValue | undefined): GridState {
+  const state = createState(1);
+  const view = state.views[0];
+  if (view?.type !== 'grid') throw new Error('Grid fixture is missing.');
+  const field: Field = {
+    id: 'field_location',
+    tableId: 'table_01',
+    name: 'Location',
+    position: 0,
+    schemaVersion: 1,
+    revision: 1,
+    type: 'location',
+    config: {},
+  };
+  const record = state.records[0];
+  if (record === undefined) throw new Error('Record fixture is missing.');
+  return {
+    ...state,
+    fields: [field],
+    views: [
+      {
+        ...view,
+        config: { ...view.config, projection: ['field_location'], columnOrder: ['field_location'] },
+      },
+    ],
+    records: [{ ...record, values: value === undefined ? {} : { field_location: value } }],
   };
 }

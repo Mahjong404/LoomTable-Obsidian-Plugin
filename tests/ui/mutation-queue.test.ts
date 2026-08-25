@@ -85,6 +85,22 @@ describe('MutationQueue', () => {
     );
   });
 
+  it('retains a failed job for an explicit user retry', async () => {
+    const client = {
+      mutate: vi
+        .fn<(tableId: string, request: MutationRequestLike) => Promise<MutationResult>>()
+        .mockRejectedValueOnce(new LoomTableClientError('validation', { message: 'Rejected' }))
+        .mockImplementationOnce(async (_tableId, request) => result(request.clientMutationId, 2)),
+    };
+    const queue = new MutationQueue(client, { idFactory: idFactory() });
+
+    await expect(queue.enqueue(job('record_01', 'field_a', 'one'))).rejects.toThrow('Rejected');
+    expect(queue.getSnapshot('record_01').state).toBe('error');
+    queue.retryError('record_01');
+    await vi.waitFor(() => expect(client.mutate).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(queue.getSnapshot('record_01').state).toBe('idle'));
+  });
+
   it('pauses one Record on conflict and retries with the current revision after overwrite', async () => {
     const calls: MutationRequestLike[] = [];
     const conflict = new LoomTableClientError(

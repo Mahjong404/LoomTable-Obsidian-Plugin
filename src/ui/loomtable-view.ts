@@ -11,6 +11,7 @@ import { GridViewController, type GridState } from './grid-view-controller';
 import { ReadonlyGridRenderer } from './readonly-grid-renderer';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
 import { MapView, type MapViewNavigation } from '../views/map/map-view';
+import { createRecordDetail } from './record-detail';
 
 export const LOOMTABLE_VIEW_TYPE = 'loomtable-main';
 
@@ -102,16 +103,22 @@ export class LoomTableView extends ItemView {
       onTableChange: (tableId) => controller.selectTable(tableId),
       onViewChange: (viewId) => controller.selectView(viewId),
       onLoadMore: () => controller.loadNextPage(),
-      onRecordOpen: (record) => this.showRecordDetail(record),
+      onRecordOpen: (record) => this.showRecordDetail(record, profile, controller),
       onCellEdit: (recordId, fieldId, value) => controller.editCell(recordId, fieldId, value),
       onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
+      onRetryEdit: (recordId) => controller.retryEdit(recordId),
     });
     this.#gridController = controller;
     this.#gridUnsubscribe = controller.subscribe((state) => renderer.render(state));
     if (controller.state.status === 'idle') void controller.load();
   }
 
-  private showMap(profile: ConnectionProfile, view: View, navigationState: GridState): void {
+  private showMap(
+    profile: ConnectionProfile,
+    view: View,
+    navigationState: GridState,
+    focusRecordId?: string,
+  ): void {
     if (view.type !== 'map') return;
     this.#gridUnsubscribe?.();
     this.#gridUnsubscribe = null;
@@ -129,8 +136,16 @@ export class LoomTableView extends ItemView {
     const navigation = this.mapNavigation(profile, navigationState, view);
     const provider = providerForView(this.getSettings(), view.id);
     this.#mapView = new MapView(this.contentEl, controller, {
+      translate: this.getTranslator(),
       navigation,
       onClusterNextPage: () => controller.loadNextClusterPage(),
+      onLocationEdit: (recordId, fieldId, intent, record) =>
+        this.#gridController?.editLocation(recordId, fieldId, intent, record),
+      getConflict: (recordId) => this.#gridController?.getConflict(recordId),
+      onConflictAction: (recordId, action) =>
+        this.#gridController?.resolveConflict(recordId, action),
+      onOpenLocationInMap: (recordId, fieldId) =>
+        this.openLocationInMap(profile, navigationState, recordId, fieldId),
       providers: this.mapContext.registry.list(),
       selectedProvider: provider,
       onProviderChange: async (nextProvider) => {
@@ -140,6 +155,7 @@ export class LoomTableView extends ItemView {
       },
     });
     this.#mapView.mount();
+    if (focusRecordId !== undefined) void controller.openRecord(focusRecordId);
   }
 
   private mapNavigation(
@@ -194,18 +210,41 @@ export class LoomTableView extends ItemView {
     this.showMap(profile, mapView, controller.state);
   }
 
-  private showRecordDetail(record: LoomTableRecord): void {
-    const detail = this.contentEl.createDiv({ cls: 'loom-record-detail' });
-    const header = detail.createDiv({ cls: 'loom-record-detail-header' });
-    header.createEl('strong', { text: this.getTranslator()('grid.openDetails') });
-    const close = header.createEl('button', {
-      cls: 'loom-button',
-      text: this.getTranslator()('common.close'),
+  private showRecordDetail(
+    record: LoomTableRecord,
+    profile: ConnectionProfile,
+    controller: GridViewController,
+  ): void {
+    let detail: HTMLElement;
+    detail = createRecordDetail(record, {
+      translate: this.getTranslator(),
+      fields: controller.state.fields,
+      offline: typeof navigator !== 'undefined' && navigator.onLine === false,
+      callbacks: {
+        onClose: () => detail.remove(),
+        onLocationEdit: (recordId, fieldId, intent, recordValue) =>
+          controller.editLocation(recordId, fieldId, intent, recordValue),
+        getConflict: (recordId) => controller.getConflict(recordId),
+        onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
+        onOpenLocationInMap: (recordId, fieldId) =>
+          this.openLocationInMap(profile, controller.state, recordId, fieldId),
+      },
     });
-    close.setAttr('aria-label', this.getTranslator()('common.close'));
-    close.addEventListener('click', () => detail.remove());
-    detail.createEl('p', { text: `Record ${record.id}` });
-    detail.createEl('pre', { text: JSON.stringify(record.values, null, 2) });
+    this.contentEl.append(detail);
+  }
+
+  private openLocationInMap(
+    profile: ConnectionProfile,
+    state: GridState,
+    recordId: string,
+    fieldId: string,
+  ): void {
+    const controller = this.#gridController;
+    if (controller === null) return;
+    const mapView = state.views.find(
+      (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
+    );
+    if (mapView?.type === 'map') this.showMap(profile, mapView, controller.state, recordId);
   }
 
   private disposeAll(): void {

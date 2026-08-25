@@ -1,8 +1,19 @@
-import type { Base, Table, View, Workspace } from '../../client/loomtable-client';
+import type {
+  Base,
+  LocationValue,
+  LoomTableRecord,
+  Table,
+  View,
+  Workspace,
+} from '../../client/loomtable-client';
+import { createTranslator, type Translator } from '../../i18n';
 import type {
   TileProviderRef,
   TileProviderSummary,
 } from '../../maps/providers/tile-provider-schema';
+import type { LocationEditIntent } from '../../ui/field-value-editor';
+import { createRecordDetail, type RecordConflictView } from '../../ui/record-detail';
+import { renderSaveStatus } from '../../ui/save-status';
 import type { MapViewController } from './map-view-controller';
 import type { MapViewState } from './map-view-model';
 
@@ -21,8 +32,25 @@ export interface MapViewNavigation {
   readonly onViewChange: (viewId: string) => void | Promise<void>;
 }
 export interface MapViewOptions {
+  readonly translate?: Translator;
   readonly navigation?: MapViewNavigation;
   readonly onClusterNextPage?: () => void | Promise<void>;
+  readonly onLocationEdit?: (
+    recordId: string,
+    fieldId: string,
+    intent: LocationEditIntent,
+    record?: LoomTableRecord,
+  ) => void | Promise<void>;
+  readonly onOpenLocationInMap?: (
+    recordId: string,
+    fieldId: string,
+    location: LocationValue,
+  ) => void | Promise<void>;
+  readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
+  readonly onConflictAction?: (
+    recordId: string,
+    action: 'use-server' | 'overwrite',
+  ) => void | Promise<void>;
   readonly providers?: readonly TileProviderSummary[];
   readonly selectedProvider?: TileProviderRef;
   readonly onProviderChange?: (provider: TileProviderRef) => void | Promise<void>;
@@ -33,6 +61,7 @@ export class MapView {
   readonly #controller: MapViewController;
   #unsubscribe: (() => void) | null = null;
   #status: HTMLElement | null = null;
+  #saveStatus: HTMLElement | null = null;
   #tileStatus: HTMLElement | null = null;
   #details: HTMLElement | null = null;
   #refreshButton: HTMLButtonElement | null = null;
@@ -74,6 +103,9 @@ export class MapView {
     if (provider !== null) toolbar.append(provider);
     const status = document.createElement('p');
     status.className = 'loom-status loom-map-status';
+    const saveStatus = document.createElement('span');
+    saveStatus.className = 'loom-save-status';
+    saveStatus.setAttribute('aria-live', 'polite');
     const tileStatus = document.createElement('p');
     tileStatus.className = 'loom-status loom-map-tile-status';
     const mapContainer = document.createElement('div');
@@ -84,6 +116,7 @@ export class MapView {
     root.append(
       ...(navigation === null ? [] : [navigation]),
       toolbar,
+      saveStatus,
       status,
       tileStatus,
       mapContainer,
@@ -91,6 +124,7 @@ export class MapView {
     );
     this.#container.replaceChildren(root);
     this.#status = status;
+    this.#saveStatus = saveStatus;
     this.#tileStatus = tileStatus;
     this.#details = details;
     this.#refreshButton = refresh;
@@ -106,6 +140,7 @@ export class MapView {
     this.#unsubscribe = null;
     this.#controller.dispose();
     this.#status = null;
+    this.#saveStatus = null;
     this.#tileStatus = null;
     this.#details = null;
     this.#refreshButton = null;
@@ -115,13 +150,21 @@ export class MapView {
   }
 
   renderState(state: MapViewState): void {
-    if (this.#status === null || this.#tileStatus === null) return;
+    if (this.#status === null || this.#tileStatus === null || this.#saveStatus === null) return;
     const offline = state.dataStatus === 'offline';
     this.#refreshButton?.toggleAttribute('disabled', offline);
     this.#fitAllButton?.toggleAttribute('disabled', offline);
     this.#saveCameraButton?.toggleAttribute('disabled', offline);
+    renderSaveStatus(
+      this.#saveStatus,
+      state.saveStatus,
+      this.options.translate ?? createTranslator('en'),
+    );
     this.#status.dataset.status = state.dataStatus;
-    this.#status.textContent = describeDataState(state);
+    this.#status.textContent = describeDataState(
+      state,
+      this.options.translate ?? createTranslator('en'),
+    );
     this.#tileStatus.dataset.status = state.tileStatus;
     this.#tileStatus.textContent = describeTileState(state);
     this.#renderDetails(state);
@@ -133,11 +176,43 @@ export class MapView {
     if (state.selectedRecord !== null) {
       const record = document.createElement('section');
       record.className = 'loom-map-record-detail';
-      const title = document.createElement('strong');
-      title.textContent = `Record ${state.selectedRecord.id}`;
-      const values = document.createElement('pre');
-      values.textContent = JSON.stringify(state.selectedRecord.values, null, 2);
-      record.append(title, values);
+      const callbacks = {
+        ...(this.options.onLocationEdit === undefined
+          ? {}
+          : {
+              onLocationEdit: async (
+                recordId: string,
+                fieldId: string,
+                intent: LocationEditIntent,
+                recordValue?: LoomTableRecord,
+              ) => {
+                await this.options.onLocationEdit?.(recordId, fieldId, intent, recordValue);
+                await this.#controller.openRecord(recordId);
+              },
+            }),
+        ...(this.options.onOpenLocationInMap === undefined
+          ? {}
+          : { onOpenLocationInMap: this.options.onOpenLocationInMap }),
+        ...(this.options.getConflict === undefined
+          ? {}
+          : { getConflict: this.options.getConflict }),
+        ...(this.options.onConflictAction === undefined
+          ? {}
+          : {
+              onConflictAction: async (recordId: string, action: 'use-server' | 'overwrite') => {
+                await this.options.onConflictAction?.(recordId, action);
+                await this.#controller.openRecord(recordId);
+              },
+            }),
+      };
+      record.append(
+        createRecordDetail(state.selectedRecord, {
+          translate: this.options.translate ?? createTranslator('en'),
+          fields: state.fields,
+          offline: state.dataStatus === 'offline',
+          callbacks,
+        }),
+      );
       this.#details.append(record);
     }
     if (state.clusterRecords.length > 0 || state.clusterCursor !== null) {
@@ -243,7 +318,7 @@ function button(label: string, onClick: () => void, disabled = false): HTMLButto
   return element;
 }
 
-function describeDataState(state: MapViewState): string {
+function describeDataState(state: MapViewState, translate: Translator): string {
   if (state.error !== null) return state.error.message;
   if (state.dataStatus === 'loading') return 'Loading Map data…';
   if (state.dataStatus === 'empty') return 'No renderable Records match this Map View.';
@@ -253,7 +328,15 @@ function describeDataState(state: MapViewState): string {
   if (state.dataStatus === 'forbidden') return 'This Token cannot access the selected Map.';
   if (state.dataStatus === 'network') return 'Map data could not be reached. Retry when online.';
   if (state.dataStatus === 'server-error') return 'The Server returned an error for this Map.';
-  return `${state.viewportRenderableRecordCount} renderable Records`;
+  if (state.summary !== null) {
+    return [
+      `${state.summary.matchedRecordCount} ${translate('map.summary.matched')}`,
+      `${state.summary.renderableRecordCount} ${translate('map.summary.renderable')}`,
+      `${state.summary.unlocatedRecordCount} ${translate('map.summary.unlocated')}`,
+      `${state.summary.unrenderableRecordCount} ${translate('map.summary.unrenderable')}`,
+    ].join(' · ');
+  }
+  return `${state.viewportRenderableRecordCount} ${translate('map.summary.renderable')}`;
 }
 
 function describeTileState(state: MapViewState): string {

@@ -53,6 +53,7 @@ interface RecordQueue {
   processing: boolean;
   blocked: InternalConflict | undefined;
   error: LoomTableClientError | undefined;
+  failed: PendingJob | undefined;
   mutationId: string | undefined;
 }
 
@@ -103,6 +104,7 @@ export class MutationQueue {
     return new Promise<MutationResult>((resolve, reject) => {
       queue.jobs.push({ job, resolve, reject });
       queue.error = undefined;
+      queue.failed = undefined;
       this.#publish(queue);
       void this.#process(queue);
     });
@@ -131,7 +133,18 @@ export class MutationQueue {
     for (const pending of queue.jobs.splice(0)) pending.reject(new MutationQueueDiscardedError());
     queue.blocked = undefined;
     queue.error = undefined;
+    queue.failed = undefined;
     this.#publish(queue);
+  }
+
+  retryError(recordId: string): void {
+    const queue = this.#queues.get(recordId);
+    if (queue?.error === undefined || queue.failed === undefined || queue.processing) return;
+    queue.jobs.unshift(queue.failed);
+    queue.failed = undefined;
+    queue.error = undefined;
+    this.#publish(queue);
+    void this.#process(queue);
   }
 
   #createQueue(job: MutationQueueJob): RecordQueue {
@@ -142,6 +155,7 @@ export class MutationQueue {
       processing: false,
       blocked: undefined,
       error: undefined,
+      failed: undefined,
       mutationId: undefined,
     };
     this.#queues.set(job.recordId, queue);
@@ -184,6 +198,7 @@ export class MutationQueue {
         return;
       }
       queue.error = clientError;
+      queue.failed = pending;
       pending.reject(clientError);
     } finally {
       queue.processing = false;

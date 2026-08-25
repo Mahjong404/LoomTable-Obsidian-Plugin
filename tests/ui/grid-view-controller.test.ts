@@ -4,6 +4,7 @@ import {
   LoomTableClientError,
   type Field,
   type GridViewConfig,
+  type JsonValue,
   type LoomTableRecord,
   type MutationRequest,
   type MutationResult,
@@ -143,6 +144,231 @@ describe('GridViewController', () => {
 
     expect(mutate).not.toHaveBeenCalled();
     expect(controller.state.editError?.message).toContain('offline');
+    expect(controller.state.saveStatus).toBe('offline-readonly');
+  });
+
+  it('exposes dirty, saving, and saved View status around an UpdateRecord', async () => {
+    const data = createData(createRecords(1), createGridConfig(false));
+    let resolveMutation: ((result: MutationResult) => void) | undefined;
+    const mutate = vi.fn(
+      () => new Promise<MutationResult>((resolve) => (resolveMutation = resolve)),
+    );
+    const controller = new GridViewController(withMutation(data, mutate));
+    const statuses: string[] = [];
+    controller.subscribe((state) => statuses.push(state.saveStatus));
+    await controller.load();
+
+    const pending = controller.editCell('record_01', 'field_name', 'Saving');
+    expect(controller.state.saveStatus).toBe('saving');
+    resolveMutation?.(mutationResult('mutation_status_01', 'Saving', 2));
+    await pending;
+
+    expect(statuses).toContain('dirty');
+    expect(statuses).toContain('saving');
+    expect(controller.state.saveStatus).toBe('saved');
+  });
+
+  it('exposes a failed View save without changing the optimistic rollback contract', async () => {
+    const data = createData(createRecords(1), createGridConfig(false));
+    const mutate = vi
+      .fn<(tableId: string, request: MutationRequest) => Promise<MutationResult>>()
+      .mockRejectedValueOnce(
+        new LoomTableClientError('validation', { message: 'The value is invalid.' }),
+      )
+      .mockResolvedValueOnce(mutationResult('mutation_retry_01', 'Retried', 2));
+    const controller = new GridViewController(withMutation(data, mutate));
+    await controller.load();
+
+    await expect(controller.editCell('record_01', 'field_name', 'Rejected')).rejects.toThrow(
+      'The value is invalid.',
+    );
+    expect(controller.state.saveStatus).toBe('error');
+    expect(controller.state.records[0]?.values.field_name).toBe('Record 1');
+
+    controller.retryEdit('record_01');
+    await vi.waitFor(() => expect(mutate).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(controller.state.saveStatus).toBe('saved'));
+    expect(controller.state.records[0]?.values.field_name).toBe('Retried');
+  });
+
+  it('saves a validated Location object through a single UpdateRecord command', async () => {
+    const initial = locationRecord({
+      label: 'Old label',
+      lat: 10,
+      lng: 20,
+      precision: 'approximate',
+    });
+    const saved = {
+      ...initial,
+      revision: 2,
+      values: {
+        ...initial.values,
+        field_location: {
+          label: 'New label',
+          address: 'New address',
+          lat: 90,
+          lng: -180,
+          precision: 'exact' as const,
+        },
+      },
+    };
+    const mutate = vi.fn().mockResolvedValue({
+      clientMutationId: 'mutation_location_01',
+      results: [{ index: 0, status: 'applied', record: saved }],
+      changeCursor: 'change_02',
+    } satisfies MutationResult);
+    const controller = new GridViewController(
+      withMutation(
+        createData([initial], createGridConfig(false), [], [createLocationField()]),
+        mutate,
+      ),
+    );
+    await controller.load();
+
+    await controller.editLocation('record_01', 'field_location', {
+      kind: 'set',
+      value: {
+        label: ' New label ',
+        address: 'New address',
+        lat: 90,
+        lng: -180,
+        precision: 'exact',
+      },
+    });
+
+    expect(mutate).toHaveBeenCalledWith(
+      'table_01',
+      expect.objectContaining({
+        commands: [
+          expect.objectContaining({
+            kind: 'updateRecord',
+            recordId: 'record_01',
+            expectedRevision: 1,
+            set: {
+              field_location: {
+                label: 'New label',
+                address: 'New address',
+                lat: 90,
+                lng: -180,
+                precision: 'exact',
+              },
+            },
+          }),
+        ],
+      }),
+    );
+    expect(controller.state.records[0]).toEqual(saved);
+    expect(controller.state.editError).toBeNull();
+  });
+
+  it('keeps explicit Location clear distinct from Unset', async () => {
+    const initial = locationRecord({ label: 'Old label', lat: 10, lng: 20 });
+    const cleared = {
+      ...initial,
+      revision: 2,
+      values: { ...initial.values, field_location: null },
+    };
+    const unset = { ...initial, revision: 3, values: { field_name: 'Record 1' } };
+    const mutate = vi
+      .fn<(tableId: string, request: MutationRequest) => Promise<MutationResult>>()
+      .mockResolvedValueOnce({
+        clientMutationId: 'mutation_location_02',
+        results: [{ index: 0, status: 'applied', record: cleared }],
+        changeCursor: 'change_02',
+      } satisfies MutationResult)
+      .mockResolvedValueOnce({
+        clientMutationId: 'mutation_location_03',
+        results: [{ index: 0, status: 'applied', record: unset }],
+        changeCursor: 'change_03',
+      } satisfies MutationResult);
+    const controller = new GridViewController(
+      withMutation(
+        createData([initial], createGridConfig(false), [], [createLocationField()]),
+        mutate,
+      ),
+    );
+    await controller.load();
+
+    await controller.editLocation('record_01', 'field_location', { kind: 'clear' });
+    expect(mutate.mock.calls[0]?.[1].commands[0]).toMatchObject({
+      kind: 'updateRecord',
+      set: { field_location: null },
+    });
+    expect(controller.state.records[0]?.values).toHaveProperty('field_location', null);
+
+    await controller.editLocation('record_01', 'field_location', { kind: 'unset' });
+    expect(mutate.mock.calls[1]?.[1].commands[0]).toMatchObject({
+      kind: 'updateRecord',
+      unsetFieldIds: ['field_location'],
+    });
+    expect(controller.state.records[0]?.values).not.toHaveProperty('field_location');
+  });
+
+  it('can edit a Map-selected Record that is outside the current Grid page', async () => {
+    const visible = createRecords(1)[0];
+    if (visible === undefined) throw new Error('Grid fixture is missing.');
+    const source = { ...locationRecord({ label: 'Map value', lat: 1, lng: 2 }), id: 'record_99' };
+    const updated = {
+      ...source,
+      revision: 2,
+      values: { ...source.values, field_location: { label: 'Updated', lat: 3, lng: 4 } },
+    };
+    const mutate = vi
+      .fn<(tableId: string, request: MutationRequest) => Promise<MutationResult>>()
+      .mockResolvedValue({
+        clientMutationId: 'mutation_map_record_01',
+        results: [{ index: 0, status: 'applied', record: updated }],
+        changeCursor: 'change_04',
+      } satisfies MutationResult);
+    const controller = new GridViewController(
+      withMutation(
+        createData([visible], createGridConfig(false), [], [createLocationField()]),
+        mutate,
+      ),
+    );
+    await controller.load();
+
+    await controller.editLocation(
+      'record_99',
+      'field_location',
+      {
+        kind: 'set',
+        value: { label: 'Updated', lat: 3, lng: 4 },
+      },
+      source,
+    );
+
+    expect(mutate.mock.calls[0]?.[1].commands[0]).toMatchObject({
+      recordId: 'record_99',
+      expectedRevision: 1,
+      set: { field_location: { label: 'Updated', lat: 3, lng: 4 } },
+    });
+  });
+
+  it('rejects Location edits while offline before sending a Mutation', async () => {
+    const mutate = vi.fn<(tableId: string, request: MutationRequest) => Promise<MutationResult>>();
+    const controller = new GridViewController(
+      withMutation(
+        createData(
+          [locationRecord({ label: 'Old label', lat: 10, lng: 20 })],
+          createGridConfig(false),
+          [],
+          [createLocationField()],
+        ),
+        mutate,
+      ),
+      { isOffline: () => true },
+    );
+    await controller.load();
+
+    await expect(
+      controller.editLocation('record_01', 'field_location', {
+        kind: 'set',
+        value: { label: 'Offline', lat: 1, lng: 2 },
+      }),
+    ).rejects.toMatchObject({ kind: 'validation' });
+    expect(mutate).not.toHaveBeenCalled();
+    expect(controller.state.editError?.message).toContain('offline');
   });
 
   it('keeps an optimistic value while the mutation is in flight and applies the Server Record', async () => {
@@ -264,6 +490,7 @@ describe('GridViewController', () => {
       currentValues: { field_name: 'Server value' },
       submittedSet: { field_name: 'Local value' },
     });
+    expect(controller.state.saveStatus).toBe('conflict');
 
     controller.resolveConflict('record_01', 'overwrite');
     await vi.waitFor(() => expect(mutate).toHaveBeenCalledTimes(2));
@@ -338,6 +565,7 @@ function createData(
   records: readonly LoomTableRecord[],
   config: GridViewConfig,
   extraViews: readonly View[] = [],
+  extraFields: readonly Field[] = [],
 ): InMemoryGridData {
   return {
     workspaces: [
@@ -370,7 +598,7 @@ function createData(
         updatedAt: '2026-08-14T00:00:00Z',
       },
     ],
-    fields: [createField()],
+    fields: [createField(), ...extraFields],
     views: [createView(config), ...extraViews],
     records,
   };
@@ -385,6 +613,19 @@ function createField(): Field {
     schemaVersion: 1,
     revision: 1,
     type: 'text',
+    config: {},
+  };
+}
+
+function createLocationField(): Field {
+  return {
+    id: 'field_location',
+    tableId: 'table_01',
+    name: 'Location',
+    position: 1,
+    schemaVersion: 1,
+    revision: 1,
+    type: 'location',
     config: {},
   };
 }
@@ -432,6 +673,17 @@ function createRecords(count: number): readonly LoomTableRecord[] {
     createdAt: '2026-08-14T00:00:00Z',
     updatedAt: '2026-08-14T00:00:00Z',
   }));
+}
+
+function locationRecord(value: Record<string, JsonValue>): LoomTableRecord {
+  return {
+    id: 'record_01',
+    tableId: 'table_01',
+    revision: 1,
+    values: { field_name: 'Record 1', field_location: value },
+    createdAt: '2026-08-14T00:00:00Z',
+    updatedAt: '2026-08-14T00:00:00Z',
+  };
 }
 
 function failingSource(data: InMemoryGridData, error: LoomTableClientError): GridDataSource {

@@ -190,6 +190,17 @@ export interface AttachmentDownload {
 export type EmptyFieldType =
   'text' | 'longText' | 'number' | 'checkbox' | 'date' | 'url' | 'location';
 
+export type LocationPrecision = 'exact' | 'rooftop' | 'approximate';
+
+export type LocationValue = Readonly<{
+  label?: string;
+  address?: string;
+  provider?: string;
+  lat?: number;
+  lng?: number;
+  precision?: LocationPrecision;
+}>;
+
 export type Field =
   | (FieldBase & {
       readonly type: EmptyFieldType;

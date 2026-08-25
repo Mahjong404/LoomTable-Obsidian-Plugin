@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Field } from '../../src/client/loomtable-client';
-import { isEditableField, normalizeCellValue } from '../../src/ui/field-value-editor';
+import {
+  isEditableField,
+  normalizeCellValue,
+  normalizeLocationValue,
+} from '../../src/ui/field-value-editor';
 
 describe('field value normalization', () => {
   it('normalizes Unicode text and rejects control characters', () => {
@@ -30,6 +34,44 @@ describe('field value normalization', () => {
     expect(normalizeCellValue(field, 'option_01')).toEqual({ ok: true, value: 'option_01' });
     expect(normalizeCellValue(field, 'missing')).toMatchObject({ ok: false });
     expect(isEditableField(textField('location'))).toBe(false);
+  });
+
+  it('normalizes a closed Location object and preserves a valid unrenderable latitude', () => {
+    expect(
+      normalizeLocationValue({
+        label: '  Cafe\u0301 ',
+        address: '  Shanghai ',
+        lat: '90',
+        lng: '-180',
+        precision: 'exact',
+      }),
+    ).toEqual({
+      ok: true,
+      value: {
+        label: 'Café',
+        address: 'Shanghai',
+        lat: 90,
+        lng: -180,
+        precision: 'exact',
+      },
+    });
+  });
+
+  it.each([
+    [{ precision: 'exact' }, 'precision needs another'],
+    [{ lat: 1 }, 'latitude and longitude'],
+    [{ lat: 91, lng: 0 }, 'latitude must be'],
+    [{ label: 'ok', extra: 'nope' }, 'unsupported member'],
+  ] as const)('rejects invalid Location input %j', (raw, message) => {
+    const result = normalizeLocationValue(raw);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.message).toContain(message);
+  });
+
+  it('keeps explicit clear distinct from an Unset editor intent', () => {
+    expect(normalizeLocationValue(null)).toEqual({ ok: true, value: null });
+    expect(normalizeLocationValue(undefined)).toMatchObject({ ok: false });
   });
 });
 

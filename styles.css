@@ -76,6 +76,20 @@
   font-size: var(--font-ui-smaller);
 }
 
+.loom-save-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.loom-save-status[data-status='error'],
+.loom-save-status[data-status='conflict'] {
+  color: var(--text-error);
+}
+
+.loom-save-status[data-status='offline-readonly'] {
+  color: var(--text-warning);
+}
+
 .loom-button {
   padding: var(--size-4-1) var(--size-4-2);
   border: 1px solid var(--background-modifier-border);
@@ -310,6 +324,109 @@
   max-height: 18rem;
   overflow: auto;
   white-space: pre-wrap;
+}
+
+.loom-record-fields,
+.loom-location-values {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  gap: var(--size-4-1) var(--size-4-3);
+  margin-block: var(--size-4-3) 0;
+}
+
+.loom-record-fields dt,
+.loom-location-values dt {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.loom-record-fields dd,
+.loom-location-values dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.loom-location-field {
+  display: grid;
+  gap: var(--size-4-2);
+}
+
+.loom-location-open-map {
+  justify-self: start;
+}
+
+.loom-location-preview-trigger {
+  display: inline-flex;
+  width: fit-content;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: help;
+}
+
+.loom-location-preview-trigger:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.loom-location-preview {
+  margin-inline-start: var(--size-4-2);
+  color: var(--text-normal);
+}
+
+.loom-location-editor {
+  display: grid;
+  gap: var(--size-4-2);
+  max-width: 34rem;
+}
+
+.loom-location-editor-field {
+  display: grid;
+  grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.loom-location-editor-field input,
+.loom-location-editor-field select {
+  min-width: 0;
+}
+
+.loom-location-editor-error {
+  margin: 0;
+  color: var(--text-error);
+}
+
+.loom-location-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+}
+
+.loom-record-conflict {
+  display: grid;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2);
+  border: 1px solid var(--background-modifier-border);
+  border-inline-start: 3px solid var(--color-orange);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.loom-record-conflict p {
+  margin: 0;
+}
+
+.loom-record-conflict pre {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
+.loom-record-conflict-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
 }
 
 .loom-map-shell {

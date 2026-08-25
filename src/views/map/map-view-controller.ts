@@ -118,10 +118,10 @@ export class MapViewController {
     }
     this.#options.renderer.setCamera(this.#state.camera);
     if (this.#options.isOffline?.() === true) {
-      this.publish({ dataStatus: 'offline', error: null });
+      this.publish({ dataStatus: 'offline', error: null, saveStatus: 'offline-readonly' });
       return;
     }
-    this.publish({ dataStatus: 'loading', error: null });
+    this.publish({ dataStatus: 'loading', error: null, saveStatus: 'saved' });
 
     try {
       const summary = await this.#client.summarizeMap(this.#view.id);
@@ -139,7 +139,7 @@ export class MapViewController {
     if (this.#destroyed) return;
     const sequence = ++this.#querySequence;
     if (this.#options.isOffline?.() === true) {
-      this.publish({ dataStatus: 'offline' });
+      this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
       return;
     }
     try {
@@ -158,7 +158,7 @@ export class MapViewController {
   async fitAll(): Promise<void> {
     if (this.#destroyed) return;
     if (this.#options.isOffline?.() === true) {
-      this.publish({ dataStatus: 'offline' });
+      this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
       return;
     }
     try {
@@ -176,6 +176,12 @@ export class MapViewController {
 
   async saveDefaultCamera(): Promise<void> {
     if (this.#view.type !== 'map') return;
+    if (this.#options.isOffline?.() === true) {
+      this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
+      return;
+    }
+    this.publish({ saveStatus: 'dirty' });
+    this.publish({ saveStatus: 'saving' });
     try {
       const view = await this.#client.updateView(this.#view.id, {
         type: 'map',
@@ -187,15 +193,15 @@ export class MapViewController {
         expectedRevision: this.#view.revision,
       });
       this.#view = view;
-      this.publish({ view });
+      this.publish({ view, saveStatus: 'saved' });
     } catch (error) {
-      this.handleDataError(error);
+      this.handleDataError(error, true);
     }
   }
 
   async openRecord(recordId: string): Promise<void> {
     if (this.#options.isOffline?.() === true) {
-      this.publish({ dataStatus: 'offline' });
+      this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
       return;
     }
     try {
@@ -302,7 +308,7 @@ export class MapViewController {
   private async queryViewport(sequence: number): Promise<void> {
     if (this.#destroyed || sequence !== this.#querySequence) return;
     if (this.#options.isOffline?.() === true) {
-      this.publish({ dataStatus: 'offline' });
+      this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
       return;
     }
     const size = this.#options.viewport.getPixelSize();
@@ -326,7 +332,7 @@ export class MapViewController {
 
   private async loadClusterPage(token: string, cursor: string | undefined): Promise<void> {
     if (this.#options.isOffline?.() === true) {
-      this.publish({ dataStatus: 'offline' });
+      this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
       return;
     }
     try {
@@ -452,9 +458,13 @@ export class MapViewController {
     return null;
   }
 
-  private handleDataError(error: unknown): void {
+  private handleDataError(error: unknown, saveFailure = false): void {
     const clientError = asClientError(error);
-    this.publish({ dataStatus: dataStatusForError(clientError), error: clientError.details });
+    this.publish({
+      dataStatus: dataStatusForError(clientError),
+      error: clientError.details,
+      ...(saveFailure ? { saveStatus: 'error' as const } : {}),
+    });
   }
 
   private publish(patch: Partial<MapViewState> & { readonly view?: View }): void {
