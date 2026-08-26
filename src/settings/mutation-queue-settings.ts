@@ -127,12 +127,13 @@ export function normalizeMutationQueueSettings(value: unknown): MutationQueueSet
   const ids = new Set<string>();
   const entries = root.entries.map((candidate, index) => {
     const entry = parseEntry(candidate, 'mutationQueue.entries[' + index + ']');
-    if (!ids.add(entry.clientMutationId)) {
+    if (ids.has(entry.clientMutationId)) {
       fail(
         'mutationQueue.entries[' + index + '].clientMutationId',
         'must be unique within the queue',
       );
     }
+    ids.add(entry.clientMutationId);
     return entry;
   });
   const normalized = { schemaVersion: MUTATION_QUEUE_SCHEMA_VERSION, entries };
