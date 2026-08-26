@@ -1,55 +1,85 @@
 .loom-root {
-  padding: var(--size-4-4);
+  --loom-bg-primary: var(--background-primary, #ffffff);
+  --loom-bg-secondary: var(--background-secondary, #f7f7f7);
+  --loom-bg-secondary-alt: var(--background-secondary-alt, #f0f0f0);
+  --loom-bg-hover: var(--background-modifier-hover, #eeeeee);
+  --loom-bg-form: var(--background-modifier-form-field, #f6f6f6);
+  --loom-bg-error: var(--background-modifier-error, #fbe9e7);
+  --loom-text-normal: var(--text-normal, #222222);
+  --loom-text-muted: var(--text-muted, #777777);
+  --loom-text-faint: var(--text-faint, #999999);
+  --loom-text-accent: var(--text-accent, #5b21b6);
+  --loom-text-success: var(--text-success, #2e7d32);
+  --loom-text-warning: var(--text-warning, #8a5a00);
+  --loom-text-error: var(--text-error, #b42318);
+  --loom-border: var(--background-modifier-border, #dddddd);
+  --loom-accent: var(--interactive-accent, #7c3aed);
+  --loom-control-bg: var(--interactive-normal, #f4f4f4);
+  --loom-control-hover: var(--interactive-hover, #e8e8e8);
+  --loom-focus: var(--interactive-accent, #7c3aed);
+  --loom-radius-sm: var(--radius-s, 4px);
+  --loom-radius-md: var(--radius-m, 8px);
+  --loom-space-1: var(--size-4-1, 4px);
+  --loom-space-2: var(--size-4-2, 8px);
+  --loom-space-3: var(--size-4-3, 12px);
+  --loom-space-4: var(--size-4-4, 16px);
+  --loom-font-body: var(--font-interface, var(--font-text, sans-serif));
+  --loom-font-ui-smaller: var(--font-ui-smaller, 0.8em);
+  --loom-font-semibold: var(--font-semibold, 600);
+  --loom-font-mono: var(--font-monospace, monospace);
+  --loom-map-control-shadow: var(--shadow-s, 0 1px 5px var(--loom-border));
+  --loom-map-attribution-bg: var(--loom-bg-primary);
+  padding: var(--loom-space-4);
 }
 
 .loom-status {
   max-width: 48rem;
-  padding: var(--size-4-3);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: var(--background-secondary);
-  color: var(--text-muted);
+  padding: var(--loom-space-3);
+  border: 1px solid var(--loom-border);
+  border-radius: var(--loom-radius-md);
+  background: var(--loom-bg-secondary);
+  color: var(--loom-text-muted);
 }
 
 .loom-status.is-ready {
-  color: var(--text-normal);
-  border-color: var(--interactive-accent);
+  color: var(--loom-text-normal);
+  border-color: var(--loom-accent);
 }
 
 .loom-profile {
-  margin-block: var(--size-4-4);
-  padding: var(--size-4-4);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
+  margin-block: var(--loom-space-4);
+  padding: var(--loom-space-4);
+  border: 1px solid var(--loom-border);
+  border-radius: var(--loom-radius-md);
 }
 
 .loom-connection-check {
-  margin-block-start: var(--size-4-3);
-  padding: var(--size-4-3);
-  border-inline-start: 3px solid var(--background-modifier-border);
-  background: var(--background-secondary-alt);
+  margin-block-start: var(--loom-space-3);
+  padding: var(--loom-space-3);
+  border-inline-start: 3px solid var(--loom-border);
+  background: var(--loom-bg-secondary-alt);
 }
 
 .loom-connection-check.is-success {
-  border-inline-start-color: var(--color-green);
+  border-inline-start-color: var(--loom-text-success);
 }
 
 .loom-connection-check.is-warning {
-  border-inline-start-color: var(--color-orange);
+  border-inline-start-color: var(--loom-text-warning);
 }
 
 .loom-connection-check.is-error {
-  border-inline-start-color: var(--color-red);
+  border-inline-start-color: var(--loom-text-error);
 }
 
 .loom-connection-check.is-pending {
-  border-inline-start-color: var(--interactive-accent);
+  border-inline-start-color: var(--loom-accent);
 }
 
 .loom-grid-shell {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-3);
+  gap: var(--loom-space-3);
   min-width: 0;
 }
 
@@ -57,7 +87,7 @@
 .loom-grid-navigation {
   display: flex;
   align-items: center;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
   flex-wrap: wrap;
 }
 
@@ -68,40 +98,41 @@
 .loom-grid-toolbar-title {
   display: flex;
   align-items: baseline;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
 }
 
 .loom-grid-toolbar-title span {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
 }
 
 .loom-save-status {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
 }
 
 .loom-save-status[data-status='error'],
 .loom-save-status[data-status='conflict'] {
-  color: var(--text-error);
+  color: var(--loom-text-error);
+  font-weight: var(--loom-font-semibold);
 }
 
 .loom-save-status[data-status='offline-readonly'] {
-  color: var(--text-warning);
+  color: var(--loom-text-warning);
 }
 
 .loom-button {
-  padding: var(--size-4-1) var(--size-4-2);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: var(--interactive-normal);
-  color: var(--text-normal);
+  padding: var(--loom-space-1) var(--loom-space-2);
+  border: 1px solid var(--loom-border);
+  border-radius: var(--loom-radius-sm);
+  background: var(--loom-control-bg);
+  color: var(--loom-text-normal);
   cursor: pointer;
 }
 
 .loom-button:hover:not(:disabled),
 .loom-button:focus-visible {
-  background: var(--interactive-hover);
+  background: var(--loom-control-hover);
 }
 
 .loom-button:disabled {
@@ -112,9 +143,9 @@
 .loom-grid-select {
   display: flex;
   align-items: center;
-  gap: var(--size-4-1);
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  gap: var(--loom-space-1);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
 }
 
 .loom-grid-select select {
@@ -124,7 +155,7 @@
 .loom-grid-wrapper {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
   min-width: 0;
 }
 
@@ -136,16 +167,16 @@
 
 .loom-grid-header {
   overflow: hidden;
-  border: 1px solid var(--background-modifier-border);
+  border: 1px solid var(--loom-border);
   border-bottom: 0;
-  background: var(--background-secondary);
+  background: var(--loom-bg-secondary);
 }
 
 .loom-grid-header-cell,
 .loom-grid-cell,
 .loom-grid-index-cell {
   min-width: 0;
-  padding: 0 var(--size-4-2);
+  padding: 0 var(--loom-space-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -157,40 +188,43 @@
 
 .loom-grid-cell[data-edit-state='queued'],
 .loom-grid-cell[data-edit-state='saving'] {
-  background: var(--background-modifier-form-field);
+  background: var(--loom-bg-form);
+  box-shadow: inset 3px 0 0 var(--loom-text-warning);
 }
 
 .loom-grid-cell[data-edit-state='conflict'] {
-  background: var(--background-modifier-error);
+  background: var(--loom-bg-error);
+  box-shadow: inset 3px 0 0 var(--loom-text-error);
+  font-weight: var(--loom-font-semibold);
 }
 
 .loom-grid-editor {
   width: 100%;
   min-width: 0;
   margin: 0;
-  padding: 0 var(--size-4-1);
-  border: 1px solid var(--interactive-accent);
-  border-radius: var(--radius-s);
-  background: var(--background-primary);
-  color: var(--text-normal);
+  padding: 0 var(--loom-space-1);
+  border: 1px solid var(--loom-accent);
+  border-radius: var(--loom-radius-sm);
+  background: var(--loom-bg-primary);
+  color: var(--loom-text-normal);
 }
 
 .loom-grid-header-cell {
   height: 2.25rem;
   display: flex;
   align-items: center;
-  border-inline-end: 1px solid var(--background-modifier-border);
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
-  font-weight: var(--font-semibold);
+  border-inline-end: 1px solid var(--loom-border);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
+  font-weight: var(--loom-font-semibold);
 }
 
 .loom-grid-viewport {
   position: relative;
   height: min(60vh, 34rem);
   overflow: auto;
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
+  border: 1px solid var(--loom-border);
+  background: var(--loom-bg-primary);
   contain: strict;
 }
 
@@ -209,14 +243,14 @@
   position: absolute;
   inset-inline: 0;
   align-items: center;
-  border-bottom: 1px solid var(--background-modifier-border);
-  background: var(--background-primary);
-  color: var(--text-normal);
+  border-bottom: 1px solid var(--loom-border);
+  background: var(--loom-bg-primary);
+  color: var(--loom-text-normal);
 }
 
 .loom-grid-row:hover,
 .loom-grid-row:focus-visible {
-  background: var(--background-modifier-hover);
+  background: var(--loom-bg-hover);
   outline: none;
 }
 
@@ -225,26 +259,26 @@
   height: 100%;
   display: flex;
   align-items: center;
-  border-inline-end: 1px solid var(--background-modifier-border);
+  border-inline-end: 1px solid var(--loom-border);
 }
 
 .loom-grid-index-cell {
   justify-content: space-between;
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
+  color: var(--loom-text-faint);
+  font-size: var(--loom-font-ui-smaller);
 }
 
 .loom-grid-open {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--text-muted);
+  color: var(--loom-text-muted);
   cursor: pointer;
 }
 
 .loom-grid-open:hover,
 .loom-grid-open:focus-visible {
-  color: var(--text-accent);
+  color: var(--loom-text-accent);
 }
 
 .loom-grid-load-more {
@@ -258,39 +292,39 @@
 .loom-grid-status.is-offline,
 .loom-grid-status.is-network,
 .loom-grid-status.is-server-error {
-  border-inline-start-color: var(--color-orange);
+  border-inline-start-color: var(--loom-text-warning);
 }
 
 .loom-grid-status.is-authentication,
 .loom-grid-status.is-forbidden {
-  border-inline-start-color: var(--color-red);
+  border-inline-start-color: var(--loom-text-error);
 }
 
 .loom-grid-edit-status,
 .loom-grid-conflicts {
-  margin-block-end: var(--size-4-2);
+  margin-block-end: var(--loom-space-2);
 }
 
 .loom-grid-edit-status.is-error,
 .loom-grid-conflict {
-  border-inline-start-color: var(--color-red);
+  border-inline-start-color: var(--loom-text-error);
 }
 
 .loom-grid-conflicts {
   display: grid;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
 }
 
 .loom-grid-conflict {
-  padding: var(--size-4-2);
-  border: 1px solid var(--background-modifier-border);
-  border-inline-start: 3px solid var(--color-orange);
-  border-radius: var(--radius-s);
-  background: var(--background-secondary);
+  padding: var(--loom-space-2);
+  border: 1px solid var(--loom-border);
+  border-inline-start: 3px solid var(--loom-text-warning);
+  border-radius: var(--loom-radius-sm);
+  background: var(--loom-bg-secondary);
 }
 
 .loom-grid-conflict p {
-  margin-block: var(--size-4-1);
+  margin-block: var(--loom-space-1);
 }
 
 .loom-grid-conflict-values {
@@ -302,22 +336,22 @@
 .loom-grid-conflict-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--size-4-1);
+  gap: var(--loom-space-1);
 }
 
 .loom-record-detail {
-  margin-block-start: var(--size-4-3);
-  padding: var(--size-4-3);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: var(--background-secondary);
+  margin-block-start: var(--loom-space-3);
+  padding: var(--loom-space-3);
+  border: 1px solid var(--loom-border);
+  border-radius: var(--loom-radius-md);
+  background: var(--loom-bg-secondary);
 }
 
 .loom-record-detail-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
 }
 
 .loom-record-detail pre {
@@ -330,14 +364,14 @@
 .loom-location-values {
   display: grid;
   grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
-  gap: var(--size-4-1) var(--size-4-3);
-  margin-block: var(--size-4-3) 0;
+  gap: var(--loom-space-1) var(--loom-space-3);
+  margin-block: var(--loom-space-3) 0;
 }
 
 .loom-record-fields dt,
 .loom-location-values dt {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
 }
 
 .loom-record-fields dd,
@@ -349,7 +383,7 @@
 
 .loom-location-field {
   display: grid;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
 }
 
 .loom-location-open-map {
@@ -359,24 +393,24 @@
 .loom-location-preview-trigger {
   display: inline-flex;
   width: fit-content;
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
   cursor: help;
 }
 
 .loom-location-preview-trigger:focus-visible {
-  outline: 2px solid var(--interactive-accent);
+  outline: 2px solid var(--loom-accent);
   outline-offset: 2px;
 }
 
 .loom-location-preview {
-  margin-inline-start: var(--size-4-2);
-  color: var(--text-normal);
+  margin-inline-start: var(--loom-space-2);
+  color: var(--loom-text-normal);
 }
 
 .loom-location-editor {
   display: grid;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
   max-width: 34rem;
 }
 
@@ -384,7 +418,7 @@
   display: grid;
   grid-template-columns: minmax(8rem, max-content) minmax(0, 1fr);
   align-items: center;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
 }
 
 .loom-location-editor-field input,
@@ -394,23 +428,23 @@
 
 .loom-location-editor-error {
   margin: 0;
-  color: var(--text-error);
+  color: var(--loom-text-error);
 }
 
 .loom-location-editor-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--size-4-1);
+  gap: var(--loom-space-1);
 }
 
 .loom-record-conflict {
   display: grid;
-  gap: var(--size-4-2);
-  padding: var(--size-4-2);
-  border: 1px solid var(--background-modifier-border);
-  border-inline-start: 3px solid var(--color-orange);
-  border-radius: var(--radius-s);
-  background: var(--background-secondary);
+  gap: var(--loom-space-2);
+  padding: var(--loom-space-2);
+  border: 1px solid var(--loom-border);
+  border-inline-start: 3px solid var(--loom-text-warning);
+  border-radius: var(--loom-radius-sm);
+  background: var(--loom-bg-secondary);
 }
 
 .loom-record-conflict p {
@@ -426,13 +460,13 @@
 .loom-record-conflict-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--size-4-1);
+  gap: var(--loom-space-1);
 }
 
 .loom-map-shell {
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
   min-width: 0;
 }
 
@@ -440,7 +474,7 @@
 .loom-map-toolbar {
   display: flex;
   align-items: center;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
   flex-wrap: wrap;
 }
 
@@ -451,9 +485,9 @@
 .loom-map-select {
   display: flex;
   align-items: center;
-  gap: var(--size-4-1);
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+  gap: var(--loom-space-1);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
 }
 
 .loom-map-select select {
@@ -463,44 +497,44 @@
 .loom-map-container {
   height: min(60vh, 34rem);
   min-height: min(60vh, 34rem);
-  border: 1px solid var(--background-modifier-border);
-  background: var(--background-secondary);
+  border: 1px solid var(--loom-border);
+  background: var(--loom-bg-secondary);
 }
 
 .loom-map-container .leaflet-container {
   height: 100%;
   min-height: min(60vh, 34rem);
-  font-family: var(--font-interface);
+  font-family: var(--loom-font-body);
 }
 
 .loom-map-point {
   width: 18px !important;
   height: 18px !important;
   margin: 0 !important;
-  border: 2px solid var(--background-primary);
+  border: 2px solid var(--loom-bg-primary);
   border-radius: 50%;
-  background: var(--interactive-accent);
-  box-shadow: 0 0 0 1px var(--text-accent);
+  background: var(--loom-accent);
+  box-shadow: 0 0 0 1px var(--loom-text-accent);
 }
 
 .loom-map-cluster {
-  stroke: var(--background-primary);
+  stroke: var(--loom-bg-primary);
   stroke-width: 2;
-  fill: var(--interactive-accent);
+  fill: var(--loom-accent);
   fill-opacity: 0.9;
 }
 
 .loom-map-details {
   display: grid;
-  gap: var(--size-4-2);
+  gap: var(--loom-space-2);
 }
 
 .loom-map-record-detail,
 .loom-map-cluster-records {
-  padding: var(--size-4-2);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: var(--background-secondary);
+  padding: var(--loom-space-2);
+  border: 1px solid var(--loom-border);
+  border-radius: var(--loom-radius-md);
+  background: var(--loom-bg-secondary);
 }
 
 .loom-map-record-detail pre,
@@ -510,130 +544,149 @@
   white-space: pre-wrap;
 }
 
-.loom-grid-cell:focus-visible,
+.loom-grid-cell:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--loom-focus);
+}
+
+.loom-grid-row:focus-visible {
+  background: var(--loom-bg-hover);
+  outline: 2px solid var(--loom-focus);
+  outline-offset: -2px;
+}
+
+.loom-button:focus-visible,
+.loom-grid-open:focus-visible,
+.loom-grid-select select:focus-visible,
+.loom-map-select select:focus-visible {
+  outline: 2px solid var(--loom-focus);
+  outline-offset: 2px;
+}
+
 .loom-location-preview-trigger:focus-visible,
 .loom-record-detail:focus-visible,
 .loom-grid-conflicts:focus-visible,
 .loom-record-conflict:focus-visible,
 .loom-map-container .leaflet-interactive:focus-visible {
-  outline: 2px solid var(--interactive-accent);
+  outline: 2px solid var(--loom-focus);
   outline-offset: 2px;
 }
-
 /* Leaflet runtime layout styles. Leaflet is distributed under BSD-2-Clause. */
-.leaflet-pane,
-.leaflet-tile,
-.leaflet-marker-icon,
-.leaflet-marker-shadow,
-.leaflet-tile-container,
-.leaflet-pane > svg,
-.leaflet-pane > canvas,
-.leaflet-zoom-box,
-.leaflet-image-layer,
-.leaflet-layer {
+.loom-map-shell .leaflet-pane,
+.loom-map-shell .leaflet-tile,
+.loom-map-shell .leaflet-marker-icon,
+.loom-map-shell .leaflet-marker-shadow,
+.loom-map-shell .leaflet-tile-container,
+.loom-map-shell .leaflet-pane > svg,
+.loom-map-shell .leaflet-pane > canvas,
+.loom-map-shell .leaflet-zoom-box,
+.loom-map-shell .leaflet-image-layer,
+.loom-map-shell .leaflet-layer {
   position: absolute;
   inset-inline-start: 0;
   inset-block-start: 0;
 }
 
-.leaflet-container {
+.loom-map-shell .leaflet-container {
   position: relative;
   overflow: hidden;
-  background: var(--background-secondary);
+  background: var(--loom-bg-secondary);
   outline: 0;
-  font-family: var(--font-interface);
-  font-size: var(--font-ui-smaller);
+  font-family: var(--loom-font-body);
+  font-size: var(--loom-font-ui-smaller);
   line-height: 1.5;
   -webkit-tap-highlight-color: transparent;
 }
 
-.leaflet-container img.leaflet-tile,
-.leaflet-container .leaflet-tile {
+.loom-map-shell .leaflet-container img.leaflet-tile,
+.loom-map-shell .leaflet-container .leaflet-tile {
   width: auto;
   max-width: none !important;
   max-height: none !important;
   padding: 0;
 }
 
-.leaflet-tile,
-.leaflet-marker-icon,
-.leaflet-marker-shadow {
+.loom-map-shell .leaflet-tile,
+.loom-map-shell .leaflet-marker-icon,
+.loom-map-shell .leaflet-marker-shadow {
   user-select: none;
   -webkit-user-drag: none;
 }
 
-.leaflet-tile {
+.loom-map-shell .leaflet-tile {
   visibility: hidden;
 }
 
-.leaflet-tile-loaded {
+.loom-map-shell .leaflet-tile-loaded {
   visibility: visible !important;
 }
 
-.leaflet-map-pane,
-.leaflet-tile-pane,
-.leaflet-overlay-pane,
-.leaflet-shadow-pane,
-.leaflet-marker-pane,
-.leaflet-tooltip-pane,
-.leaflet-popup-pane {
+.loom-map-shell .leaflet-map-pane,
+.loom-map-shell .leaflet-tile-pane,
+.loom-map-shell .leaflet-overlay-pane,
+.loom-map-shell .leaflet-shadow-pane,
+.loom-map-shell .leaflet-marker-pane,
+.loom-map-shell .leaflet-tooltip-pane,
+.loom-map-shell .leaflet-popup-pane {
   position: absolute;
   inset: 0;
 }
 
-.leaflet-map-pane {
+.loom-map-shell .leaflet-map-pane {
   z-index: 100;
 }
 
-.leaflet-tile-pane {
+.loom-map-shell .leaflet-tile-pane {
   z-index: 200;
 }
 
-.leaflet-overlay-pane {
+.loom-map-shell .leaflet-overlay-pane {
   z-index: 400;
 }
 
-.leaflet-shadow-pane {
+.loom-map-shell .leaflet-shadow-pane {
   z-index: 500;
 }
 
-.leaflet-marker-pane {
+.loom-map-shell .leaflet-marker-pane {
   z-index: 600;
 }
 
-.leaflet-tooltip-pane {
+.loom-map-shell .leaflet-tooltip-pane {
   z-index: 650;
 }
 
-.leaflet-popup-pane {
+.loom-map-shell .leaflet-popup-pane {
   z-index: 700;
 }
 
-.leaflet-control-container,
-.leaflet-top,
-.leaflet-bottom {
+.loom-map-shell .leaflet-control-container,
+.loom-map-shell .leaflet-top,
+.loom-map-shell .leaflet-bottom {
   position: absolute;
   z-index: 1000;
   pointer-events: none;
 }
 
-.leaflet-top {
+.loom-map-shell .leaflet-top {
   inset-block-start: 0;
 }
 
-.leaflet-bottom {
+.loom-map-shell .leaflet-bottom {
   inset-block-end: 0;
 }
 
-.leaflet-left {
+.loom-map-shell .leaflet-left {
   inset-inline-start: 0;
 }
 
-.leaflet-right {
+.loom-map-shell .leaflet-right {
   inset-inline-end: 0;
 }
 
-.leaflet-control {
+.loom-map-shell .leaflet-control {
   position: relative;
   z-index: 800;
   float: left;
@@ -641,68 +694,234 @@
   pointer-events: auto;
 }
 
-.leaflet-right .leaflet-control {
+.loom-map-shell .leaflet-right .leaflet-control {
   float: right;
 }
 
-.leaflet-control-zoom {
+.loom-map-shell .leaflet-control-zoom {
   margin: 10px;
-  box-shadow: 0 1px 5px rgb(0 0 0 / 65%);
+  box-shadow: var(--loom-map-control-shadow);
 }
 
-.leaflet-control-zoom a {
+.loom-map-shell .leaflet-control-zoom a {
   display: block;
   width: 26px;
   height: 26px;
-  border-block-end: 1px solid #ccc;
-  background: var(--background-primary);
-  color: var(--text-normal);
-  font: bold 18px/26px monospace;
+  border-block-end: 1px solid var(--loom-border);
+  background: var(--loom-bg-primary);
+  color: var(--loom-text-normal);
+  font: bold 18px/26px var(--loom-font-mono);
   text-align: center;
   text-decoration: none;
 }
 
-.leaflet-control-zoom a:last-child {
+.loom-map-shell .leaflet-control-zoom a:last-child {
   border-block-end: 0;
 }
 
-.leaflet-control-attribution {
+.loom-map-shell .leaflet-control-attribution {
   padding: 0 5px;
-  background: rgb(255 255 255 / 80%);
-  color: #333;
+  background: var(--loom-map-attribution-bg);
+  color: var(--loom-text-normal);
   font-size: 11px;
   line-height: 1.4;
 }
 
-.leaflet-control-attribution a {
-  color: #0078a8;
+.loom-map-shell .leaflet-control-attribution a {
+  color: var(--loom-text-accent);
   text-decoration: none;
 }
 
-.leaflet-marker-icon,
-.leaflet-marker-shadow {
+.loom-map-shell .leaflet-marker-icon,
+.loom-map-shell .leaflet-marker-shadow {
   display: block;
 }
 
-.leaflet-interactive {
+.loom-map-shell .leaflet-interactive {
   cursor: pointer;
 }
 
-.leaflet-grab {
+.loom-map-shell .leaflet-grab {
   cursor: grab;
 }
 
-.leaflet-dragging .leaflet-grab {
+.loom-map-shell .leaflet-dragging .leaflet-grab {
   cursor: grabbing;
 }
 
-.leaflet-tooltip {
+.loom-map-shell .leaflet-tooltip {
   position: absolute;
   padding: 2px 6px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: var(--background-primary);
-  color: var(--text-normal);
+  border: 1px solid var(--loom-border);
+  border-radius: var(--loom-radius-sm);
+  background: var(--loom-bg-primary);
+  color: var(--loom-text-normal);
   white-space: nowrap;
   pointer-events: none;
+}
+
+@media (max-width: 52rem) {
+  .loom-grid-toolbar {
+    align-items: flex-start;
+  }
+
+  .loom-grid-toolbar-title {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .loom-save-status {
+    min-width: 0;
+  }
+
+  .loom-map-toolbar {
+    justify-content: flex-start;
+  }
+
+  .loom-map-toolbar .loom-button {
+    flex: 1 1 auto;
+    min-width: 8rem;
+  }
+
+  .loom-map-select {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 40rem) {
+  .loom-root {
+    padding: var(--loom-space-2);
+  }
+
+  .loom-grid-toolbar,
+  .loom-grid-navigation,
+  .loom-map-navigation,
+  .loom-map-toolbar {
+    align-items: stretch;
+    gap: var(--loom-space-2);
+  }
+
+  .loom-grid-toolbar-title {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: var(--loom-space-1);
+  }
+
+  .loom-grid-toolbar .loom-button,
+  .loom-grid-navigation .loom-button,
+  .loom-map-toolbar .loom-button {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .loom-grid-select,
+  .loom-map-select {
+    align-items: flex-start;
+    flex-direction: column;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .loom-grid-select select,
+  .loom-map-select select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .loom-record-detail {
+    max-width: 100%;
+    margin-block-start: var(--loom-space-2);
+    padding: var(--loom-space-2);
+    overflow-wrap: anywhere;
+  }
+
+  .loom-record-detail-header {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .loom-record-detail-header > * {
+    min-width: 0;
+  }
+
+  .loom-record-fields,
+  .loom-location-values {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .loom-record-fields dt,
+  .loom-location-values dt {
+    margin-block-start: var(--loom-space-2);
+  }
+
+  .loom-location-editor {
+    max-width: none;
+  }
+
+  .loom-location-editor-field {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .loom-map-container {
+    height: min(55vh, 28rem);
+    min-height: 16rem;
+  }
+
+  .loom-map-container .leaflet-container {
+    min-height: 16rem;
+  }
+
+  .loom-map-details,
+  .loom-map-record-detail,
+  .loom-map-cluster-records {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .loom-map-record-detail pre,
+  .loom-map-cluster-records pre {
+    overflow-wrap: anywhere;
+  }
+
+  .loom-settings {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .loom-settings .setting-item {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .loom-settings .setting-item-info,
+  .loom-settings .setting-item-control {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .loom-settings .setting-item-control {
+    flex: 1 1 100%;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .loom-settings input,
+  .loom-settings select {
+    max-width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-root *,
+  .loom-root *::before,
+  .loom-root *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+    transition-iteration-count: 1;
+  }
 }
