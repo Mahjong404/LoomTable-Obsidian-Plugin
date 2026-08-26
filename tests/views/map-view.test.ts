@@ -35,7 +35,9 @@ describe('MapView', () => {
     expect(container.querySelector('.loom-map-shell')?.getAttribute('role')).toBe('region');
     expect(container.querySelector('.loom-map-container')?.getAttribute('role')).toBe('region');
     expect(container.querySelector('.loom-map-status')?.getAttribute('aria-live')).toBe('polite');
-    expect(container.querySelector('.loom-map-tile-status')?.getAttribute('aria-live')).toBe('polite');
+    expect(container.querySelector('.loom-map-tile-status')?.getAttribute('aria-live')).toBe(
+      'polite',
+    );
     expect(container.querySelectorAll('select')).toHaveLength(4);
     expect(controller.mount).toHaveBeenCalledTimes(1);
     expect(controller.load).toHaveBeenCalledTimes(1);
