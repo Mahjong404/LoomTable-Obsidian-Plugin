@@ -278,7 +278,7 @@ function createLocationEditor(
     fieldWrapper(options.translate('record.location.precision'), precision),
   );
 
-  const error = document.createElement('p');
+  const error = document.createElement('div');
   error.className = 'loom-location-editor-error';
   error.id = 'loom-location-editor-error';
   error.setAttribute('role', 'alert');
