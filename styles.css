@@ -877,6 +877,7 @@
   .loom-map-cluster-records {
     max-width: 100%;
     min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .loom-map-record-detail pre,
@@ -887,7 +888,7 @@
   .loom-settings {
     min-width: 0;
     max-width: 100%;
-    overflow-x: hidden;
+    overflow-wrap: anywhere;
   }
 
   .loom-settings .setting-item {
