@@ -641,7 +641,6 @@ function summaryResult(changeCursor = 'change_summary', viewRevision = 1): MapSu
     changeCursor,
   };
 }
-
 function createClient(
   overrides: Partial<Record<keyof LoomTableClient, unknown>> = {},
 ): LoomTableClient {

@@ -26,7 +26,6 @@ export interface MapViewportSource {
   getViewport(): MapViewport;
   getPixelSize(): { readonly width: number; readonly height: number };
 }
-
 export interface MapViewControllerOptions {
   readonly renderer: MapRenderer;
   readonly registry: TileProviderRegistry;
