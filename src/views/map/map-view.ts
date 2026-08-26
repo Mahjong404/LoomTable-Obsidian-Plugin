@@ -64,6 +64,7 @@ export class MapView {
   #saveStatus: HTMLElement | null = null;
   #tileStatus: HTMLElement | null = null;
   #details: HTMLElement | null = null;
+  #selectedRecordId: string | null = null;
   #refreshButton: HTMLButtonElement | null = null;
   #fitAllButton: HTMLButtonElement | null = null;
   #saveCameraButton: HTMLButtonElement | null = null;
@@ -163,6 +164,7 @@ export class MapView {
     this.#saveStatus = null;
     this.#tileStatus = null;
     this.#details = null;
+    this.#selectedRecordId = null;
     this.#refreshButton = null;
     this.#fitAllButton = null;
     this.#saveCameraButton = null;
@@ -205,6 +207,8 @@ export class MapView {
 
   #renderDetails(state: MapViewState, translate: Translator): void {
     if (this.#details === null) return;
+    const selectedRecordChanged = this.#selectedRecordId !== state.selectedRecord?.id;
+    this.#selectedRecordId = state.selectedRecord?.id ?? null;
     this.#details.replaceChildren();
     if (state.selectedRecord !== null) {
       const record = document.createElement('section');
@@ -247,6 +251,9 @@ export class MapView {
         }),
       );
       this.#details.append(record);
+      if (selectedRecordChanged) {
+        record.querySelector<HTMLElement>('.loom-record-detail')?.focus();
+      }
     }
     if (state.clusterRecords.length > 0 || state.clusterCursor !== null) {
       const cluster = document.createElement('section');
