@@ -56,6 +56,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
   }
 
   override display(): void {
+    this.containerEl.classList.add('loom-root', 'loom-settings');
     this.containerEl.empty();
     const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
     new Setting(this.containerEl).setName(t('settings.title')).setHeading();
