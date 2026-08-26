@@ -52,6 +52,10 @@ describe('Leaflet tile layer adapter options', () => {
     const pointElement = container.querySelector('.loom-map-point');
     const clusterElement = container.querySelector<SVGElement>('.loom-map-cluster');
     expect(pointElement?.getAttribute('aria-label')).toBe('Record A');
+    expect(pointElement?.getAttribute('role')).toBe('button');
+    expect(pointElement?.getAttribute('tabindex')).toBe('0');
+    pointElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(onPoint).toHaveBeenCalledTimes(1);
     expect(clusterElement?.getAttribute('role')).toBe('button');
     expect(clusterElement?.getAttribute('tabindex')).toBe('0');
     clusterElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
