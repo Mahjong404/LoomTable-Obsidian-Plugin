@@ -29,6 +29,40 @@ describe('Record Detail Location seam', () => {
     expect(values[1]).toContain('Cleared');
   });
 
+  it('allows legal decimal WGS84 coordinates in the Location editor', () => {
+    const container = document.createElement('div');
+    container.append(
+      createRecordDetail(createRecord({}), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: { onLocationEdit: vi.fn() },
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const form = container.querySelector<HTMLFormElement>('.loom-location-editor');
+    expect(form).not.toBeNull();
+    if (form === null) return;
+
+    const latitude = form.querySelector<HTMLInputElement>('input[aria-label="Latitude"]');
+    const longitude = form.querySelector<HTMLInputElement>('input[aria-label="Longitude"]');
+    expect(latitude).not.toBeNull();
+    expect(longitude).not.toBeNull();
+    if (latitude === null || longitude === null) return;
+
+    expect(latitude.step).toBe('any');
+    expect(latitude.min).toBe('-90');
+    expect(latitude.max).toBe('90');
+    expect(longitude.step).toBe('any');
+    expect(longitude.min).toBe('-180');
+    expect(longitude.max).toBe('180');
+
+    latitude.value = '31.2304';
+    longitude.value = '121.4737';
+    expect(latitude.checkValidity()).toBe(true);
+    expect(longitude.checkValidity()).toBe(true);
+  });
+
   it('prevalidates Location form values before calling the mutation seam', async () => {
     const container = document.createElement('div');
     const onLocationEdit = vi.fn().mockResolvedValue(undefined);

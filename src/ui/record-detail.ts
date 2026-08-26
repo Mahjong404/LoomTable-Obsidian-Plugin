@@ -206,11 +206,17 @@ function createLocationEditor(
     'number',
     numberInputValue(location.lat),
   );
+  lat.input.step = 'any';
+  lat.input.min = '-90';
+  lat.input.max = '90';
   const lng = inputField(
     options.translate('record.location.lng'),
     'number',
     numberInputValue(location.lng),
   );
+  lng.input.step = 'any';
+  lng.input.min = '-180';
+  lng.input.max = '180';
   const precision = document.createElement('select');
   precision.name = 'precision';
   precision.setAttribute('aria-label', options.translate('record.location.precision'));
