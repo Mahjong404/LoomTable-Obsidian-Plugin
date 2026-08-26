@@ -103,7 +103,7 @@ export class LoomTableView extends ItemView {
       onTableChange: (tableId) => controller.selectTable(tableId),
       onViewChange: (viewId) => controller.selectView(viewId),
       onLoadMore: () => controller.loadNextPage(),
-      onRecordOpen: (record) => this.showRecordDetail(record, profile, controller),
+      onRecordOpen: (record) => void this.showRecordDetail(record, profile, controller),
       onCellEdit: (recordId, fieldId, value) => controller.editCell(recordId, fieldId, value),
       onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
       onRetryEdit: (recordId) => controller.retryEdit(recordId),
@@ -210,13 +210,14 @@ export class LoomTableView extends ItemView {
     this.showMap(profile, mapView, controller.state);
   }
 
-  private showRecordDetail(
+  private async showRecordDetail(
     record: LoomTableRecord,
     profile: ConnectionProfile,
     controller: GridViewController,
-  ): void {
+  ): Promise<void> {
+    const detailRecord = await controller.getRecordForDetail(record);
     let detail: HTMLElement;
-    detail = createRecordDetail(record, {
+    detail = createRecordDetail(detailRecord, {
       translate: this.getTranslator(),
       fields: controller.state.fields,
       offline: typeof navigator !== 'undefined' && navigator.onLine === false,
@@ -271,3 +272,4 @@ function defaultProfile(settings: PluginSettings): ConnectionProfile | null {
     null
   );
 }
+
