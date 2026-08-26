@@ -415,6 +415,9 @@ export class LoomTableSettingTab extends PluginSettingTab {
     const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
     const status = new Setting(section).setName(t('connection.test'));
     status.settingEl.addClass('loom-connection-check');
+    status.descEl.setAttribute('role', 'status');
+    status.descEl.setAttribute('aria-live', 'polite');
+    status.descEl.setAttribute('aria-atomic', 'true');
     let refresh = (): void => undefined;
     status.addButton((button) => {
       refresh = (): void => {
