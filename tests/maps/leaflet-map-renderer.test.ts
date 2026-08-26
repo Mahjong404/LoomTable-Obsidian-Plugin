@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { LeafletMapAdapter, createTileLayerOptions } from '../../src/maps/renderer/leaflet-map-renderer';
+import {
+  LeafletMapAdapter,
+  createTileLayerOptions,
+} from '../../src/maps/renderer/leaflet-map-renderer';
 
 describe('Leaflet tile layer adapter options', () => {
   it('omits subdomains for OSM-style layers so Leaflet keeps its defaults', () => {
@@ -47,9 +50,7 @@ describe('Leaflet tile layer adapter options', () => {
     expect(pointElement?.getAttribute('aria-label')).toBe('Record A');
     expect(clusterElement?.getAttribute('role')).toBe('button');
     expect(clusterElement?.getAttribute('tabindex')).toBe('0');
-    clusterElement?.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
-    );
+    clusterElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(onCluster).toHaveBeenCalledTimes(1);
 
     cluster.setLabel('3');
