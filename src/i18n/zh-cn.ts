@@ -121,6 +121,7 @@ export const simplifiedChineseMessages = {
   'map.customUrl': 'XYZ URL 模板',
   'map.customUrlDescription': '必须包含 {z}、{x}、{y}；非回环地址必须使用 HTTPS。',
   'map.defaultProvider': '默认瓦片提供方',
+  'map.invalidProvider': '瓦片提供方设置无效；请检查模板后重试。',
   'map.settings': '地图与瓦片提供方',
   'map.tiandituToken': '天地图 Token',
   'settings.connections': '连接档案',
