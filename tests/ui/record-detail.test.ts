@@ -240,7 +240,7 @@ describe('Record Detail Location seam', () => {
     expect(container.querySelector('.loom-record-conflict-local')?.textContent).toContain(
       'field_archived',
     );
-    expect(document.activeElement).toBe(container.querySelector('.loom-record-detail'));
+    expect(document.activeElement).toBe(container.querySelector('.loom-record-conflict'));
 
     const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-record-conflict button');
     buttons[0]?.click();
