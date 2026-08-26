@@ -147,9 +147,11 @@ function renderLocationValue(
       const item = location[key];
       if (item === undefined) continue;
       const text =
-        typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
-          ? String(item)
-          : JSON.stringify(item);
+        key === 'precision' && typeof item === 'string'
+          ? formatPrecision(item, options.translate)
+          : typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+            ? String(item)
+            : JSON.stringify(item);
       details.append(createText('dt', options.translate(messageKey)), createText('dd', text));
     }
     wrapper.append(details);
@@ -580,6 +582,13 @@ function coordinatesFrom(
 
 function isLocationValue(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function formatPrecision(value: string, translate: Translator): string {
+  if (value === 'exact') return translate('record.location.precision.exact');
+  if (value === 'rooftop') return translate('record.location.precision.rooftop');
+  if (value === 'approximate') return translate('record.location.precision.approximate');
+  return value;
 }
 
 function formatValue(value: JsonValue | undefined, translate: Translator): string {
