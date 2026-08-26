@@ -23,16 +23,33 @@ export function describeConnectionCheck(state: ConnectionCheckState, t: Translat
     case 'authentication-required':
       return `${t('connection.status.authenticationRequired')} ${describeMeta(result.meta, t)}`;
     case 'authentication-failed':
-      return describeError(t('connection.status.authenticationFailed'), result.error, t);
+      return t('connection.status.authenticationFailed');
     case 'forbidden':
-      return describeError(t('connection.status.forbidden'), result.error, t);
+      return t('connection.status.forbidden');
     case 'incompatible':
       return describeIncompatibility(result, t);
     case 'unreachable':
-      return describeError(t('connection.status.unreachable'), result.error, t);
+      return t('connection.status.unreachable');
     case 'server-error':
-      return describeError(t('connection.status.serverError'), result.error, t);
+      return t('connection.status.serverError');
   }
+}
+
+export function connectionDiagnostics(state: ConnectionCheckState): string | null {
+  if (state.kind !== 'complete') return null;
+  const { result } = state;
+  if (result.kind === 'incompatible') {
+    return result.error === undefined ? null : errorDiagnostic(result.error);
+  }
+  if (
+    result.kind !== 'authentication-failed' &&
+    result.kind !== 'forbidden' &&
+    result.kind !== 'unreachable' &&
+    result.kind !== 'server-error'
+  ) {
+    return null;
+  }
+  return errorDiagnostic(result.error);
 }
 
 export function connectionCheckTone(state: ConnectionCheckState): ConnectionCheckTone {
@@ -74,12 +91,14 @@ function describeMeta(meta: ServerMeta, t: Translator): string {
   return `${t('connection.status.serverVersion')} ${meta.serverVersion} · API ${meta.apiVersion}`;
 }
 
-function describeError(summary: string, error: LoomTableClientErrorDetails, t: Translator): string {
-  const diagnostics = [
-    error.code,
-    error.requestId === undefined
-      ? undefined
-      : `${t('connection.status.requestId')} ${error.requestId}`,
-  ].filter((value): value is string => value !== undefined);
-  return diagnostics.length === 0 ? summary : `${summary} (${diagnostics.join(' · ')})`;
+function errorDiagnostic(error: LoomTableClientErrorDetails): string {
+  return JSON.stringify(
+    {
+      ...(error.code === undefined ? {} : { code: error.code }),
+      ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }),
+      ...(error.requestId === undefined ? {} : { requestId: error.requestId }),
+    },
+    null,
+    2,
+  );
 }
