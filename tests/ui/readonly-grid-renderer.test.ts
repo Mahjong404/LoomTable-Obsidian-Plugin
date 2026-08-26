@@ -52,6 +52,84 @@ describe('ReadonlyGridRenderer', () => {
     );
   });
 
+
+  it('exposes semantic cells and moves focus with the arrow keys', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(createState(3));
+
+    const grid = container.querySelector<HTMLElement>('[role="grid"]');
+    const firstCell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"]',
+    );
+    expect(grid?.getAttribute('aria-label')).toBe('Table');
+    expect(firstCell?.getAttribute('role')).toBe('gridcell');
+    expect(firstCell?.tabIndex).toBe(0);
+    firstCell?.focus();
+    firstCell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+
+    expect(document.activeElement).toBe(
+      container.querySelector('.loom-grid-cell[data-record-id="record_02"]'),
+    );
+  });
+
+  it('restores the focused business cell or clamps to the nearest row after redraw', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(createState(3));
+    container
+      .querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_02"]')
+      ?.focus();
+    renderer.render(createState(1));
+
+    expect(document.activeElement).toBe(
+      container.querySelector('.loom-grid-cell[data-record-id="record_01"]'),
+    );
+  });
+
+  it('commits Tab and Shift+Tab edits while keeping focus in the adjacent cell', () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const state = createTwoFieldState();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(state);
+    const firstCell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_name"]',
+    );
+    firstCell?.click();
+    const firstEditor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(firstEditor).not.toBeNull();
+    firstEditor?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+
+    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', 'Record 1');
+    expect(document.activeElement).toBe(
+      container.querySelector('.loom-grid-cell[data-field-id="field_second"]'),
+    );
+
+    container.querySelector<HTMLElement>('.loom-grid-cell[data-field-id="field_second"]')?.click();
+    const secondEditor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(secondEditor).not.toBeNull();
+    secondEditor?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }),
+    );
+
+    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_second', 'Second value');
+    expect(document.activeElement).toBe(
+      container.querySelector('.loom-grid-cell[data-field-id="field_name"]'),
+    );
+  });
+
   it('keeps a visible status when the data source is offline', () => {
     const container = document.createElement('div');
     const renderer = new ReadonlyGridRenderer(
@@ -177,6 +255,7 @@ describe('ReadonlyGridRenderer', () => {
             currentRevision: 2,
             currentValues: { field_name: 'Server value' },
             submittedSet: { field_name: 'Local value' },
+            submittedUnsetFieldIds: ['field_archived'],
             message: 'Revision conflict.',
           },
         ],
@@ -189,6 +268,14 @@ describe('ReadonlyGridRenderer', () => {
     expect(container.querySelector('.loom-grid-conflict-values')?.textContent).toContain(
       'Local value',
     );
+    expect(container.querySelector('.loom-grid-conflict-intent')?.textContent).toContain(
+      'field_archived',
+    );
+    expect(container.querySelector('.loom-grid-conflicts')?.getAttribute('role')).toBe('region');
+    expect(container.querySelector('.loom-grid-conflicts')?.getAttribute('aria-label')).toBe(
+      'Conflict details',
+    );
+    expect(container.querySelector('.loom-grid-conflicts')?.querySelector('details')).not.toBeNull();
     const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-grid-conflict button');
     buttons[0]?.click();
     buttons[1]?.click();
@@ -318,6 +405,42 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     editError: null,
     saveStatus: 'saved',
     ...update,
+  };
+}
+
+
+function createTwoFieldState(): GridState {
+  const state = createState(1);
+  const firstField = state.fields[0];
+  const view = state.views[0];
+  const record = state.records[0];
+  if (firstField === undefined || view?.type !== 'grid' || record === undefined) {
+    throw new Error('Grid fixture is missing.');
+  }
+  const secondField: Field = {
+    ...firstField,
+    id: 'field_second',
+    name: 'Second',
+  };
+  return {
+    ...state,
+    fields: [firstField, secondField],
+    views: [
+      {
+        ...view,
+        config: {
+          ...view.config,
+          projection: ['field_name', 'field_second'],
+          columnOrder: ['field_name', 'field_second'],
+        },
+      },
+    ],
+    records: [
+      {
+        ...record,
+        values: { ...record.values, field_second: 'Second value' },
+      },
+    ],
   };
 }
 
