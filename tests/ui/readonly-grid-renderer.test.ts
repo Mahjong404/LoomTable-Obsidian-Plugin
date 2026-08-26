@@ -54,6 +54,7 @@ describe('ReadonlyGridRenderer', () => {
 
   it('exposes semantic cells and moves focus with the arrow keys', () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const renderer = new ReadonlyGridRenderer(
       container,
       createTranslator('en'),
@@ -79,6 +80,7 @@ describe('ReadonlyGridRenderer', () => {
 
   it('restores the focused business cell or clamps to the nearest row after redraw', () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const renderer = new ReadonlyGridRenderer(
       container,
       createTranslator('en'),
@@ -96,6 +98,7 @@ describe('ReadonlyGridRenderer', () => {
 
   it('commits Tab and Shift+Tab edits while keeping focus in the adjacent cell', () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const callbacks = rendererCallbacks();
     const state = createTwoFieldState();
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
@@ -292,7 +295,7 @@ describe('ReadonlyGridRenderer', () => {
     expect(container.querySelector('.loom-grid-conflict-values')?.textContent).toContain(
       'Server value',
     );
-    expect(container.querySelector('.loom-grid-conflict-values')?.textContent).toContain(
+    expect(container.querySelector('.loom-grid-conflict-intent')?.textContent).toContain(
       'Local value',
     );
     expect(container.querySelector('.loom-grid-conflict-intent')?.textContent).toContain(
