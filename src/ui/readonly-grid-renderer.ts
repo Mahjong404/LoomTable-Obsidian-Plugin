@@ -1,6 +1,6 @@
 import type { Translator } from '../i18n';
 import type { Field, JsonValue, LoomTableRecord } from '../client/loomtable-client';
-import type { GridState, GridStatus } from './grid-view-controller';
+import type { GridConflict, GridState, GridStatus } from './grid-view-controller';
 import { editorTextValue, isEditableField } from './field-value-editor';
 import { renderSaveStatus } from './save-status';
 
@@ -397,24 +397,23 @@ export class ReadonlyGridRenderer {
       });
       cell.addEventListener('keydown', (event) => {
         event.stopPropagation();
-        const keyboard = event as KeyboardEvent;
-        if (keyboard.key === 'ArrowDown' || keyboard.key === 'ArrowUp') {
-          keyboard.preventDefault();
-          this.#focusAdjacentCell(rowIndex, fieldIndex, keyboard.key === 'ArrowDown' ? 1 : -1);
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault();
+          this.#focusAdjacentCell(rowIndex, fieldIndex, event.key === 'ArrowDown' ? 1 : -1);
           return;
         }
-        if (keyboard.key === 'ArrowRight' || keyboard.key === 'ArrowLeft') {
-          keyboard.preventDefault();
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+          event.preventDefault();
           this.#focusAdjacentCell(
             rowIndex,
             fieldIndex,
-            keyboard.key === 'ArrowRight' ? 1 : -1,
+            event.key === 'ArrowRight' ? 1 : -1,
             true,
           );
           return;
         }
-        if (keyboard.key !== 'Enter') return;
-        keyboard.preventDefault();
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
         if (isEditableField(field) && canEdit) {
           this.#beginCellEdit(cell, record, field, rowIndex, fieldIndex);
         } else {
