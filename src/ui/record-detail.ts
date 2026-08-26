@@ -60,9 +60,7 @@ export function createRecordDetail(
       : null;
 
   const closeDetail = (): void => {
-    const draft = root.querySelector<HTMLElement>(
-      '.loom-location-editor[data-dirty="true"]',
-    );
+    const draft = root.querySelector<HTMLElement>('.loom-location-editor[data-dirty="true"]');
     if (
       draft !== null &&
       !confirmDiscard(options, options.translate('record.location.discardConfirm'))
@@ -316,14 +314,13 @@ function createLocationEditor(
         intent.kind === 'unset' ? undefined : intent.kind === 'clear' ? null : intent.value;
       root.replaceWith(renderLocationValue(record, field, nextValue, options));
     } catch (cause) {
-      showLocationError(error, [label.input, address.input, provider.input, lat.input, lng.input, precision], options);
+      showLocationError(
+        error,
+        [label.input, address.input, provider.input, lat.input, lng.input, precision],
+        options,
+      );
       if (cause instanceof Error) {
-        error.append(
-          renderDiagnostic(
-            options.translate('common.openDiagnostics'),
-            cause.message,
-          ),
-        );
+        error.append(renderDiagnostic(options.translate('common.openDiagnostics'), cause.message));
       }
       const conflict = options.callbacks?.getConflict?.(record.id);
       if (conflict !== undefined) {
