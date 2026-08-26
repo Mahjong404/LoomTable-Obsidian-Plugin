@@ -344,7 +344,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
           };
           const error = validateCustomTileProviderProfile(profile);
           if (error !== null) {
-            new Notice(error.message);
+            new Notice(t('map.invalidProvider'));
             return;
           }
           this.loomTablePlugin.settings.mapPresentation.customProfiles.push(profile);
