@@ -113,7 +113,7 @@ export class MapView {
     );
     toolbar.append(refresh, fitAll, saveCamera);
     if (provider !== null) toolbar.append(provider);
-    const status = document.createElement('p');
+    const status = document.createElement('div');
     status.className = 'loom-status loom-map-status';
     status.setAttribute('role', 'status');
     status.setAttribute('aria-live', 'polite');
@@ -121,7 +121,7 @@ export class MapView {
     const saveStatus = document.createElement('span');
     saveStatus.className = 'loom-save-status';
     saveStatus.setAttribute('aria-live', 'polite');
-    const tileStatus = document.createElement('p');
+    const tileStatus = document.createElement('div');
     tileStatus.className = 'loom-status loom-map-tile-status';
     tileStatus.setAttribute('role', 'status');
     tileStatus.setAttribute('aria-live', 'polite');
