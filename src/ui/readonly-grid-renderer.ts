@@ -484,6 +484,9 @@ export class ReadonlyGridRenderer {
       const result = this.#callbacks.onCellEdit?.(record.id, field.id, value);
       if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
       if (moveOffset !== 0) {
+        const state = this.#virtualGrid?.state ?? this.#emptyState();
+        this.#focusedCellKey = null;
+        this.render(state);
         this.#focusAdjacentCell(rowIndex, fieldIndex, moveOffset, true);
       }
     };
