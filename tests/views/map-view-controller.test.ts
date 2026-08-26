@@ -228,9 +228,103 @@ describe('MapViewController', () => {
 
     expect(pullChanges).toHaveBeenCalledWith('table_01', { cursor: 'change_query' });
     expect(queryMap).toHaveBeenCalledTimes(1);
-    expect(summarizeMap).toHaveBeenCalledTimes(1);
+    expect(summarizeMap).toHaveBeenCalledTimes(2);
     expect(controller.state.changeCursor).toBe('change_query');
     expect(controller.state.viewRevision).toBe(1);
+  });
+
+  it('refreshes Summary after a record change invalidates Map statistics', async () => {
+    const initialSummary: MapSummaryResult = {
+      ...summaryResult('change_initial'),
+      summary: {
+        ...summaryResult('change_initial').summary,
+        matchedRecordCount: 3,
+        renderableRecordCount: 1,
+        unlocatedRecordCount: 2,
+      },
+    };
+    const refreshedSummary: MapSummaryResult = {
+      ...summaryResult('change_after_mutation'),
+      summary: {
+        ...summaryResult('change_after_mutation').summary,
+        matchedRecordCount: 3,
+        renderableRecordCount: 2,
+        unlocatedRecordCount: 1,
+      },
+    };
+    const summarizeMap = vi
+      .fn()
+      .mockResolvedValueOnce(initialSummary)
+      .mockResolvedValueOnce(refreshedSummary);
+    const pullChanges = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'change_after_mutation',
+          kind: 'recordUpdated',
+          tableId: 'table_01',
+          recordId: 'record_01',
+          revision: 2,
+          occurredAt: '2026-08-18T00:00:00Z',
+        },
+      ],
+      nextCursor: 'change_after_mutation',
+      hasMore: false,
+    });
+    const initialQuery = { ...queryResult('record_old', 1), changeCursor: 'change_initial' };
+    const refreshedQuery = {
+      ...queryResult('record_new', 1),
+      changeCursor: 'change_after_mutation',
+    };
+    const queryMap = vi
+      .fn()
+      .mockResolvedValueOnce(initialQuery)
+      .mockResolvedValueOnce(refreshedQuery);
+    const controller = createController(
+      createClient({ summarizeMap, pullChanges, queryMap }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.load();
+    await controller.refreshCurrentViewport();
+
+    expect(summarizeMap).toHaveBeenCalledTimes(2);
+    expect(queryMap).toHaveBeenCalledTimes(2);
+    expect(pullChanges).toHaveBeenCalledWith('table_01', { cursor: 'change_initial' });
+    expect(controller.state.summary).toMatchObject({
+      matchedRecordCount: 3,
+      renderableRecordCount: 2,
+      unlocatedRecordCount: 1,
+    });
+  });
+
+  it('does not rebuild Summary for an unrelated schema change', async () => {
+    const summarizeMap = vi.fn().mockResolvedValue(summaryResult('change_summary'));
+    const pullChanges = vi.fn().mockResolvedValue({
+      items: [
+        {
+          id: 'change_schema',
+          kind: 'schemaChanged',
+          tableId: 'table_01',
+          revision: 2,
+          occurredAt: '2026-08-18T00:00:00Z',
+        },
+      ],
+      nextCursor: 'change_schema',
+      hasMore: false,
+    });
+    const queryMap = vi.fn().mockResolvedValue(queryResult('record_new', 1));
+    const controller = createController(
+      createClient({ summarizeMap, pullChanges, queryMap }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.load();
+    await controller.refreshCurrentViewport();
+
+    expect(summarizeMap).toHaveBeenCalledTimes(1);
+    expect(queryMap).toHaveBeenCalledTimes(2);
   });
 
   it('keeps Summary and Query calls separate for load, camera movement, refresh, and fit-all', async () => {

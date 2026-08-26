@@ -278,10 +278,16 @@ export class MapViewController {
       if (this.#destroyed || sequence !== this.#querySequence) return true;
       if (page.items.length === 0 && !page.hasMore) return false;
 
-      const viewChanged = page.items.some(
-        (change) => change.kind === 'viewChanged' && change.objectId === this.#view.id,
-      );
-      if (!viewChanged) return false;
+      const summaryChanged = page.items.some((change) => {
+        if (change.kind === 'viewChanged') return change.objectId === this.#view.id;
+        return (
+          change.kind === 'recordCreated' ||
+          change.kind === 'recordUpdated' ||
+          change.kind === 'recordDeleted' ||
+          change.kind === 'recordRestored'
+        );
+      });
+      if (!summaryChanged) return false;
 
       const summary = await this.#client.summarizeMap(this.#view.id);
       if (this.#destroyed || sequence !== this.#querySequence) return true;
