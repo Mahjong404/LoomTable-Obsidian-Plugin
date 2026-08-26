@@ -12,6 +12,8 @@ describe('i18n', () => {
   it('provides English and Simplified Chinese catalogs', () => {
     expect(createTranslator('en')('view.title')).toBe('LoomTable');
     expect(createTranslator('zh-CN')('connection.empty')).toBe('尚未配置连接档案。');
+    expect(createTranslator('zh-CN')('grid.table')).toBe('数据表');
+    expect(createTranslator('zh-CN')('record.details')).toBe('记录详情');
   });
 
   it('resolves auto to the current Obsidian language on every translation call', () => {
