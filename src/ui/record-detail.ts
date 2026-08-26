@@ -432,7 +432,7 @@ function renderConflict(
     const restoreFocus = (): void => detailRoot.focus();
     try {
       const result = options.callbacks?.onConflictAction?.(recordId, action);
-      if (result !== undefined) {
+      if (result instanceof Promise) {
         void result.catch(() => undefined).finally(restoreFocus);
       } else {
         restoreFocus();
