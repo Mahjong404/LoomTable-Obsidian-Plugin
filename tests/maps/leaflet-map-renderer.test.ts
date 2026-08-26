@@ -35,8 +35,12 @@ describe('Leaflet tile layer adapter options', () => {
 
   it('makes point and cluster feature activation keyboard accessible', () => {
     const container = document.createElement('div');
-    container.style.width = '400px';
-    container.style.height = '300px';
+    Object.defineProperties(container, {
+      clientWidth: { configurable: true, value: 400 },
+      clientHeight: { configurable: true, value: 300 },
+      offsetWidth: { configurable: true, value: 400 },
+      offsetHeight: { configurable: true, value: 300 },
+    });
     document.body.append(container);
     const adapter = new LeafletMapAdapter();
     const map = adapter.createMap(container);
