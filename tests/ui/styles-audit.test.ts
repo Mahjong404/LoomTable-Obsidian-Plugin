@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-const styles = readFileSync(new URL('../../styles.css', import.meta.url), 'utf8');
+const styles = readFileSync('styles.css', 'utf8');
 const themeVariablePattern = /var\(--(?:background|text|interactive|color|size|radius|font)-/;
 const fixedColorPattern = /#[0-9a-f]{3,8}|rgba?\(/i;
 
