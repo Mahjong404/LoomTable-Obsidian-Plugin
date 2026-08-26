@@ -23,6 +23,7 @@ import { createTranslator } from '../i18n';
 import { getLocaleOptions } from './locale-options';
 import {
   connectionCheckTone,
+  connectionDiagnostics,
   describeConnectionCheck,
   type ConnectionCheckState,
 } from './connection-check-presentation';
@@ -418,7 +419,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
     status.addButton((button) => {
       refresh = (): void => {
         const state = this.#connectionChecks.get(profile.id) ?? { kind: 'idle' };
-        status.setDesc(describeConnectionCheck(state, t));
+        status.setDesc(renderConnectionDescription(state, t));
         status.settingEl.removeClass(
           'is-idle',
           'is-pending',
@@ -461,6 +462,28 @@ export class LoomTableSettingTab extends PluginSettingTab {
     this.#connectionChecks.delete(profile.id);
   }
 }
+function renderConnectionDescription(
+  state: ConnectionCheckState,
+  t: ReturnType<typeof createTranslator>,
+): DocumentFragment {
+  const description = document.createDocumentFragment();
+  const summary = document.createElement('span');
+  summary.textContent = describeConnectionCheck(state, t);
+  description.append(summary);
+  const diagnostics = connectionDiagnostics(state);
+  if (diagnostics !== null) {
+    const details = document.createElement('details');
+    details.className = 'loom-diagnostic';
+    const disclosure = document.createElement('summary');
+    disclosure.textContent = t('common.openDiagnostics');
+    const pre = document.createElement('pre');
+    pre.textContent = diagnostics;
+    details.append(disclosure, pre);
+    description.append(document.createTextNode(' '), details);
+  }
+  return description;
+}
+
 function providerKey(ref: TileProviderRef): string {
   return ref.kind === 'built-in' ? `built-in:${ref.id}` : `custom:${ref.profileId}`;
 }
