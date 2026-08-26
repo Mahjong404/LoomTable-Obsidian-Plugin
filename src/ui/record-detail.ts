@@ -428,10 +428,16 @@ function renderConflict(
   overwrite.classList.add('mod-warning');
   const invoke = (action: 'use-server' | 'overwrite'): void => {
     const restoreFocus = (): void => detailRoot.focus();
-    void Promise.resolve()
-      .then(() => options.callbacks?.onConflictAction?.(recordId, action))
-      .catch(() => undefined)
-      .finally(restoreFocus);
+    try {
+      const result = options.callbacks?.onConflictAction?.(recordId, action);
+      if (result !== undefined) {
+        void result.catch(() => undefined).finally(restoreFocus);
+      } else {
+        restoreFocus();
+      }
+    } catch {
+      restoreFocus();
+    }
   };
   useServer.addEventListener('click', () => invoke('use-server'));
   overwrite.addEventListener('click', () => invoke('overwrite'));
