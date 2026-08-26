@@ -404,12 +404,7 @@ export class ReadonlyGridRenderer {
         }
         if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
           event.preventDefault();
-          this.#focusAdjacentCell(
-            rowIndex,
-            fieldIndex,
-            event.key === 'ArrowRight' ? 1 : -1,
-            true,
-          );
+          this.#focusAdjacentCell(rowIndex, fieldIndex, event.key === 'ArrowRight' ? 1 : -1, true);
           return;
         }
         if (event.key !== 'Enter') return;
