@@ -232,6 +232,7 @@ export class LoomTableView extends ItemView {
       },
     });
     this.contentEl.append(detail);
+    detail.focus();
   }
 
   private openLocationInMap(
