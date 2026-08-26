@@ -126,6 +126,7 @@ export const englishMessages = {
   'map.customUrl': 'XYZ URL template',
   'map.customUrlDescription': 'Use {z}, {x}, and {y}; non-loopback origins must use HTTPS.',
   'map.defaultProvider': 'Default tile provider',
+  'map.invalidProvider': 'The tile provider settings are invalid. Check the template and try again.',
   'map.settings': 'Map and tile providers',
   'map.tiandituToken': 'TianDiTu Token',
   'settings.connections': 'Connection profiles',
