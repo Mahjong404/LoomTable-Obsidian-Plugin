@@ -375,7 +375,7 @@ function values(
       identifier(fieldId, path + '.' + fieldId),
       jsonValue(fieldValue, path + '.' + fieldId),
     ]),
-  ) as Readonly<Record<string, MutationValue>>;
+  );
 }
 
 function fieldIds(value: unknown, path: string): readonly string[] {
@@ -398,7 +398,7 @@ function jsonValue(value: unknown, path: string, depth = 0): JsonValue {
         key,
         jsonValue(item, path + '.' + key, depth + 1),
       ]),
-    ) as { readonly [key: string]: JsonValue };
+    );
   }
   fail(path, 'must be a JSON value');
 }
