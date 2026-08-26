@@ -76,7 +76,7 @@ export type GridDataSource = Pick<
   LoomTableClient,
   'listWorkspaces' | 'listBases' | 'listTables' | 'listFields' | 'listViews' | 'query'
 > &
-  Partial<Pick<LoomTableClient, 'mutate'>>;
+  Partial<Pick<LoomTableClient, 'getRecord' | 'mutate'>>;
 
 export interface GridViewControllerOptions {
   readonly pageSize?: number;
@@ -174,6 +174,27 @@ export class GridViewController {
 
   getConflict(recordId: string): GridConflict | undefined {
     return this.#conflicts.get(recordId);
+  }
+
+  async getRecordForDetail(record: LoomTableRecord): Promise<LoomTableRecord> {
+    const view = this.#state.views.find((candidate) => candidate.id === this.#state.selectedViewId);
+    const fields = this.#state.fields;
+    const hasAllFieldValues =
+      fields.length > 0 &&
+      fields.every((field) => Object.prototype.hasOwnProperty.call(record.values, field.id));
+    const projectionIsComplete =
+      view?.type === 'grid' &&
+      (view.config.projection.length === 0 ||
+        fields.every((field) => view.config.projection.includes(field.id)));
+    if (
+      this.#isOffline() ||
+      hasAllFieldValues ||
+      projectionIsComplete ||
+      this.#client.getRecord === undefined
+    ) {
+      return record;
+    }
+    return this.#client.getRecord(record.id);
   }
 
   subscribe(listener: GridStateListener): () => void {
