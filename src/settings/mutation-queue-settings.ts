@@ -469,4 +469,3 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function fail(path: string, message: string): never {
   throw new MutationQueueSettingsError('Invalid ' + path + ': ' + message);
 }
-
