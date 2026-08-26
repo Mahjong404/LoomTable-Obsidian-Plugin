@@ -28,7 +28,7 @@
   --loom-font-semibold: var(--font-semibold, 600);
   --loom-font-mono: var(--font-monospace, monospace);
   --loom-map-control-shadow: var(--shadow-s, 0 1px 5px var(--loom-border));
-  --loom-map-attribution-bg: var(--background-primary, #ffffff);
+  --loom-map-attribution-bg: var(--loom-bg-primary);
   padding: var(--loom-space-4);
 }
 
@@ -114,6 +114,7 @@
 .loom-save-status[data-status='error'],
 .loom-save-status[data-status='conflict'] {
   color: var(--loom-text-error);
+  font-weight: var(--loom-font-semibold);
 }
 
 .loom-save-status[data-status='offline-readonly'] {
@@ -188,10 +189,14 @@
 .loom-grid-cell[data-edit-state='queued'],
 .loom-grid-cell[data-edit-state='saving'] {
   background: var(--loom-bg-form);
+  box-shadow: inset 3px 0 0 var(--loom-text-warning);
 }
+
 
 .loom-grid-cell[data-edit-state='conflict'] {
   background: var(--loom-bg-error);
+  box-shadow: inset 3px 0 0 var(--loom-text-error);
+  font-weight: var(--loom-font-semibold);
 }
 
 .loom-grid-editor {
@@ -706,7 +711,7 @@
   border-block-end: 1px solid var(--loom-border);
   background: var(--loom-bg-primary);
   color: var(--loom-text-normal);
-  font: bold 18px/26px monospace;
+  font: bold 18px/26px var(--loom-font-mono);
   text-align: center;
   text-decoration: none;
 }
