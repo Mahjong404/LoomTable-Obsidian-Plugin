@@ -34,8 +34,7 @@ export const simplifiedChineseMessages = {
   'connection.status.authenticationRequired': 'Server 兼容；请输入 Token 完成认证。',
   'connection.status.checking': '正在检查 Server 兼容性与认证状态…',
   'connection.status.connected': '已连接并通过认证。',
-  'connection.status.forbidden':
-    'Token 有效，但无权访问 LoomTable 工作区；请改用有权限的 Token。',
+  'connection.status.forbidden': 'Token 有效，但无权访问 LoomTable 工作区；请改用有权限的 Token。',
   'connection.status.incompatibleApi': '当前 Plugin 需要 API v1；Server 返回',
   'connection.status.incompatiblePlugin': '请升级 Plugin；Server 要求最低版本为',
   'connection.status.migrationRequired': 'Server 需要完成迁移后才能使用；请执行 Server 迁移命令。',
