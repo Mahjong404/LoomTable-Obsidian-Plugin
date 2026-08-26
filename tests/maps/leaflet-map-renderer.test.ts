@@ -44,6 +44,7 @@ describe('Leaflet tile layer adapter options', () => {
     document.body.append(container);
     const adapter = new LeafletMapAdapter();
     const map = adapter.createMap(container);
+    map.setCamera({ center: { lat: 0, lng: 0 }, zoom: 3 });
     const onPoint = vi.fn();
     const onCluster = vi.fn();
     const point = adapter.createPointFeature(map, { lat: 1, lng: 2 }, 'Record A', onPoint);
