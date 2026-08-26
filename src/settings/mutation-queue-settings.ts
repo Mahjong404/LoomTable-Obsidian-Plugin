@@ -9,7 +9,7 @@ import type {
 
 export const MUTATION_QUEUE_SCHEMA_VERSION = 1 as const;
 export const MAX_MUTATION_QUEUE_ENTRIES = 256 as const;
-export const MAX_MUTATION_QUEUE_BYTES = 1024 * 1024 as const;
+export const MAX_MUTATION_QUEUE_BYTES = (1024 * 1024) as const;
 
 const MUTATION_ID_PATTERN = /^mut_[0-9A-HJKMNP-TV-Z]{26}$/;
 const ERROR_KINDS: readonly LoomTableClientErrorKind[] = [
@@ -189,7 +189,13 @@ function parseEntry(value: unknown, path: string): PersistedMutationQueueEntry {
   const conflict =
     raw.conflict === undefined
       ? undefined
-      : parseConflict(raw.conflict, path + '.conflict', recordId, expectedRevision, clientMutationId);
+      : parseConflict(
+          raw.conflict,
+          path + '.conflict',
+          recordId,
+          expectedRevision,
+          clientMutationId,
+        );
 
   if (state === 'error' && lastError === undefined) {
     fail(path + '.lastError', 'is required for an error entry');
@@ -268,9 +274,13 @@ function parseError(value: unknown, path: string): PersistedMutationQueueError {
   const message = boundedString(raw.message, path + '.message', 512);
   const code = raw.code === undefined ? undefined : boundedString(raw.code, path + '.code', 128);
   const httpStatus =
-    raw.httpStatus === undefined ? undefined : integer(raw.httpStatus, path + '.httpStatus', 100, 599);
+    raw.httpStatus === undefined
+      ? undefined
+      : integer(raw.httpStatus, path + '.httpStatus', 100, 599);
   const requestId =
-    raw.requestId === undefined ? undefined : boundedString(raw.requestId, path + '.requestId', 256);
+    raw.requestId === undefined
+      ? undefined
+      : boundedString(raw.requestId, path + '.requestId', 256);
   return {
     kind: raw.kind,
     message,
@@ -300,12 +310,7 @@ function parseConflict(
     clientMutationId,
     failedCommandIndex,
     conflicts: raw.conflicts.map((candidate, index) =>
-      parseConflictBody(
-        candidate,
-        path + '.conflicts[' + index + ']',
-        recordId,
-        expectedRevision,
-      ),
+      parseConflictBody(candidate, path + '.conflicts[' + index + ']', recordId, expectedRevision),
     ),
   };
 }
@@ -336,7 +341,9 @@ function parseConflictBody(
   const currentRevision = integer(raw.currentRevision, path + '.currentRevision', 1);
   const currentValues = values(raw.currentValues, path + '.currentValues', false);
   const submittedSet =
-    raw.submittedSet === undefined ? undefined : values(raw.submittedSet, path + '.submittedSet', true);
+    raw.submittedSet === undefined
+      ? undefined
+      : values(raw.submittedSet, path + '.submittedSet', true);
   const submittedUnsetFieldIds =
     raw.submittedUnsetFieldIds === undefined
       ? undefined
@@ -387,7 +394,10 @@ function jsonValue(value: unknown, path: string, depth = 0): JsonValue {
   }
   if (isObject(value)) {
     return Object.fromEntries(
-      Object.entries(value).map(([key, item]) => [key, jsonValue(item, path + '.' + key, depth + 1)]),
+      Object.entries(value).map(([key, item]) => [
+        key,
+        jsonValue(item, path + '.' + key, depth + 1),
+      ]),
     ) as { readonly [key: string]: JsonValue };
   }
   fail(path, 'must be a JSON value');
@@ -430,7 +440,11 @@ function objectValue(value: unknown, path: string): Record<string, unknown> {
   return value;
 }
 
-function assertKeys(value: Record<string, unknown>, allowed: readonly string[], path: string): void {
+function assertKeys(
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  path: string,
+): void {
   for (const key of Object.keys(value)) {
     if (!allowed.includes(key)) fail(path + '.' + key, 'unknown property');
   }
@@ -455,3 +469,4 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function fail(path: string, message: string): never {
   throw new MutationQueueSettingsError('Invalid ' + path + ': ' + message);
 }
+
