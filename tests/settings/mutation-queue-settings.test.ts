@@ -21,33 +21,27 @@ describe('mutation queue settings', () => {
   });
 
   it('hydrates sending entries as queued without changing the request body', async () => {
-    const persisted = {
-      schemaVersion: 1,
-      entries: [entry({ state: 'sending' })],
-    };
+    const persisted = { schemaVersion: 1, entries: [entry({ state: 'sending' })] };
 
     const store = new MutationQueueStore(persisted);
-    const snapshot = store.getSnapshot();
-    expect(snapshot.entries[0]).toMatchObject({
+    expect(store.getSnapshot().entries[0]).toMatchObject({
       clientMutationId: MUTATION_ID,
       state: 'queued',
       expectedRevision: 3,
     });
-    expect(snapshot.entries[0]?.request).toEqual(persisted.entries[0]?.request);
+    expect(store.getSnapshot().entries[0]?.request).toEqual(persisted.entries[0]?.request);
 
     const saves: MutationQueueSettingsV1[] = [];
     const hydrated = await MutationQueueStore.hydrate({
       load: async () => persisted,
-      save: async (value) => {
-        saves.push(value);
-      },
+      save: async (value) => saves.push(value),
     });
     await hydrated.persist();
     expect(saves).toHaveLength(1);
     expect(saves[0]?.entries[0]?.state).toBe('queued');
   });
 
-  it('rejects malformed entries, mismatched request metadata, and duplicate IDs', () => {
+  it('rejects malformed entries, mismatched metadata, and duplicate IDs', () => {
     expect(() =>
       normalizeMutationQueueSettings({
         schemaVersion: 1,
@@ -101,7 +95,7 @@ describe('mutation queue settings', () => {
           }),
         ],
       }),
-    ).toThrow(/same field/);
+    ).toThrow(/overlap/);
 
     expect(() =>
       normalizeMutationQueueSettings({
