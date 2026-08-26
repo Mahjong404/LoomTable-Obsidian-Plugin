@@ -61,10 +61,10 @@ describe('mutation queue settings', () => {
         entries: [
           entry({
             request: {
-              ...entry().request,
+              ...requestOf(entry()),
               commands: [
                 {
-                  ...entry().request.commands[0],
+                  ...commandOf(entry()),
                   expectedRevision: 4,
                 },
               ],
@@ -89,10 +89,10 @@ describe('mutation queue settings', () => {
         entries: [
           entry({
             request: {
-              ...entry().request,
+              ...requestOf(entry()),
               commands: [
                 {
-                  ...entry().request.commands[0],
+                  ...commandOf(entry()),
                   set: { field_a: 'local' },
                   unsetFieldIds: ['field_a'],
                 },
@@ -128,10 +128,10 @@ describe('mutation queue settings', () => {
         entries: [
           entry({
             request: {
-              ...entry().request,
+              ...requestOf(entry()),
               commands: [
                 {
-                  ...entry().request.commands[0],
+                  ...commandOf(entry()),
                   set: { field_a: largeValue },
                 },
               ],
@@ -142,6 +142,20 @@ describe('mutation queue settings', () => {
     ).toThrow(/serialized size/);
   });
 });
+
+function requestOf(value: Record<string, unknown>): {
+  clientMutationId: string;
+  commands: readonly [Record<string, unknown>];
+} {
+  return value.request as {
+    clientMutationId: string;
+    commands: readonly [Record<string, unknown>];
+  };
+}
+
+function commandOf(value: Record<string, unknown>): Record<string, unknown> {
+  return requestOf(value).commands[0];
+}
 
 function entry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
