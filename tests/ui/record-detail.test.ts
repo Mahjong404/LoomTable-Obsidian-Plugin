@@ -63,6 +63,43 @@ describe('Record Detail Location seam', () => {
     expect(longitude.checkValidity()).toBe(true);
   });
 
+  it('names the detail region and protects a dirty Location draft', () => {
+    const container = document.createElement('div');
+    const confirmDiscard = vi.fn().mockReturnValue(false);
+    const onClose = vi.fn();
+    const detail = createRecordDetail(createRecord({}), {
+      fields: [createField('field_location', 'Location')],
+      translate: createTranslator('en'),
+      confirmDiscard,
+      callbacks: { onClose, onLocationEdit: vi.fn() },
+    });
+    container.append(detail);
+
+    expect(detail.getAttribute('role')).toBe('region');
+    expect(detail.querySelector('h2')?.id).toBe(detail.getAttribute('aria-labelledby'));
+
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const label = container.querySelector<HTMLInputElement>(
+      '.loom-location-editor input[aria-label="Label"]',
+    );
+    expect(label).not.toBeNull();
+    if (label === null) return;
+    label.value = 'Changed';
+    label.dispatchEvent(new Event('input', { bubbles: true }));
+
+    container.querySelector<HTMLButtonElement>('.loom-location-editor button:last-child')?.click();
+    expect(container.querySelector('.loom-location-editor')).not.toBeNull();
+    expect(confirmDiscard).toHaveBeenCalledTimes(1);
+
+    container.querySelector<HTMLButtonElement>('.loom-record-detail-header button')?.click();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(confirmDiscard).toHaveBeenCalledTimes(2);
+
+    confirmDiscard.mockReturnValue(true);
+    container.querySelector<HTMLButtonElement>('.loom-location-editor button:last-child')?.click();
+    expect(container.querySelector('.loom-location-editor')).toBeNull();
+  });
+
   it('prevalidates Location form values before calling the mutation seam', async () => {
     const container = document.createElement('div');
     const onLocationEdit = vi.fn().mockResolvedValue(undefined);
@@ -81,7 +118,15 @@ describe('Record Detail Location seam', () => {
     if (form === null) return;
 
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    expect(form.querySelector('[role="alert"]')?.textContent).toContain('Location');
+    const error = form.querySelector<HTMLElement>('[role="alert"]');
+    expect(error?.textContent).toContain('Location');
+    expect(error?.hidden).toBe(false);
+    expect(error?.id).toBeTruthy();
+    expect(
+      [...form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select')].every(
+        (control) => control.getAttribute('aria-invalid') === 'true',
+      ),
+    ).toBe(true);
     expect(onLocationEdit).not.toHaveBeenCalled();
 
     const input = (label: string): HTMLInputElement =>
@@ -131,8 +176,10 @@ describe('Record Detail Location seam', () => {
           lng: 34,
         }),
       );
-      const trigger = container.querySelector<HTMLElement>('.loom-location-preview-trigger');
+      const trigger = container.querySelector<HTMLButtonElement>('.loom-location-preview-trigger');
       expect(trigger).not.toBeNull();
+      expect(trigger?.tagName).toBe('BUTTON');
+      expect(trigger?.getAttribute('aria-label')).toBe('Ctrl/Cmd-hover to preview');
       trigger?.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, ctrlKey: true }));
       await vi.advanceTimersByTimeAsync(180);
       expect(container.querySelector('.loom-location-preview')?.textContent).toContain('12, 34');
@@ -166,6 +213,7 @@ describe('Record Detail Location seam', () => {
       currentRevision: 2,
       currentValues: { field_location: { label: 'Server' } },
       submittedSet: { field_location: { label: 'Local' } },
+      submittedUnsetFieldIds: ['field_archived'],
       message: 'Revision conflict.',
     };
     container.append(
@@ -184,6 +232,15 @@ describe('Record Detail Location seam', () => {
     if (form === null) return;
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(container.querySelector('.loom-record-conflict')).not.toBeNull());
+
+    expect(container.querySelector('.loom-record-conflict')?.getAttribute('role')).toBe('region');
+    expect(container.querySelector('.loom-record-conflict')?.getAttribute('aria-label')).toBe(
+      'Record conflict',
+    );
+    expect(container.querySelector('.loom-record-conflict-local')?.textContent).toContain(
+      'field_archived',
+    );
+    expect(document.activeElement).toBe(container.querySelector('.loom-record-detail'));
 
     const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-record-conflict button');
     buttons[0]?.click();
