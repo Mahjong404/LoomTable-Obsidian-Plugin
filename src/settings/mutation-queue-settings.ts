@@ -9,7 +9,7 @@ import type {
 
 export const MUTATION_QUEUE_SCHEMA_VERSION = 1 as const;
 export const MAX_MUTATION_QUEUE_ENTRIES = 256 as const;
-export const MAX_MUTATION_QUEUE_BYTES = (1024 * 1024) as const;
+export const MAX_MUTATION_QUEUE_BYTES = 1024 * 1024;
 
 const MUTATION_ID_PATTERN = /^mut_[0-9A-HJKMNP-TV-Z]{26}$/;
 const ERROR_KINDS: readonly LoomTableClientErrorKind[] = [
