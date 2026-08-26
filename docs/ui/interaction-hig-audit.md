@@ -11,6 +11,10 @@
 - **N/A / scope**: capability is not present in the published main or is outside the approved P1.5 scope; do not invent it during this audit.
 - “Test evidence” is intentionally marked pending until the corresponding fix is merged and its remote CI/main evidence is available.
 
+## Audit method
+
+The audit reads the published file tree and source blobs at the baseline commit, then records a concrete file/line anchor for each existing surface. A capability marked N/A is intentionally not implemented by this audit. A later repair PR must update the Test evidence column with its own merged main SHA and CI run.
+
 ## Matrix
 
 | Area / file or component | HIG clause | Remote-main evidence at baseline | Severity | Repair plan | Test evidence |
