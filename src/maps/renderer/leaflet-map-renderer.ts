@@ -63,6 +63,7 @@ export class LeafletMapAdapter implements MapRendererAdapter {
     marker.bindTooltip(label);
     marker.on('click', onClick);
     marker.addTo(unwrapMap(map));
+    markLayerAccessible(marker, label, onClick);
     return new LeafletFeatureHandle(marker, label);
   }
 }
@@ -243,8 +244,8 @@ function markLayerAccessible(
 }
 
 function updateLayerAccessibleLabel(layer: L.Layer, label: string): void {
-  const element =
-    'getElement' in layer && typeof layer.getElement === 'function' ? layer.getElement() : null;
+  if (!(layer instanceof L.Marker || layer instanceof L.CircleMarker)) return;
+  const element = layer.getElement();
   if (element instanceof HTMLElement || element instanceof SVGElement) {
     element.setAttribute('aria-label', label);
   }
