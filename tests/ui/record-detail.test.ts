@@ -205,6 +205,7 @@ describe('Record Detail Location seam', () => {
 
   it('keeps the existing use-server and overwrite conflict actions in Location detail', async () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const onConflictAction = vi.fn();
     const onLocationEdit = vi
       .fn()
