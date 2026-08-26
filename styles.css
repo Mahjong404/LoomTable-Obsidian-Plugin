@@ -192,7 +192,6 @@
   box-shadow: inset 3px 0 0 var(--loom-text-warning);
 }
 
-
 .loom-grid-cell[data-edit-state='conflict'] {
   background: var(--loom-bg-error);
   box-shadow: inset 3px 0 0 var(--loom-text-error);
@@ -926,3 +925,4 @@
     transition-iteration-count: 1;
   }
 }
+
