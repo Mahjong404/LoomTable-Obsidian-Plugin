@@ -437,6 +437,22 @@ function errorDiagnostic(error: {
   );
 }
 
-function tileErrorDiagnostic(error: { readonly kind: string; readonly providerId: string }): string {
-  return JSON.stringify({ kind: error.kind, providerId: error.providerId }, null, 2);
+function tileErrorDiagnostic(error: {
+  readonly kind?: string;
+  readonly providerId?: string;
+  readonly code?: string;
+  readonly httpStatus?: number;
+  readonly requestId?: string;
+}): string {
+  return JSON.stringify(
+    {
+      ...(error.kind === undefined ? {} : { kind: error.kind }),
+      ...(error.providerId === undefined ? {} : { providerId: error.providerId }),
+      ...(error.code === undefined ? {} : { code: error.code }),
+      ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }),
+      ...(error.requestId === undefined ? {} : { requestId: error.requestId }),
+    },
+    null,
+    2,
+  );
 }
