@@ -243,9 +243,8 @@ function markLayerAccessible(
 }
 
 function updateLayerAccessibleLabel(layer: L.Layer, label: string): void {
-  const element = 'getElement' in layer && typeof layer.getElement === 'function'
-    ? layer.getElement()
-    : null;
+  const element =
+    'getElement' in layer && typeof layer.getElement === 'function' ? layer.getElement() : null;
   if (element instanceof HTMLElement || element instanceof SVGElement) {
     element.setAttribute('aria-label', label);
   }
