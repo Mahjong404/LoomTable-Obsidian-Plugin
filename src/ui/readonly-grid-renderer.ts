@@ -35,6 +35,9 @@ export class ReadonlyGridRenderer {
   readonly #translate: Translator;
   readonly #callbacks: GridRendererCallbacks;
   #virtualGrid: VirtualGridRefs | null = null;
+  #focusedCellKey: string | null = null;
+  #focusedCellPosition: { readonly rowIndex: number; readonly fieldIndex: number } | null = null;
+  #lastConflictIds = new Set<string>();
 
   constructor(container: HTMLElement, translate: Translator, callbacks: GridRendererCallbacks) {
     this.#container = container;
@@ -45,6 +48,8 @@ export class ReadonlyGridRenderer {
   render(state: GridState): void {
     this.#virtualGrid = null;
     const root = createElement('div', 'loom-grid-shell');
+    root.setAttribute('role', 'region');
+    root.setAttribute('aria-label', this.#translate('grid.table'));
     root.append(this.#renderToolbar(state), this.#renderNavigation(state));
     if (state.editError !== null) root.append(this.#renderEditError(state));
     if (state.conflicts.length > 0) root.append(this.#renderConflicts(state));
@@ -67,13 +72,23 @@ export class ReadonlyGridRenderer {
       }
     }
 
+    const conflictIds = new Set(state.conflicts.map((conflict) => conflict.recordId));
+    const hasNewConflict = [...conflictIds].some((recordId) => !this.#lastConflictIds.has(recordId));
+    this.#lastConflictIds = conflictIds;
     this.#container.replaceChildren(root);
+    if (hasNewConflict) {
+      this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus();
+    } else {
+      this.#restoreFocusedCell();
+    }
   }
 
   #renderToolbar(state: GridState): HTMLElement {
     const toolbar = createElement('div', 'loom-grid-toolbar');
+    toolbar.setAttribute('role', 'toolbar');
+    toolbar.setAttribute('aria-label', this.#translate('grid.status'));
     const title = createElement('div', 'loom-grid-toolbar-title');
-    title.append(createTextElement('strong', this.#translate('grid.view')));
+    title.append(createTextElement('h2', this.#translate('grid.view')));
     if (state.totalCount !== null) {
       title.append(
         createTextElement('span', `${state.totalCount} ${this.#translate('grid.rows')}`),
@@ -96,6 +111,8 @@ export class ReadonlyGridRenderer {
 
   #renderNavigation(state: GridState): HTMLElement {
     const navigation = createElement('div', 'loom-grid-navigation');
+    navigation.setAttribute('role', 'group');
+    navigation.setAttribute('aria-label', this.#translate('grid.status'));
     navigation.append(
       this.#renderSelect(
         'grid.workspace',
@@ -155,13 +172,26 @@ export class ReadonlyGridRenderer {
     const columnTemplate = columnTemplateFor(fields, state);
 
     const header = createElement('div', 'loom-grid-header');
+    header.setAttribute('role', 'row');
     header.style.gridTemplateColumns = columnTemplate;
-    header.append(createGridCell('#', 'loom-grid-header-cell'));
-    for (const field of fields) header.append(createGridCell(field.name, 'loom-grid-header-cell'));
+    const indexHeader = createGridCell('#', 'loom-grid-header-cell');
+    indexHeader.setAttribute('role', 'columnheader');
+    indexHeader.setAttribute('aria-colindex', '1');
+    indexHeader.setAttribute('aria-label', this.#translate('grid.rows'));
+    header.append(indexHeader);
+    for (const [fieldIndex, field] of fields.entries()) {
+      const fieldHeader = createGridCell(field.name, 'loom-grid-header-cell');
+      fieldHeader.setAttribute('role', 'columnheader');
+      fieldHeader.setAttribute('aria-colindex', String(fieldIndex + 2));
+      header.append(fieldHeader);
+    }
 
     const viewport = createElement('div', 'loom-grid-viewport');
     viewport.tabIndex = 0;
     viewport.setAttribute('role', 'grid');
+    viewport.setAttribute('aria-label', this.#translate('grid.table'));
+    viewport.setAttribute('aria-rowcount', String(state.records.length + 1));
+    viewport.setAttribute('aria-colcount', String(fields.length + 1));
     const canvas = createElement('div', 'loom-grid-canvas');
     canvas.style.height = `${state.records.length * rowHeight}px`;
     const rowLayer = createElement('div', 'loom-grid-row-layer');
@@ -188,9 +218,16 @@ export class ReadonlyGridRenderer {
 
   #renderEditError(state: GridState): HTMLElement {
     const status = createElement('div', 'loom-status loom-grid-edit-status is-error');
-    status.append(createTextElement('p', state.editError?.message ?? ''));
-    if (state.editError?.code !== undefined) {
-      status.append(createTextElement('small', state.editError.code));
+    status.setAttribute('role', 'alert');
+    status.setAttribute('aria-live', 'assertive');
+    status.append(createTextElement('p', this.#translate('grid.editError')));
+    if (state.editError !== null) {
+      status.append(
+        renderDiagnostic(
+          this.#translate('grid.diagnostic.error'),
+          errorDiagnostic(state.editError),
+        ),
+      );
     }
     const failedRecordId = Object.entries(state.editStatuses).find(
       ([, status]) => status === 'error',
@@ -207,23 +244,53 @@ export class ReadonlyGridRenderer {
 
   #renderConflicts(state: GridState): HTMLElement {
     const box = createElement('div', 'loom-grid-conflicts');
+    box.setAttribute('role', 'region');
+    box.setAttribute('aria-live', 'polite');
+    box.setAttribute('aria-label', this.#translate('grid.diagnostic.conflict'));
+    box.tabIndex = -1;
     for (const conflict of state.conflicts) {
       const item = createElement('div', 'loom-grid-conflict');
+      item.setAttribute(
+        'role',
+        'group',
+      );
+      item.setAttribute(
+        'aria-label',
+        this.#translate('grid.editConflict') + ': ' + conflict.recordId,
+      );
       item.append(createTextElement('strong', this.#translate('grid.editConflict')));
-      item.append(createTextElement('p', conflict.message));
+      item.append(createTextElement('p', this.#translate('record.serverValue')));
       const values = createElement('pre', 'loom-grid-conflict-values');
+      values.setAttribute('aria-label', this.#translate('record.serverValue'));
       values.textContent = JSON.stringify(
         {
           recordId: conflict.recordId,
           expectedRevision: conflict.expectedRevision,
           currentRevision: conflict.currentRevision,
           currentValues: conflict.currentValues,
-          submittedSet: conflict.submittedSet,
         },
         null,
         2,
       );
       item.append(values);
+      item.append(createTextElement('p', this.#translate('record.localIntent')));
+      const intent = createElement('pre', 'loom-grid-conflict-intent');
+      intent.setAttribute('aria-label', this.#translate('record.localIntent'));
+      intent.textContent = JSON.stringify(
+        {
+          submittedSet: conflict.submittedSet,
+          submittedUnsetFieldIds: conflict.submittedUnsetFieldIds,
+        },
+        null,
+        2,
+      );
+      item.append(intent);
+      item.append(
+        renderDiagnostic(
+          this.#translate('common.openDiagnostics'),
+          conflictDiagnostic(conflict),
+        ),
+      );
       const actions = createElement('div', 'loom-grid-conflict-actions');
       const useServer = document.createElement('button');
       useServer.type = 'button';
@@ -261,6 +328,7 @@ export class ReadonlyGridRenderer {
       if (record === undefined) continue;
       grid.rowLayer.append(this.#renderRow(record, rowIndex, grid.fields, grid.rowHeight));
     }
+    if (this.#focusedCellKey !== null) this.#restoreFocusedCell();
   }
 
   #renderRow(
@@ -272,18 +340,22 @@ export class ReadonlyGridRenderer {
     const gridState = this.#virtualGrid?.state;
     const row = createElement('div', 'loom-grid-row');
     row.setAttribute('role', 'row');
-    row.tabIndex = 0;
+    row.tabIndex = -1;
+    row.setAttribute('aria-rowindex', String(rowIndex + 2));
     row.dataset.rowIndex = String(rowIndex);
     row.style.gridTemplateColumns = columnTemplateFor(fields, this.#virtualGrid?.state);
-    row.style.height = `${rowHeight}px`;
-    row.style.top = `${rowIndex * rowHeight}px`;
+    row.style.height = rowHeight + 'px';
+    row.style.top = rowIndex * rowHeight + 'px';
     row.title = this.#translate('grid.openDetails');
 
     const indexCell = createElement('div', 'loom-grid-index-cell');
+    indexCell.setAttribute('role', 'rowheader');
+    indexCell.setAttribute('aria-colindex', '1');
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'loom-grid-open';
     open.setAttribute('aria-label', this.#translate('grid.openDetails'));
+    open.title = this.#translate('grid.openDetails');
     open.textContent = '↗';
     open.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -292,12 +364,12 @@ export class ReadonlyGridRenderer {
     indexCell.append(document.createTextNode(String(rowIndex + 1)), open);
     row.append(indexCell);
 
-    for (const field of fields) {
-      const cell = createGridCell(
-        formatCellValue(record.values[field.id], field, this.#translate),
-        'loom-grid-cell',
-      );
+    for (const [fieldIndex, field] of fields.entries()) {
+      const displayValue = formatCellValue(record.values[field.id], field, this.#translate);
+      const cell = createGridCell(displayValue, 'loom-grid-cell');
       cell.setAttribute('role', 'gridcell');
+      cell.setAttribute('aria-colindex', String(fieldIndex + 2));
+      cell.tabIndex = 0;
       const canEdit = gridState?.status === 'ready';
       if (!isEditableField(field) || !canEdit) {
         cell.setAttribute('aria-readonly', 'true');
@@ -305,18 +377,58 @@ export class ReadonlyGridRenderer {
         cell.classList.add('loom-grid-editable');
       }
       cell.dataset.fieldId = field.id;
+      cell.dataset.recordId = record.id;
+      cell.dataset.rowIndex = String(rowIndex);
+      cell.dataset.fieldIndex = String(fieldIndex);
+      cell.dataset.focusKey = focusKey(
+        gridState?.selectedTableId ?? record.tableId,
+        gridState?.selectedViewId ?? '',
+        record.id,
+        field.id,
+      );
+      cell.setAttribute('aria-label', field.name + ': ' + displayValue);
       const editStatus = gridState?.editStatuses[record.id];
       if (editStatus !== undefined) cell.dataset.editState = editStatus;
-      if (isEditableField(field) && canEdit) {
-        const beginEdit = (event: Event): void => {
-          event.stopPropagation();
-          this.#beginCellEdit(cell, record, field);
-        };
-        cell.addEventListener('click', beginEdit);
-        cell.addEventListener('keydown', (event) => {
-          if (event.key === 'Enter') beginEdit(event);
-        });
-      }
+      cell.addEventListener('focus', () => {
+        this.#rememberCell(
+          cell.dataset.focusKey ?? '',
+          rowIndex,
+          fieldIndex,
+        );
+      });
+      cell.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
+        if (isEditableField(field) && canEdit) {
+          this.#beginCellEdit(cell, record, field, rowIndex, fieldIndex);
+        }
+      });
+      cell.addEventListener('keydown', (event) => {
+        event.stopPropagation();
+        const keyboard = event as KeyboardEvent;
+        if (keyboard.key === 'ArrowDown' || keyboard.key === 'ArrowUp') {
+          keyboard.preventDefault();
+          this.#focusAdjacentCell(rowIndex, fieldIndex, keyboard.key === 'ArrowDown' ? 1 : -1);
+          return;
+        }
+        if (keyboard.key === 'ArrowRight' || keyboard.key === 'ArrowLeft') {
+          keyboard.preventDefault();
+          this.#focusAdjacentCell(
+            rowIndex,
+            fieldIndex,
+            keyboard.key === 'ArrowRight' ? 1 : -1,
+            true,
+          );
+          return;
+        }
+        if (keyboard.key !== 'Enter') return;
+        keyboard.preventDefault();
+        if (isEditableField(field) && canEdit) {
+          this.#beginCellEdit(cell, record, field, rowIndex, fieldIndex);
+        } else {
+          this.#callbacks.onRecordOpen(record);
+        }
+      });
       row.append(cell);
     }
 
@@ -329,13 +441,19 @@ export class ReadonlyGridRenderer {
       }
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
-        this.#focusAdjacentRow(rowIndex, event.key === 'ArrowDown' ? 1 : -1);
+        this.#focusAdjacentCell(rowIndex, 0, event.key === 'ArrowDown' ? 1 : -1);
       }
     });
     return row;
   }
 
-  #beginCellEdit(cell: HTMLElement, record: LoomTableRecord, field: Field): void {
+  #beginCellEdit(
+    cell: HTMLElement,
+    record: LoomTableRecord,
+    field: Field,
+    rowIndex: number,
+    fieldIndex: number,
+  ): void {
     if (
       !isEditableField(field) ||
       this.#virtualGrid?.state.status !== 'ready' ||
@@ -345,13 +463,14 @@ export class ReadonlyGridRenderer {
     }
     if (cell.querySelector('input, textarea, select') !== null) return;
 
-    const editor = createEditor(field, record.values[field.id]);
+    this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
+    const editor = createEditor(field, record.values[field.id], this.#translate);
     editor.classList.add('loom-grid-editor');
     editor.setAttribute('aria-label', field.name);
     cell.replaceChildren(editor);
     let composing = false;
     let finished = false;
-    const finish = (commit: boolean): void => {
+    const finish = (commit: boolean, moveOffset = 0): void => {
       if (finished) return;
       finished = true;
       if (!commit) {
@@ -364,6 +483,9 @@ export class ReadonlyGridRenderer {
           : editor.value;
       const result = this.#callbacks.onCellEdit?.(record.id, field.id, value);
       if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+      if (moveOffset !== 0) {
+        this.#focusAdjacentCell(rowIndex, fieldIndex, moveOffset, true);
+      }
     };
     editor.addEventListener('compositionstart', () => {
       composing = true;
@@ -379,9 +501,9 @@ export class ReadonlyGridRenderer {
       } else if (keyboardEvent.key === 'Enter' && !composing) {
         keyboardEvent.preventDefault();
         finish(true);
-      } else if (keyboardEvent.key === 'Tab') {
+      } else if (keyboardEvent.key === 'Tab' && !composing) {
         keyboardEvent.preventDefault();
-        finish(true);
+        finish(true, keyboardEvent.shiftKey ? -1 : 1);
       }
     });
     editor.focus();
@@ -417,26 +539,99 @@ export class ReadonlyGridRenderer {
     };
   }
 
-  #focusAdjacentRow(rowIndex: number, offset: number): void {
+  #rememberCell(key: string, rowIndex: number, fieldIndex: number): void {
+    if (key === '') return;
+    this.#focusedCellKey = key;
+    this.#focusedCellPosition = { rowIndex, fieldIndex };
+  }
+
+  #findCellByKey(key: string): HTMLElement | null {
     const grid = this.#virtualGrid;
-    if (grid === null) return;
-    const targetIndex = Math.max(0, Math.min(grid.state.records.length - 1, rowIndex + offset));
-    const target = grid.rowLayer.querySelector<HTMLElement>(`[data-row-index="${targetIndex}"]`);
-    if (target !== null) {
-      target.focus();
-      return;
+    if (grid === null) return null;
+    return (
+      [...grid.rowLayer.querySelectorAll<HTMLElement>('.loom-grid-cell')].find(
+        (cell) => cell.dataset.focusKey === key,
+      ) ?? null
+    );
+  }
+
+  #findCellAt(rowIndex: number, fieldIndex: number): HTMLElement | null {
+    const grid = this.#virtualGrid;
+    if (grid === null) return null;
+    return (
+      [...grid.rowLayer.querySelectorAll<HTMLElement>('.loom-grid-cell')].find(
+        (cell) =>
+          cell.dataset.rowIndex === String(rowIndex) &&
+          cell.dataset.fieldIndex === String(fieldIndex),
+      ) ?? null
+    );
+  }
+
+  #restoreFocusedCell(): void {
+    const grid = this.#virtualGrid;
+    if (grid === null || this.#focusedCellKey === null) return;
+    let target = this.#findCellByKey(this.#focusedCellKey);
+    if (target === null && this.#focusedCellPosition !== null && grid.state.records.length > 0) {
+      const rowIndex = Math.max(
+        0,
+        Math.min(grid.state.records.length - 1, this.#focusedCellPosition.rowIndex),
+      );
+      const fieldIndex = Math.max(
+        0,
+        Math.min(grid.fields.length - 1, this.#focusedCellPosition.fieldIndex),
+      );
+      target = this.#findCellAt(rowIndex, fieldIndex);
+      if (target === null) {
+        grid.viewport.scrollTop = rowIndex * grid.rowHeight;
+        this.#renderVirtualRows();
+        return;
+      }
+      this.#focusedCellPosition = { rowIndex, fieldIndex };
+      this.#focusedCellKey = target.dataset.focusKey ?? this.#focusedCellKey;
     }
-    grid.viewport.scrollTop = targetIndex * grid.rowHeight;
-    this.#renderVirtualRows();
-    grid.rowLayer.querySelector<HTMLElement>(`[data-row-index="${targetIndex}"]`)?.focus();
+    target?.focus();
+  }
+
+  #focusAdjacentCell(
+    rowIndex: number,
+    fieldIndex: number,
+    rowOffset: number,
+    horizontal = false,
+  ): void {
+    const grid = this.#virtualGrid;
+    if (grid === null || grid.fields.length === 0 || grid.state.records.length === 0) return;
+    const targetRow = Math.max(
+      0,
+      Math.min(grid.state.records.length - 1, rowIndex + (horizontal ? 0 : rowOffset)),
+    );
+    const targetField = Math.max(
+      0,
+      Math.min(grid.fields.length - 1, fieldIndex + (horizontal ? rowOffset : 0)),
+    );
+    this.#focusedCellPosition = { rowIndex: targetRow, fieldIndex: targetField };
+    const target = this.#findCellAt(targetRow, targetField);
+    if (target === null) {
+      grid.viewport.scrollTop = targetRow * grid.rowHeight;
+      this.#renderVirtualRows();
+    }
+    const next = this.#findCellAt(targetRow, targetField);
+    next?.focus();
   }
 
   #renderStatus(status: GridStatus, state: GridState): HTMLElement {
-    const statusBox = createElement('div', `loom-status loom-grid-status is-${status}`);
+    const statusBox = createElement('div', 'loom-status loom-grid-status is-' + status);
+    statusBox.setAttribute('role', 'status');
+    statusBox.setAttribute('aria-live', 'polite');
+    statusBox.setAttribute('aria-atomic', 'true');
     const message = statusMessage(status, state, this.#translate);
     statusBox.append(createTextElement('p', message));
-    if (state.error?.requestId !== undefined) {
-      statusBox.append(createTextElement('small', `Request ID: ${state.error.requestId}`));
+    if (state.error !== null) {
+      statusBox.append(
+        renderDiagnostic(
+          this.#translate('grid.diagnostic.error'),
+          errorDiagnostic(state.error),
+        ),
+      );
     }
     return statusBox;
   }
@@ -495,10 +690,14 @@ function formatCellValue(
   translate: Translator,
 ): string {
   if (value === undefined) {
-    return field.type === 'location' ? translate('record.field.unset') : '—';
+    return field.type === 'location' ? translate('record.field.unset') : translate('common.emptyValue');
   }
-  if (value === null) return field.type === 'location' ? translate('record.field.cleared') : '—';
-  if (field.type === 'checkbox' && typeof value === 'boolean') return value ? '✓' : '—';
+  if (value === null) {
+    return field.type === 'location' ? translate('record.field.cleared') : translate('common.emptyValue');
+  }
+  if (field.type === 'checkbox' && typeof value === 'boolean') {
+    return value ? translate('grid.cell.checked') : translate('grid.cell.unchecked');
+  }
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
   }
@@ -555,7 +754,7 @@ function statusMessage(status: GridStatus, state: GridState, translate: Translat
   if (status === 'authentication') return translate('grid.error.authentication');
   if (status === 'forbidden') return translate('grid.error.forbidden');
   if (status === 'network') return translate('grid.error.network');
-  if (status === 'server-error') return state.error?.message ?? translate('grid.error.server');
+  if (status === 'server-error') return translate('grid.error.server');
   if (state.emptyReason === 'workspace') return translate('grid.empty.workspace');
   if (state.emptyReason === 'base') return translate('grid.empty.base');
   if (state.emptyReason === 'table') return translate('grid.empty.table');
@@ -582,6 +781,7 @@ function createGridCell(text: string, className: string): HTMLElement {
 function createEditor(
   field: Field,
   value: JsonValue | undefined,
+  translate: Translator,
 ): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
   if (field.type === 'longText') {
     const editor = document.createElement('textarea');
@@ -592,7 +792,7 @@ function createEditor(
     const editor = document.createElement('select');
     const empty = document.createElement('option');
     empty.value = '';
-    empty.textContent = '—';
+    empty.textContent = translate('common.emptyValue');
     editor.append(empty);
     for (const option of field.config.options) {
       const item = document.createElement('option');
@@ -614,6 +814,54 @@ function createEditor(
     field.type === 'number' || field.type === 'date' || field.type === 'url' ? field.type : 'text';
   editor.value = editorTextValue(value, field);
   return editor;
+}
+
+function renderDiagnostic(label: string, details: string): HTMLElement {
+  const wrapper = document.createElement('details');
+  wrapper.className = 'loom-diagnostic';
+  const summary = document.createElement('summary');
+  summary.textContent = label;
+  const pre = document.createElement('pre');
+  pre.textContent = details;
+  wrapper.append(summary, pre);
+  return wrapper;
+}
+
+function errorDiagnostic(error: {
+  readonly message: string;
+  readonly code?: string;
+  readonly httpStatus?: number;
+  readonly requestId?: string;
+}): string {
+  return JSON.stringify(
+    {
+      message: error.message,
+      ...(error.code === undefined ? {} : { code: error.code }),
+      ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }),
+      ...(error.requestId === undefined ? {} : { requestId: error.requestId }),
+    },
+    null,
+    2,
+  );
+}
+
+function conflictDiagnostic(conflict: GridConflict): string {
+  return JSON.stringify(
+    {
+      clientMutationId: conflict.clientMutationId,
+      message: conflict.message,
+      expectedRevision: conflict.expectedRevision,
+      currentRevision: conflict.currentRevision,
+      submittedSet: conflict.submittedSet,
+      submittedUnsetFieldIds: conflict.submittedUnsetFieldIds,
+    },
+    null,
+    2,
+  );
+}
+
+function focusKey(tableId: string, viewId: string, recordId: string, fieldId: string): string {
+  return JSON.stringify([tableId, viewId, recordId, fieldId]);
 }
 
 function createTextElement<K extends keyof HTMLElementTagNameMap>(
