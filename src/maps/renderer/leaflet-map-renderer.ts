@@ -46,6 +46,7 @@ export class LeafletMapAdapter implements MapRendererAdapter {
     marker.bindTooltip(label);
     marker.on('click', onClick);
     marker.addTo(unwrapMap(map));
+    markLayerAccessible(marker, label, onClick);
     return new LeafletFeatureHandle(marker, label);
   }
 
@@ -62,6 +63,7 @@ export class LeafletMapAdapter implements MapRendererAdapter {
     marker.bindTooltip(label);
     marker.on('click', onClick);
     marker.addTo(unwrapMap(map));
+    markLayerAccessible(marker, label, onClick);
     return new LeafletFeatureHandle(marker, label);
   }
 }
@@ -214,10 +216,37 @@ class LeafletFeatureHandle implements RendererFeatureHandle {
     if ('setTooltipContent' in this.layer && typeof this.layer.setTooltipContent === 'function') {
       this.layer.setTooltipContent(label);
     }
+    updateLayerAccessibleLabel(this.layer, label);
   }
 
   remove(): void {
     this.layer.remove();
+  }
+}
+
+function markLayerAccessible(
+  layer: L.Marker | L.CircleMarker,
+  label: string,
+  onClick: () => void,
+): void {
+  const element = layer.getElement();
+  if (!(element instanceof HTMLElement || element instanceof SVGElement)) return;
+  updateLayerAccessibleLabel(layer, label);
+  element.setAttribute('tabindex', '0');
+  element.setAttribute('role', 'button');
+  element.addEventListener('keydown', (event) => {
+    const keyboard = event as KeyboardEvent;
+    if (keyboard.key !== 'Enter' && keyboard.key !== ' ') return;
+    keyboard.preventDefault();
+    onClick();
+  });
+}
+
+function updateLayerAccessibleLabel(layer: L.Layer, label: string): void {
+  if (!(layer instanceof L.Marker || layer instanceof L.CircleMarker)) return;
+  const element = layer.getElement();
+  if (element instanceof HTMLElement || element instanceof SVGElement) {
+    element.setAttribute('aria-label', label);
   }
 }
 

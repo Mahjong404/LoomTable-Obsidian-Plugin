@@ -31,6 +31,7 @@ export interface RecordConflictView {
   readonly currentRevision: number;
   readonly currentValues: Readonly<Record<string, JsonValue>>;
   readonly submittedSet?: Readonly<Record<string, JsonValue>>;
+  readonly submittedUnsetFieldIds?: readonly string[];
   readonly message: string;
 }
 
@@ -38,6 +39,7 @@ export interface RecordDetailOptions {
   readonly translate: Translator;
   readonly fields: readonly Field[];
   readonly offline?: boolean;
+  readonly confirmDiscard?: (message: string) => boolean;
   readonly callbacks?: RecordDetailCallbacks;
 }
 
@@ -47,17 +49,44 @@ export function createRecordDetail(
 ): HTMLElement {
   const root = document.createElement('section');
   root.className = 'loom-record-detail';
+  root.setAttribute('role', 'region');
+  root.tabIndex = -1;
+  const heading = createText('h2', options.translate('record.details') + ': ' + record.id);
+  heading.id = nextRecordDetailId();
+  root.setAttribute('aria-labelledby', heading.id);
+  const returnFocus =
+    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+  const closeDetail = (): void => {
+    const draft = root.querySelector<HTMLElement>('.loom-location-editor[data-dirty="true"]');
+    if (
+      draft !== null &&
+      !confirmDiscard(options, options.translate('record.location.discardConfirm'))
+    ) {
+      return;
+    }
+    options.callbacks?.onClose?.();
+    if (returnFocus?.isConnected) returnFocus.focus();
+  };
 
   const header = document.createElement('div');
   header.className = 'loom-record-detail-header';
-  header.append(createText('strong', `${options.translate('record.details')}: ${record.id}`));
+  header.append(heading);
   if (options.callbacks?.onClose !== undefined) {
     const close = button(options.translate('common.close'));
     close.setAttribute('aria-label', options.translate('common.close'));
-    close.addEventListener('click', options.callbacks.onClose);
+    close.addEventListener('click', closeDetail);
     header.append(close);
   }
   root.append(header);
+
+  root.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    closeDetail();
+  });
 
   const fields = options.fields.length > 0 ? options.fields : fallbackFields(record);
   const values = document.createElement('dl');
@@ -116,9 +145,11 @@ function renderLocationValue(
       const item = location[key];
       if (item === undefined) continue;
       const text =
-        typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
-          ? String(item)
-          : JSON.stringify(item);
+        key === 'precision' && typeof item === 'string'
+          ? formatPrecision(item, options.translate)
+          : typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
+            ? String(item)
+            : JSON.stringify(item);
       details.append(createText('dt', options.translate(messageKey)), createText('dd', text));
     }
     wrapper.append(details);
@@ -170,8 +201,10 @@ async function copyCoordinates(
       throw new Error(options.translate('record.location.copyUnavailable'));
     }
     buttonElement.textContent = options.translate('record.location.copied');
-  } catch (cause) {
-    buttonElement.textContent = cause instanceof Error ? cause.message : String(cause);
+    buttonElement.setAttribute('aria-live', 'polite');
+  } catch {
+    buttonElement.textContent = options.translate('record.location.copyFailed');
+    buttonElement.setAttribute('aria-live', 'assertive');
   }
 }
 
@@ -184,6 +217,7 @@ function createLocationEditor(
   const root = document.createElement('form');
   root.className = 'loom-location-editor';
   root.setAttribute('aria-label', options.translate('record.location.edit'));
+  root.dataset.dirty = 'false';
 
   const location = raw !== undefined && isLocationValue(raw) ? raw : {};
   const label = inputField(
@@ -222,12 +256,16 @@ function createLocationEditor(
   precision.setAttribute('aria-label', options.translate('record.location.precision'));
   const emptyPrecision = document.createElement('option');
   emptyPrecision.value = '';
-  emptyPrecision.textContent = '—';
+  emptyPrecision.textContent = options.translate('record.location.precision.none');
   precision.append(emptyPrecision);
-  for (const value of ['exact', 'rooftop', 'approximate'] as const) {
+  for (const [value, messageKey] of [
+    ['exact', 'record.location.precision.exact'],
+    ['rooftop', 'record.location.precision.rooftop'],
+    ['approximate', 'record.location.precision.approximate'],
+  ] as const) {
     const option = document.createElement('option');
     option.value = value;
-    option.textContent = value;
+    option.textContent = options.translate(messageKey);
     option.selected = location.precision === value;
     precision.append(option);
   }
@@ -240,9 +278,23 @@ function createLocationEditor(
     fieldWrapper(options.translate('record.location.precision'), precision),
   );
 
-  const error = document.createElement('p');
+  const error = document.createElement('div');
   error.className = 'loom-location-editor-error';
+  error.id = 'loom-location-editor-error';
   error.setAttribute('role', 'alert');
+  error.setAttribute('aria-live', 'assertive');
+  error.hidden = true;
+  for (const control of [
+    label.input,
+    address.input,
+    provider.input,
+    lat.input,
+    lng.input,
+    precision,
+  ]) {
+    control.setAttribute('aria-describedby', error.id);
+    control.setAttribute('aria-invalid', 'false');
+  }
   root.append(error);
 
   const actions = document.createElement('div');
@@ -251,7 +303,7 @@ function createLocationEditor(
   save.type = 'submit';
   const clear = button(options.translate('record.location.clear'));
   const unset = button(options.translate('record.location.unset'));
-  const cancel = button(options.translate('common.close'));
+  const cancel = button(options.translate('common.cancel'));
   actions.append(save, clear, unset, cancel);
   root.append(actions);
 
@@ -262,11 +314,20 @@ function createLocationEditor(
         intent.kind === 'unset' ? undefined : intent.kind === 'clear' ? null : intent.value;
       root.replaceWith(renderLocationValue(record, field, nextValue, options));
     } catch (cause) {
-      error.textContent = cause instanceof Error ? cause.message : String(cause);
+      showLocationError(
+        error,
+        [label.input, address.input, provider.input, lat.input, lng.input, precision],
+        options,
+      );
+      if (cause instanceof Error) {
+        error.append(renderDiagnostic(options.translate('common.openDiagnostics'), cause.message));
+      }
       const conflict = options.callbacks?.getConflict?.(record.id);
       if (conflict !== undefined) {
         root.querySelector('.loom-record-conflict')?.remove();
-        root.append(renderConflict(record.id, conflict, options));
+        const conflictBox = renderConflict(record.id, conflict, options, root);
+        root.append(conflictBox);
+        conflictBox.focus();
       }
     }
   };
@@ -281,15 +342,31 @@ function createLocationEditor(
     if (precision.value !== '') candidate.precision = precision.value;
     const normalized = normalizeLocationValue(candidate);
     if (!normalized.ok) {
-      error.textContent = normalized.message;
+      showLocationError(
+        error,
+        [label.input, address.input, provider.input, lat.input, lng.input, precision],
+        options,
+      );
       return;
     }
     void submit({ kind: 'set', value: normalized.value as LocationValue });
   });
   clear.addEventListener('click', () => void submit({ kind: 'clear' }));
   unset.addEventListener('click', () => void submit({ kind: 'unset' }));
+  root.addEventListener('input', () => {
+    root.dataset.dirty = 'true';
+  });
+  root.addEventListener('change', () => {
+    root.dataset.dirty = 'true';
+  });
   cancel.addEventListener('click', (event) => {
     event.preventDefault();
+    if (
+      root.dataset.dirty === 'true' &&
+      !confirmDiscard(options, options.translate('record.location.discardConfirm'))
+    ) {
+      return;
+    }
     root.replaceWith(renderLocationValue(record, field, raw, options));
   });
   if (options.offline === true) {
@@ -302,37 +379,67 @@ function renderConflict(
   recordId: string,
   conflict: RecordConflictView,
   options: RecordDetailOptions,
+  detailRoot: HTMLElement,
 ): HTMLElement {
   const box = document.createElement('section');
   box.className = 'loom-record-conflict';
-  box.append(
-    createText('strong', options.translate('record.conflict')),
-    createText('p', conflict.message),
-  );
-  const values = document.createElement('pre');
-  values.textContent = JSON.stringify(
+  box.setAttribute('role', 'region');
+  box.setAttribute('aria-label', options.translate('record.conflictRegion'));
+  box.tabIndex = -1;
+  const heading = createText('h3', options.translate('record.conflict'));
+  box.append(heading);
+  box.append(createText('p', options.translate('record.serverValue')));
+  const serverValues = document.createElement('pre');
+  serverValues.className = 'loom-record-conflict-server';
+  serverValues.setAttribute('aria-label', options.translate('record.serverValue'));
+  serverValues.textContent = JSON.stringify(
     {
       currentRevision: conflict.currentRevision,
       currentValues: conflict.currentValues,
-      submittedSet: conflict.submittedSet,
     },
     null,
     2,
   );
-  box.append(values);
+  box.append(serverValues);
+  box.append(createText('p', options.translate('record.localIntent')));
+  const localIntent = document.createElement('pre');
+  localIntent.className = 'loom-record-conflict-local';
+  localIntent.setAttribute('aria-label', options.translate('record.localIntent'));
+  localIntent.textContent = JSON.stringify(
+    {
+      submittedSet: conflict.submittedSet,
+      submittedUnsetFieldIds: conflict.submittedUnsetFieldIds,
+    },
+    null,
+    2,
+  );
+  box.append(localIntent);
+  box.append(
+    renderDiagnostic(
+      options.translate('common.openDiagnostics'),
+      JSON.stringify({ message: conflict.message }, null, 2),
+    ),
+  );
   const actions = document.createElement('div');
   actions.className = 'loom-record-conflict-actions';
   const useServer = button(options.translate('record.useServer'));
   const overwrite = button(options.translate('record.overwrite'));
   overwrite.classList.add('mod-warning');
-  useServer.addEventListener(
-    'click',
-    () => void options.callbacks?.onConflictAction?.(recordId, 'use-server'),
-  );
-  overwrite.addEventListener(
-    'click',
-    () => void options.callbacks?.onConflictAction?.(recordId, 'overwrite'),
-  );
+  const invoke = (action: 'use-server' | 'overwrite'): void => {
+    const restoreFocus = (): void => detailRoot.focus();
+    try {
+      const result = options.callbacks?.onConflictAction?.(recordId, action);
+      if (result instanceof Promise) {
+        void result.catch(() => undefined).finally(restoreFocus);
+      } else {
+        restoreFocus();
+      }
+    } catch {
+      restoreFocus();
+    }
+  };
+  useServer.addEventListener('click', () => invoke('use-server'));
+  overwrite.addEventListener('click', () => invoke('overwrite'));
   actions.append(useServer, overwrite);
   box.append(actions);
   return box;
@@ -342,9 +449,12 @@ function createPreviewTrigger(
   coordinates: { readonly lat: number; readonly lng: number },
   translate: Translator,
 ): HTMLElement {
-  const wrapper = document.createElement('span');
-  wrapper.className = 'loom-location-preview-trigger';
+  const wrapper = document.createElement('button');
+  wrapper.type = 'button';
+  wrapper.className = 'loom-location-preview-trigger loom-button';
   wrapper.textContent = translate('record.location.previewHint');
+  wrapper.setAttribute('aria-label', translate('record.location.previewHint'));
+  wrapper.title = translate('record.location.previewHint');
   let timer: number | null = null;
   const clear = (): void => {
     if (timer !== null) window.clearTimeout(timer);
@@ -358,9 +468,17 @@ function createPreviewTrigger(
     element.dataset.lat = String(coordinates.lat);
     element.dataset.lng = String(coordinates.lng);
     element.setAttribute('role', 'status');
-    element.textContent = `${translate('record.location.preview')}: ${coordinates.lat}, ${coordinates.lng} · ${translate('record.location.attribution')}`;
+    element.textContent =
+      translate('record.location.preview') +
+      ': ' +
+      coordinates.lat +
+      ', ' +
+      coordinates.lng +
+      ' · ' +
+      translate('record.location.attribution');
     wrapper.append(element);
   };
+  wrapper.addEventListener('click', preview);
   wrapper.addEventListener('mousemove', (event) => {
     const mouse = event;
     if (!mouse.ctrlKey && !mouse.metaKey) {
@@ -374,11 +492,44 @@ function createPreviewTrigger(
     }, 180);
   });
   wrapper.addEventListener('mouseleave', clear);
-  wrapper.addEventListener('keydown', (event) => {
-    const keyboard = event;
-    if (keyboard.key === 'Enter' && (keyboard.ctrlKey || keyboard.metaKey)) preview();
-  });
-  wrapper.tabIndex = 0;
+  return wrapper;
+}
+
+let recordDetailId = 0;
+
+function nextRecordDetailId(): string {
+  recordDetailId += 1;
+  return 'loom-record-detail-heading-' + String(recordDetailId);
+}
+
+function confirmDiscard(options: RecordDetailOptions, message: string): boolean {
+  if (options.confirmDiscard !== undefined) return options.confirmDiscard(message);
+  if (typeof window === 'undefined' || typeof window.confirm !== 'function') return false;
+  try {
+    return window.confirm(message);
+  } catch {
+    return false;
+  }
+}
+
+function showLocationError(
+  error: HTMLElement,
+  controls: readonly HTMLElement[],
+  options: RecordDetailOptions,
+): void {
+  error.hidden = false;
+  error.textContent = options.translate('record.location.invalid');
+  for (const control of controls) control.setAttribute('aria-invalid', 'true');
+}
+
+function renderDiagnostic(label: string, details: string): HTMLElement {
+  const wrapper = document.createElement('details');
+  wrapper.className = 'loom-diagnostic';
+  const summary = document.createElement('summary');
+  summary.textContent = label;
+  const pre = document.createElement('pre');
+  pre.textContent = details;
+  wrapper.append(summary, pre);
   return wrapper;
 }
 
@@ -428,6 +579,13 @@ function coordinatesFrom(
 
 function isLocationValue(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function formatPrecision(value: string, translate: Translator): string {
+  if (value === 'exact') return translate('record.location.precision.exact');
+  if (value === 'rooftop') return translate('record.location.precision.rooftop');
+  if (value === 'approximate') return translate('record.location.precision.approximate');
+  return value;
 }
 
 function formatValue(value: JsonValue | undefined, translate: Translator): string {

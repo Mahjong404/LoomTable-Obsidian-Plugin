@@ -32,6 +32,12 @@ describe('MapView', () => {
 
     expect(container.querySelector('.loom-map-navigation')).not.toBeNull();
     expect(container.querySelector('.loom-map-container')).not.toBeNull();
+    expect(container.querySelector('.loom-map-shell')?.getAttribute('role')).toBe('region');
+    expect(container.querySelector('.loom-map-container')?.getAttribute('role')).toBe('region');
+    expect(container.querySelector('.loom-map-status')?.getAttribute('aria-live')).toBe('polite');
+    expect(container.querySelector('.loom-map-tile-status')?.getAttribute('aria-live')).toBe(
+      'polite',
+    );
     expect(container.querySelectorAll('select')).toHaveLength(4);
     expect(controller.mount).toHaveBeenCalledTimes(1);
     expect(controller.load).toHaveBeenCalledTimes(1);
@@ -84,7 +90,10 @@ describe('MapView', () => {
       selectedRecord: record,
     });
 
-    expect(container.querySelector('.loom-map-tile-status')?.textContent).toContain('Tile failed');
+    expect(container.querySelector('.loom-map-tile-status')?.textContent).toContain(
+      'Tile provider error',
+    );
+    expect(container.querySelector('.loom-map-tile-status .loom-diagnostic')).not.toBeNull();
     expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain('record_01');
     expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain('A record');
   });

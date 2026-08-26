@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createTranslator } from '../../src/i18n';
 import {
   connectionCheckTone,
+  connectionDiagnostics,
   describeConnectionCheck,
 } from '../../src/settings/connection-check-presentation';
 
@@ -43,8 +44,10 @@ describe('connection check presentation', () => {
 
     const description = describeConnectionCheck(state, createTranslator('zh-CN'));
     expect(description).toContain('请执行 Server 迁移命令');
-    expect(description).toContain('MIGRATION_REQUIRED');
-    expect(description).toContain('req_01ARZ3NDEKTSV4RRFFQ69G5FAV');
+    expect(description).not.toContain('MIGRATION_REQUIRED');
+    expect(description).not.toContain('req_01ARZ3NDEKTSV4RRFFQ69G5FAV');
+    expect(connectionDiagnostics(state)).toContain('MIGRATION_REQUIRED');
+    expect(connectionDiagnostics(state)).toContain('req_01ARZ3NDEKTSV4RRFFQ69G5FAV');
     expect(connectionCheckTone(state)).toBe('warning');
   });
 });
