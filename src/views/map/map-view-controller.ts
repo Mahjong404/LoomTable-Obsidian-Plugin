@@ -26,6 +26,7 @@ export interface MapViewportSource {
   getViewport(): MapViewport;
   getPixelSize(): { readonly width: number; readonly height: number };
 }
+
 export interface MapViewControllerOptions {
   readonly renderer: MapRenderer;
   readonly registry: TileProviderRegistry;
@@ -508,4 +509,3 @@ function dataStatusForError(error: LoomTableClientError): MapDataStatus {
   if (error.details.code === 'VIEW_CONFIGURATION_REQUIRED') return 'configuration-required';
   return 'server-error';
 }
-
