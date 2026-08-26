@@ -235,8 +235,9 @@ function markLayerAccessible(
   element.setAttribute('tabindex', '0');
   element.setAttribute('role', 'button');
   element.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    event.preventDefault();
+    const keyboard = event as KeyboardEvent;
+    if (keyboard.key !== 'Enter' && keyboard.key !== ' ') return;
+    keyboard.preventDefault();
     onClick();
   });
 }
