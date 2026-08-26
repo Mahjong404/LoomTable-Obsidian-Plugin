@@ -79,11 +79,7 @@ function describeIncompatibility(
     case 'plugin-version':
       return `${t('connection.status.incompatiblePlugin')} ${result.reason.minimumPluginVersion}`;
     case 'migration-required':
-      return describeError(
-        t('connection.status.migrationRequired'),
-        result.error ?? { message: t('connection.status.migrationRequired') },
-        t,
-      );
+      return t('connection.status.migrationRequired');
   }
 }
 
