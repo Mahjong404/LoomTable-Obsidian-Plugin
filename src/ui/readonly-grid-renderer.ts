@@ -73,7 +73,9 @@ export class ReadonlyGridRenderer {
     }
 
     const conflictIds = new Set(state.conflicts.map((conflict) => conflict.recordId));
-    const hasNewConflict = [...conflictIds].some((recordId) => !this.#lastConflictIds.has(recordId));
+    const hasNewConflict = [...conflictIds].some(
+      (recordId) => !this.#lastConflictIds.has(recordId),
+    );
     this.#lastConflictIds = conflictIds;
     this.#container.replaceChildren(root);
     if (hasNewConflict) {
@@ -250,10 +252,7 @@ export class ReadonlyGridRenderer {
     box.tabIndex = -1;
     for (const conflict of state.conflicts) {
       const item = createElement('div', 'loom-grid-conflict');
-      item.setAttribute(
-        'role',
-        'group',
-      );
+      item.setAttribute('role', 'group');
       item.setAttribute(
         'aria-label',
         this.#translate('grid.editConflict') + ': ' + conflict.recordId,
@@ -286,10 +285,7 @@ export class ReadonlyGridRenderer {
       );
       item.append(intent);
       item.append(
-        renderDiagnostic(
-          this.#translate('common.openDiagnostics'),
-          conflictDiagnostic(conflict),
-        ),
+        renderDiagnostic(this.#translate('common.openDiagnostics'), conflictDiagnostic(conflict)),
       );
       const actions = createElement('div', 'loom-grid-conflict-actions');
       const useServer = document.createElement('button');
@@ -390,11 +386,7 @@ export class ReadonlyGridRenderer {
       const editStatus = gridState?.editStatuses[record.id];
       if (editStatus !== undefined) cell.dataset.editState = editStatus;
       cell.addEventListener('focus', () => {
-        this.#rememberCell(
-          cell.dataset.focusKey ?? '',
-          rowIndex,
-          fieldIndex,
-        );
+        this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
       });
       cell.addEventListener('click', (event) => {
         event.stopPropagation();
@@ -630,10 +622,7 @@ export class ReadonlyGridRenderer {
     statusBox.append(createTextElement('p', message));
     if (state.error !== null) {
       statusBox.append(
-        renderDiagnostic(
-          this.#translate('grid.diagnostic.error'),
-          errorDiagnostic(state.error),
-        ),
+        renderDiagnostic(this.#translate('grid.diagnostic.error'), errorDiagnostic(state.error)),
       );
     }
     return statusBox;
@@ -693,10 +682,14 @@ function formatCellValue(
   translate: Translator,
 ): string {
   if (value === undefined) {
-    return field.type === 'location' ? translate('record.field.unset') : translate('common.emptyValue');
+    return field.type === 'location'
+      ? translate('record.field.unset')
+      : translate('common.emptyValue');
   }
   if (value === null) {
-    return field.type === 'location' ? translate('record.field.cleared') : translate('common.emptyValue');
+    return field.type === 'location'
+      ? translate('record.field.cleared')
+      : translate('common.emptyValue');
   }
   if (field.type === 'checkbox' && typeof value === 'boolean') {
     return value ? translate('grid.cell.checked') : translate('grid.cell.unchecked');
