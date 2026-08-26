@@ -510,6 +510,16 @@
   white-space: pre-wrap;
 }
 
+.loom-grid-cell:focus-visible,
+.loom-location-preview-trigger:focus-visible,
+.loom-record-detail:focus-visible,
+.loom-grid-conflicts:focus-visible,
+.loom-record-conflict:focus-visible,
+.loom-map-container .leaflet-interactive:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
 /* Leaflet runtime layout styles. Leaflet is distributed under BSD-2-Clause. */
 .leaflet-pane,
 .leaflet-tile,
