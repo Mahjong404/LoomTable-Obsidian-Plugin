@@ -232,15 +232,13 @@ function markLayerAccessible(
   const element = layer.getElement();
   if (!(element instanceof HTMLElement || element instanceof SVGElement)) return;
   updateLayerAccessibleLabel(layer, label);
-  if (layer instanceof L.CircleMarker) {
-    element.tabIndex = 0;
-    element.setAttribute('role', 'button');
-    element.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      onClick();
-    });
-  }
+  element.setAttribute('tabindex', '0');
+  element.setAttribute('role', 'button');
+  element.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault();
+    onClick();
+  });
 }
 
 function updateLayerAccessibleLabel(layer: L.Layer, label: string): void {
