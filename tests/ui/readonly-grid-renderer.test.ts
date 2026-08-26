@@ -130,6 +130,36 @@ describe('ReadonlyGridRenderer', () => {
     );
   });
 
+  it('keeps raw transport details behind the Grid diagnostic disclosure', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(
+      createState(0, {
+        status: 'server-error',
+        error: {
+          message: 'adapter detail should not be the status summary',
+          code: 'SERVER_ERROR',
+          requestId: 'req_01',
+        },
+      }),
+    );
+
+    expect(container.querySelector('.loom-grid-status > p')?.textContent).toBe(
+      'The Server returned an error while loading this Grid.',
+    );
+    expect(container.querySelector('.loom-grid-status .loom-diagnostic summary')?.textContent).toBe(
+      'Error details',
+    );
+    expect(container.querySelector('.loom-grid-status .loom-diagnostic pre')?.textContent).toContain(
+      'req_01',
+    );
+  });
+
   it('keeps a visible status when the data source is offline', () => {
     const container = document.createElement('div');
     const renderer = new ReadonlyGridRenderer(
