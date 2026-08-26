@@ -8,6 +8,11 @@ import {
   type ConnectionProfileId,
 } from './connection-profile';
 import {
+  DEFAULT_MUTATION_QUEUE_SETTINGS,
+  normalizeMutationQueueSettings,
+  type MutationQueueSettingsV1,
+} from './mutation-queue-settings';
+import {
   TIANDITU_CREDENTIAL_BINDING_KEY,
   TIANDITU_CREDENTIAL_SLOT_ID,
   TIANDITU_PROVIDER_IDS,
@@ -17,7 +22,7 @@ import {
   type TileProviderRef,
 } from '../maps/providers/tile-provider-schema';
 
-export const PLUGIN_SETTINGS_SCHEMA_VERSION = 2 as const;
+export const PLUGIN_SETTINGS_SCHEMA_VERSION = 3 as const;
 export const SUPPORTED_LOCALES = ['en', 'zh-CN'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 export const LOCALE_PREFERENCES = ['auto', ...SUPPORTED_LOCALES] as const;
@@ -36,6 +41,7 @@ export interface PluginSettings {
   connectionProfiles: ConnectionProfile[];
   defaultConnectionProfileId: ConnectionProfileId | null;
   mapPresentation: MapPresentationSettingsV1;
+  mutationQueue: MutationQueueSettingsV1;
 }
 
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
@@ -50,6 +56,7 @@ export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
     customProfiles: [],
     credentialBindings: {},
   },
+  mutationQueue: structuredClone(DEFAULT_MUTATION_QUEUE_SETTINGS),
 };
 
 export function normalizePluginSettings(value: unknown): PluginSettings {
@@ -71,6 +78,7 @@ export function normalizePluginSettings(value: unknown): PluginSettings {
     connectionProfiles: profiles,
     defaultConnectionProfileId,
     mapPresentation: parseMapPresentation(value.mapPresentation),
+    mutationQueue: normalizeMutationQueueSettings(value.mutationQueue),
   };
 }
 

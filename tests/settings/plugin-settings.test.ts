@@ -73,7 +73,7 @@ describe('map credential binding migration', () => {
     });
 
     expect(migrated).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       connectionProfiles: [
         {
           rememberToken: true,
