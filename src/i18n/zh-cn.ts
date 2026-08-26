@@ -46,7 +46,7 @@ export const simplifiedChineseMessages = {
   'connection.status.unreachable': '无法连接 Server；请检查地址和 Server 状态后重试。',
   'error.invalidOrigin': '请输入不含凭据的 HTTP(S) Server 绝对地址。',
   'grid.base': 'Base',
-  'grid.empty.base': '此数据集群中没有数据表。',
+  'grid.empty.base': '此数据集中没有数据表。',
   'grid.empty.noMatch': '当前视图没有匹配的记录。',
   'grid.empty.records': '此数据表还没有记录。',
   'grid.empty.table': '此数据集中没有可用的数据表。',
