@@ -52,7 +52,6 @@ describe('ReadonlyGridRenderer', () => {
     );
   });
 
-
   it('exposes semantic cells and moves focus with the arrow keys', () => {
     const container = document.createElement('div');
     const renderer = new ReadonlyGridRenderer(
@@ -87,9 +86,7 @@ describe('ReadonlyGridRenderer', () => {
     );
 
     renderer.render(createState(3));
-    container
-      .querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_02"]')
-      ?.focus();
+    container.querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_02"]')?.focus();
     renderer.render(createState(1));
 
     expect(document.activeElement).toBe(
@@ -155,9 +152,9 @@ describe('ReadonlyGridRenderer', () => {
     expect(container.querySelector('.loom-grid-status .loom-diagnostic summary')?.textContent).toBe(
       'Error details',
     );
-    expect(container.querySelector('.loom-grid-status .loom-diagnostic pre')?.textContent).toContain(
-      'req_01',
-    );
+    expect(
+      container.querySelector('.loom-grid-status .loom-diagnostic pre')?.textContent,
+    ).toContain('req_01');
   });
 
   it('keeps a visible status when the data source is offline', () => {
@@ -305,7 +302,9 @@ describe('ReadonlyGridRenderer', () => {
     expect(container.querySelector('.loom-grid-conflicts')?.getAttribute('aria-label')).toBe(
       'Conflict details',
     );
-    expect(container.querySelector('.loom-grid-conflicts')?.querySelector('details')).not.toBeNull();
+    expect(
+      container.querySelector('.loom-grid-conflicts')?.querySelector('details'),
+    ).not.toBeNull();
     const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-grid-conflict button');
     buttons[0]?.click();
     buttons[1]?.click();
@@ -437,7 +436,6 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     ...update,
   };
 }
-
 
 function createTwoFieldState(): GridState {
   const state = createState(1);
