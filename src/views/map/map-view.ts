@@ -79,12 +79,19 @@ export class MapView {
 
   mount(): void {
     if (this.#unsubscribe !== null) return;
+    const translate = this.options.translate ?? createTranslator('en');
     const root = document.createElement('section');
     root.className = 'loom-map-shell';
+    root.setAttribute('role', 'region');
+    root.setAttribute('aria-label', translate('map.region'));
     const toolbar = document.createElement('div');
     toolbar.className = 'loom-map-toolbar';
+    toolbar.setAttribute('role', 'toolbar');
+    toolbar.setAttribute('aria-label', translate('map.region'));
     const navigation =
-      this.options.navigation === undefined ? null : renderNavigation(this.options.navigation);
+      this.options.navigation === undefined
+        ? null
+        : renderNavigation(this.options.navigation, translate);
     const provider =
       this.options.providers === undefined || this.options.selectedProvider === undefined
         ? null
@@ -92,27 +99,40 @@ export class MapView {
             this.options.providers,
             this.options.selectedProvider,
             this.options.onProviderChange,
+            translate,
           );
-    const refresh = button('Refresh', () => void this.#controller.refreshCurrentViewport());
-    const fitAll = button('Fit all', () => void this.#controller.fitAll());
+    const refresh = button(
+      translate('map.refresh'),
+      () => void this.#controller.refreshCurrentViewport(),
+    );
+    const fitAll = button(translate('map.fitAll'), () => void this.#controller.fitAll());
     const saveCamera = button(
-      'Save current camera',
+      translate('map.saveCamera'),
       () => void this.#controller.saveDefaultCamera(),
     );
     toolbar.append(refresh, fitAll, saveCamera);
     if (provider !== null) toolbar.append(provider);
     const status = document.createElement('p');
     status.className = 'loom-status loom-map-status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
+    status.setAttribute('aria-atomic', 'true');
     const saveStatus = document.createElement('span');
     saveStatus.className = 'loom-save-status';
     saveStatus.setAttribute('aria-live', 'polite');
     const tileStatus = document.createElement('p');
     tileStatus.className = 'loom-status loom-map-tile-status';
+    tileStatus.setAttribute('role', 'status');
+    tileStatus.setAttribute('aria-live', 'polite');
+    tileStatus.setAttribute('aria-atomic', 'true');
     const mapContainer = document.createElement('div');
     mapContainer.className = 'loom-map-container';
-    mapContainer.setAttribute('role', 'application');
+    mapContainer.setAttribute('role', 'region');
+    mapContainer.setAttribute('aria-label', translate('map.region'));
     const details = document.createElement('div');
     details.className = 'loom-map-details';
+    details.setAttribute('role', 'region');
+    details.setAttribute('aria-label', translate('record.details'));
     root.append(
       ...(navigation === null ? [] : [navigation]),
       toolbar,
@@ -160,17 +180,30 @@ export class MapView {
       state.saveStatus,
       this.options.translate ?? createTranslator('en'),
     );
+    const translate = this.options.translate ?? createTranslator('en');
     this.#status.dataset.status = state.dataStatus;
-    this.#status.textContent = describeDataState(
-      state,
-      this.options.translate ?? createTranslator('en'),
+    this.#status.replaceChildren(
+      document.createTextNode(describeDataState(state, translate)),
+      ...(state.error === null
+        ? []
+        : [renderDiagnostic(translate('common.openDiagnostics'), errorDiagnostic(state.error))]),
     );
     this.#tileStatus.dataset.status = state.tileStatus;
-    this.#tileStatus.textContent = describeTileState(state);
-    this.#renderDetails(state);
+    this.#tileStatus.replaceChildren(
+      document.createTextNode(describeTileState(state, translate)),
+      ...(state.tileError === null
+        ? []
+        : [
+            renderDiagnostic(
+              translate('common.openDiagnostics'),
+              tileErrorDiagnostic(state.tileError),
+            ),
+          ]),
+    );
+    this.#renderDetails(state, translate);
   }
 
-  #renderDetails(state: MapViewState): void {
+  #renderDetails(state: MapViewState, translate: Translator): void {
     if (this.#details === null) return;
     this.#details.replaceChildren();
     if (state.selectedRecord !== null) {
@@ -207,7 +240,7 @@ export class MapView {
       };
       record.append(
         createRecordDetail(state.selectedRecord, {
-          translate: this.options.translate ?? createTranslator('en'),
+          translate,
           fields: state.fields,
           offline: state.dataStatus === 'offline',
           callbacks,
@@ -219,14 +252,14 @@ export class MapView {
       const cluster = document.createElement('section');
       cluster.className = 'loom-map-cluster-records';
       const title = document.createElement('strong');
-      title.textContent = 'Cluster records';
+      title.textContent = translate('map.clusterRecords');
       const records = document.createElement('pre');
       records.textContent = JSON.stringify(state.clusterRecords, null, 2);
       cluster.append(title, records);
       if (state.clusterCursor !== null) {
         cluster.append(
           button(
-            'Load more cluster records',
+            translate('map.loadMoreClusterRecords'),
             () => void this.options.onClusterNextPage?.(),
             state.dataStatus === 'offline',
           ),
@@ -237,19 +270,36 @@ export class MapView {
   }
 }
 
-function renderNavigation(navigation: MapViewNavigation): HTMLElement {
+function renderNavigation(navigation: MapViewNavigation, translate: Translator): HTMLElement {
   const root = document.createElement('div');
   root.className = 'loom-map-navigation';
+  root.setAttribute('role', 'group');
+  root.setAttribute('aria-label', translate('grid.view'));
   root.append(
     renderSelect(
-      'Workspace',
+      translate('grid.workspace'),
       navigation.workspaces,
       navigation.selectedWorkspaceId,
       navigation.onWorkspaceChange,
     ),
-    renderSelect('Base', navigation.bases, navigation.selectedBaseId, navigation.onBaseChange),
-    renderSelect('Table', navigation.tables, navigation.selectedTableId, navigation.onTableChange),
-    renderSelect('View', navigation.views, navigation.selectedViewId, navigation.onViewChange),
+    renderSelect(
+      translate('grid.base'),
+      navigation.bases,
+      navigation.selectedBaseId,
+      navigation.onBaseChange,
+    ),
+    renderSelect(
+      translate('grid.table'),
+      navigation.tables,
+      navigation.selectedTableId,
+      navigation.onTableChange,
+    ),
+    renderSelect(
+      translate('grid.view'),
+      navigation.views,
+      navigation.selectedViewId,
+      navigation.onViewChange,
+    ),
   );
   return root;
 }
@@ -282,12 +332,13 @@ function renderProviderSelect(
   providers: readonly TileProviderSummary[],
   selected: TileProviderRef,
   onChange: ((provider: TileProviderRef) => void | Promise<void>) | undefined,
+  translate: Translator,
 ): HTMLElement {
   const label = document.createElement('label');
   label.className = 'loom-map-select';
-  label.append(document.createTextNode('Tiles'));
+  label.append(document.createTextNode(translate('map.provider')));
   const select = document.createElement('select');
-  select.setAttribute('aria-label', 'Tile provider');
+  select.setAttribute('aria-label', translate('map.provider'));
   for (const provider of providers) {
     const option = document.createElement('option');
     option.value = providerKey(provider.ref);
@@ -319,15 +370,16 @@ function button(label: string, onClick: () => void, disabled = false): HTMLButto
 }
 
 function describeDataState(state: MapViewState, translate: Translator): string {
-  if (state.error !== null) return state.error.message;
-  if (state.dataStatus === 'loading') return 'Loading Map data…';
-  if (state.dataStatus === 'empty') return 'No renderable Records match this Map View.';
-  if (state.dataStatus === 'configuration-required') return 'Map View configuration is required.';
-  if (state.dataStatus === 'offline') return 'Offline. Cached Map data is read-only.';
-  if (state.dataStatus === 'authentication') return 'Authentication is required to load this Map.';
-  if (state.dataStatus === 'forbidden') return 'This Token cannot access the selected Map.';
-  if (state.dataStatus === 'network') return 'Map data could not be reached. Retry when online.';
-  if (state.dataStatus === 'server-error') return 'The Server returned an error for this Map.';
+  if (state.dataStatus === 'loading') return translate('map.status.loading');
+  if (state.dataStatus === 'empty') return translate('map.status.empty');
+  if (state.dataStatus === 'configuration-required') return translate('map.status.configuration');
+  if (state.dataStatus === 'offline') return translate('map.status.offline');
+  if (state.dataStatus === 'authentication') return translate('map.status.authentication');
+  if (state.dataStatus === 'forbidden') return translate('map.status.forbidden');
+  if (state.dataStatus === 'network') return translate('map.status.network');
+  if (state.dataStatus === 'server-error' || state.error !== null) {
+    return translate('map.status.server');
+  }
   if (state.summary !== null) {
     return [
       `${state.summary.matchedRecordCount} ${translate('map.summary.matched')}`,
@@ -339,12 +391,45 @@ function describeDataState(state: MapViewState, translate: Translator): string {
   return `${state.viewportRenderableRecordCount} ${translate('map.summary.renderable')}`;
 }
 
-function describeTileState(state: MapViewState): string {
-  if (state.tileError !== null) return state.tileError.message;
-  if (state.tileStatus === 'configuration-required')
-    return 'Tile provider configuration is required.';
-  if (state.tileStatus === 'error') return 'Tile provider error. Retry or choose another provider.';
-  if (state.tileStatus === 'loading') return 'Loading tiles…';
-  if (state.tileStatus === 'ready') return 'Tiles ready.';
+function describeTileState(state: MapViewState, translate: Translator): string {
+  if (state.tileStatus === 'configuration-required') {
+    return translate('map.tiles.configuration');
+  }
+  if (state.tileStatus === 'error' || state.tileError !== null) {
+    return translate('map.tiles.error');
+  }
+  if (state.tileStatus === 'loading') return translate('map.tiles.loading');
+  if (state.tileStatus === 'ready') return translate('map.tiles.ready');
   return '';
+}
+
+function renderDiagnostic(label: string, details: string): HTMLElement {
+  const wrapper = document.createElement('details');
+  wrapper.className = 'loom-diagnostic';
+  const summary = document.createElement('summary');
+  summary.textContent = label;
+  const pre = document.createElement('pre');
+  pre.textContent = details;
+  wrapper.append(summary, pre);
+  return wrapper;
+}
+
+function errorDiagnostic(error: {
+  readonly code?: string;
+  readonly httpStatus?: number;
+  readonly requestId?: string;
+}): string {
+  return JSON.stringify(
+    {
+      ...(error.code === undefined ? {} : { code: error.code }),
+      ...(error.httpStatus === undefined ? {} : { httpStatus: error.httpStatus }),
+      ...(error.requestId === undefined ? {} : { requestId: error.requestId }),
+    },
+    null,
+    2,
+  );
+}
+
+function tileErrorDiagnostic(error: { readonly kind: string; readonly providerId: string }): string {
+  return JSON.stringify({ kind: error.kind, providerId: error.providerId }, null, 2);
 }
