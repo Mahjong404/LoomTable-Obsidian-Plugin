@@ -8,6 +8,7 @@ import {
   type LoomTableRecord,
   type MutationRequest,
   type MutationResult,
+  type QueryRequest,
   type View,
 } from '../../src/client/loomtable-client';
 import {
@@ -19,6 +20,8 @@ import {
   InMemoryLoomTableClient,
   type InMemoryGridData,
 } from '../fixtures/in-memory-loomtable-client';
+import { createTranslator } from '../../src/i18n';
+import { createRecordDetail } from '../../src/ui/record-detail';
 
 describe('GridViewController', () => {
   it('discovers the current Workspace/Base/Table/View and submits the saved query contract', async () => {
@@ -524,6 +527,48 @@ describe('GridViewController', () => {
     expect(onMapSelected).toHaveBeenCalledWith(mapView, controller.state);
     expect(client.queryRequests).toHaveLength(1);
   });
+
+  it('loads a complete Record before rendering Detail for a sparse Query projection', async () => {
+    const completeRecord = locationRecord({ lat: 1, lng: 2, precision: 'exact' });
+    const sparseRecord = { ...completeRecord, values: { field_name: 'Record 1' } };
+    const data = createData([sparseRecord], createGridConfig(false), [], [createLocationField()]);
+    const getRecord = vi.fn().mockResolvedValue(completeRecord);
+    const controller = new GridViewController(withGetRecord(data, getRecord));
+
+    await controller.load();
+    const queriedRecord = controller.state.records[0];
+    expect(queriedRecord).toBeDefined();
+    if (queriedRecord === undefined) return;
+
+    const detailRecord = await loadRecordForDetail(controller, queriedRecord);
+    expect(getRecord).toHaveBeenCalledWith(queriedRecord.id);
+    const container = document.createElement('div');
+    container.append(
+      createRecordDetail(detailRecord, {
+        fields: controller.state.fields,
+        translate: createTranslator('en'),
+        callbacks: { onLocationEdit: vi.fn() },
+      }),
+    );
+    expect(container.querySelector('.loom-location-values')).not.toBeNull();
+    expect(container.querySelector<HTMLButtonElement>('.loom-location-edit')?.disabled).toBe(false);
+  });
+
+  it('does not fetch a Record that already contains the full Query field set', async () => {
+    const completeRecord = locationRecord({ lat: 1, lng: 2, precision: 'exact' });
+    const data = createData([completeRecord], createGridConfig(false), [], [createLocationField()]);
+    const getRecord = vi.fn().mockResolvedValue(completeRecord);
+    const controller = new GridViewController(withGetRecord(data, getRecord));
+
+    await controller.load();
+    const queriedRecord = controller.state.records[0];
+    expect(queriedRecord).toBeDefined();
+    if (queriedRecord === undefined) return;
+
+    const detailRecord = await loadRecordForDetail(controller, queriedRecord);
+    expect(getRecord).not.toHaveBeenCalled();
+    expect(detailRecord).toBe(queriedRecord);
+  });
 });
 
 describe('createGridQuery', () => {
@@ -716,6 +761,36 @@ function withMutation(
   };
 }
 
+function withGetRecord(
+  data: InMemoryGridData,
+  getRecord: (recordId: string) => Promise<LoomTableRecord>,
+): GridDataSource {
+  const client = new InMemoryLoomTableClient(data);
+  return {
+    listWorkspaces: () => client.listWorkspaces(),
+    listBases: (workspaceId: string) => client.listBases(workspaceId),
+    listTables: (baseId: string) => client.listTables(baseId),
+    listFields: (tableId: string) => client.listFields(tableId),
+    listViews: (tableId: string) => client.listViews(tableId),
+    query: (request: QueryRequest) => client.query(request),
+    getRecord,
+  };
+}
+
+async function loadRecordForDetail(
+  controller: GridViewController,
+  record: LoomTableRecord,
+): Promise<LoomTableRecord> {
+  const loader = (
+    controller as unknown as {
+      getRecordForDetail?: (record: LoomTableRecord) => Promise<LoomTableRecord>;
+    }
+  ).getRecordForDetail;
+  expect(loader).toBeTypeOf('function');
+  if (loader === undefined) throw new Error('Detail Record loading seam is unavailable.');
+  return loader.call(controller, record);
+}
+
 function mutationResult(clientMutationId: string, value: string, revision: number): MutationResult {
   return {
     clientMutationId,
@@ -736,3 +811,4 @@ function mutationResult(clientMutationId: string, value: string, revision: numbe
     changeCursor: 'change_02',
   };
 }
+
