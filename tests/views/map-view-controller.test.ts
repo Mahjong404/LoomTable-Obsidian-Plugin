@@ -134,6 +134,56 @@ describe('MapViewController', () => {
     expect(renderer.features).toEqual(queryResult('record_new', 1).features);
   });
 
+  it('updates the open Record and refreshes Map data after a successful Location mutation', async () => {
+    const initialRecord = createRecord('record_01');
+    const appliedRecord: LoomTableRecord = {
+      ...initialRecord,
+      revision: 2,
+      values: { field_location: { lat: 35, lng: 139 } },
+    };
+    const initialSummary = summaryResult('cursor_initial');
+    const refreshedSummary: MapSummaryResult = {
+      ...summaryResult('cursor_summary'),
+      summary: {
+        ...summaryResult('cursor_summary').summary,
+        renderableRecordCount: 2,
+        unlocatedRecordCount: 0,
+      },
+    };
+    const initialQuery = { ...queryResult('record_initial', 1), changeCursor: 'cursor_initial' };
+    const refreshedQuery = { ...queryResult('record_after_location', 1), changeCursor: 'cursor_query' };
+    const summarizeMap = vi
+      .fn()
+      .mockResolvedValueOnce(initialSummary)
+      .mockResolvedValueOnce(refreshedSummary);
+    const queryMap = vi.fn().mockResolvedValueOnce(initialQuery).mockResolvedValueOnce(refreshedQuery);
+    const getRecord = vi.fn().mockResolvedValue(initialRecord);
+    const controller = createController(
+      createClient({ summarizeMap, queryMap, getRecord }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.load();
+    await controller.openRecord('record_01');
+
+    const refresh = controller.applyMutationInvalidation({
+      tableId: 'table_01',
+      recordId: 'record_01',
+      record: appliedRecord,
+      changeCursor: 'cursor_mutation',
+    });
+    expect(controller.state.selectedRecord).toEqual(appliedRecord);
+
+    await refresh;
+
+    expect(summarizeMap).toHaveBeenCalledTimes(2);
+    expect(queryMap).toHaveBeenCalledTimes(2);
+    expect(controller.state.summary).toEqual(refreshedSummary.summary);
+    expect(controller.state.features).toEqual(refreshedQuery.features);
+    expect(controller.state.changeCursor).toBe('cursor_query');
+  });
+
   it('debounces camera changes and queries with the latest camera', async () => {
     vi.useFakeTimers();
     try {
