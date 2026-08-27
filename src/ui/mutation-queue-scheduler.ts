@@ -44,6 +44,11 @@ export type MutationQueueSchedulerListener = (event: MutationQueueSchedulerEvent
 
 export interface DurableMutationQueuePort {
   enqueue(tableId: string, request: MutationRequest): Promise<MutationResult>;
+  retryConflict(
+    recordId: string,
+    conflictClientMutationId: string,
+    newClientMutationId: string,
+  ): Promise<MutationResult>;
   subscribe(listener: MutationQueueSchedulerListener): () => void;
   getRecordSnapshot(recordId: string): MutationQueueRecordSnapshot;
 }
@@ -176,6 +181,91 @@ export class MutationQueueScheduler {
       }));
     } catch (error) {
       this.#waiters.delete(entry.clientMutationId);
+      throw error;
+    }
+
+    void this.drain().catch(() => undefined);
+    return result;
+  }
+
+  async retryConflict(
+    recordId: string,
+    conflictClientMutationId: string,
+    newClientMutationId: string,
+  ): Promise<MutationResult> {
+    if (!this.#started) {
+      throw new LoomTableClientError('validation', {
+        message: 'The mutation queue is not ready to resolve Record conflicts.',
+      });
+    }
+    if (!this.#online) {
+      throw new LoomTableClientError('validation', {
+        message: 'Conflict retry is unavailable while offline.',
+      });
+    }
+    if (!this.#authReady) {
+      throw new LoomTableClientError('authentication', {
+        message: 'Authentication is required before this conflict can be retried.',
+        httpStatus: 401,
+      });
+    }
+    if (this.#state.entries.some((entry) => entry.clientMutationId === newClientMutationId)) {
+      throw new LoomTableClientError('validation', {
+        message: 'The replacement mutation ID is already present in the durable queue.',
+      });
+    }
+
+    const entry = this.#state.entries.find((candidate) => candidate.recordId === recordId);
+    if (
+      entry?.state !== 'conflict' ||
+      entry.clientMutationId !== conflictClientMutationId ||
+      entry.conflict === undefined
+    ) {
+      throw new LoomTableClientError('validation', {
+        message: 'The selected conflict is no longer the current Record conflict.',
+      });
+    }
+    const conflict = entry.conflict.conflicts.find((candidate) => candidate.recordId === recordId);
+    const command = entry.request.commands[0];
+    if (
+      conflict === undefined ||
+      command.kind !== 'updateRecord' ||
+      command.recordId !== recordId
+    ) {
+      throw new LoomTableClientError('invalid-response', {
+        message: 'The current conflict cannot be matched to its queued Record update.',
+      });
+    }
+
+    const now = this.#timestamp();
+    const request: MutationRequest = {
+      clientMutationId: newClientMutationId,
+      commands: [{ ...command, expectedRevision: conflict.currentRevision }],
+    };
+    const replacement: PersistedMutationQueueEntry = {
+      tableId: entry.tableId,
+      recordId,
+      clientMutationId: newClientMutationId,
+      request,
+      expectedRevision: conflict.currentRevision,
+      state: 'queued',
+      attemptCount: 0,
+      createdAt: entry.createdAt,
+      updatedAt: now,
+    };
+    const result = new Promise<MutationResult>((resolve, reject) => {
+      this.#waiters.set(newClientMutationId, { resolve, reject });
+    });
+
+    try {
+      await this.#updateState((state) => ({
+        ...state,
+        entries: state.entries.map((candidate) =>
+          candidate.clientMutationId === conflictClientMutationId ? replacement : candidate,
+        ),
+      }));
+    } catch (error) {
+      this.#waiters.delete(newClientMutationId);
       throw error;
     }
 
