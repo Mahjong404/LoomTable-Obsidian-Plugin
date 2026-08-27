@@ -22,6 +22,16 @@ import {
 } from '../fixtures/in-memory-loomtable-client';
 import { createTranslator } from '../../src/i18n';
 import { createRecordDetail } from '../../src/ui/record-detail';
+import {
+  MutationQueueScheduler,
+  type DurableMutationQueuePort,
+  type MutationQueueRecordSnapshot,
+  type MutationQueueSchedulerEvent,
+} from '../../src/ui/mutation-queue-scheduler';
+import {
+  MutationQueueStore,
+  type MutationQueueSettingsV1,
+} from '../../src/settings/mutation-queue-settings';
 
 describe('GridViewController', () => {
   it('discovers the current Workspace/Base/Table/View and submits the saved query contract', async () => {
@@ -307,6 +317,70 @@ describe('GridViewController', () => {
     expect(controller.state.records[0]?.values).not.toHaveProperty('field_location');
   });
 
+  it('does not collapse durable auth, terminal, or conflict states into Saved', async () => {
+    const conflict = {
+      clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+      failedCommandIndex: 0,
+      conflicts: [
+        {
+          recordId: 'record_01',
+          expectedRevision: 1,
+          currentRevision: 2,
+          currentValues: { field_name: 'Server value' },
+          submittedSet: { field_name: 'Local value' },
+        },
+      ],
+    } as const;
+    const scenarios = [
+      {
+        state: 'auth-paused' as const,
+        expectedStatus: 'error' as const,
+        error: new LoomTableClientError('authentication', {
+          message: 'Authentication is required.',
+          httpStatus: 401,
+        }),
+      },
+      {
+        state: 'terminal' as const,
+        expectedStatus: 'error' as const,
+        error: new LoomTableClientError('validation', {
+          message: 'The Server rejected this mutation.',
+          httpStatus: 422,
+        }),
+      },
+      {
+        state: 'conflict' as const,
+        expectedStatus: 'conflict' as const,
+        error: new LoomTableClientError(
+          'conflict',
+          { message: 'The Record changed on the Server.', code: 'CONFLICT', httpStatus: 409 },
+          undefined,
+          conflict,
+        ),
+        conflict,
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const client = new InMemoryLoomTableClient(
+        createData(createRecords(1), createGridConfig(false)),
+      );
+      const queue = new FakeDurableQueue(scenario.state, scenario.conflict);
+      const controller = new GridViewController(client, { mutationQueue: queue });
+      await controller.load();
+
+      const edit = controller.editCell('record_01', 'field_name', 'Local value');
+      if (scenario.state === 'auth-paused') {
+        await vi.waitFor(() => expect(controller.state.saveStatus).toBe('error'));
+      } else {
+        await expect(edit).rejects.toMatchObject({ kind: scenario.error.kind });
+      }
+      expect(controller.state.saveStatus).toBe(scenario.expectedStatus);
+      expect(controller.state.saveStatus).not.toBe('saved');
+      controller.dispose();
+    }
+  });
+
   it('can edit a Map-selected Record that is outside the current Grid page', async () => {
     const visible = createRecords(1)[0];
     if (visible === undefined) throw new Error('Grid fixture is missing.');
@@ -571,6 +645,79 @@ describe('GridViewController', () => {
   });
 });
 
+it('uses the durable queue seam instead of the client mutation bypass and applies the full returned Record', async () => {
+  const data = createData(createRecords(1), createGridConfig(false));
+  const client = new InMemoryLoomTableClient(data);
+  const saves: MutationQueueSettingsV1[] = [];
+  const returnedRecord = {
+    ...data.records[0]!,
+    revision: 2,
+    values: { field_name: 'Server authoritative' },
+  };
+  const transport = {
+    mutate: vi.fn(async (_tableId: string, request: MutationRequest): Promise<MutationResult> => ({
+      clientMutationId: request.clientMutationId,
+      results: [{ index: 0, status: 'applied', record: returnedRecord }],
+      changeCursor: 'opaque-change-cursor',
+    })),
+  };
+  const store = new MutationQueueStore(
+    { schemaVersion: 1, entries: [] },
+    {
+      async load() {
+        return { schemaVersion: 1, entries: [] };
+      },
+      async save(value) {
+        saves.push(value);
+      },
+    },
+  );
+  const scheduler = new MutationQueueScheduler({
+    store,
+    transport,
+    random: () => 0.5,
+  });
+  await scheduler.setOnline(true);
+  await scheduler.setAuthReady(true);
+  await scheduler.start();
+
+  const controller = new GridViewController(client, {
+    mutationQueue: scheduler,
+    mutationIdFactory: () => 'mut_0123456789ABCDEFGHJKMNPQRS',
+  });
+  await controller.load();
+  await controller.editCell('record_01', 'field_name', 'Local intent');
+
+  expect(client.mutationRequests).toHaveLength(0);
+  expect(transport.mutate).toHaveBeenCalledWith(
+    'table_01',
+    expect.objectContaining({
+      clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+      commands: [
+        {
+          kind: 'updateRecord',
+          recordId: 'record_01',
+          expectedRevision: 1,
+          set: { field_name: 'Local intent' },
+        },
+      ],
+    }),
+  );
+  expect(controller.state.records[0]).toEqual(returnedRecord);
+  expect(controller.state.saveStatus).toBe('saved');
+  expect(
+    saves.some((snapshot) =>
+      snapshot.entries.some(
+        (entry) =>
+          entry.clientMutationId === 'mut_0123456789ABCDEFGHJKMNPQRS' &&
+          entry.request.commands[0]?.kind === 'updateRecord' &&
+          entry.request.commands[0].set?.field_name === 'Local intent',
+      ),
+    ),
+  ).toBe(true);
+  scheduler.stop();
+});
+
 describe('createGridQuery', () => {
   it('keeps the cursor and view query semantics separate from the route Table ID', () => {
     const view = createView(createGridConfig(true));
@@ -810,4 +957,50 @@ function mutationResult(clientMutationId: string, value: string, revision: numbe
     ],
     changeCursor: 'change_02',
   };
+}
+
+class FakeDurableQueue implements DurableMutationQueuePort {
+  readonly #listeners = new Set<(event: MutationQueueSchedulerEvent) => void>();
+  readonly #state: MutationQueueRecordSnapshot;
+
+  constructor(
+    state: Extract<MutationQueueRecordSnapshot['state'], 'auth-paused' | 'terminal' | 'conflict'>,
+    conflict?: MutationQueueRecordSnapshot['conflict'],
+  ) {
+    this.#state = {
+      state,
+      pending: 1,
+      ...(conflict === undefined ? {} : { conflict }),
+    };
+  }
+
+  subscribe(listener: (event: MutationQueueSchedulerEvent) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  getRecordSnapshot(): MutationQueueRecordSnapshot {
+    return this.#state;
+  }
+
+  async enqueue(): Promise<MutationResult> {
+    const event: MutationQueueSchedulerEvent = {
+      recordId: 'record_01',
+      snapshot: this.#state,
+    };
+    for (const listener of this.#listeners) listener(event);
+    if (this.#state.state === 'auth-paused') return new Promise(() => undefined);
+    if (this.#state.state === 'conflict') {
+      throw new LoomTableClientError(
+        'conflict',
+        { message: 'The Record changed on the Server.', code: 'CONFLICT', httpStatus: 409 },
+        undefined,
+        this.#state.conflict,
+      );
+    }
+    throw new LoomTableClientError('validation', {
+      message: 'The Server rejected this mutation.',
+      httpStatus: 422,
+    });
+  }
 }

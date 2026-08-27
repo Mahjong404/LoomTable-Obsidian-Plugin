@@ -9,7 +9,7 @@ export interface RecordDetailCallbacks {
     fieldId: string,
     intent: LocationEditIntent,
     record?: LoomTableRecord,
-  ) => void | Promise<void>;
+  ) => void | LoomTableRecord | Promise<void | LoomTableRecord>;
   readonly onOpenLocationInMap?: (
     recordId: string,
     fieldId: string,
@@ -309,10 +309,22 @@ function createLocationEditor(
 
   const submit = async (intent: LocationEditIntent): Promise<void> => {
     try {
-      await options.callbacks?.onLocationEdit?.(record.id, field.id, intent, record);
+      const updatedRecord = await options.callbacks?.onLocationEdit?.(
+        record.id,
+        field.id,
+        intent,
+        record,
+      );
+      const nextRecord = updatedRecord instanceof Object ? updatedRecord : record;
       const nextValue =
-        intent.kind === 'unset' ? undefined : intent.kind === 'clear' ? null : intent.value;
-      root.replaceWith(renderLocationValue(record, field, nextValue, options));
+        updatedRecord instanceof Object
+          ? updatedRecord.values[field.id]
+          : intent.kind === 'unset'
+            ? undefined
+            : intent.kind === 'clear'
+              ? null
+              : intent.value;
+      root.replaceWith(renderLocationValue(nextRecord, field, nextValue, options));
     } catch (cause) {
       showLocationError(
         error,

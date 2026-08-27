@@ -2,10 +2,12 @@ import {
   LoomTableClientError,
   type Base,
   type ConflictBody,
+  type ConflictDetails,
   type Field,
   type LoomTableClient,
   type LoomTableClientErrorDetails,
   type LoomTableRecord,
+  type MutationRequest,
   type MutationResult,
   type MutationValue,
   type QueryRequest,
@@ -20,7 +22,12 @@ import {
   normalizeLocationValue,
   type LocationEditIntent,
 } from './field-value-editor';
-import { MutationQueue, type MutationQueueSnapshot } from './mutation-queue';
+import { MutationQueue, createMutationId, type MutationQueueSnapshot } from './mutation-queue';
+import type {
+  DurableMutationQueuePort,
+  MutationQueueRecordSnapshot,
+  MutationQueueSchedulerEvent,
+} from './mutation-queue-scheduler';
 import type { ViewSaveStatus } from './save-status';
 
 export const DEFAULT_GRID_PAGE_SIZE = 100;
@@ -81,6 +88,7 @@ export type GridDataSource = Pick<
 export interface GridViewControllerOptions {
   readonly pageSize?: number;
   readonly isOffline?: () => boolean;
+  readonly mutationQueue?: DurableMutationQueuePort;
   readonly mutationIdFactory?: () => string;
   readonly mutationNetworkAttempts?: number;
   readonly onNonGridViewSelected?: (view: View, state: GridState) => void | Promise<void>;
@@ -91,6 +99,13 @@ export interface GridEditOptions {
 }
 
 export type GridStateListener = (state: GridState) => void;
+
+interface ControllerQueueSnapshot {
+  readonly state: 'idle' | 'queued' | 'saving' | 'conflict' | 'error';
+  readonly pending: number;
+  readonly error?: LoomTableClientError;
+  readonly conflict?: ConflictDetails;
+}
 
 interface GridSelection {
   readonly workspaceId?: string;
@@ -130,11 +145,14 @@ export class GridViewController {
   readonly #isOffline: () => boolean;
   readonly #listeners = new Set<GridStateListener>();
   readonly #queue: MutationQueue | null;
+  readonly #durableQueue: DurableMutationQueuePort | null;
+  readonly #mutationIdFactory: () => string;
   readonly #onNonGridViewSelected: GridViewControllerOptions['onNonGridViewSelected'];
   #queueUnsubscribe: (() => void) | null = null;
   readonly #authoritativeRecords = new Map<string, LoomTableRecord>();
   readonly #optimisticRecords = new Map<string, LoomTableRecord>();
   readonly #conflicts = new Map<string, GridConflict>();
+  readonly #dirtyRecords = new Set<string>();
   #state: GridState = INITIAL_STATE;
   #selection: GridSelection = {};
   #requestToken = 0;
@@ -145,9 +163,11 @@ export class GridViewController {
     this.#pageSize = normalizePageSize(options.pageSize ?? DEFAULT_GRID_PAGE_SIZE);
     this.#isOffline = options.isOffline ?? defaultOfflineCheck;
     this.#onNonGridViewSelected = options.onNonGridViewSelected;
+    this.#durableQueue = options.mutationQueue ?? null;
+    this.#mutationIdFactory = options.mutationIdFactory ?? createMutationId;
     const mutate = client.mutate?.bind(client);
     this.#queue =
-      mutate === undefined
+      this.#durableQueue !== null || mutate === undefined
         ? null
         : new MutationQueue(
             { mutate },
@@ -161,9 +181,13 @@ export class GridViewController {
               onApplied: (recordId, result) => this.#handleMutationApplied(recordId, result),
             },
           );
-    if (this.#queue !== null) {
+    if (this.#durableQueue !== null) {
+      this.#queueUnsubscribe = this.#durableQueue.subscribe((event) =>
+        this.#handleDurableQueueEvent(event),
+      );
+    } else if (this.#queue !== null) {
       this.#queueUnsubscribe = this.#queue.subscribe((recordId, snapshot) =>
-        this.#handleQueueSnapshot(recordId, snapshot),
+        this.#handleLegacyQueueSnapshot(recordId, snapshot),
       );
     }
   }
@@ -239,12 +263,13 @@ export class GridViewController {
         ? normalizeLocationValue(rawValue)
         : normalizeCellValue(field, rawValue);
     if (!normalized.ok) throw this.#publishEditFailure(normalized.message);
-    if (this.#queue === null) {
+    if (this.#queue === null && this.#durableQueue === null) {
       throw this.#publishEditFailure('Record editing is unavailable for this connection.');
     }
 
     const value = normalized.value;
     const authoritative = this.#authoritativeRecords.get(recordId) ?? record;
+    this.#dirtyRecords.add(recordId);
     const optimistic = options.unset
       ? withoutCellValue(record, fieldId)
       : withCellValue(record, fieldId, value);
@@ -275,7 +300,15 @@ export class GridViewController {
             },
     };
     try {
-      await this.#queue.enqueue(job);
+      if (this.#durableQueue !== null) {
+        const request: MutationRequest = {
+          clientMutationId: this.#mutationIdFactory(),
+          commands: [job.buildCommand(authoritative.revision)],
+        };
+        await this.#durableQueue.enqueue(tableId, request);
+      } else {
+        await this.#queue!.enqueue(job);
+      }
     } catch (error) {
       if (!(error instanceof LoomTableClientError) || error.kind !== 'conflict') {
         const fallback = this.#authoritativeRecords.get(recordId) ?? record;
@@ -291,18 +324,19 @@ export class GridViewController {
     fieldId: string,
     intent: LocationEditIntent,
     sourceRecord?: LoomTableRecord,
-  ): Promise<void> {
+  ): Promise<LoomTableRecord | undefined> {
     if (intent.kind === 'unset') {
       await this.editCell(recordId, fieldId, undefined, { unset: true }, sourceRecord);
-      return;
+    } else {
+      await this.editCell(
+        recordId,
+        fieldId,
+        intent.kind === 'clear' ? null : intent.value,
+        {},
+        sourceRecord,
+      );
     }
-    await this.editCell(
-      recordId,
-      fieldId,
-      intent.kind === 'clear' ? null : intent.value,
-      {},
-      sourceRecord,
-    );
+    return this.#state.records.find((candidate) => candidate.id === recordId);
   }
 
   resolveConflict(recordId: string, action: 'use-server' | 'overwrite'): void {
@@ -555,7 +589,7 @@ export class GridViewController {
     const sourceRecords = replace ? result.items : [...this.#state.records, ...result.items];
     for (const record of result.items) {
       this.#authoritativeRecords.set(record.id, record);
-      if ((this.#queue?.getSnapshot(record.id).pending ?? 0) === 0) {
+      if (this.#pendingFor(record.id) === 0) {
         this.#optimisticRecords.set(record.id, record);
       }
     }
@@ -574,43 +608,69 @@ export class GridViewController {
     });
   }
 
+  #pendingFor(recordId: string): number {
+    if (this.#durableQueue !== null) {
+      return this.#durableQueue.getRecordSnapshot(recordId).pending;
+    }
+    return this.#queue?.getSnapshot(recordId).pending ?? 0;
+  }
+
   #handleMutationApplied(recordId: string, result: MutationResult): void {
     const record = result.results.find((item) => item.index === 0)?.record;
     if (record === undefined) return;
     this.#authoritativeRecords.set(recordId, record);
-    if ((this.#queue?.getSnapshot(recordId).pending ?? 0) <= 1) {
+    const pending = this.#pendingFor(recordId);
+    if (pending <= (this.#durableQueue === null ? 1 : 0)) {
       this.#optimisticRecords.set(recordId, record);
+      this.#dirtyRecords.delete(recordId);
     }
     this.#conflicts.delete(recordId);
     this.#publish({
       records: replaceRecord(this.#state.records, this.#optimisticRecords.get(recordId) ?? record),
-      changeCursor: result.changeCursor,
       conflicts: [...this.#conflicts.values()],
       editError: null,
     });
   }
 
-  #handleQueueSnapshot(recordId: string, snapshot: MutationQueueSnapshot): void {
+  #handleDurableQueueEvent(event: MutationQueueSchedulerEvent): void {
+    if (event.applied !== undefined) {
+      this.#handleMutationApplied(event.recordId, event.applied.result);
+    }
+    this.#handleQueueSnapshot(event.recordId, controllerSnapshot(event.snapshot));
+  }
+
+  #handleLegacyQueueSnapshot(recordId: string, snapshot: MutationQueueSnapshot): void {
+    const conflict = this.#queue?.getConflict(recordId)?.error.conflict;
+    this.#handleQueueSnapshot(recordId, {
+      state: snapshot.state,
+      pending: snapshot.pending,
+      ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
+      ...(conflict === undefined ? {} : { conflict }),
+    });
+  }
+
+  #handleQueueSnapshot(recordId: string, snapshot: ControllerQueueSnapshot): void {
     const editStatuses = { ...this.#state.editStatuses };
     if (snapshot.state === 'idle') {
       delete editStatuses[recordId];
+      if (this.#durableQueue === null) this.#dirtyRecords.delete(recordId);
     } else {
       editStatuses[recordId] = snapshot.state;
     }
 
-    const queueConflict = this.#queue?.getConflict(recordId);
-    if (snapshot.state === 'conflict' && queueConflict?.error.conflict !== undefined) {
-      const body = queueConflict.error.conflict.conflicts[0];
+    if (snapshot.state === 'conflict' && snapshot.conflict !== undefined) {
+      const body = snapshot.conflict.conflicts[0];
       if (body !== undefined) {
         this.#conflicts.set(recordId, {
           ...body,
-          clientMutationId: queueConflict.error.conflict.clientMutationId,
-          message: queueConflict.error.details.message,
+          clientMutationId: snapshot.conflict.clientMutationId,
+          message: snapshot.error?.details.message ?? 'The Record changed on the Server.',
         });
       }
     }
     const conflicts = [...this.#conflicts.values()];
-    const editError = snapshot.error?.details ?? this.#state.editError;
+    const editError =
+      snapshot.state === 'idle' ? null : (snapshot.error?.details ?? this.#state.editError);
     const nextState = {
       ...this.#state,
       editStatuses,
@@ -621,7 +681,7 @@ export class GridViewController {
       editStatuses,
       conflicts,
       editError,
-      saveStatus: gridSaveStatus(nextState, this.#isOffline()),
+      saveStatus: gridSaveStatus(nextState, this.#isOffline(), this.#dirtyRecords.size > 0),
     });
   }
 
@@ -794,7 +854,48 @@ function withValues(
   return { ...record, values };
 }
 
-function gridSaveStatus(state: GridState, offline: boolean): ViewSaveStatus {
+function controllerSnapshot(snapshot: MutationQueueRecordSnapshot): ControllerQueueSnapshot {
+  const error =
+    snapshot.lastError === undefined
+      ? undefined
+      : new LoomTableClientError(
+          snapshot.lastError.kind,
+          {
+            message: snapshot.lastError.message,
+            ...(snapshot.lastError.code === undefined ? {} : { code: snapshot.lastError.code }),
+            ...(snapshot.lastError.httpStatus === undefined
+              ? {}
+              : { httpStatus: snapshot.lastError.httpStatus }),
+            ...(snapshot.lastError.requestId === undefined
+              ? {}
+              : { requestId: snapshot.lastError.requestId }),
+          },
+          undefined,
+          snapshot.conflict,
+        );
+  if (snapshot.state === 'sending') {
+    return {
+      state: 'saving',
+      pending: snapshot.pending,
+      ...(error === undefined ? {} : { error }),
+    };
+  }
+  if (
+    snapshot.state === 'auth-paused' ||
+    snapshot.state === 'terminal' ||
+    snapshot.state === 'error'
+  ) {
+    return { state: 'error', pending: snapshot.pending, ...(error === undefined ? {} : { error }) };
+  }
+  return {
+    state: snapshot.state === 'queued' ? 'queued' : snapshot.state,
+    pending: snapshot.pending,
+    ...(error === undefined ? {} : { error }),
+    ...(snapshot.conflict === undefined ? {} : { conflict: snapshot.conflict }),
+  };
+}
+
+function gridSaveStatus(state: GridState, offline: boolean, dirty = false): ViewSaveStatus {
   if (offline || state.status === 'offline') return 'offline-readonly';
   if (
     state.conflicts.length > 0 ||
@@ -808,5 +909,6 @@ function gridSaveStatus(state: GridState, offline: boolean): ViewSaveStatus {
   ) {
     return 'saving';
   }
+  if (dirty) return 'dirty';
   return 'saved';
 }

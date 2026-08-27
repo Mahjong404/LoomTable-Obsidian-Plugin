@@ -148,6 +148,38 @@ describe('Record Detail Location seam', () => {
     );
   });
 
+  it('renders the complete returned Record after a Location save', async () => {
+    const container = document.createElement('div');
+    const returnedRecord = {
+      ...createRecord({
+        field_location: { label: 'Server value', lat: 3, lng: 4, precision: 'exact' },
+      }),
+      revision: 2,
+    };
+    const onLocationEdit = vi.fn().mockResolvedValue(returnedRecord);
+    container.append(
+      createRecordDetail(createRecord({ field_location: { label: 'Local value' } }), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: { onLocationEdit },
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const form = container.querySelector<HTMLFormElement>('.loom-location-editor');
+    expect(form).not.toBeNull();
+    if (form === null) return;
+    form.querySelector<HTMLInputElement>('input[aria-label="Label"]')!.value = 'Local intent';
+    form.dispatchEvent(new Event('input', { bubbles: true }));
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => expect(onLocationEdit).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(container.querySelector('.loom-location-editor')).toBeNull());
+    expect(container.querySelector('.loom-location-values')?.textContent).toContain('Server value');
+    expect(container.querySelector('.loom-location-values')?.textContent).toContain('3');
+    expect(container.querySelector('.loom-location-values')?.textContent).toContain('4');
+  });
+
   it('exposes Open in Map and a modifier-key preview without a write callback', async () => {
     vi.useFakeTimers();
     try {
