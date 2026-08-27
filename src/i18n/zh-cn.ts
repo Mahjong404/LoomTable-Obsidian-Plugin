@@ -174,4 +174,3 @@ export const simplifiedChineseMessages = {
   'map.tiles.loading': '正在加载地图瓦片…',
   'map.tiles.ready': '地图瓦片已就绪。',
 } as const satisfies MessageCatalog;
-
