@@ -58,7 +58,8 @@ export class MutationQueueScheduler {
     this.#now = options.now ?? Date.now;
     this.#random = options.random ?? Math.random;
     this.#onApplied = options.onApplied;
-    this.#setTimer = options.setTimer ?? ((callback, delayMs) => window.setTimeout(callback, delayMs));
+    this.#setTimer =
+      options.setTimer ?? ((callback, delayMs) => window.setTimeout(callback, delayMs));
     this.#clearTimer = options.clearTimer ?? ((timer) => window.clearTimeout(timer));
     this.#state = this.#store.getSnapshot();
   }
