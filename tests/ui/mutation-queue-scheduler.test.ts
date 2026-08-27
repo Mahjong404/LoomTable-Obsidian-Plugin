@@ -146,14 +146,14 @@ describe('MutationQueueScheduler', () => {
         const command = request.commands[0];
         if (command?.kind !== 'updateRecord') throw new Error('Unexpected command.');
         if (command.recordId === 'record_01' && command.set?.field_a === 'one') {
-          return new Promise((resolve) => {
+          return new Promise<MutationResult>((resolve) => {
             releases.set('record_01-one', () =>
               resolve(result(request.clientMutationId, 'record_01', 2)),
             );
           });
         }
         if (command.recordId === 'record_02') {
-          return new Promise((resolve) => {
+          return new Promise<MutationResult>((resolve) => {
             releases.set('record_02-two', () =>
               resolve(result(request.clientMutationId, 'record_02', 2)),
             );
@@ -369,14 +369,20 @@ async function startReady(scheduler: MutationQueueScheduler): Promise<void> {
 }
 
 function fakeTransport(): DurableMutationQueueTransport & {
-  readonly mutate: ReturnType<typeof vi.fn>;
+  readonly mutate: ReturnType<typeof vi.fn<DurableMutationQueueTransport['mutate']>>;
 } {
   return {
-    mutate: vi.fn(async (_tableId: string, request: MutationRequest) => {
-      const command = request.commands[0];
-      if (command?.kind !== 'updateRecord') throw new Error('Unexpected command.');
-      return result(request.clientMutationId, command.recordId, command.expectedRevision + 1);
-    }),
+    mutate: vi.fn<DurableMutationQueueTransport['mutate']>(
+      async (_tableId: string, request: MutationRequest) => {
+        const command = request.commands[0];
+        if (command?.kind !== 'updateRecord') throw new Error('Unexpected command.');
+        return result(
+          request.clientMutationId,
+          command.recordId,
+          command.expectedRevision + 1,
+        );
+      },
+    ),
   };
 }
 
