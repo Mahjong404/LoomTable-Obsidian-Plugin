@@ -307,7 +307,11 @@ describe('MutationQueueScheduler', () => {
         conflict,
       ),
     );
-    transport.mutate.mockResolvedValueOnce(result(MUTATION_IDS[1], 'record_01', 3));
+    transport.mutate.mockImplementationOnce(async (_tableId, request) => {
+      const command = request.commands[0];
+      if (command?.kind !== 'updateRecord') throw new Error('Unexpected command.');
+      return result(request.clientMutationId, command.recordId, 3);
+    });
     const { scheduler } = createScheduler([entry()], transport);
 
     await startReady(scheduler);
