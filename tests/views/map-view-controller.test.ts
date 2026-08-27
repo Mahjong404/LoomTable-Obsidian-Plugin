@@ -233,6 +233,48 @@ describe('MapViewController', () => {
     expect(controller.state.saveStatus).toBe('saved');
   });
 
+  it('uses the Server Query result when a Location mutation unsets Map membership', async () => {
+    const initialRecord = createRecord('record_01');
+    const unsetRecord: LoomTableRecord = {
+      ...initialRecord,
+      revision: 2,
+      values: {},
+    };
+    const initialQuery = { ...queryResult('record_initial', 1), changeCursor: 'cursor_initial' };
+    const unsetQuery: MapQueryResult = {
+      features: [],
+      viewportRenderableRecordCount: 0,
+      viewRevision: 1,
+      changeCursor: 'cursor_after_unset',
+    };
+    const summarizeMap = vi
+      .fn()
+      .mockResolvedValueOnce(summaryResult('cursor_initial'))
+      .mockResolvedValueOnce(summaryResult('cursor_after_unset'));
+    const queryMap = vi
+      .fn()
+      .mockResolvedValueOnce(initialQuery)
+      .mockResolvedValueOnce(unsetQuery);
+    const controller = createController(
+      createClient({ summarizeMap, queryMap }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.load();
+    await controller.applyMutationInvalidation({
+      tableId: 'table_01',
+      recordId: 'record_01',
+      record: unsetRecord,
+      changeCursor: 'cursor_mutation',
+    });
+
+    expect(queryMap).toHaveBeenCalledTimes(2);
+    expect(controller.state.features).toEqual(unsetQuery.features);
+    expect(controller.state.viewportRenderableRecordCount).toBe(0);
+    expect(controller.state.saveStatus).toBe('saved');
+  });
+
   it('does not roll back the opaque cursor when invalidation responses finish out of order', async () => {
     const firstQuery = deferred<MapQueryResult>();
     const secondSummary = deferred<MapSummaryResult>();
