@@ -195,9 +195,9 @@ describe('MutationQueueScheduler', () => {
       set: { field_a: 'two' },
     });
     expect(calls[2]?.clientMutationId).toBe(MUTATION_IDS[1]);
-    const persistedSecond = saves.at(-1)?.entries.find(
-      (entry) => entry.clientMutationId === MUTATION_IDS[1],
-    );
+    const persistedSecond = saves
+      .at(-1)
+      ?.entries.find((entry) => entry.clientMutationId === MUTATION_IDS[1]);
     expect(persistedSecond?.state).toBe('sending');
     expect(persistedSecond?.recordId).toBe('record_01');
     expect(persistedSecond?.clientMutationId).toBe(MUTATION_IDS[1]);
