@@ -33,6 +33,8 @@ export interface LoomTableClientErrorDetails {
   readonly code?: string;
   readonly httpStatus?: number;
   readonly requestId?: string;
+  /** A bounded server hint for the durable mutation scheduler. */
+  readonly retryAfterMs?: number;
   readonly apiDetails?: LoomTableApiErrorDetails;
 }
 
