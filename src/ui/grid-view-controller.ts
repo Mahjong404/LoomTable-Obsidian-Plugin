@@ -270,6 +270,7 @@ export class GridViewController {
     const value = normalized.value;
     const authoritative = this.#authoritativeRecords.get(recordId) ?? record;
     const durablePendingBefore = this.#durableQueue?.getRecordSnapshot(recordId).pending ?? 0;
+    const preEditDisplay = record;
     this.#dirtyRecords.add(recordId);
     const optimistic = options.unset
       ? withoutCellValue(record, fieldId)
@@ -313,14 +314,13 @@ export class GridViewController {
     } catch (error) {
       const durablePendingAfter = this.#durableQueue?.getRecordSnapshot(recordId).pending ?? 0;
       const rejectedBeforeEntry =
-        this.#durableQueue !== null && durablePendingBefore === 0 && durablePendingAfter === 0;
+        this.#durableQueue !== null && durablePendingAfter === durablePendingBefore;
       if (rejectedBeforeEntry) {
         const clientError = asClientError(error);
-        const fallback = this.#authoritativeRecords.get(recordId) ?? record;
-        this.#dirtyRecords.delete(recordId);
-        this.#optimisticRecords.set(recordId, fallback);
+        if (durablePendingBefore === 0) this.#dirtyRecords.delete(recordId);
+        this.#optimisticRecords.set(recordId, preEditDisplay);
         this.#publish({
-          records: replaceRecord(this.#state.records, fallback),
+          records: replaceRecord(this.#state.records, preEditDisplay),
           editError: clientError.details,
           saveStatus: this.#isOffline() ? 'offline-readonly' : 'error',
         });
