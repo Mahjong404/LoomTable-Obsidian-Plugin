@@ -114,6 +114,7 @@ export class LoomTableView extends ItemView {
       onRecordOpen: (record) => void this.showRecordDetail(record, profile, controller),
       onCellEdit: (recordId, fieldId, value) => controller.editCell(recordId, fieldId, value),
       onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
+      confirmDiscardAll: () => window.confirm(this.getTranslator()('grid.discardAllConfirm')),
       onRetryEdit: (recordId) => controller.retryEdit(recordId),
     });
     this.#gridController = controller;
@@ -235,6 +236,7 @@ export class LoomTableView extends ItemView {
       translate: this.getTranslator(),
       fields: controller.state.fields,
       offline: typeof navigator !== 'undefined' && navigator.onLine === false,
+      confirmDiscard: (message) => window.confirm(message),
       callbacks: {
         onClose: () => detail.remove(),
         onLocationEdit: (recordId, fieldId, intent, recordValue) =>
