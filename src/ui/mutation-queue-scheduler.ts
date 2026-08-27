@@ -661,7 +661,7 @@ function conflictRetryEntry(
   idFactory: () => string,
   timestamp: string,
 ): PersistedMutationQueueEntry {
-  const clientMutationId = idFactory();
+  const clientMutationId = freshMutationId(entry.clientMutationId, idFactory);
   const command: UpdateRecordCommand = {
     kind: 'updateRecord',
     recordId: conflict.recordId,
@@ -686,6 +686,16 @@ function conflictRetryEntry(
     createdAt: timestamp,
     updatedAt: timestamp,
   };
+}
+
+function freshMutationId(previous: string, idFactory: () => string): string {
+  let candidate = idFactory();
+  if (candidate === previous) {
+    do {
+      candidate = createMutationId();
+    } while (candidate === previous);
+  }
+  return candidate;
 }
 
 function recordSnapshot(
