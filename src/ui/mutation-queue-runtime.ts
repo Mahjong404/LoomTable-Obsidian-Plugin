@@ -1,6 +1,7 @@
 import {
   MutationQueueScheduler,
   type DurableMutationQueueTransport,
+  type MutationQueueSchedulerOptions,
 } from './mutation-queue-scheduler';
 import {
   MutationQueueStore,
@@ -14,7 +15,7 @@ export interface MutationQueueRuntimeOptions {
   readonly transport: DurableMutationQueueTransport;
   readonly isOnline?: () => boolean;
   readonly isAuthReady?: () => boolean;
-  readonly onApplied?: MutationQueueScheduler['#onApplied'];
+  readonly onApplied?: MutationQueueSchedulerOptions['onApplied'];
 }
 
 export class MutationQueueRuntime {
