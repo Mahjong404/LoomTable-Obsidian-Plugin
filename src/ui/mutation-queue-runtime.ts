@@ -10,7 +10,7 @@ import {
 } from '../settings/mutation-queue-settings';
 
 export interface MutationQueueRuntimeOptions {
-  readonly load: () => unknown | Promise<unknown>;
+  readonly load: () => unknown;
   readonly save: (value: MutationQueueSettingsV1) => Promise<void>;
   readonly transport: DurableMutationQueueTransport;
   readonly isOnline?: () => boolean;
@@ -38,7 +38,7 @@ export class MutationQueueRuntime {
     if (this.#scheduler !== null) return this.#scheduler;
 
     const persistence: MutationQueueStorePersistence = {
-      load: this.#options.load,
+      load: async () => this.#options.load(),
       save: this.#options.save,
     };
     const store = await MutationQueueStore.hydrate(persistence);
