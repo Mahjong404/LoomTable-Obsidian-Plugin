@@ -191,6 +191,43 @@ describe('MapViewController', () => {
     expect(controller.state.saveStatus).toBe('saved');
   });
 
+  it('refreshes Map for another Record without changing the open Record', async () => {
+    const selectedRecord = createRecord('record_01');
+    const otherRecord: LoomTableRecord = {
+      ...createRecord('record_02'),
+      revision: 2,
+      values: { field_location: { lat: 40, lng: 116 } },
+    };
+    const summarizeMap = vi
+      .fn()
+      .mockResolvedValueOnce(summaryResult('cursor_initial'))
+      .mockResolvedValueOnce(summaryResult('cursor_after_other'));
+    const queryMap = vi
+      .fn()
+      .mockResolvedValueOnce(queryResult('record_initial', 1))
+      .mockResolvedValueOnce(queryResult('record_after_other', 1));
+    const getRecord = vi.fn().mockResolvedValue(selectedRecord);
+    const controller = createController(
+      createClient({ summarizeMap, queryMap, getRecord }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.load();
+    await controller.openRecord('record_01');
+    await controller.applyMutationInvalidation({
+      tableId: 'table_01',
+      recordId: 'record_02',
+      record: otherRecord,
+      changeCursor: 'cursor_mutation',
+    });
+
+    expect(controller.state.selectedRecord).toEqual(selectedRecord);
+    expect(summarizeMap).toHaveBeenCalledTimes(2);
+    expect(queryMap).toHaveBeenCalledTimes(2);
+    expect(controller.state.features).toEqual(queryResult('record_after_other', 1).features);
+  });
+
   it('uses the Server Query result when a Location mutation clears Map membership', async () => {
     const initialRecord = createRecord('record_01');
     const clearedRecord: LoomTableRecord = {
@@ -251,10 +288,7 @@ describe('MapViewController', () => {
       .fn()
       .mockResolvedValueOnce(summaryResult('cursor_initial'))
       .mockResolvedValueOnce(summaryResult('cursor_after_unset'));
-    const queryMap = vi
-      .fn()
-      .mockResolvedValueOnce(initialQuery)
-      .mockResolvedValueOnce(unsetQuery);
+    const queryMap = vi.fn().mockResolvedValueOnce(initialQuery).mockResolvedValueOnce(unsetQuery);
     const controller = createController(
       createClient({ summarizeMap, queryMap }),
       createMapView('field_location'),
