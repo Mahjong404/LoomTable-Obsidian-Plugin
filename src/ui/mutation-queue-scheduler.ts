@@ -19,7 +19,7 @@ export const MUTATION_QUEUE_MAX_BACKOFF_MS = 24 * 60 * 60 * 1_000;
 type TimerHandle = number;
 
 export interface DurableMutationQueueTransport {
-  mutate(tableId: string, request: MutationRequest): Promise<MutationResult>;
+  readonly mutate: (tableId: string, request: MutationRequest) => Promise<MutationResult>;
 }
 
 export interface MutationQueueSchedulerOptions {
