@@ -340,11 +340,7 @@ describe('MutationQueueScheduler', () => {
     await startReady(scheduler);
     expect(transport.mutate).not.toHaveBeenCalled();
 
-    const retry = scheduler.retryConflict(
-      'record_01',
-      MUTATION_IDS[0],
-      MUTATION_IDS[2],
-    );
+    const retry = scheduler.retryConflict('record_01', MUTATION_IDS[0], MUTATION_IDS[2]);
     await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(1));
 
     expect(transport.mutate.mock.calls[0]?.[1]).toEqual({
