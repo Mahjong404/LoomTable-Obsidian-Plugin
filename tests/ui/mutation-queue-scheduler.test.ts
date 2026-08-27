@@ -381,6 +381,58 @@ describe('MutationQueueScheduler', () => {
     scheduler.stop();
   });
 
+  it('discards all pending entries for one Record without affecting another Record', async () => {
+    const conflict: ConflictDetails = {
+      clientMutationId: MUTATION_IDS[0],
+      failedCommandIndex: 0,
+      conflicts: [
+        {
+          recordId: 'record_01',
+          expectedRevision: 1,
+          currentRevision: 2,
+          currentValues: { field_a: 'server' },
+          submittedSet: { field_a: 'first local' },
+        },
+      ],
+    };
+    const transport = fakeTransport();
+    transport.mutate.mockRejectedValueOnce(
+      new LoomTableClientError(
+        'conflict',
+        { message: 'Conflict.', code: 'CONFLICT', httpStatus: 409 },
+        undefined,
+        conflict,
+      ),
+    );
+    const { scheduler } = createScheduler(
+      [
+        entry({ id: MUTATION_IDS[0], value: 'first local' }),
+        entry({ id: MUTATION_IDS[1], value: 'later local' }),
+        entry({
+          id: MUTATION_IDS[2],
+          recordId: 'record_02',
+          state: 'terminal',
+          lastError: { kind: 'validation', message: 'Terminal failure.' },
+        }),
+      ],
+      transport,
+    );
+
+    await startReady(scheduler);
+    await scheduler.discardAllForRecord('record_01');
+
+    expect(scheduler.getSnapshot().entries.map((item) => item.clientMutationId)).toEqual([
+      MUTATION_IDS[2],
+    ]);
+    expect(scheduler.getRecordSnapshot('record_01')).toEqual({ state: 'idle', pending: 0 });
+    expect(scheduler.getRecordSnapshot('record_02')).toMatchObject({
+      state: 'terminal',
+      pending: 1,
+    });
+    expect(transport.mutate).toHaveBeenCalledTimes(1);
+    scheduler.stop();
+  });
+
   it('keeps IDEMPOTENCY_KEY_REUSED separate as a terminal safety error', async () => {
     const transport = fakeTransport();
     transport.mutate.mockRejectedValueOnce(
