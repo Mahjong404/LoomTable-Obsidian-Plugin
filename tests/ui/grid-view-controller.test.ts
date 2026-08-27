@@ -1124,10 +1124,7 @@ class QueuedDurableQueue implements DurableMutationQueuePort {
     return () => this.#listeners.delete(listener);
   }
 
-  resolveConflict(
-    recordId: string,
-    action: 'adopt-server' | 'overwrite',
-  ): Promise<void> {
+  resolveConflict(recordId: string, action: 'adopt-server' | 'overwrite'): Promise<void> {
     void recordId;
     void action;
     return Promise.resolve();
@@ -1176,10 +1173,7 @@ class FakeDurableQueue implements DurableMutationQueuePort {
     return () => this.#listeners.delete(listener);
   }
 
-  resolveConflict(
-    recordId: string,
-    action: 'adopt-server' | 'overwrite',
-  ): Promise<void> {
+  resolveConflict(recordId: string, action: 'adopt-server' | 'overwrite'): Promise<void> {
     void recordId;
     void action;
     return Promise.resolve();
@@ -1217,3 +1211,4 @@ class FakeDurableQueue implements DurableMutationQueuePort {
     });
   }
 }
+
