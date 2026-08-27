@@ -3,7 +3,6 @@ import {
   type LoomTableClientErrorKind,
   type MutationRequest,
   type MutationResult,
-  type UpdateRecordCommand,
   type ConflictDetails,
 } from '../client/loomtable-client';
 import {
