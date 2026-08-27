@@ -94,21 +94,14 @@ describe('MutationQueueRuntime', () => {
     expect(result.results[0]?.status).toBe('unchanged');
     expect(result.results[0]?.record).toEqual(returnedRecord);
     expect(transport.mutate).toHaveBeenCalledWith('table_01', request());
-    expect(saves).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          entries: expect.arrayContaining([
-            expect.objectContaining({
-              tableId: 'table_01',
-              recordId: 'record_01',
-              clientMutationId: MUTATION_ID,
-              expectedRevision: 1,
-              request: request(),
-            }),
-          ]),
-        }),
-      ]),
-    );
+    const queuedEntry = saves
+      .flatMap((value) => value.entries)
+      .find((entryValue) => entryValue.clientMutationId === MUTATION_ID);
+    expect(queuedEntry).toBeDefined();
+    expect(queuedEntry?.tableId).toBe('table_01');
+    expect(queuedEntry?.recordId).toBe('record_01');
+    expect(queuedEntry?.expectedRevision).toBe(1);
+    expect(queuedEntry?.request).toEqual(request());
     expect(scheduler.getSnapshot().entries).toHaveLength(0);
     runtime.stop();
   });
