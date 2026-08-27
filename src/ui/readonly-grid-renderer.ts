@@ -13,7 +13,11 @@ export interface GridRendererCallbacks {
   readonly onLoadMore: () => void | Promise<void>;
   readonly onRecordOpen: (record: LoomTableRecord) => void;
   readonly onCellEdit?: (recordId: string, fieldId: string, value: unknown) => void | Promise<void>;
-  readonly onConflictAction?: (recordId: string, action: 'use-server' | 'overwrite') => void;
+  readonly onConflictAction?: (
+    recordId: string,
+    action: 'use-server' | 'overwrite' | 'discard-all',
+  ) => void;
+  readonly confirmDiscardAll?: (recordId: string) => boolean;
   readonly onRetryEdit?: (recordId: string) => void;
 }
 
@@ -50,6 +54,347 @@ export class ReadonlyGridRenderer {
     const root = createElement('div', 'loom-grid-shell');
     root.setAttribute('role', 'region');
     root.setAttribute('aria-label', this.#translate('grid.table'));
+    root.tabIndex = -1;
+    root.append(this.#renderToolbar(state), this.#renderNavigation(state));
+    if (state.editError !== null) root.append(this.#renderEditError(state));
+    if (state.conflicts.length > 0) root.append(this.#renderConflicts(state));
+
+    if (state.status === 'loading' && state.records.length === 0) {
+      root.append(this.#renderStatus('loading', state));
+    } else if (state.records.length === 0) {
+      root.append(this.#renderStatus(state.status, state));
+    } else {
+      if (state.status !== 'ready') root.append(this.#renderStatus(state.status, state));
+      if (state.fields.length === 0) {
+        root.append(
+          this.#renderStatus('server-error', {
+            ...state,
+            error: { message: this.#translate('grid.noFields') },
+          }),
+        );
+      } else {
+        root.append(this.#renderGrid(state));
+      }
+    }
+
+    const conflictIds = new Set(state.conflicts.map((conflict) => conflict.recordId));
+    const hasNewConflict = [...conflictIds].some(
+      (recordId) => !this.#lastConflictIds.has(recordId),
+    );
+    this.#lastConflictIds = conflictIds;
+    this.#container.replaceChildren(root);
+    if (hasNewConflict) {
+      this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus();
+    } else {
+      this.#restoreFocusedCell();
+    }
+  }
+
+  #renderToolbar(state: GridState): HTMLElement {
+    const toolbar = createElement('div', 'loom-grid-toolbar');
+    toolbar.setAttribute('role', 'toolbar');
+    toolbar.setAttribute('aria-label', this.#translate('grid.status'));
+    const title = createElement('div', 'loom-grid-toolbar-title');
+    title.append(createTextElement('h2', this.#translate('grid.view')));
+    if (state.totalCount !== null) {
+      title.append(
+        createTextElement('span', `${state.totalCount} ${this.#translate('grid.rows')}`),
+      );
+    } else if (state.records.length > 0) {
+      title.append(
+        createTextElement('span', `${state.records.length} ${this.#translate('grid.rows')}`),
+      );
+    }
+    const refresh = createElement('button', 'loom-button');
+    refresh.type = 'button';
+    refresh.textContent = this.#translate('grid.refresh');
+    refresh.disabled = state.status === 'loading';
+    refresh.addEventListener('click', () => void this.#callbacks.onRefresh());
+    const saveStatus = createElement('span', 'loom-save-status');
+    renderSaveStatus(saveStatus, state.saveStatus, this.#translate);
+    toolbar.append(title, saveStatus, refresh);
+    return toolbar;
+  }
+
+  #renderNavigation(state: GridState): HTMLElement {
+    const navigation = createElement('div', 'loom-grid-navigation');
+    navigation.setAttribute('role', 'group');
+    navigation.setAttribute('aria-label', this.#translate('grid.status'));
+    navigation.append(
+      this.#renderSelect(
+        'grid.workspace',
+        state.workspaces,
+        state.selectedWorkspaceId,
+        (value) => void this.#callbacks.onWorkspaceChange(value),
+      ),
+      this.#renderSelect(
+        'grid.base',
+        state.bases,
+        state.selectedBaseId,
+        (value) => void this.#callbacks.onBaseChange(value),
+      ),
+      this.#renderSelect(
+        'grid.table',
+        state.tables,
+        state.selectedTableId,
+        (value) => void this.#callbacks.onTableChange(value),
+      ),
+      this.#renderSelect(
+        'grid.view',
+        state.views,
+        state.selectedViewId,
+        (value) => void this.#callbacks.onViewChange(value),
+      ),
+    );
+    return navigation;
+  }
+
+  #renderSelect<T extends { id: string; name: string }>(
+    labelKey: 'grid.workspace' | 'grid.base' | 'grid.table' | 'grid.view',
+    resources: readonly T[],
+    selectedId: string | null,
+    onChange: (value: string) => void,
+  ): HTMLElement {
+    const label = createElement('label', 'loom-grid-select');
+    label.append(document.createTextNode(this.#translate(labelKey)));
+    const select = document.createElement('select');
+    select.setAttribute('aria-label', this.#translate(labelKey));
+    for (const resource of resources) {
+      const option = document.createElement('option');
+      option.value = resource.id;
+      option.textContent = resource.name;
+      option.selected = resource.id === selectedId;
+      select.append(option);
+    }
+    select.disabled = resources.length === 0;
+    select.addEventListener('change', () => onChange(select.value));
+    label.append(select);
+    return label;
+  }
+
+  #renderGrid(state: GridState): HTMLElement {
+    const wrapper = createElement('div', 'loom-grid-wrapper');
+    const fields = orderedFields(state);
+    const rowHeight = rowHeightPixels(state);
+    const columnTemplate = columnTemplateFor(fields, state);
+
+    const header = createElement('div', 'loom-grid-header');
+    header.setAttribute('role', 'row');
+    header.style.gridTemplateColumns = columnTemplate;
+    const indexHeader = createGridCell('#', 'loom-grid-header-cell');
+    indexHeader.setAttribute('role', 'columnheader');
+    indexHeader.setAttribute('aria-colindex', '1');
+    indexHeader.setAttribute('aria-label', this.#translate('grid.rows'));
+    header.append(indexHeader);
+    for (const [fieldIndex, field] of fields.entries()) {
+      const fieldHeader = createGridCell(field.name, 'loom-grid-header-cell');
+      fieldHeader.setAttribute('role', 'columnheader');
+      fieldHeader.setAttribute('aria-colindex', String(fieldIndex + 2));
+      header.append(fieldHeader);
+    }
+
+    const viewport = createElement('div', 'loom-grid-viewport');
+    viewport.tabIndex = 0;
+    viewport.setAttribute('role', 'grid');
+    viewport.setAttribute('aria-label', this.#translate('grid.table'));
+    viewport.setAttribute('aria-rowcount', String(state.records.length + 1));
+    viewport.setAttribute('aria-colcount', String(fields.length + 1));
+    const canvas = createElement('div', 'loom-grid-canvas');
+    canvas.style.height = `${state.records.length * rowHeight}px`;
+    const rowLayer = createElement('div', 'loom-grid-row-layer');
+    canvas.append(rowLayer);
+    viewport.append(canvas);
+    this.#virtualGrid = { viewport, rowLayer, state, fields, rowHeight };
+    viewport.addEventListener('scroll', () => this.#renderVirtualRows());
+    this.#renderVirtualRows();
+
+    wrapper.append(header, viewport);
+    if (state.hasMore) {
+      const loadMore = createElement('button', 'loom-button loom-grid-load-more');
+      loadMore.type = 'button';
+      loadMore.textContent =
+        state.status === 'loading'
+          ? this.#translate('grid.loadingMore')
+          : this.#translate('grid.loadMore');
+      loadMore.disabled = state.status === 'loading';
+      loadMore.addEventListener('click', () => void this.#callbacks.onLoadMore());
+      wrapper.append(loadMore);
+    }
+    return wrapper;
+  }
+
+  #renderEditError(state: GridState): HTMLElement {
+    const status = createElement('div', 'loom-status loom-grid-edit-status is-error');
+    status.setAttribute('role', 'alert');
+    status.setAttribute('aria-live', 'assertive');
+    const terminal = Object.values(state.editStatuses).some((value) => value === 'terminal');
+    const idempotencyTerminal = state.editError?.code === 'IDEMPOTENCY_KEY_REUSED';
+    status.append(
+      createTextElement(
+        'p',
+        terminal && idempotencyTerminal
+          ? this.#translate('grid.idempotencyTerminal')
+          : this.#translate('grid.editError'),
+      ),
+    );
+    if (state.editError !== null) {
+      status.append(
+        renderDiagnostic(
+          this.#translate('grid.diagnostic.error'),
+          errorDiagnostic(state.editError),
+        ),
+      );
+    }
+    const failedRecordId = Object.entries(state.editStatuses).find(
+      ([, value]) => value === 'error',
+    )?.[0];
+    if (!terminal && failedRecordId !== undefined) {
+      const retry = createElement('button', 'loom-button');
+      retry.type = 'button';
+      retry.textContent = this.#translate('grid.retry');
+      retry.addEventListener('click', () => this.#callbacks.onRetryEdit?.(failedRecordId));
+      status.append(retry);
+    }
+    return status;
+  }
+
+  #renderConflicts(state: GridState): HTMLElement {
+    const box = createElement('div', 'loom-grid-conflicts');
+    box.setAttribute('role', 'region');
+    box.setAttribute('aria-live', 'polite');
+    box.setAttribute('aria-atomic', 'true');
+    box.setAttribute('aria-label', this.#translate('grid.diagnostic.conflict'));
+    box.tabIndex = -1;
+    box.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      this.#container.querySelector<HTMLElement>('.loom-grid-shell')?.focus();
+    });
+    for (const conflict of state.conflicts) {
+      const item = createElement('div', 'loom-grid-conflict');
+      item.setAttribute('role', 'group');
+      item.setAttribute(
+        'aria-label',
+        this.#translate('grid.editConflict') + ': ' + conflict.recordId,
+      );
+      item.append(createTextElement('strong', this.#translate('grid.editConflict')));
+      item.append(createTextElement('p', this.#translate('record.serverValue')));
+      const values = createElement('pre', 'loom-grid-conflict-values');
+      values.setAttribute('aria-label', this.#translate('record.serverValue'));
+      values.textContent = JSON.stringify(
+        {
+          recordId: conflict.recordId,
+          clientMutationId: conflict.clientMutationId,
+          failedCommandIndex: conflict.failedCommandIndex,
+          expectedRevision: conflict.expectedRevision,
+          currentRevision: conflict.currentRevision,
+          currentValues: conflict.currentValues,
+        },
+        null,
+        2,
+      );
+      item.append(values);
+      item.append(createTextElement('p', this.#translate('record.localIntent')));
+      const intent = createElement('pre', 'loom-grid-conflict-intent');
+      intent.setAttribute('aria-label', this.#translate('record.localIntent'));
+      intent.textContent = JSON.stringify(
+        {
+          submittedSet: conflict.submittedSet,
+          submittedUnsetFieldIds: conflict.submittedUnsetFieldIds,
+        },
+        null,
+        2,
+      );
+      item.append(intent);
+      item.append(
+        renderDiagnostic(this.#translate('common.openDiagnostics'), conflictDiagnostic(conflict)),
+      );
+      const actions = createElement('div', 'loom-grid-conflict-actions');
+      const useServer = document.createElement('button');
+      useServer.type = 'button';
+      useServer.className = 'loom-button';
+      useServer.textContent = this.#translate('grid.useServer');
+      useServer.addEventListener('click', () =>
+        this.#callbacks.onConflictAction?.(conflict.recordId, 'use-server'),
+      );
+      const overwrite = document.createElement('button');
+      overwrite.type = 'button';
+      overwrite.className = 'loom-button mod-warning';
+      overwrite.textContent = this.#translate('grid.overwrite');
+      overwrite.addEventListener('click', () =>
+        this.#callbacks.onConflictAction?.(conflict.recordId, 'overwrite'),
+      );
+      const discardAll = document.createElement('button');
+      discardAll.type = 'button';
+      discardAll.className = 'loom-button';
+      discardAll.textContent = this.#translate('grid.discardAll');
+      discardAll.addEventListener('click', () => {
+        if (this.#callbacks.confirmDiscardAll?.(conflict.recordId) !== true) return;
+        this.#callbacks.onConflictAction?.(conflict.recordId, 'discard-all');
+      });
+      actions.append(useServer, overwrite, discardAll);
+      item.append(actions);
+      box.append(item);
+    }
+    return box;
+  }
+import type { Translator } from '../i18n';
+import type { Field, JsonValue, LoomTableRecord } from '../client/loomtable-client';
+import type { GridConflict, GridState, GridStatus } from './grid-view-controller';
+import { editorTextValue, isEditableField } from './field-value-editor';
+import { renderSaveStatus } from './save-status';
+
+export interface GridRendererCallbacks {
+  readonly onRefresh: () => void | Promise<void>;
+  readonly onWorkspaceChange: (workspaceId: string) => void | Promise<void>;
+  readonly onBaseChange: (baseId: string) => void | Promise<void>;
+  readonly onTableChange: (tableId: string) => void | Promise<void>;
+  readonly onViewChange: (viewId: string) => void | Promise<void>;
+  readonly onLoadMore: () => void | Promise<void>;
+  readonly onRecordOpen: (record: LoomTableRecord) => void;
+  readonly onCellEdit?: (recordId: string, fieldId: string, value: unknown) => void | Promise<void>;
+  readonly onConflictAction?: (
+    recordId: string,
+    action: 'use-server' | 'overwrite' | 'discard-all',
+  ) => void;
+  readonly confirmDiscardAll?: (recordId: string) => boolean;
+  readonly onRetryEdit?: (recordId: string) => void;
+}
+
+interface VirtualGridRefs {
+  readonly viewport: HTMLElement;
+  readonly rowLayer: HTMLElement;
+  readonly state: GridState;
+  readonly fields: readonly Field[];
+  readonly rowHeight: number;
+}
+
+export interface VirtualRowRange {
+  readonly start: number;
+  readonly end: number;
+}
+
+export class ReadonlyGridRenderer {
+  readonly #container: HTMLElement;
+  readonly #translate: Translator;
+  readonly #callbacks: GridRendererCallbacks;
+  #virtualGrid: VirtualGridRefs | null = null;
+  #focusedCellKey: string | null = null;
+  #focusedCellPosition: { readonly rowIndex: number; readonly fieldIndex: number } | null = null;
+  #lastConflictIds = new Set<string>();
+
+  constructor(container: HTMLElement, translate: Translator, callbacks: GridRendererCallbacks) {
+    this.#container = container;
+    this.#translate = translate;
+    this.#callbacks = callbacks;
+  }
+
+  render(state: GridState): void {
+    this.#virtualGrid = null;
+    const root = createElement('div', 'loom-grid-shell');
+    root.setAttribute('role', 'region');
+    root.setAttribute('aria-label', this.#translate('grid.table'));
+    root.tabIndex = -1;
     root.append(this.#renderToolbar(state), this.#renderNavigation(state));
     if (state.editError !== null) root.append(this.#renderEditError(state));
     if (state.conflicts.length > 0) root.append(this.#renderConflicts(state));
