@@ -343,7 +343,9 @@ export class MutationQueueScheduler {
           !this.#inFlight.has(entry.recordId) &&
           entry.nextAttemptAt !== undefined,
       )
-      .map((entry) => Date.parse(entry.nextAttemptAt))
+      .map((entry) => entry.nextAttemptAt)
+      .filter((timestamp): timestamp is string => timestamp !== undefined)
+      .map((timestamp) => Date.parse(timestamp))
       .filter((timestamp) => timestamp > now)
       .sort((left, right) => left - right)[0];
 
