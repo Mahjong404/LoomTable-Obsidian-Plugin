@@ -1124,6 +1124,20 @@ class QueuedDurableQueue implements DurableMutationQueuePort {
     return () => this.#listeners.delete(listener);
   }
 
+  resolveConflict(
+    recordId: string,
+    action: 'adopt-server' | 'overwrite',
+  ): Promise<void> {
+    void recordId;
+    void action;
+    return Promise.resolve();
+  }
+
+  discardAllForRecord(recordId: string): Promise<void> {
+    void recordId;
+    return Promise.resolve();
+  }
+
   getRecordSnapshot(recordId: string): MutationQueueRecordSnapshot {
     void recordId;
     return this.#snapshot;
@@ -1160,6 +1174,20 @@ class FakeDurableQueue implements DurableMutationQueuePort {
   subscribe(listener: (event: MutationQueueSchedulerEvent) => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
+  }
+
+  resolveConflict(
+    recordId: string,
+    action: 'adopt-server' | 'overwrite',
+  ): Promise<void> {
+    void recordId;
+    void action;
+    return Promise.resolve();
+  }
+
+  discardAllForRecord(recordId: string): Promise<void> {
+    void recordId;
+    return Promise.resolve();
   }
 
   getRecordSnapshot(recordId: string): MutationQueueRecordSnapshot {
