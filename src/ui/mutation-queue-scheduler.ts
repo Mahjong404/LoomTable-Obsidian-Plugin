@@ -4,6 +4,7 @@ import {
   type MutationRequest,
   type MutationResult,
   type ConflictDetails,
+  type ConflictBody,
   type UpdateRecordCommand,
 } from '../client/loomtable-client';
 import { createMutationId } from './mutation-queue';
