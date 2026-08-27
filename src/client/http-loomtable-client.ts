@@ -616,7 +616,7 @@ export class HttpLoomTableClient implements LoomTableClient {
       }
 
       if (response.status < 200 || response.status >= 300) {
-        throw errorFromResponse(response.status, apiError);
+        throw errorFromResponse(response.status, apiError, response.headers);
       }
       return response;
     }
@@ -1544,12 +1544,18 @@ function decodeApiError(body: string): ApiError | null {
   }
 }
 
-function errorFromResponse(status: number, apiError: ApiError | null): LoomTableClientError {
+function errorFromResponse(
+  status: number,
+  apiError: ApiError | null,
+  headers: Readonly<Record<string, string>>,
+): LoomTableClientError {
+  const retryAfterMs = parseRetryAfter(headers);
   const details: LoomTableClientErrorDetails = {
     message: apiError?.message ?? `The LoomTable Server returned HTTP ${status}.`,
     httpStatus: status,
     ...(apiError === null ? {} : { code: apiError.code, requestId: apiError.requestId }),
     ...(apiError?.apiDetails === undefined ? {} : { apiDetails: apiError.apiDetails }),
+    ...(retryAfterMs === null ? {} : { retryAfterMs }),
   };
   if (status === 401) return new LoomTableClientError('authentication', details);
   if (status === 403) return new LoomTableClientError('forbidden', details);
