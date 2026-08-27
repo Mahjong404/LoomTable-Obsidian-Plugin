@@ -383,9 +383,7 @@ describe('GridViewController', () => {
 
   it('reports auth gating when durable enqueue rejects before creating an entry', async () => {
     const transport = {
-      mutate: vi.fn<
-        (tableId: string, request: MutationRequest) => Promise<MutationResult>
-      >(),
+      mutate: vi.fn<(tableId: string, request: MutationRequest) => Promise<MutationResult>>(),
     };
     const scheduler = new MutationQueueScheduler({
       store: new MutationQueueStore({ schemaVersion: 1, entries: [] }),
