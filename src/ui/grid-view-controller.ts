@@ -313,9 +313,7 @@ export class GridViewController {
     } catch (error) {
       const durablePendingAfter = this.#durableQueue?.getRecordSnapshot(recordId).pending ?? 0;
       const rejectedBeforeEntry =
-        this.#durableQueue !== null &&
-        durablePendingBefore === 0 &&
-        durablePendingAfter === 0;
+        this.#durableQueue !== null && durablePendingBefore === 0 && durablePendingAfter === 0;
       if (rejectedBeforeEntry) {
         const clientError = asClientError(error);
         const fallback = this.#authoritativeRecords.get(recordId) ?? record;
