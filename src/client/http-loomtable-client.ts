@@ -1549,12 +1549,13 @@ function errorFromResponse(
   apiError: ApiError | null,
   headers: Readonly<Record<string, string>>,
 ): LoomTableClientError {
+  const retryAfterMs = parseRetryAfter(headers);
   const details: LoomTableClientErrorDetails = {
     message: apiError?.message ?? `The LoomTable Server returned HTTP ${status}.`,
     httpStatus: status,
     ...(apiError === null ? {} : { code: apiError.code, requestId: apiError.requestId }),
     ...(apiError?.apiDetails === undefined ? {} : { apiDetails: apiError.apiDetails }),
-    ...(parseRetryAfter(headers) === null ? {} : { retryAfterMs: parseRetryAfter(headers) }),
+    ...(retryAfterMs === null ? {} : { retryAfterMs }),
   };
   if (status === 401) return new LoomTableClientError('authentication', details);
   if (status === 403) return new LoomTableClientError('forbidden', details);
