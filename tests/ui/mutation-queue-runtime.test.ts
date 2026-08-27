@@ -121,13 +121,15 @@ describe('MutationQueueRuntime', () => {
       },
       transport: firstTransport,
       isOnline: () => true,
-      isAuthReady: () => true,
+      isAuthReady: () => false,
     });
     const firstScheduler = await firstRuntime.start();
+    const firstReady = firstRuntime.setAuthReady(true);
     await vi.waitFor(() => expect(firstTransport.mutate).toHaveBeenCalledTimes(1));
     const firstRequest = firstTransport.mutate.mock.calls[0]?.[1];
     firstRuntime.stop();
     releaseFirst?.();
+    await firstReady;
 
     const secondTransport = fakeTransport();
     const secondRuntime = new MutationQueueRuntime({
