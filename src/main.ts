@@ -45,7 +45,7 @@ export default class LoomTablePlugin extends Plugin {
       customProfiles: () => this.settings.mapPresentation.customProfiles,
     });
 
-    this.mutationQueueRuntime = new MutationQueueRuntime({
+    const mutationQueueRuntime = new MutationQueueRuntime({
       load: () => this.settings.mutationQueue,
       save: async (value) => {
         this.settings.mutationQueue = value;
@@ -84,7 +84,8 @@ export default class LoomTablePlugin extends Plugin {
         }
       },
     });
-    const mutationScheduler = await this.mutationQueueRuntime.start();
+    this.mutationQueueRuntime = mutationQueueRuntime;
+    const mutationScheduler = await mutationQueueRuntime.start();
     if (typeof window !== 'undefined') {
       this.registerDomEvent(window, 'online', () => {
         void this.mutationQueueRuntime?.setOnline(true);
