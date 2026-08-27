@@ -7,6 +7,8 @@ import type { TileProviderRegistry } from '../maps/providers/tile-provider-regis
 import type { MapRenderer } from '../maps/renderer/map-renderer';
 import type { ConnectionProfile } from '../settings/connection-profile';
 import type { PluginSettings } from '../settings/plugin-settings';
+import type { DurableMutationQueuePort } from './mutation-queue-scheduler';
+import type { MutationInvalidationBus } from './mutation-invalidation';
 import { GridViewController, type GridState } from './grid-view-controller';
 import { ReadonlyGridRenderer } from './readonly-grid-renderer';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
@@ -31,6 +33,7 @@ export interface LoomTableMapContext {
 
 export class LoomTableView extends ItemView {
   #gridUnsubscribe: (() => void) | null = null;
+  #invalidationUnsubscribe: (() => void) | null = null;
   #gridController: GridViewController | null = null;
   #mapView: MapView | null = null;
 
@@ -40,6 +43,8 @@ export class LoomTableView extends ItemView {
     private readonly getTranslator: () => Translator,
     private readonly createClient: LoomTableClientFactory,
     private readonly mapContext: LoomTableMapContext,
+    private readonly mutationQueue: DurableMutationQueuePort | null = null,
+    private readonly invalidations: MutationInvalidationBus | null = null,
   ) {
     super(leaf);
   }
@@ -83,6 +88,7 @@ export class LoomTableView extends ItemView {
     this.renderGrid(
       profile,
       new GridViewController(this.createClient(profile), {
+        ...(this.mutationQueue === null ? {} : { mutationQueue: this.mutationQueue }),
         onNonGridViewSelected: (view, state) => this.showMap(profile, view, state),
       }),
     );
@@ -93,6 +99,8 @@ export class LoomTableView extends ItemView {
     this.#mapView = null;
     this.#gridUnsubscribe?.();
     this.#gridUnsubscribe = null;
+    this.#invalidationUnsubscribe?.();
+    this.#invalidationUnsubscribe = null;
     this.contentEl.empty();
     this.contentEl.addClass('loom-root');
 
@@ -110,6 +118,11 @@ export class LoomTableView extends ItemView {
     });
     this.#gridController = controller;
     this.#gridUnsubscribe = controller.subscribe((state) => renderer.render(state));
+    if (this.invalidations !== null) {
+      this.#invalidationUnsubscribe = this.invalidations.subscribe((event) => {
+        if (controller.state.selectedTableId === event.tableId) void controller.refresh();
+      });
+    }
     if (controller.state.status === 'idle') void controller.load();
   }
 
@@ -254,6 +267,8 @@ export class LoomTableView extends ItemView {
     this.#mapView = null;
     this.#gridUnsubscribe?.();
     this.#gridUnsubscribe = null;
+    this.#invalidationUnsubscribe?.();
+    this.#invalidationUnsubscribe = null;
     this.#gridController?.dispose();
     this.#gridController = null;
   }
