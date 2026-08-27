@@ -733,6 +733,88 @@ describe('GridViewController', () => {
     scheduler.stop();
   });
 
+  it('keeps a replacement conflict visible when overwrite conflicts again', async () => {
+    const firstConflict: ConflictDetails = {
+      clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+      failedCommandIndex: 0,
+      conflicts: [
+        {
+          recordId: 'record_01',
+          expectedRevision: 1,
+          currentRevision: 2,
+          currentValues: { field_name: 'Server value' },
+          submittedSet: { field_name: 'Local value' },
+        },
+      ],
+    };
+    const transport = {
+      mutate: vi.fn<DurableMutationQueueTransport['mutate']>(),
+    };
+    transport.mutate.mockRejectedValueOnce(
+      new LoomTableClientError(
+        'conflict',
+        { message: 'Revision conflict.', code: 'CONFLICT', httpStatus: 409 },
+        undefined,
+        firstConflict,
+      ),
+    );
+    transport.mutate.mockImplementationOnce(async (_tableId, request) => {
+      const command = request.commands[0];
+      if (command?.kind !== 'updateRecord') throw new Error('Unexpected command.');
+      const secondConflict: ConflictDetails = {
+        clientMutationId: request.clientMutationId,
+        failedCommandIndex: 0,
+        conflicts: [
+          {
+            recordId: command.recordId,
+            expectedRevision: command.expectedRevision,
+            currentRevision: command.expectedRevision + 1,
+            currentValues: { field_name: 'New Server value' },
+            submittedSet: { field_name: 'Local value' },
+          },
+        ],
+      };
+      throw new LoomTableClientError(
+        'conflict',
+        { message: 'Revision conflict again.', code: 'CONFLICT', httpStatus: 409 },
+        undefined,
+        secondConflict,
+      );
+    });
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 1, entries: [] }),
+      transport,
+    });
+    await scheduler.setOnline(true);
+    await scheduler.setAuthReady(true);
+    await scheduler.start();
+
+    const controller = new GridViewController(
+      new InMemoryLoomTableClient(createData(createRecords(1), createGridConfig(false))),
+      {
+        mutationQueue: scheduler,
+        mutationIdFactory: () => firstConflict.clientMutationId,
+        isOffline: () => false,
+      },
+    );
+    await controller.load();
+
+    await expect(
+      controller.editCell('record_01', 'field_name', 'Local value'),
+    ).rejects.toMatchObject({ kind: 'conflict' });
+
+    controller.resolveConflict('record_01', 'overwrite');
+    await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(controller.state.conflicts[0]?.clientMutationId).not.toBe(firstConflict.clientMutationId),
+    );
+    expect(controller.state.conflicts[0]?.currentRevision).toBe(3);
+    expect(controller.state.saveStatus).toBe('conflict');
+
+    controller.dispose();
+    scheduler.stop();
+  });
+
   it('keeps Map Views in navigation and delegates selection without querying them as Grid data', async () => {
     const mapView: Extract<View, { type: 'map' }> = {
       id: 'view_map',
