@@ -330,6 +330,57 @@ describe('MutationQueueScheduler', () => {
     scheduler.stop();
   });
 
+  it('adopts the Server value by removing only the current conflict entry', async () => {
+    const conflict: ConflictDetails = {
+      clientMutationId: MUTATION_IDS[0],
+      failedCommandIndex: 0,
+      conflicts: [
+        {
+          recordId: 'record_01',
+          expectedRevision: 1,
+          currentRevision: 2,
+          currentValues: { field_a: 'server' },
+          submittedSet: { field_a: 'first local' },
+        },
+      ],
+    };
+    const transport = fakeTransport();
+    transport.mutate.mockRejectedValueOnce(
+      new LoomTableClientError(
+        'conflict',
+        { message: 'Conflict.', code: 'CONFLICT', httpStatus: 409 },
+        undefined,
+        conflict,
+      ),
+    );
+    const { scheduler } = createScheduler(
+      [
+        entry({ id: MUTATION_IDS[0], value: 'first local' }),
+        entry({ id: MUTATION_IDS[1], value: 'later local' }),
+      ],
+      transport,
+    );
+
+    await startReady(scheduler);
+    expect(scheduler.getSnapshot().entries.map((item) => item.clientMutationId)).toEqual([
+      MUTATION_IDS[0],
+      MUTATION_IDS[1],
+    ]);
+
+    await scheduler.resolveConflict('record_01', 'adopt-server');
+    await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2));
+
+    expect(transport.mutate.mock.calls[1]?.[1].clientMutationId).toBe(MUTATION_IDS[1]);
+    expect(transport.mutate.mock.calls[1]?.[1].commands[0]).toMatchObject({
+      kind: 'updateRecord',
+      recordId: 'record_01',
+      expectedRevision: 2,
+      set: { field_a: 'later local' },
+    });
+    expect(scheduler.getSnapshot().entries).toHaveLength(0);
+    scheduler.stop();
+  });
+
   it('keeps IDEMPOTENCY_KEY_REUSED separate as a terminal safety error', async () => {
     const transport = fakeTransport();
     transport.mutate.mockRejectedValueOnce(
