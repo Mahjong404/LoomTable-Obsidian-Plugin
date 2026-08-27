@@ -415,12 +415,12 @@ export class GridViewController {
           complete();
         })
         .catch((error: unknown) => {
-        const clientError = asClientError(error);
-        this.#publish({
-          editError: clientError.details,
-          saveStatus: this.#isOffline() ? 'offline-readonly' : 'error',
+          const clientError = asClientError(error);
+          this.#publish({
+            editError: clientError.details,
+            saveStatus: this.#isOffline() ? 'offline-readonly' : 'error',
+          });
         });
-      });
       return;
     }
 
