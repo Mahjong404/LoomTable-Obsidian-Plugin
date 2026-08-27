@@ -195,25 +195,20 @@ describe('MutationQueueScheduler', () => {
       set: { field_a: 'two' },
     });
     expect(calls[2]?.clientMutationId).toBe(MUTATION_IDS[1]);
-    expect(saves.at(-1)?.entries).toContainEqual(
-      expect.objectContaining({
-        state: 'sending',
-        recordId: 'record_01',
-        clientMutationId: MUTATION_IDS[1],
-        expectedRevision: 2,
-        request: expect.objectContaining({
-          clientMutationId: MUTATION_IDS[1],
-          commands: [
-            expect.objectContaining({
-              kind: 'updateRecord',
-              recordId: 'record_01',
-              expectedRevision: 2,
-              set: { field_a: 'two' },
-            }),
-          ],
-        }),
-      }),
+    const persistedSecond = saves.at(-1)?.entries.find(
+      (entry) => entry.clientMutationId === MUTATION_IDS[1],
     );
+    expect(persistedSecond?.state).toBe('sending');
+    expect(persistedSecond?.recordId).toBe('record_01');
+    expect(persistedSecond?.clientMutationId).toBe(MUTATION_IDS[1]);
+    expect(persistedSecond?.expectedRevision).toBe(2);
+    expect(persistedSecond?.request.clientMutationId).toBe(MUTATION_IDS[1]);
+    expect(persistedSecond?.request.commands[0]).toMatchObject({
+      kind: 'updateRecord',
+      recordId: 'record_01',
+      expectedRevision: 2,
+      set: { field_a: 'two' },
+    });
 
     releases.get('record_01-two')?.();
     await started;
