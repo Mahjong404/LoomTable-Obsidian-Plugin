@@ -242,7 +242,7 @@ export class MutationQueueScheduler {
       });
     }
 
-    void this.drain().catch(() => undefined);
+    await this.drain();
   }
 
   async discardAllForRecord(recordId: string): Promise<void> {
