@@ -896,4 +896,3 @@ function asClientError(error: unknown): LoomTableClientError {
 function clampRandom(value: number): number {
   return Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0.5;
 }
-
