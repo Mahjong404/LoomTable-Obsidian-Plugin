@@ -209,7 +209,10 @@ describe('MapViewController', () => {
       .fn()
       .mockResolvedValueOnce(summaryResult('cursor_initial'))
       .mockResolvedValueOnce(summaryResult('cursor_after_clear'));
-    const queryMap = vi.fn().mockResolvedValueOnce(initialQuery).mockResolvedValueOnce(clearedQuery);
+    const queryMap = vi
+      .fn()
+      .mockResolvedValueOnce(initialQuery)
+      .mockResolvedValueOnce(clearedQuery);
     const controller = createController(
       createClient({ summarizeMap, queryMap }),
       createMapView('field_location'),
