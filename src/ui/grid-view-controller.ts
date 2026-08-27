@@ -269,6 +269,7 @@ export class GridViewController {
 
     const value = normalized.value;
     const authoritative = this.#authoritativeRecords.get(recordId) ?? record;
+    const durablePendingBefore = this.#durableQueue?.getRecordSnapshot(recordId).pending ?? 0;
     this.#dirtyRecords.add(recordId);
     const optimistic = options.unset
       ? withoutCellValue(record, fieldId)
@@ -310,7 +311,20 @@ export class GridViewController {
         await this.#queue!.enqueue(job);
       }
     } catch (error) {
-      if (!(error instanceof LoomTableClientError) || error.kind !== 'conflict') {
+      const durablePendingAfter = this.#durableQueue?.getRecordSnapshot(recordId).pending ?? 0;
+      const rejectedBeforeEntry =
+        this.#durableQueue !== null && durablePendingBefore === 0 && durablePendingAfter === 0;
+      if (rejectedBeforeEntry) {
+        const clientError = asClientError(error);
+        const fallback = this.#authoritativeRecords.get(recordId) ?? record;
+        this.#dirtyRecords.delete(recordId);
+        this.#optimisticRecords.set(recordId, fallback);
+        this.#publish({
+          records: replaceRecord(this.#state.records, fallback),
+          editError: clientError.details,
+          saveStatus: this.#isOffline() ? 'offline-readonly' : 'error',
+        });
+      } else if (!(error instanceof LoomTableClientError) || error.kind !== 'conflict') {
         const fallback = this.#authoritativeRecords.get(recordId) ?? record;
         this.#optimisticRecords.set(recordId, fallback);
         this.#publish({ records: replaceRecord(this.#state.records, fallback) });

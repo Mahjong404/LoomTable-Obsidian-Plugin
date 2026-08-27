@@ -381,6 +381,44 @@ describe('GridViewController', () => {
     }
   });
 
+  it('reports auth gating when durable enqueue rejects before creating an entry', async () => {
+    const transport = {
+      mutate: vi.fn<(tableId: string, request: MutationRequest) => Promise<MutationResult>>(),
+    };
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 1, entries: [] }),
+      transport,
+    });
+    await scheduler.start();
+    await scheduler.setOnline(true);
+
+    const controller = new GridViewController(
+      new InMemoryLoomTableClient(createData(createRecords(1), createGridConfig(false))),
+      {
+        mutationQueue: scheduler,
+        mutationIdFactory: () => 'mut_0123456789ABCDEFGHJKMNPQRS',
+        isOffline: () => false,
+      },
+    );
+    await controller.load();
+
+    await expect(
+      controller.editCell('record_01', 'field_name', 'Local value'),
+    ).rejects.toMatchObject({ kind: 'authentication' });
+
+    expect(scheduler.getSnapshot().entries).toHaveLength(0);
+    expect(controller.state.records[0]?.values.field_name).toBe('Record 1');
+    expect(controller.state.editError).toMatchObject({
+      message: 'Authentication is required before this mutation can be queued.',
+      httpStatus: 401,
+    });
+    expect(controller.state.saveStatus).toBe('error');
+    expect(controller.state.saveStatus).not.toBe('saved');
+
+    controller.dispose();
+    scheduler.stop();
+  });
+
   it('can edit a Map-selected Record that is outside the current Grid page', async () => {
     const visible = createRecords(1)[0];
     if (visible === undefined) throw new Error('Grid fixture is missing.');
