@@ -257,6 +257,7 @@ describe('Record Detail Location seam', () => {
       createRecordDetail(createRecord({ field_location: { label: 'Local' } }), {
         fields: [createField('field_location', 'Location')],
         translate: createTranslator('en'),
+        confirmDiscard: vi.fn().mockReturnValue(true),
         callbacks: {
           onLocationEdit,
           onClose,
