@@ -176,19 +176,12 @@ describe('MutationQueueScheduler', () => {
     const started = scheduler.start();
     await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2));
 
-    expect(calls.map(recordIdForRequest)).toEqual([
-      'record_01',
-      'record_02',
-    ]);
+    expect(calls.map(recordIdForRequest)).toEqual(['record_01', 'record_02']);
     releases.get('record_01-one')?.();
     releases.get('record_02-two')?.();
     await started;
 
-    expect(calls.map(recordIdForRequest)).toEqual([
-      'record_01',
-      'record_02',
-      'record_01',
-    ]);
+    expect(calls.map(recordIdForRequest)).toEqual(['record_01', 'record_02', 'record_01']);
     expect(calls[0]?.commands[0]).toMatchObject({
       expectedRevision: 1,
       set: { field_a: 'one' },
@@ -381,7 +374,6 @@ function fakeTransport(): DurableMutationQueueTransport & {
     ),
   };
 }
-
 
 function recordIdForRequest(request: MutationRequest): string {
   const command = request.commands[0];
