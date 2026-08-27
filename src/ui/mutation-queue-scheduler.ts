@@ -464,21 +464,15 @@ function withExpectedRevision(
   expectedRevision: number,
   updatedAt: string | undefined,
 ): PersistedMutationQueueEntry {
-  const commandIndex = entry.request.commands.findIndex(
-    (command) => command.kind === 'updateRecord' && command.recordId === entry.recordId,
-  );
-  if (commandIndex < 0) return entry;
+  const [command] = entry.request.commands;
+  if (command.kind !== 'updateRecord' || command.recordId !== entry.recordId) return entry;
 
   return {
     ...entry,
     expectedRevision,
     request: {
       ...entry.request,
-      commands: entry.request.commands.map((command, index) =>
-        index === commandIndex && command.kind === 'updateRecord'
-          ? { ...command, expectedRevision }
-          : command,
-      ),
+      commands: [{ ...command, expectedRevision }],
     },
     ...(updatedAt === undefined ? {} : { updatedAt }),
   };
