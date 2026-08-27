@@ -972,4 +972,3 @@ function gridSaveStatus(state: GridState, offline: boolean, dirty = false): View
   if (dirty) return 'dirty';
   return 'saved';
 }
-
