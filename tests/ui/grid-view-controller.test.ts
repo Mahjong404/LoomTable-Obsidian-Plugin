@@ -806,7 +806,9 @@ describe('GridViewController', () => {
     controller.resolveConflict('record_01', 'overwrite');
     await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2));
     await vi.waitFor(() =>
-      expect(controller.state.conflicts[0]?.clientMutationId).not.toBe(firstConflict.clientMutationId),
+      expect(controller.state.conflicts[0]?.clientMutationId).not.toBe(
+        firstConflict.clientMutationId,
+      ),
     );
     expect(controller.state.conflicts[0]?.currentRevision).toBe(3);
     expect(controller.state.saveStatus).toBe('conflict');
