@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   LoomTableClientError,
+  type ConflictDetails,
   type Field,
   type GridViewConfig,
   type JsonValue,
@@ -25,6 +26,7 @@ import { createRecordDetail } from '../../src/ui/record-detail';
 import {
   MutationQueueScheduler,
   type DurableMutationQueuePort,
+  type DurableMutationQueueTransport,
   type MutationQueueRecordSnapshot,
   type MutationQueueSchedulerEvent,
 } from '../../src/ui/mutation-queue-scheduler';
@@ -649,6 +651,86 @@ describe('GridViewController', () => {
     expect(mutate.mock.calls[1]?.[1].commands[0]).toMatchObject({ expectedRevision: 2 });
     expect(controller.state.conflicts).toHaveLength(0);
     expect(controller.state.records[0]?.revision).toBe(3);
+  });
+
+  it('keeps the full durable Conflict metadata and retries overwrite with a fresh request', async () => {
+    const conflict: ConflictDetails = {
+      clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+      failedCommandIndex: 0,
+      conflicts: [
+        {
+          recordId: 'record_01',
+          expectedRevision: 1,
+          currentRevision: 2,
+          currentValues: { field_name: 'Server value', field_other: 7 },
+          submittedSet: { field_name: 'Local value' },
+          submittedUnsetFieldIds: ['field_other'],
+        },
+      ],
+    };
+    const transport = {
+      mutate: vi.fn<DurableMutationQueueTransport['mutate']>(),
+    };
+    transport.mutate.mockRejectedValueOnce(
+      new LoomTableClientError(
+        'conflict',
+        { message: 'Revision conflict.', code: 'CONFLICT', httpStatus: 409 },
+        undefined,
+        conflict,
+      ),
+    );
+    transport.mutate.mockImplementationOnce(async (_tableId, request) =>
+      mutationResult(request.clientMutationId, 'Local value', 3),
+    );
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 1, entries: [] }),
+      transport,
+    });
+    await scheduler.setOnline(true);
+    await scheduler.setAuthReady(true);
+    await scheduler.start();
+
+    const controller = new GridViewController(
+      new InMemoryLoomTableClient(createData(createRecords(1), createGridConfig(false))),
+      {
+        mutationQueue: scheduler,
+        mutationIdFactory: () => conflict.clientMutationId,
+        isOffline: () => false,
+      },
+    );
+    await controller.load();
+
+    await expect(
+      controller.editCell('record_01', 'field_name', 'Local value'),
+    ).rejects.toMatchObject({ kind: 'conflict' });
+
+    expect(controller.state.conflicts[0]).toMatchObject({
+      clientMutationId: conflict.clientMutationId,
+      failedCommandIndex: 0,
+      expectedRevision: 1,
+      currentRevision: 2,
+      currentValues: { field_name: 'Server value', field_other: 7 },
+      submittedSet: { field_name: 'Local value' },
+      submittedUnsetFieldIds: ['field_other'],
+    });
+    expect(controller.state.saveStatus).toBe('conflict');
+
+    controller.resolveConflict('record_01', 'overwrite');
+    await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2));
+
+    const retryRequest = transport.mutate.mock.calls[1]?.[1];
+    expect(retryRequest?.clientMutationId).toMatch(/^mut_[0-9A-HJKMNP-TV-Z]{26}$/);
+    expect(retryRequest?.clientMutationId).not.toBe(conflict.clientMutationId);
+    expect(retryRequest?.commands[0]).toMatchObject({
+      kind: 'updateRecord',
+      recordId: 'record_01',
+      expectedRevision: 2,
+      set: { field_name: 'Local value' },
+      unsetFieldIds: ['field_other'],
+    });
+
+    controller.dispose();
+    scheduler.stop();
   });
 
   it('keeps Map Views in navigation and delegates selection without querying them as Grid data', async () => {
