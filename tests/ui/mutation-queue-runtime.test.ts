@@ -60,6 +60,10 @@ describe('MutationQueueRuntime', () => {
     const scheduler = await runtime.start();
 
     await expect(scheduler.enqueue('table_01', request())).rejects.toMatchObject({
+      kind: 'validation',
+    });
+    await runtime.setOnline(true);
+    await expect(scheduler.enqueue('table_01', request())).rejects.toMatchObject({
       kind: 'authentication',
     });
     expect(scheduler.getSnapshot().entries).toHaveLength(0);
