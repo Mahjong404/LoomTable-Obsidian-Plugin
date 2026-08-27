@@ -72,7 +72,10 @@ export class MutationQueueScheduler {
   readonly #listeners = new Set<MutationQueueSchedulerListener>();
   readonly #waiters = new Map<
     string,
-    { readonly resolve: (result: MutationResult) => void; readonly reject: (error: unknown) => void }
+    {
+      readonly resolve: (result: MutationResult) => void;
+      readonly reject: (error: unknown) => void;
+    }
   >();
 
   #state: MutationQueueSettingsV1;
@@ -454,10 +457,7 @@ export class MutationQueueScheduler {
     this.#notifyChangedRecords(previous, next);
   }
 
-  #notifyChangedRecords(
-    previous: MutationQueueSettingsV1,
-    next: MutationQueueSettingsV1,
-  ): void {
+  #notifyChangedRecords(previous: MutationQueueSettingsV1, next: MutationQueueSettingsV1): void {
     const recordIds = new Set([
       ...previous.entries.map((entry) => entry.recordId),
       ...next.entries.map((entry) => entry.recordId),
