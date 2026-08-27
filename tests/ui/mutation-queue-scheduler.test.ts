@@ -376,11 +376,7 @@ function fakeTransport(): DurableMutationQueueTransport & {
       async (_tableId: string, request: MutationRequest) => {
         const command = request.commands[0];
         if (command?.kind !== 'updateRecord') throw new Error('Unexpected command.');
-        return result(
-          request.clientMutationId,
-          command.recordId,
-          command.expectedRevision + 1,
-        );
+        return result(request.clientMutationId, command.recordId, command.expectedRevision + 1);
       },
     ),
   };
