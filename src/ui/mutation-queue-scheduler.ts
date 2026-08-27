@@ -1,7 +1,6 @@
 import {
   LoomTableClientError,
   type LoomTableClientErrorKind,
-  type LoomTableClientErrorDetails,
   type MutationRequest,
   type MutationResult,
   type ConflictDetails,
