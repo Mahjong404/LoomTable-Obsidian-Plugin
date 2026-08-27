@@ -26,7 +26,13 @@ const ERROR_KINDS: readonly LoomTableClientErrorKind[] = [
   'validation',
 ];
 
-export type MutationQueueEntryState = 'queued' | 'error' | 'conflict';
+export type MutationQueueEntryState =
+  | 'queued'
+  | 'sending'
+  | 'auth-paused'
+  | 'terminal'
+  | 'error'
+  | 'conflict';
 
 export interface PersistedMutationRequest {
   readonly clientMutationId: string;
@@ -92,11 +98,11 @@ export class MutationQueueStore {
   }
 
   getSnapshot(): MutationQueueSettingsV1 {
-    return normalizeMutationQueueSettings(this.#state);
+    return normalizeMutationQueueSettings(this.#state, { recoverSending: false });
   }
 
   async replace(value: unknown): Promise<void> {
-    const next = normalizeMutationQueueSettings(value);
+    const next = normalizeMutationQueueSettings(value, { recoverSending: false });
     if (this.#persistence !== undefined) await this.#persistence.save(next);
     this.#state = next;
   }
@@ -111,8 +117,12 @@ export class MutationQueueStore {
   }
 }
 
-export function normalizeMutationQueueSettings(value: unknown): MutationQueueSettingsV1 {
+export function normalizeMutationQueueSettings(
+  value: unknown,
+  options: { readonly recoverSending?: boolean } = {},
+): MutationQueueSettingsV1 {
   if (value === undefined || value === null) return { schemaVersion: 1, entries: [] };
+  const recoverSending = options.recoverSending ?? true;
 
   const root = objectValue(value, 'mutationQueue');
   assertKeys(root, ['schemaVersion', 'entries'], 'mutationQueue');
@@ -126,7 +136,11 @@ export function normalizeMutationQueueSettings(value: unknown): MutationQueueSet
 
   const ids = new Set<string>();
   const entries = root.entries.map((candidate, index) => {
-    const entry = parseEntry(candidate, 'mutationQueue.entries[' + index + ']');
+    const entry = parseEntry(
+      candidate,
+      'mutationQueue.entries[' + index + ']',
+      recoverSending,
+    );
     if (ids.has(entry.clientMutationId)) {
       fail(
         'mutationQueue.entries[' + index + '].clientMutationId',
@@ -141,7 +155,11 @@ export function normalizeMutationQueueSettings(value: unknown): MutationQueueSet
   return normalized;
 }
 
-function parseEntry(value: unknown, path: string): PersistedMutationQueueEntry {
+function parseEntry(
+  value: unknown,
+  path: string,
+  recoverSending: boolean,
+): PersistedMutationQueueEntry {
   const raw = objectValue(value, path);
   assertKeys(
     raw,
@@ -179,7 +197,7 @@ function parseEntry(value: unknown, path: string): PersistedMutationQueueEntry {
     fail(path + '.expectedRevision', 'must match the request command revision');
   }
 
-  const state = parseState(raw.state, path + '.state');
+  const state = parseState(raw.state, path + '.state', recoverSending);
   const attemptCount = integer(raw.attemptCount, path + '.attemptCount', 0);
   const nextAttemptAt =
     raw.nextAttemptAt === undefined
@@ -198,7 +216,10 @@ function parseEntry(value: unknown, path: string): PersistedMutationQueueEntry {
           clientMutationId,
         );
 
-  if (state === 'error' && lastError === undefined) {
+  if (
+    (state === 'error' || state === 'auth-paused' || state === 'terminal') &&
+    lastError === undefined
+  ) {
     fail(path + '.lastError', 'is required for an error entry');
   }
   if (state === 'conflict' && conflict === undefined) {
@@ -262,10 +283,23 @@ function parseCommand(value: unknown, path: string): UpdateRecordCommand {
   };
 }
 
-function parseState(value: unknown, path: string): MutationQueueEntryState {
-  if (value === 'sending') return 'queued';
-  if (value === 'queued' || value === 'error' || value === 'conflict') return value;
-  fail(path, 'must be queued, sending, error, or conflict');
+function parseState(
+  value: unknown,
+  path: string,
+  recoverSending: boolean,
+): MutationQueueEntryState {
+  if (value === 'sending' && recoverSending) return 'queued';
+  if (
+    value === 'queued' ||
+    value === 'sending' ||
+    value === 'auth-paused' ||
+    value === 'terminal' ||
+    value === 'error' ||
+    value === 'conflict'
+  ) {
+    return value;
+  }
+  fail(path, 'must be queued, sending, auth-paused, terminal, error, or conflict');
 }
 
 function parseError(value: unknown, path: string): PersistedMutationQueueError {
