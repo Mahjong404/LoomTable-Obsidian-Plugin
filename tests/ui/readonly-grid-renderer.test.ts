@@ -272,6 +272,7 @@ describe('ReadonlyGridRenderer', () => {
 
   it('shows Server and local values with explicit conflict actions', () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const confirmDiscardAll = vi.fn().mockReturnValue(true);
     const callbacks = { ...rendererCallbacks(), confirmDiscardAll };
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
