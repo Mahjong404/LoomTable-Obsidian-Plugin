@@ -73,8 +73,7 @@ export const englishMessages = {
   'grid.openDetails': 'Open details',
   'grid.overwrite': 'Overwrite with local value',
   'grid.discardAll': 'Discard all pending edits for this Record',
-  'grid.discardAllConfirm':
-    'Discard all pending edits for this Record? This cannot be undone.',
+  'grid.discardAllConfirm': 'Discard all pending edits for this Record? This cannot be undone.',
   'grid.refresh': 'Refresh',
   'grid.retry': 'Retry save',
   'grid.rows': 'rows',
@@ -103,8 +102,7 @@ export const englishMessages = {
   'record.useServer': 'Use Server value',
   'record.overwrite': 'Overwrite with local value',
   'record.discardAll': 'Discard all pending edits',
-  'record.discardAllConfirm':
-    'Discard all pending edits for this Record? This cannot be undone.',
+  'record.discardAllConfirm': 'Discard all pending edits for this Record? This cannot be undone.',
   'record.location.previewHint': 'Ctrl/Cmd-hover to preview',
   'record.location.preview': 'Map preview',
   'record.location.attribution': 'Location only; no data was changed',
@@ -187,3 +185,4 @@ export const englishMessages = {
 
 export type MessageKey = keyof typeof englishMessages;
 export type MessageCatalog = { readonly [Key in MessageKey]: string };
+
