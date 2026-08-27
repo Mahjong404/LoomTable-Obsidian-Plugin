@@ -50,9 +50,9 @@ export class MutationQueueRuntime {
     this.#scheduler = scheduler;
 
     try {
+      await scheduler.start();
       await scheduler.setOnline(this.#online);
       await scheduler.setAuthReady(this.#authReady);
-      await scheduler.start();
     } catch (error) {
       this.#scheduler = null;
       throw error;
