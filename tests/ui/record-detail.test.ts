@@ -150,10 +150,12 @@ describe('Record Detail Location seam', () => {
 
   it('renders the complete returned Record after a Location save', async () => {
     const container = document.createElement('div');
-    const returnedRecord = createRecord({
-      field_location: { label: 'Server value', lat: 3, lng: 4, precision: 'exact' },
-    });
-    returnedRecord.revision = 2;
+    const returnedRecord = {
+      ...createRecord({
+        field_location: { label: 'Server value', lat: 3, lng: 4, precision: 'exact' },
+      }),
+      revision: 2,
+    };
     const onLocationEdit = vi.fn().mockResolvedValue(returnedRecord);
     container.append(
       createRecordDetail(createRecord({ field_location: { label: 'Local value' } }), {
