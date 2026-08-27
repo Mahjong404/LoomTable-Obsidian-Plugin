@@ -188,6 +188,46 @@ describe('MapViewController', () => {
     expect(controller.state.summary).toEqual(refreshedSummary.summary);
     expect(controller.state.features).toEqual(refreshedQuery.features);
     expect(controller.state.changeCursor).toBe('cursor_query');
+    expect(controller.state.saveStatus).toBe('saved');
+  });
+
+  it('uses the Server Query result when a Location mutation clears Map membership', async () => {
+    const initialRecord = createRecord('record_01');
+    const clearedRecord: LoomTableRecord = {
+      ...initialRecord,
+      revision: 2,
+      values: { field_location: null },
+    };
+    const initialQuery = { ...queryResult('record_initial', 1), changeCursor: 'cursor_initial' };
+    const clearedQuery: MapQueryResult = {
+      features: [],
+      viewportRenderableRecordCount: 0,
+      viewRevision: 1,
+      changeCursor: 'cursor_after_clear',
+    };
+    const summarizeMap = vi
+      .fn()
+      .mockResolvedValueOnce(summaryResult('cursor_initial'))
+      .mockResolvedValueOnce(summaryResult('cursor_after_clear'));
+    const queryMap = vi.fn().mockResolvedValueOnce(initialQuery).mockResolvedValueOnce(clearedQuery);
+    const controller = createController(
+      createClient({ summarizeMap, queryMap }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.load();
+    await controller.applyMutationInvalidation({
+      tableId: 'table_01',
+      recordId: 'record_01',
+      record: clearedRecord,
+      changeCursor: 'cursor_mutation',
+    });
+
+    expect(queryMap).toHaveBeenCalledTimes(2);
+    expect(controller.state.features).toEqual(clearedQuery.features);
+    expect(controller.state.viewportRenderableRecordCount).toBe(0);
+    expect(controller.state.saveStatus).toBe('saved');
   });
 
   it('debounces camera changes and queries with the latest camera', async () => {
