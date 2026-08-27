@@ -1042,7 +1042,8 @@ class QueuedDurableQueue implements DurableMutationQueuePort {
     return () => this.#listeners.delete(listener);
   }
 
-  getRecordSnapshot(): MutationQueueRecordSnapshot {
+  getRecordSnapshot(recordId: string): MutationQueueRecordSnapshot {
+    void recordId;
     return this.#snapshot;
   }
 
