@@ -286,7 +286,11 @@ export class MutationQueueScheduler {
     entry: PersistedMutationQueueEntry,
     result: MutationResult,
   ): Promise<boolean> {
-    if (!this.#state.entries.some((candidate) => candidate.clientMutationId === entry.clientMutationId)) {
+    if (
+      !this.#state.entries.some(
+        (candidate) => candidate.clientMutationId === entry.clientMutationId,
+      )
+    ) {
       return false;
     }
 
