@@ -10,6 +10,7 @@ import {
 import {
   MutationQueueScheduler,
   type DurableMutationQueueTransport,
+  type MutationQueueSchedulerEvent,
 } from '../../src/ui/mutation-queue-scheduler';
 import {
   MutationQueueStore,
@@ -460,6 +461,69 @@ describe('MutationQueueScheduler', () => {
     await scheduler.drain();
     expect(transport.mutate).toHaveBeenCalledTimes(1);
     scheduler.stop();
+  });
+
+  it('emits applied events for unchanged results but not failed outcomes', async () => {
+    const transport = fakeTransport();
+    const unchanged = result(MUTATION_IDS[0], 'record_01', 2);
+    transport.mutate.mockResolvedValueOnce({
+      ...unchanged,
+      results: unchanged.results.map((item) => ({ ...item, status: 'unchanged' })),
+    });
+    const { scheduler } = createScheduler([entry()], transport);
+    const events: MutationQueueSchedulerEvent[] = [];
+    scheduler.subscribe((event) => events.push(event));
+
+    await startReady(scheduler);
+
+    expect(events.find((event) => event.applied !== undefined)?.applied?.result.results[0]).toMatchObject({
+      status: 'unchanged',
+      record: { id: 'record_01', revision: 2 },
+    });
+    scheduler.stop();
+
+    const failures = [
+      new LoomTableClientError(
+        'conflict',
+        { message: 'Conflict.', code: 'CONFLICT', httpStatus: 409 },
+        undefined,
+        {
+          clientMutationId: MUTATION_IDS[0],
+          failedCommandIndex: 0,
+          conflicts: [
+            {
+              recordId: 'record_01',
+              expectedRevision: 1,
+              currentRevision: 2,
+              currentValues: {},
+            },
+          ],
+        },
+      ),
+      new LoomTableClientError('authentication', {
+        message: 'Authentication required.',
+        code: 'AUTH_REQUIRED',
+        httpStatus: 401,
+      }),
+      new LoomTableClientError('validation', {
+        message: 'Terminal failure.',
+        code: 'INVALID_MUTATION',
+        httpStatus: 422,
+      }),
+    ];
+
+    for (const failure of failures) {
+      const failedTransport = fakeTransport();
+      failedTransport.mutate.mockRejectedValueOnce(failure);
+      const failedScheduler = createScheduler([entry()], failedTransport).scheduler;
+      const failedEvents: MutationQueueSchedulerEvent[] = [];
+      failedScheduler.subscribe((event) => failedEvents.push(event));
+
+      await startReady(failedScheduler);
+
+      expect(failedEvents.every((event) => event.applied === undefined)).toBe(true);
+      failedScheduler.stop();
+    }
   });
 
   it.each([
