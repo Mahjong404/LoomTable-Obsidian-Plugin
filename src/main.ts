@@ -1,10 +1,7 @@
 import { getLanguage, Plugin } from 'obsidian';
 
 import { HttpLoomTableClient } from './client/http-loomtable-client';
-import {
-  LoomTableClientError,
-  type ConnectionCheckResult,
-} from './client/loomtable-client';
+import { LoomTableClientError, type ConnectionCheckResult } from './client/loomtable-client';
 import { obsidianHttpTransport } from './client/obsidian-http-transport';
 import {
   ObsidianSecretCredentialStore,
