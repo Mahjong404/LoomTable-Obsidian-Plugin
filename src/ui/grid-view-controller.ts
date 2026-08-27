@@ -355,10 +355,7 @@ export class GridViewController {
     return this.#state.records.find((candidate) => candidate.id === recordId);
   }
 
-  resolveConflict(
-    recordId: string,
-    action: 'use-server' | 'overwrite' | 'discard-all',
-  ): void {
+  resolveConflict(recordId: string, action: 'use-server' | 'overwrite' | 'discard-all'): void {
     const conflict = this.#conflicts.get(recordId);
     const tableId = this.#state.selectedTableId;
     if (conflict === undefined || tableId === null) return;
@@ -963,9 +960,7 @@ function gridSaveStatus(state: GridState, offline: boolean, dirty = false): View
     return 'conflict';
   }
   if (
-    Object.values(state.editStatuses).some(
-      (status) => status === 'error' || status === 'terminal',
-    )
+    Object.values(state.editStatuses).some((status) => status === 'error' || status === 'terminal')
   ) {
     return 'error';
   }
@@ -977,3 +972,4 @@ function gridSaveStatus(state: GridState, offline: boolean, dirty = false): View
   if (dirty) return 'dirty';
   return 'saved';
 }
+
