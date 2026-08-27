@@ -5,14 +5,14 @@ import {
   type MutationRequest,
   type MutationResult,
   type ConflictDetails,
-} from '../client/loomtable-client';
+} from "../client/loomtable-client";
 import {
   MutationQueueStore,
   type MutationQueueEntryState,
   type MutationQueueSettingsV1,
   type PersistedMutationQueueEntry,
   type PersistedMutationQueueError,
-} from '../settings/mutation-queue-settings';
+} from "../settings/mutation-queue-settings";
 
 export const MUTATION_QUEUE_RETRY_BASE_DELAY_MS = 250;
 export const MUTATION_QUEUE_MAX_BACKOFF_MS = 24 * 60 * 60 * 1_000;
@@ -63,7 +63,9 @@ export class MutationQueueScheduler {
     this.#now = options.now ?? Date.now;
     this.#random = options.random ?? Math.random;
     this.#onApplied = options.onApplied;
-    this.#setTimer = options.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
+    this.#setTimer =
+      options.setTimer ??
+      ((callback, delayMs) => setTimeout(callback, delayMs));
     this.#clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer));
     this.#state = this.#store.getSnapshot();
   }
@@ -117,13 +119,15 @@ export class MutationQueueScheduler {
     }
 
     if (this.#started) {
-      const resumed = this.#state.entries.some((entry) => entry.state === 'auth-paused');
+      const resumed = this.#state.entries.some(
+        (entry) => entry.state === "auth-paused",
+      );
       if (resumed) {
         await this.#updateState((state) => ({
           ...state,
           entries: state.entries.map((entry) =>
-            entry.state === 'auth-paused'
-              ? clearFailure(entry, 'queued', this.#timestamp())
+            entry.state === "auth-paused"
+              ? clearFailure(entry, "queued", this.#timestamp())
               : entry,
           ),
         }));
@@ -177,17 +181,24 @@ export class MutationQueueScheduler {
       const current = this.#state.entries.find(
         (candidate) => candidate.clientMutationId === entry.clientMutationId,
       );
-      if (current === undefined || current.state !== 'queued') return;
+      if (current === undefined || current.state !== "queued") return;
 
-      const sending = await this.#updateEntry(current.clientMutationId, (candidate) =>
-        clearFailure(candidate, 'sending', this.#timestamp(), candidate.attemptCount + 1),
+      const sending = await this.#updateEntry(
+        current.clientMutationId,
+        (candidate) =>
+          clearFailure(
+            candidate,
+            "sending",
+            this.#timestamp(),
+            candidate.attemptCount + 1,
+          ),
       );
       if (sending === undefined) return;
 
       if (!this.#started) return;
       if (!this.#canSend()) {
         await this.#updateEntry(sending.clientMutationId, (candidate) =>
-          clearFailure(candidate, 'queued', this.#timestamp()),
+          clearFailure(candidate, "queued", this.#timestamp()),
         );
         return;
       }
@@ -207,8 +218,9 @@ export class MutationQueueScheduler {
       if (result.clientMutationId !== sending.clientMutationId) {
         await this.#handleFailure(
           sending,
-          new LoomTableClientError('invalid-response', {
-            message: 'The mutation response did not match the queued mutation ID.',
+          new LoomTableClientError("invalid-response", {
+            message:
+              "The mutation response did not match the queued mutation ID.",
           }),
         );
         return;
@@ -235,7 +247,7 @@ export class MutationQueueScheduler {
     const action = classifyMutationError(clientError);
     const updatedAt = this.#timestamp();
 
-    if (action === 'requeue') {
+    if (action === "requeue") {
       const delayMs = retryDelayMs(
         entry.attemptCount,
         clientError.details.retryAfterMs,
@@ -244,7 +256,7 @@ export class MutationQueueScheduler {
       await this.#updateEntry(entry.clientMutationId, (candidate) =>
         withFailure(
           candidate,
-          'queued',
+          "queued",
           clientError,
           updatedAt,
           new Date(this.#now() + delayMs).toISOString(),
@@ -253,24 +265,31 @@ export class MutationQueueScheduler {
       return;
     }
 
-    if (action === 'auth-paused') {
+    if (action === "auth-paused") {
       this.#authReady = false;
       this.#clearWakeTimer();
       await this.#updateEntry(entry.clientMutationId, (candidate) =>
-        withFailure(candidate, 'auth-paused', clientError, updatedAt),
+        withFailure(candidate, "auth-paused", clientError, updatedAt),
       );
       return;
     }
 
-    if (action === 'conflict' && clientError.conflict !== undefined) {
+    if (action === "conflict" && clientError.conflict !== undefined) {
       await this.#updateEntry(entry.clientMutationId, (candidate) =>
-        withFailure(candidate, 'conflict', clientError, updatedAt, undefined, clientError.conflict),
+        withFailure(
+          candidate,
+          "conflict",
+          clientError,
+          updatedAt,
+          undefined,
+          clientError.conflict,
+        ),
       );
       return;
     }
 
     await this.#updateEntry(entry.clientMutationId, (candidate) =>
-      withFailure(candidate, 'terminal', clientError, updatedAt),
+      withFailure(candidate, "terminal", clientError, updatedAt),
     );
   }
 
@@ -293,7 +312,11 @@ export class MutationQueueScheduler {
   }
 
   async #removeEntry(clientMutationId: string): Promise<boolean> {
-    if (!this.#state.entries.some((entry) => entry.clientMutationId === clientMutationId)) {
+    if (
+      !this.#state.entries.some(
+        (entry) => entry.clientMutationId === clientMutationId,
+      )
+    ) {
       return false;
     }
     await this.#updateState((state) => ({
@@ -332,9 +355,10 @@ export class MutationQueueScheduler {
     const now = this.#now();
     return [...heads.values()].filter(
       (entry) =>
-        entry.state === 'queued' &&
+        entry.state === "queued" &&
         !this.#inFlight.has(entry.recordId) &&
-        (entry.nextAttemptAt === undefined || Date.parse(entry.nextAttemptAt) <= now),
+        (entry.nextAttemptAt === undefined ||
+          Date.parse(entry.nextAttemptAt) <= now),
     );
   }
 
@@ -351,7 +375,7 @@ export class MutationQueueScheduler {
     const nextAttemptAt = [...heads.values()]
       .filter(
         (entry) =>
-          entry.state === 'queued' &&
+          entry.state === "queued" &&
           !this.#inFlight.has(entry.recordId) &&
           entry.nextAttemptAt !== undefined,
       )
@@ -360,10 +384,7 @@ export class MutationQueueScheduler {
       .sort((left, right) => left - right)[0];
 
     if (nextAttemptAt === undefined) return;
-    const delayMs = Math.min(
-      Math.max(0, nextAttemptAt - now),
-      2_147_000_000,
-    );
+    const delayMs = Math.min(Math.max(0, nextAttemptAt - now), 2_147_000_000);
     this.#timer = this.#setTimer(() => {
       this.#timer = undefined;
       void this.drain().catch(() => undefined);
@@ -384,33 +405,38 @@ export class MutationQueueScheduler {
   }
 }
 
-type MutationFailureAction = 'requeue' | 'auth-paused' | 'conflict' | 'terminal';
+type MutationFailureAction =
+  "requeue" | "auth-paused" | "conflict" | "terminal";
 
-function classifyMutationError(error: LoomTableClientError): MutationFailureAction {
+function classifyMutationError(
+  error: LoomTableClientError,
+): MutationFailureAction {
   const { httpStatus, code } = error.details;
-  if (httpStatus === 401 || error.kind === 'authentication') return 'auth-paused';
+  if (httpStatus === 401 || error.kind === "authentication")
+    return "auth-paused";
   if (
     httpStatus === 409 &&
-    code === 'CONFLICT' &&
+    code === "CONFLICT" &&
     error.conflict !== undefined
   ) {
-    return 'conflict';
+    return "conflict";
   }
-  if (httpStatus === 409 && code === 'IDEMPOTENCY_KEY_REUSED') return 'terminal';
+  if (httpStatus === 409 && code === "IDEMPOTENCY_KEY_REUSED")
+    return "terminal";
   if (
-    error.kind === 'network' ||
-    error.kind === 'timeout' ||
+    error.kind === "network" ||
+    error.kind === "timeout" ||
     httpStatus === 408 ||
     httpStatus === 429 ||
     (httpStatus !== undefined &&
       httpStatus >= 500 &&
       httpStatus <= 599 &&
       httpStatus !== 501 &&
-      code !== 'MIGRATION_REQUIRED')
+      code !== "MIGRATION_REQUIRED")
   ) {
-    return 'requeue';
+    return "requeue";
   }
-  return 'terminal';
+  return "terminal";
 }
 
 function retryDelayMs(
@@ -422,27 +448,30 @@ function retryDelayMs(
   const exponential = MUTATION_QUEUE_RETRY_BASE_DELAY_MS * 2 ** exponent;
   const jitter = exponential * (0.75 + clampRandom(random()) * 0.5);
   const serverHint =
-    typeof retryAfterMs === 'number' && Number.isFinite(retryAfterMs) && retryAfterMs >= 0
+    typeof retryAfterMs === "number" &&
+    Number.isFinite(retryAfterMs) &&
+    retryAfterMs >= 0
       ? retryAfterMs
       : 0;
-  return Math.min(
-    MUTATION_QUEUE_MAX_BACKOFF_MS,
-    Math.max(jitter, serverHint),
-  );
+  return Math.min(MUTATION_QUEUE_MAX_BACKOFF_MS, Math.max(jitter, serverHint));
 }
 
-function recoverSending(state: MutationQueueSettingsV1): MutationQueueSettingsV1 {
+function recoverSending(
+  state: MutationQueueSettingsV1,
+): MutationQueueSettingsV1 {
   return {
     ...state,
     entries: state.entries.map((entry) =>
-      entry.state === 'sending' ? clearFailure(entry, 'queued', entry.updatedAt) : entry,
+      entry.state === "sending"
+        ? clearFailure(entry, "queued", entry.updatedAt)
+        : entry,
     ),
   };
 }
 
 function clearFailure(
   entry: PersistedMutationQueueEntry,
-  state: Extract<MutationQueueEntryState, 'queued' | 'sending'>,
+  state: Extract<MutationQueueEntryState, "queued" | "sending">,
   updatedAt: string,
   attemptCount = entry.attemptCount,
 ): PersistedMutationQueueEntry {
@@ -461,7 +490,10 @@ function clearFailure(
 
 function withFailure(
   entry: PersistedMutationQueueEntry,
-  state: Extract<MutationQueueEntryState, 'auth-paused' | 'terminal' | 'queued' | 'conflict'>,
+  state: Extract<
+    MutationQueueEntryState,
+    "auth-paused" | "terminal" | "queued" | "conflict"
+  >,
   error: LoomTableClientError,
   updatedAt: string,
   nextAttemptAt?: string,
@@ -484,51 +516,58 @@ function withFailure(
   };
 }
 
-function toPersistedError(error: LoomTableClientError): PersistedMutationQueueError {
+function toPersistedError(
+  error: LoomTableClientError,
+): PersistedMutationQueueError {
   const details = error.details;
   return {
     kind: error.kind,
     message: safeErrorMessage(error.kind),
     ...(details.code === undefined ? {} : { code: details.code.slice(0, 128) }),
-    ...(details.httpStatus === undefined ? {} : { httpStatus: details.httpStatus }),
-    ...(details.requestId === undefined ? {} : { requestId: details.requestId.slice(0, 256) }),
+    ...(details.httpStatus === undefined
+      ? {}
+      : { httpStatus: details.httpStatus }),
+    ...(details.requestId === undefined
+      ? {}
+      : { requestId: details.requestId.slice(0, 256) }),
   };
 }
 
 function safeErrorMessage(kind: LoomTableClientErrorKind): string {
   switch (kind) {
-    case 'authentication':
-      return 'Authentication is required before this mutation can be sent.';
-    case 'capability':
-      return 'The Server does not support this mutation.';
-    case 'conflict':
-      return 'The Record changed on the Server before this mutation was applied.';
-    case 'cursor-expired':
-      return 'The queued mutation is no longer valid for the current Server state.';
-    case 'forbidden':
-      return 'The Server denied this mutation.';
-    case 'invalid-response':
-      return 'The Server returned an invalid mutation response.';
-    case 'network':
-      return 'The Server could not be reached.';
-    case 'not-found':
-      return 'The Record or Table was not found.';
-    case 'server':
-      return 'The Server returned a mutation error.';
-    case 'timeout':
-      return 'The Server did not respond in time.';
-    case 'validation':
-      return 'The Server rejected this mutation.';
+    case "authentication":
+      return "Authentication is required before this mutation can be sent.";
+    case "capability":
+      return "The Server does not support this mutation.";
+    case "conflict":
+      return "The Record changed on the Server before this mutation was applied.";
+    case "cursor-expired":
+      return "The queued mutation is no longer valid for the current Server state.";
+    case "forbidden":
+      return "The Server denied this mutation.";
+    case "invalid-response":
+      return "The Server returned an invalid mutation response.";
+    case "network":
+      return "The Server could not be reached.";
+    case "not-found":
+      return "The Record or Table was not found.";
+    case "server":
+      return "The Server returned a mutation error.";
+    case "timeout":
+      return "The Server did not respond in time.";
+    case "validation":
+      return "The Server rejected this mutation.";
   }
 }
 
 function asClientError(error: unknown): LoomTableClientError {
   if (error instanceof LoomTableClientError) return error;
-  return new LoomTableClientError('server', {
-    message: 'The LoomTable Server returned an unexpected mutation error.',
+  return new LoomTableClientError("server", {
+    message: "The LoomTable Server returned an unexpected mutation error.",
   });
 }
 
 function clampRandom(value: number): number {
   return Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0.5;
 }
+
