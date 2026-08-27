@@ -272,7 +272,9 @@ describe('ReadonlyGridRenderer', () => {
 
   it('shows Server and local values with explicit conflict actions', () => {
     const container = document.createElement('div');
-    const callbacks = rendererCallbacks();
+    document.body.append(container);
+    const confirmDiscardAll = vi.fn().mockReturnValue(true);
+    const callbacks = { ...rendererCallbacks(), confirmDiscardAll };
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
 
     renderer.render(
@@ -281,6 +283,7 @@ describe('ReadonlyGridRenderer', () => {
           {
             recordId: 'record_01',
             clientMutationId: 'mutation_01',
+            failedCommandIndex: 0,
             expectedRevision: 1,
             currentRevision: 2,
             currentValues: { field_name: 'Server value' },
@@ -294,6 +297,12 @@ describe('ReadonlyGridRenderer', () => {
 
     expect(container.querySelector('.loom-grid-conflict-values')?.textContent).toContain(
       'Server value',
+    );
+    expect(container.querySelector('.loom-grid-conflict-values')?.textContent).toContain(
+      'mutation_01',
+    );
+    expect(container.querySelector('.loom-grid-conflict-values')?.textContent).toContain(
+      'failedCommandIndex',
     );
     expect(container.querySelector('.loom-grid-conflict-intent')?.textContent).toContain(
       'Local value',
@@ -313,6 +322,43 @@ describe('ReadonlyGridRenderer', () => {
     buttons[1]?.click();
     expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(1, 'record_01', 'use-server');
     expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite');
+
+    buttons[2]?.click();
+    expect(confirmDiscardAll).toHaveBeenCalledWith('record_01');
+    expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(3, 'record_01', 'discard-all');
+
+    const conflicts = container.querySelector<HTMLElement>('.loom-grid-conflicts');
+    const shell = container.querySelector<HTMLElement>('.loom-grid-shell');
+    expect(conflicts).not.toBeNull();
+    expect(shell).not.toBeNull();
+    if (conflicts === null || shell === null) return;
+    conflicts.focus();
+    conflicts.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.activeElement).toBe(shell);
+  });
+
+  it('renders idempotency key reuse as a terminal safety error without retry', () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(
+      createState(1, {
+        editError: {
+          code: 'IDEMPOTENCY_KEY_REUSED',
+          httpStatus: 409,
+          message: 'The mutation ID was already used with another body.',
+        },
+        editStatuses: { record_01: 'terminal' },
+        saveStatus: 'error',
+      }),
+    );
+
+    expect(container.querySelector('.loom-grid-edit-status')?.textContent).toContain(
+      'already associated with a different request',
+    );
+    expect(container.querySelector('.loom-grid-edit-status button')).toBeNull();
+    expect(container.querySelector('.loom-save-status')?.textContent).not.toContain('Saved');
   });
 
   it('offers an explicit retry action for a failed save', () => {

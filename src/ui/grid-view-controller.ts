@@ -47,10 +47,11 @@ export type GridPhase = 'idle' | 'navigation' | 'query';
 
 export type GridEmptyReason = 'workspace' | 'base' | 'table' | 'view' | 'records' | 'no-match';
 
-export type GridEditStatus = 'queued' | 'saving' | 'conflict' | 'error';
+export type GridEditStatus = 'queued' | 'saving' | 'conflict' | 'error' | 'terminal';
 
 export interface GridConflict extends ConflictBody {
   readonly clientMutationId: string;
+  readonly failedCommandIndex: number;
   readonly message: string;
 }
 
@@ -101,7 +102,7 @@ export interface GridEditOptions {
 export type GridStateListener = (state: GridState) => void;
 
 interface ControllerQueueSnapshot {
-  readonly state: 'idle' | 'queued' | 'saving' | 'conflict' | 'error';
+  readonly state: 'idle' | 'queued' | 'saving' | 'conflict' | 'error' | 'terminal';
   readonly pending: number;
   readonly error?: LoomTableClientError;
   readonly conflict?: ConflictDetails;
@@ -354,28 +355,86 @@ export class GridViewController {
     return this.#state.records.find((candidate) => candidate.id === recordId);
   }
 
-  resolveConflict(recordId: string, action: 'use-server' | 'overwrite'): void {
+  resolveConflict(recordId: string, action: 'use-server' | 'overwrite' | 'discard-all'): void {
     const conflict = this.#conflicts.get(recordId);
     const tableId = this.#state.selectedTableId;
-    if (conflict === undefined || tableId === null || this.#queue === null) return;
+    if (conflict === undefined || tableId === null) return;
 
     const current = this.#recordFromConflict(recordId, conflict);
-    this.#authoritativeRecords.set(recordId, current);
     const display =
-      action === 'overwrite' && conflict.submittedSet !== undefined
-        ? withValues(current, conflict.submittedSet, conflict.submittedUnsetFieldIds)
+      action === 'overwrite'
+        ? withValues(current, conflict.submittedSet ?? {}, conflict.submittedUnsetFieldIds)
         : current;
-    this.#optimisticRecords.set(recordId, display);
-    this.#conflicts.delete(recordId);
-    this.#publish({
-      records: replaceRecord(this.#state.records, display),
-      conflicts: [...this.#conflicts.values()],
-    });
-    this.#queue.resolveConflict(
-      recordId,
-      action === 'overwrite' ? 'retry' : 'discard',
-      current.revision,
-    );
+    const authoritativeBefore = this.#authoritativeRecords.get(recordId);
+    const complete = (): void => {
+      const authoritativeAfter = this.#authoritativeRecords.get(recordId);
+      if (
+        action !== 'discard-all' &&
+        this.#pendingFor(recordId) === 0 &&
+        authoritativeAfter !== undefined &&
+        authoritativeAfter !== authoritativeBefore &&
+        authoritativeAfter.revision >= current.revision
+      ) {
+        return;
+      }
+      this.#authoritativeRecords.set(recordId, current);
+      this.#optimisticRecords.set(recordId, display);
+      if (action === 'discard-all' || this.#pendingFor(recordId) === 0) {
+        this.#dirtyRecords.delete(recordId);
+      }
+      this.#conflicts.delete(recordId);
+      const conflicts = [...this.#conflicts.values()];
+      const nextState = { ...this.#state, conflicts };
+      this.#publish({
+        records: replaceRecord(this.#state.records, display),
+        conflicts,
+        editError: null,
+        saveStatus: gridSaveStatus(nextState, this.#isOffline(), this.#dirtyRecords.size > 0),
+      });
+    };
+
+    if (this.#durableQueue !== null) {
+      const recovery =
+        action === 'discard-all'
+          ? this.#durableQueue.discardAllForRecord(recordId)
+          : this.#durableQueue.resolveConflict(
+              recordId,
+              action === 'overwrite' ? 'overwrite' : 'adopt-server',
+            );
+      void recovery
+        .then(() => {
+          const queueState = this.#durableQueue?.getRecordSnapshot(recordId).state;
+          if (
+            queueState === 'auth-paused' ||
+            queueState === 'conflict' ||
+            queueState === 'error' ||
+            queueState === 'terminal'
+          ) {
+            return;
+          }
+          complete();
+        })
+        .catch((error: unknown) => {
+          const clientError = asClientError(error);
+          this.#publish({
+            editError: clientError.details,
+            saveStatus: this.#isOffline() ? 'offline-readonly' : 'error',
+          });
+        });
+      return;
+    }
+
+    if (this.#queue === null) return;
+    complete();
+    if (action === 'discard-all') {
+      this.#queue.discardPending(recordId);
+    } else {
+      this.#queue.resolveConflict(
+        recordId,
+        action === 'overwrite' ? 'retry' : 'discard',
+        current.revision,
+      );
+    }
   }
 
   retryEdit(recordId: string): void {
@@ -679,9 +738,12 @@ export class GridViewController {
         this.#conflicts.set(recordId, {
           ...body,
           clientMutationId: snapshot.conflict.clientMutationId,
+          failedCommandIndex: snapshot.conflict.failedCommandIndex,
           message: snapshot.error?.details.message ?? 'The Record changed on the Server.',
         });
       }
+    } else {
+      this.#conflicts.delete(recordId);
     }
     const conflicts = [...this.#conflicts.values()];
     const editError =
@@ -895,11 +957,14 @@ function controllerSnapshot(snapshot: MutationQueueRecordSnapshot): ControllerQu
       ...(error === undefined ? {} : { error }),
     };
   }
-  if (
-    snapshot.state === 'auth-paused' ||
-    snapshot.state === 'terminal' ||
-    snapshot.state === 'error'
-  ) {
+  if (snapshot.state === 'terminal') {
+    return {
+      state: 'terminal',
+      pending: snapshot.pending,
+      ...(error === undefined ? {} : { error }),
+    };
+  }
+  if (snapshot.state === 'auth-paused' || snapshot.state === 'error') {
     return { state: 'error', pending: snapshot.pending, ...(error === undefined ? {} : { error }) };
   }
   return {
@@ -918,7 +983,11 @@ function gridSaveStatus(state: GridState, offline: boolean, dirty = false): View
   ) {
     return 'conflict';
   }
-  if (Object.values(state.editStatuses).some((status) => status === 'error')) return 'error';
+  if (
+    Object.values(state.editStatuses).some((status) => status === 'error' || status === 'terminal')
+  ) {
+    return 'error';
+  }
   if (
     Object.values(state.editStatuses).some((status) => status === 'queued' || status === 'saving')
   ) {

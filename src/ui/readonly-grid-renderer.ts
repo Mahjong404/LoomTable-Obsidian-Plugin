@@ -13,7 +13,11 @@ export interface GridRendererCallbacks {
   readonly onLoadMore: () => void | Promise<void>;
   readonly onRecordOpen: (record: LoomTableRecord) => void;
   readonly onCellEdit?: (recordId: string, fieldId: string, value: unknown) => void | Promise<void>;
-  readonly onConflictAction?: (recordId: string, action: 'use-server' | 'overwrite') => void;
+  readonly onConflictAction?: (
+    recordId: string,
+    action: 'use-server' | 'overwrite' | 'discard-all',
+  ) => void;
+  readonly confirmDiscardAll?: (recordId: string) => boolean;
   readonly onRetryEdit?: (recordId: string) => void;
 }
 
@@ -50,6 +54,7 @@ export class ReadonlyGridRenderer {
     const root = createElement('div', 'loom-grid-shell');
     root.setAttribute('role', 'region');
     root.setAttribute('aria-label', this.#translate('grid.table'));
+    root.tabIndex = -1;
     root.append(this.#renderToolbar(state), this.#renderNavigation(state));
     if (state.editError !== null) root.append(this.#renderEditError(state));
     if (state.conflicts.length > 0) root.append(this.#renderConflicts(state));
@@ -222,7 +227,16 @@ export class ReadonlyGridRenderer {
     const status = createElement('div', 'loom-status loom-grid-edit-status is-error');
     status.setAttribute('role', 'alert');
     status.setAttribute('aria-live', 'assertive');
-    status.append(createTextElement('p', this.#translate('grid.editError')));
+    const terminal = Object.values(state.editStatuses).some((value) => value === 'terminal');
+    const idempotencyTerminal = state.editError?.code === 'IDEMPOTENCY_KEY_REUSED';
+    status.append(
+      createTextElement(
+        'p',
+        terminal && idempotencyTerminal
+          ? this.#translate('grid.idempotencyTerminal')
+          : this.#translate('grid.editError'),
+      ),
+    );
     if (state.editError !== null) {
       status.append(
         renderDiagnostic(
@@ -232,9 +246,9 @@ export class ReadonlyGridRenderer {
       );
     }
     const failedRecordId = Object.entries(state.editStatuses).find(
-      ([, status]) => status === 'error',
+      ([, value]) => value === 'error',
     )?.[0];
-    if (failedRecordId !== undefined) {
+    if (!terminal && failedRecordId !== undefined) {
       const retry = createElement('button', 'loom-button');
       retry.type = 'button';
       retry.textContent = this.#translate('grid.retry');
@@ -248,8 +262,14 @@ export class ReadonlyGridRenderer {
     const box = createElement('div', 'loom-grid-conflicts');
     box.setAttribute('role', 'region');
     box.setAttribute('aria-live', 'polite');
+    box.setAttribute('aria-atomic', 'true');
     box.setAttribute('aria-label', this.#translate('grid.diagnostic.conflict'));
     box.tabIndex = -1;
+    box.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      this.#container.querySelector<HTMLElement>('.loom-grid-shell')?.focus();
+    });
     for (const conflict of state.conflicts) {
       const item = createElement('div', 'loom-grid-conflict');
       item.setAttribute('role', 'group');
@@ -264,6 +284,8 @@ export class ReadonlyGridRenderer {
       values.textContent = JSON.stringify(
         {
           recordId: conflict.recordId,
+          clientMutationId: conflict.clientMutationId,
+          failedCommandIndex: conflict.failedCommandIndex,
           expectedRevision: conflict.expectedRevision,
           currentRevision: conflict.currentRevision,
           currentValues: conflict.currentValues,
@@ -302,7 +324,15 @@ export class ReadonlyGridRenderer {
       overwrite.addEventListener('click', () =>
         this.#callbacks.onConflictAction?.(conflict.recordId, 'overwrite'),
       );
-      actions.append(useServer, overwrite);
+      const discardAll = document.createElement('button');
+      discardAll.type = 'button';
+      discardAll.className = 'loom-button';
+      discardAll.textContent = this.#translate('grid.discardAll');
+      discardAll.addEventListener('click', () => {
+        if (this.#callbacks.confirmDiscardAll?.(conflict.recordId) !== true) return;
+        this.#callbacks.onConflictAction?.(conflict.recordId, 'discard-all');
+      });
+      actions.append(useServer, overwrite, discardAll);
       item.append(actions);
       box.append(item);
     }

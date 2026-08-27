@@ -23,11 +23,14 @@ export interface RecordDetailCallbacks {
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
-    action: 'use-server' | 'overwrite',
+    action: 'use-server' | 'overwrite' | 'discard-all',
   ) => void | Promise<void>;
 }
 
 export interface RecordConflictView {
+  readonly clientMutationId: string;
+  readonly failedCommandIndex: number;
+  readonly expectedRevision: number;
   readonly currentRevision: number;
   readonly currentValues: Readonly<Record<string, JsonValue>>;
   readonly submittedSet?: Readonly<Record<string, JsonValue>>;
@@ -95,6 +98,10 @@ export function createRecordDetail(
     values.append(...renderField(record, field, options));
   }
   root.append(values);
+  const existingConflict = options.callbacks?.getConflict?.(record.id);
+  if (existingConflict !== undefined) {
+    root.append(renderConflict(record.id, existingConflict, options, root));
+  }
   return root;
 }
 
@@ -396,6 +403,8 @@ function renderConflict(
   const box = document.createElement('section');
   box.className = 'loom-record-conflict';
   box.setAttribute('role', 'region');
+  box.setAttribute('aria-live', 'polite');
+  box.setAttribute('aria-atomic', 'true');
   box.setAttribute('aria-label', options.translate('record.conflictRegion'));
   box.tabIndex = -1;
   const heading = createText('h3', options.translate('record.conflict'));
@@ -406,6 +415,10 @@ function renderConflict(
   serverValues.setAttribute('aria-label', options.translate('record.serverValue'));
   serverValues.textContent = JSON.stringify(
     {
+      recordId,
+      clientMutationId: conflict.clientMutationId,
+      failedCommandIndex: conflict.failedCommandIndex,
+      expectedRevision: conflict.expectedRevision,
       currentRevision: conflict.currentRevision,
       currentValues: conflict.currentValues,
     },
@@ -437,7 +450,7 @@ function renderConflict(
   const useServer = button(options.translate('record.useServer'));
   const overwrite = button(options.translate('record.overwrite'));
   overwrite.classList.add('mod-warning');
-  const invoke = (action: 'use-server' | 'overwrite'): void => {
+  const invoke = (action: 'use-server' | 'overwrite' | 'discard-all'): void => {
     const restoreFocus = (): void => detailRoot.focus();
     try {
       const result = options.callbacks?.onConflictAction?.(recordId, action);
@@ -452,7 +465,12 @@ function renderConflict(
   };
   useServer.addEventListener('click', () => invoke('use-server'));
   overwrite.addEventListener('click', () => invoke('overwrite'));
-  actions.append(useServer, overwrite);
+  const discardAll = button(options.translate('record.discardAll'));
+  discardAll.addEventListener('click', () => {
+    if (!confirmDiscard(options, options.translate('record.discardAllConfirm'))) return;
+    invoke('discard-all');
+  });
+  actions.append(useServer, overwrite, discardAll);
   box.append(actions);
   return box;
 }

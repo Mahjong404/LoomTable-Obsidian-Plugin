@@ -4,7 +4,10 @@ import {
   type MutationRequest,
   type MutationResult,
   type ConflictDetails,
+  type ConflictBody,
+  type UpdateRecordCommand,
 } from '../client/loomtable-client';
+import { createMutationId } from './mutation-queue';
 import {
   MutationQueueStore,
   type MutationQueueEntryState,
@@ -46,11 +49,14 @@ export interface DurableMutationQueuePort {
   enqueue(tableId: string, request: MutationRequest): Promise<MutationResult>;
   subscribe(listener: MutationQueueSchedulerListener): () => void;
   getRecordSnapshot(recordId: string): MutationQueueRecordSnapshot;
+  resolveConflict(recordId: string, action: 'adopt-server' | 'overwrite'): Promise<void>;
+  discardAllForRecord(recordId: string): Promise<void>;
 }
 
 export interface MutationQueueSchedulerOptions {
   readonly store: MutationQueueStore;
   readonly transport: DurableMutationQueueTransport;
+  readonly idFactory?: () => string;
   readonly now?: () => number;
   readonly random?: () => number;
   readonly onApplied?: (entry: PersistedMutationQueueEntry, result: MutationResult) => void;
@@ -61,6 +67,7 @@ export interface MutationQueueSchedulerOptions {
 export class MutationQueueScheduler {
   readonly #store: MutationQueueStore;
   readonly #transport: DurableMutationQueueTransport;
+  readonly #idFactory: () => string;
   readonly #now: () => number;
   readonly #random: () => number;
   readonly #onApplied:
@@ -89,6 +96,7 @@ export class MutationQueueScheduler {
   constructor(options: MutationQueueSchedulerOptions) {
     this.#store = options.store;
     this.#transport = options.transport;
+    this.#idFactory = options.idFactory ?? createMutationId;
     this.#now = options.now ?? Date.now;
     this.#random = options.random ?? Math.random;
     this.#onApplied = options.onApplied;
@@ -181,6 +189,76 @@ export class MutationQueueScheduler {
 
     void this.drain().catch(() => undefined);
     return result;
+  }
+
+  async resolveConflict(recordId: string, action: 'adopt-server' | 'overwrite'): Promise<void> {
+    const conflictEntry = this.#state.entries.find(
+      (entry) => entry.recordId === recordId && entry.state === 'conflict',
+    );
+    const conflictBody = conflictEntry?.conflict?.conflicts.find(
+      (conflict) => conflict.recordId === recordId,
+    );
+    if (conflictEntry === undefined || conflictBody === undefined) return;
+
+    if (action === 'adopt-server') {
+      await this.#updateState((state) => {
+        let removed = false;
+        const entries: PersistedMutationQueueEntry[] = [];
+        for (const entry of state.entries) {
+          if (!removed && entry.clientMutationId === conflictEntry.clientMutationId) {
+            removed = true;
+            continue;
+          }
+          if (removed && entry.recordId === recordId && entry.state === 'queued') {
+            entries.push(
+              withExpectedRevision(entry, conflictBody.currentRevision, this.#timestamp()),
+            );
+          } else {
+            entries.push(entry);
+          }
+        }
+        return { ...state, entries };
+      });
+    } else {
+      const replacement = conflictRetryEntry(
+        conflictEntry,
+        conflictBody,
+        this.#idFactory,
+        this.#timestamp(),
+      );
+      await this.#updateState((state) => {
+        const index = state.entries.findIndex(
+          (entry) => entry.clientMutationId === conflictEntry.clientMutationId,
+        );
+        if (index < 0) return state;
+        return {
+          ...state,
+          entries: [
+            ...state.entries.slice(0, index),
+            replacement,
+            ...state.entries.slice(index + 1),
+          ],
+        };
+      });
+    }
+
+    await this.drain();
+  }
+
+  async discardAllForRecord(recordId: string): Promise<void> {
+    const removed = this.#state.entries.filter((entry) => entry.recordId === recordId);
+    if (removed.length === 0) return;
+    await this.#updateState((state) => ({
+      ...state,
+      entries: state.entries.filter((entry) => entry.recordId !== recordId),
+    }));
+    const discarded = new MutationQueueDiscardedError();
+    for (const entry of removed) {
+      const waiter = this.#waiters.get(entry.clientMutationId);
+      if (waiter === undefined) continue;
+      this.#waiters.delete(entry.clientMutationId);
+      waiter.reject(discarded);
+    }
   }
 
   get online(): boolean {
@@ -568,7 +646,57 @@ export class MutationQueueScheduler {
   }
 }
 
+class MutationQueueDiscardedError extends Error {
+  constructor() {
+    super('The pending Record edits were discarded.');
+    this.name = 'MutationQueueDiscardedError';
+  }
+}
+
 type MutationFailureAction = 'requeue' | 'auth-paused' | 'conflict' | 'terminal';
+
+function conflictRetryEntry(
+  entry: PersistedMutationQueueEntry,
+  conflict: ConflictBody,
+  idFactory: () => string,
+  timestamp: string,
+): PersistedMutationQueueEntry {
+  const clientMutationId = freshMutationId(entry.clientMutationId, idFactory);
+  const command: UpdateRecordCommand = {
+    kind: 'updateRecord',
+    recordId: conflict.recordId,
+    expectedRevision: conflict.currentRevision,
+    ...(conflict.submittedSet === undefined ? {} : { set: conflict.submittedSet }),
+    ...(conflict.submittedUnsetFieldIds === undefined
+      ? {}
+      : { unsetFieldIds: conflict.submittedUnsetFieldIds }),
+  };
+  const request = {
+    clientMutationId,
+    commands: [command] as const,
+  };
+  return {
+    tableId: entry.tableId,
+    recordId: entry.recordId,
+    clientMutationId,
+    request,
+    expectedRevision: conflict.currentRevision,
+    state: 'queued',
+    attemptCount: 0,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+function freshMutationId(previous: string, idFactory: () => string): string {
+  let candidate = idFactory();
+  if (candidate === previous) {
+    do {
+      candidate = createMutationId();
+    } while (candidate === previous);
+  }
+  return candidate;
+}
 
 function recordSnapshot(
   state: MutationQueueSettingsV1,
