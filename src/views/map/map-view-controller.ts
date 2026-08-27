@@ -13,6 +13,7 @@ import type {
   TileCredentialReader,
   TileProviderRef,
 } from '../../maps/providers/tile-provider-schema';
+import type { MutationInvalidationEvent } from '../../ui/mutation-invalidation';
 import { TileProviderRegistry } from '../../maps/providers/tile-provider-registry';
 import type { MapCamera, MapRenderer, MapRendererError } from '../../maps/renderer/map-renderer';
 import {
@@ -196,6 +197,38 @@ export class MapViewController {
       this.publish({ view, saveStatus: 'saved' });
     } catch (error) {
       this.handleDataError(error, true);
+    }
+  }
+
+  async applyMutationInvalidation(event: MutationInvalidationEvent): Promise<void> {
+    if (
+      this.#destroyed ||
+      event.tableId !== this.#view.tableId ||
+      event.recordId !== event.record.id ||
+      event.record.tableId !== this.#view.tableId
+    ) {
+      return;
+    }
+
+    if (this.#state.selectedRecord?.id === event.recordId) {
+      this.publish({ selectedRecord: event.record });
+    }
+    // The event cursor is an opaque hint; only sequenced Server responses update shared cursor state.
+    if (this.#options.isOffline?.() === true) {
+      this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
+      return;
+    }
+
+    const sequence = ++this.#querySequence;
+    this.publish({ dataStatus: 'loading', error: null });
+    try {
+      const summary = await this.#client.summarizeMap(this.#view.id);
+      if (this.#destroyed || sequence !== this.#querySequence) return;
+      if (!this.applySummaryResult(summary)) return;
+      await this.queryViewport(sequence);
+    } catch (error) {
+      if (this.#destroyed || sequence !== this.#querySequence) return;
+      this.handleDataError(error);
     }
   }
 

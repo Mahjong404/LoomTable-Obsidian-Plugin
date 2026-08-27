@@ -9,6 +9,10 @@ export interface MutationInvalidationEvent {
 
 export type MutationInvalidationListener = (event: MutationInvalidationEvent) => void;
 
+export interface MutationInvalidationConsumer {
+  applyMutationInvalidation(event: MutationInvalidationEvent): void | Promise<void>;
+}
+
 export class MutationInvalidationBus {
   readonly #listeners = new Set<MutationInvalidationListener>();
 
@@ -26,4 +30,20 @@ export class MutationInvalidationBus {
       }
     }
   }
+}
+
+export function subscribeMutationInvalidation(
+  bus: MutationInvalidationBus,
+  tableId: string,
+  consumer: MutationInvalidationConsumer,
+): () => void {
+  return bus.subscribe((event) => {
+    if (event.tableId !== tableId) return;
+    try {
+      const result = consumer.applyMutationInvalidation(event);
+      void Promise.resolve(result).catch(() => undefined);
+    } catch {
+      // A consumer failure must not change the invalidation publication.
+    }
+  });
 }

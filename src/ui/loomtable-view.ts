@@ -8,7 +8,10 @@ import type { MapRenderer } from '../maps/renderer/map-renderer';
 import type { ConnectionProfile } from '../settings/connection-profile';
 import type { PluginSettings } from '../settings/plugin-settings';
 import type { DurableMutationQueuePort } from './mutation-queue-scheduler';
-import type { MutationInvalidationBus } from './mutation-invalidation';
+import {
+  subscribeMutationInvalidation,
+  type MutationInvalidationBus,
+} from './mutation-invalidation';
 import { GridViewController, type GridState } from './grid-view-controller';
 import { ReadonlyGridRenderer } from './readonly-grid-renderer';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
@@ -136,6 +139,8 @@ export class LoomTableView extends ItemView {
     if (view.type !== 'map') return;
     this.#gridUnsubscribe?.();
     this.#gridUnsubscribe = null;
+    this.#invalidationUnsubscribe?.();
+    this.#invalidationUnsubscribe = null;
     this.#mapView?.destroy();
     const client = this.createClient(profile);
     const instance = this.mapContext.createRenderer();
@@ -169,6 +174,13 @@ export class LoomTableView extends ItemView {
         await this.mapContext.saveSettings();
       },
     });
+    if (this.invalidations !== null) {
+      this.#invalidationUnsubscribe = subscribeMutationInvalidation(
+        this.invalidations,
+        view.tableId,
+        controller,
+      );
+    }
     this.#mapView.mount();
     if (focusRecordId !== undefined) void controller.openRecord(focusRecordId);
   }
