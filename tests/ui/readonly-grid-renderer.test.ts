@@ -272,7 +272,8 @@ describe('ReadonlyGridRenderer', () => {
 
   it('shows Server and local values with explicit conflict actions', () => {
     const container = document.createElement('div');
-    const callbacks = rendererCallbacks();
+    const confirmDiscardAll = vi.fn().mockReturnValue(true);
+    const callbacks = { ...rendererCallbacks(), confirmDiscardAll };
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
 
     renderer.render(
@@ -320,6 +321,19 @@ describe('ReadonlyGridRenderer', () => {
     buttons[1]?.click();
     expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(1, 'record_01', 'use-server');
     expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite');
+
+    buttons[2]?.click();
+    expect(confirmDiscardAll).toHaveBeenCalledWith('record_01');
+    expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(3, 'record_01', 'discard-all');
+
+    const conflicts = container.querySelector<HTMLElement>('.loom-grid-conflicts');
+    const shell = container.querySelector<HTMLElement>('.loom-grid-shell');
+    expect(conflicts).not.toBeNull();
+    expect(shell).not.toBeNull();
+    if (conflicts === null || shell === null) return;
+    conflicts.focus();
+    conflicts.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.activeElement).toBe(shell);
   });
 
   it('renders idempotency key reuse as a terminal safety error without retry', () => {
