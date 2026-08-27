@@ -285,7 +285,7 @@ function asClientError(error: unknown): LoomTableClientError {
 const ULID_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 let mutationSequence = 0;
 
-function createMutationId(): string {
+export function createMutationId(): string {
   mutationSequence += 1;
   const random = new Uint8Array(10);
   const cryptoObject = typeof window === 'undefined' ? undefined : window.crypto;
