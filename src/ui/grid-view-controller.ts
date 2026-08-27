@@ -313,8 +313,9 @@ export class GridViewController {
       }
     } catch (error) {
       const durablePendingAfter = this.#durableQueue?.getRecordSnapshot(recordId).pending ?? 0;
+      const isConflict = error instanceof LoomTableClientError && error.kind === 'conflict';
       const rejectedBeforeEntry =
-        this.#durableQueue !== null && durablePendingAfter === durablePendingBefore;
+        this.#durableQueue !== null && durablePendingAfter === durablePendingBefore && !isConflict;
       if (rejectedBeforeEntry) {
         const clientError = asClientError(error);
         if (durablePendingBefore === 0) this.#dirtyRecords.delete(recordId);
@@ -324,7 +325,7 @@ export class GridViewController {
           editError: clientError.details,
           saveStatus: this.#isOffline() ? 'offline-readonly' : 'error',
         });
-      } else if (!(error instanceof LoomTableClientError) || error.kind !== 'conflict') {
+      } else if (!isConflict) {
         const fallback = this.#authoritativeRecords.get(recordId) ?? record;
         this.#optimisticRecords.set(recordId, fallback);
         this.#publish({ records: replaceRecord(this.#state.records, fallback) });
