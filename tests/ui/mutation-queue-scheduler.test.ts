@@ -283,6 +283,98 @@ describe('MutationQueueScheduler', () => {
     scheduler.stop();
   });
 
+  it('retries a conflict with a new ID, the Server revision, and the original intent', async () => {
+    const conflict: ConflictDetails = {
+      clientMutationId: MUTATION_IDS[0],
+      failedCommandIndex: 0,
+      conflicts: [
+        {
+          recordId: 'record_01',
+          expectedRevision: 1,
+          currentRevision: 3,
+          currentValues: { field_a: 'server' },
+          submittedSet: { field_a: 'local' },
+          submittedUnsetFieldIds: ['field_b'],
+        },
+      ],
+    };
+    const original = entry({
+      state: 'conflict',
+      conflict,
+      lastError: {
+        kind: 'conflict',
+        message: 'Conflict.',
+        code: 'CONFLICT',
+        httpStatus: 409,
+      },
+    });
+    const conflicted: PersistedMutationQueueEntry = {
+      ...original,
+      request: {
+        clientMutationId: original.clientMutationId,
+        commands: [
+          {
+            ...original.request.commands[0],
+            set: { field_a: 'local' },
+            unsetFieldIds: ['field_b'],
+          },
+        ],
+      },
+    };
+    let releaseRetry: ((value: MutationResult) => void) | undefined;
+    const transport = fakeTransport();
+    transport.mutate.mockImplementation(async (_tableId, request) => {
+      if (request.clientMutationId === MUTATION_IDS[2]) {
+        return new Promise<MutationResult>((resolve) => {
+          releaseRetry = resolve;
+        });
+      }
+      const command = request.commands[0];
+      if (command?.kind !== 'updateRecord') throw new Error('Unexpected command.');
+      return result(request.clientMutationId, command.recordId, command.expectedRevision + 1);
+    });
+    const { scheduler } = createScheduler(
+      [conflicted, entry({ id: MUTATION_IDS[1], value: 'later' })],
+      transport,
+    );
+    await startReady(scheduler);
+    expect(transport.mutate).not.toHaveBeenCalled();
+
+    const retry = scheduler.retryConflict(
+      'record_01',
+      MUTATION_IDS[0],
+      MUTATION_IDS[2],
+    );
+    await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(1));
+
+    expect(transport.mutate.mock.calls[0]?.[1]).toEqual({
+      clientMutationId: MUTATION_IDS[2],
+      commands: [
+        {
+          kind: 'updateRecord',
+          recordId: 'record_01',
+          expectedRevision: 3,
+          set: { field_a: 'local' },
+          unsetFieldIds: ['field_b'],
+        },
+      ],
+    });
+    expect(scheduler.getSnapshot().entries.map((candidate) => candidate.clientMutationId)).toEqual([
+      MUTATION_IDS[2],
+      MUTATION_IDS[1],
+    ]);
+
+    releaseRetry?.(result(MUTATION_IDS[2], 'record_01', 4));
+    await retry;
+    await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2));
+    expect(transport.mutate.mock.calls[1]?.[1].commands[0]).toMatchObject({
+      expectedRevision: 4,
+      set: { field_a: 'later' },
+    });
+    await vi.waitFor(() => expect(scheduler.getSnapshot().entries).toHaveLength(0));
+    scheduler.stop();
+  });
+
   it('keeps IDEMPOTENCY_KEY_REUSED separate as a terminal safety error', async () => {
     const transport = fakeTransport();
     transport.mutate.mockRejectedValueOnce(
