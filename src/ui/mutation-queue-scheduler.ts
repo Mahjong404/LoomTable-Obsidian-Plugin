@@ -191,10 +191,7 @@ export class MutationQueueScheduler {
     return result;
   }
 
-  async resolveConflict(
-    recordId: string,
-    action: 'adopt-server' | 'overwrite',
-  ): Promise<void> {
+  async resolveConflict(recordId: string, action: 'adopt-server' | 'overwrite'): Promise<void> {
     const conflictEntry = this.#state.entries.find(
       (entry) => entry.recordId === recordId && entry.state === 'conflict',
     );
@@ -212,12 +209,10 @@ export class MutationQueueScheduler {
             removed = true;
             continue;
           }
-          if (
-            removed &&
-            entry.recordId === recordId &&
-            entry.state === 'queued'
-          ) {
-            entries.push(withExpectedRevision(entry, conflictBody.currentRevision, this.#timestamp()));
+          if (removed && entry.recordId === recordId && entry.state === 'queued') {
+            entries.push(
+              withExpectedRevision(entry, conflictBody.currentRevision, this.#timestamp()),
+            );
           } else {
             entries.push(entry);
           }
@@ -901,3 +896,4 @@ function asClientError(error: unknown): LoomTableClientError {
 function clampRandom(value: number): number {
   return Number.isFinite(value) ? Math.min(Math.max(value, 0), 1) : 0.5;
 }
+
