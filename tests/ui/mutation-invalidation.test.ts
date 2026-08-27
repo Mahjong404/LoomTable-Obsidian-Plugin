@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { LoomTableRecord } from '../../src/client/loomtable-client';
 import {
   MutationInvalidationBus,
+  subscribeMutationInvalidation,
   type MutationInvalidationEvent,
 } from '../../src/ui/mutation-invalidation';
 
@@ -25,6 +26,32 @@ describe('MutationInvalidationBus', () => {
     unsubscribe();
     bus.publish(event);
     expect(listener).toHaveBeenCalledOnce();
+  });
+
+  it('routes same-table events to a Map consumer and supports unsubscribe', async () => {
+    const bus = new MutationInvalidationBus();
+    const consumer = {
+      applyMutationInvalidation: vi.fn().mockResolvedValue(undefined),
+    };
+    const unsubscribe = subscribeMutationInvalidation(bus, 'table_01', consumer);
+    const event: MutationInvalidationEvent = {
+      tableId: 'table_01',
+      recordId: 'record_01',
+      record: record(2),
+      changeCursor: 'opaque-cursor',
+    };
+
+    bus.publish(event);
+    bus.publish({ ...event, tableId: 'table_02' });
+    await Promise.resolve();
+
+    expect(consumer.applyMutationInvalidation).toHaveBeenCalledOnce();
+    expect(consumer.applyMutationInvalidation).toHaveBeenCalledWith(event);
+
+    unsubscribe();
+    bus.publish(event);
+    await Promise.resolve();
+    expect(consumer.applyMutationInvalidation).toHaveBeenCalledOnce();
   });
 
   it('contains observer failures without changing publication to other listeners', () => {
