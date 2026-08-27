@@ -272,8 +272,14 @@ describe('MapViewController', () => {
     secondSummary.resolve(summaryResult('cursor_second_summary'));
     await vi.waitFor(() => expect(queryMap).toHaveBeenCalledTimes(2));
 
-    secondQuery.resolve({ ...queryResult('record_second', 1), changeCursor: 'cursor_second_query' });
-    firstQuery.resolve({ ...queryResult('record_first', 1), changeCursor: 'cursor_first_query' });
+    secondQuery.resolve({
+      ...queryResult('record_second', 1),
+      changeCursor: 'cursor_second_query',
+    });
+    firstQuery.resolve({
+      ...queryResult('record_first', 1),
+      changeCursor: 'cursor_first_query',
+    });
     await Promise.all([firstRefresh, secondRefresh]);
 
     expect(controller.state.changeCursor).toBe('cursor_second_query');
