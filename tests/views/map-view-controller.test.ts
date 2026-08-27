@@ -151,12 +151,18 @@ describe('MapViewController', () => {
       },
     };
     const initialQuery = { ...queryResult('record_initial', 1), changeCursor: 'cursor_initial' };
-    const refreshedQuery = { ...queryResult('record_after_location', 1), changeCursor: 'cursor_query' };
+    const refreshedQuery = {
+      ...queryResult('record_after_location', 1),
+      changeCursor: 'cursor_query',
+    };
     const summarizeMap = vi
       .fn()
       .mockResolvedValueOnce(initialSummary)
       .mockResolvedValueOnce(refreshedSummary);
-    const queryMap = vi.fn().mockResolvedValueOnce(initialQuery).mockResolvedValueOnce(refreshedQuery);
+    const queryMap = vi
+      .fn()
+      .mockResolvedValueOnce(initialQuery)
+      .mockResolvedValueOnce(refreshedQuery);
     const getRecord = vi.fn().mockResolvedValue(initialRecord);
     const controller = createController(
       createClient({ summarizeMap, queryMap, getRecord }),
