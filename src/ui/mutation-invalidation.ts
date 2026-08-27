@@ -32,7 +32,6 @@ export class MutationInvalidationBus {
   }
 }
 
-
 export function subscribeMutationInvalidation(
   bus: MutationInvalidationBus,
   tableId: string,
