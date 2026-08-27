@@ -176,7 +176,7 @@ describe('MutationQueueScheduler', () => {
     const started = scheduler.start();
     await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2));
 
-    expect(calls.map((request) => request.commands[0]?.recordId)).toEqual([
+    expect(calls.map(recordIdForRequest)).toEqual([
       'record_01',
       'record_02',
     ]);
@@ -184,7 +184,7 @@ describe('MutationQueueScheduler', () => {
     releases.get('record_02-two')?.();
     await started;
 
-    expect(calls.map((request) => request.commands[0]?.recordId)).toEqual([
+    expect(calls.map(recordIdForRequest)).toEqual([
       'record_01',
       'record_02',
       'record_01',
@@ -380,6 +380,13 @@ function fakeTransport(): DurableMutationQueueTransport & {
       },
     ),
   };
+}
+
+
+function recordIdForRequest(request: MutationRequest): string {
+  const command = request.commands[0];
+  if (command?.kind !== 'updateRecord') throw new Error('Unexpected command.');
+  return command.recordId;
 }
 
 function result(clientMutationId: string, recordId: string, revision: number): MutationResult {
