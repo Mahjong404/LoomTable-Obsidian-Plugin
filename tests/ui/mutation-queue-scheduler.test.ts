@@ -147,16 +147,16 @@ describe('MutationQueueScheduler', () => {
         if (command?.kind !== 'updateRecord') throw new Error('Unexpected command.');
         if (command.recordId === 'record_01' && command.set?.field_a === 'one') {
           return new Promise<MutationResult>((resolve) => {
-            releases.set('record_01-one', () =>
-              resolve(result(request.clientMutationId, 'record_01', 2)),
-            );
+            releases.set('record_01-one', () => {
+              resolve(result(request.clientMutationId, 'record_01', 2));
+            });
           });
         }
         if (command.recordId === 'record_02') {
           return new Promise<MutationResult>((resolve) => {
-            releases.set('record_02-two', () =>
-              resolve(result(request.clientMutationId, 'record_02', 2)),
-            );
+            releases.set('record_02-two', () => {
+              resolve(result(request.clientMutationId, 'record_02', 2));
+            });
           });
         }
         return result(request.clientMutationId, command.recordId, 2);
