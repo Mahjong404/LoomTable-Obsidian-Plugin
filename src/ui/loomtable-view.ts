@@ -174,7 +174,6 @@ export class LoomTableView extends ItemView {
         await this.mapContext.saveSettings();
       },
     });
-    this.#mapView.mount();
     if (this.invalidations !== null) {
       this.#invalidationUnsubscribe = subscribeMutationInvalidation(
         this.invalidations,
@@ -182,6 +181,7 @@ export class LoomTableView extends ItemView {
         controller,
       );
     }
+    this.#mapView.mount();
     if (focusRecordId !== undefined) void controller.openRecord(focusRecordId);
   }
 
