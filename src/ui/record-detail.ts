@@ -98,6 +98,10 @@ export function createRecordDetail(
     values.append(...renderField(record, field, options));
   }
   root.append(values);
+  const existingConflict = options.callbacks?.getConflict?.(record.id);
+  if (existingConflict !== undefined) {
+    root.append(renderConflict(record.id, existingConflict, options, root));
+  }
   return root;
 }
 
