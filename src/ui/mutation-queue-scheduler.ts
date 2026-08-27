@@ -492,7 +492,7 @@ export class MutationQueueScheduler {
     }
 
     const head = this.#state.entries.find((entry) => entry.recordId === recordId);
-    if (head?.state !== 'terminal' && head?.state !== 'conflict') return;
+    if (head === undefined || (head.state !== 'terminal' && head.state !== 'conflict')) return;
     const waiter = this.#waiters.get(head.clientMutationId);
     if (waiter === undefined) return;
     this.#waiters.delete(head.clientMutationId);
