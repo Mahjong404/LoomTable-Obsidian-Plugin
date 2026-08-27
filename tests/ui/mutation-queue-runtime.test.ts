@@ -6,10 +6,7 @@ import {
   type MutationResult,
   type UpdateRecordCommand,
 } from '../../src/client/loomtable-client';
-import {
-  MutationQueueStore,
-  type MutationQueueSettingsV1,
-} from '../../src/settings/mutation-queue-settings';
+import { type MutationQueueSettingsV1 } from '../../src/settings/mutation-queue-settings';
 import { MutationQueueRuntime } from '../../src/ui/mutation-queue-runtime';
 import { type DurableMutationQueueTransport } from '../../src/ui/mutation-queue-scheduler';
 
@@ -97,8 +94,21 @@ describe('MutationQueueRuntime', () => {
     expect(result.results[0]?.status).toBe('unchanged');
     expect(result.results[0]?.record).toEqual(returnedRecord);
     expect(transport.mutate).toHaveBeenCalledWith('table_01', request());
-    expect(saves.some((value) => value.entries[0]?.request === request())).toBe(false);
-    expect(saves.some((value) => value.entries[0]?.clientMutationId === MUTATION_ID)).toBe(true);
+    expect(saves).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entries: expect.arrayContaining([
+            expect.objectContaining({
+              tableId: 'table_01',
+              recordId: 'record_01',
+              clientMutationId: MUTATION_ID,
+              expectedRevision: 1,
+              request: request(),
+            }),
+          ]),
+        }),
+      ]),
+    );
     expect(scheduler.getSnapshot().entries).toHaveLength(0);
     runtime.stop();
   });
@@ -109,13 +119,14 @@ describe('MutationQueueRuntime', () => {
       entries: [entry({ state: 'sending' })],
     };
     let releaseFirst: (() => void) | undefined;
+    let firstRequest: MutationRequest | undefined;
     const firstTransport: DurableMutationQueueTransport = {
-      mutate: vi.fn(
-        () =>
-          new Promise<MutationResult>((resolve) => {
-            releaseFirst = () => resolve(successResult(MUTATION_ID, record(2, 'first')));
-          }),
-      ),
+      mutate: vi.fn(async (_tableId: string, requestValue: MutationRequest) => {
+        firstRequest = requestValue;
+        return new Promise<MutationResult>((resolve) => {
+          releaseFirst = () => resolve(successResult(MUTATION_ID, record(2, 'first')));
+        });
+      }),
     };
     const firstRuntime = new MutationQueueRuntime({
       load: async () => persisted,
@@ -128,8 +139,7 @@ describe('MutationQueueRuntime', () => {
     });
     const firstScheduler = await firstRuntime.start();
     const firstReady = firstRuntime.setAuthReady(true);
-    await vi.waitFor(() => expect(firstTransport.mutate).toHaveBeenCalledTimes(1));
-    const firstRequest = firstTransport.mutate.mock.calls[0]?.[1];
+    await vi.waitFor(() => expect(firstRequest).toEqual(request()));
     firstRuntime.stop();
     releaseFirst?.();
     await firstReady;
