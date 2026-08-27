@@ -210,7 +210,10 @@ export class MapViewController {
       return;
     }
 
-    this.publish({ selectedRecord: event.record });
+    if (this.#state.selectedRecord?.id === event.recordId) {
+      this.publish({ selectedRecord: event.record });
+    }
+    // The event cursor is an opaque hint; only sequenced Server responses update shared cursor state.
     if (this.#options.isOffline?.() === true) {
       this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
       return;
