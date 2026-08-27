@@ -283,6 +283,53 @@ describe('MutationQueueScheduler', () => {
     scheduler.stop();
   });
 
+  it('retries a conflict with a fresh mutation ID and current revision while preserving local intent', async () => {
+    const conflict: ConflictDetails = {
+      clientMutationId: MUTATION_IDS[0],
+      failedCommandIndex: 0,
+      conflicts: [
+        {
+          recordId: 'record_01',
+          expectedRevision: 1,
+          currentRevision: 2,
+          currentValues: { field_a: 'server', field_b: 'server-only' },
+          submittedSet: { field_a: 'local' },
+          submittedUnsetFieldIds: ['field_b'],
+        },
+      ],
+    };
+    const transport = fakeTransport();
+    transport.mutate.mockRejectedValueOnce(
+      new LoomTableClientError(
+        'conflict',
+        { message: 'Conflict.', code: 'CONFLICT', httpStatus: 409 },
+        undefined,
+        conflict,
+      ),
+    );
+    transport.mutate.mockResolvedValueOnce(result(MUTATION_IDS[1], 'record_01', 3));
+    const { scheduler } = createScheduler([entry()], transport);
+
+    await startReady(scheduler);
+    expect(scheduler.getSnapshot().entries[0]?.state).toBe('conflict');
+
+    await scheduler.resolveConflict('record_01', 'overwrite');
+    await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2));
+
+    const retryRequest = transport.mutate.mock.calls[1]?.[1];
+    expect(retryRequest?.clientMutationId).toMatch(/^mut_[0-9A-HJKMNP-TV-Z]{26}$/);
+    expect(retryRequest?.clientMutationId).not.toBe(conflict.clientMutationId);
+    expect(retryRequest?.commands[0]).toMatchObject({
+      kind: 'updateRecord',
+      recordId: 'record_01',
+      expectedRevision: 2,
+      set: { field_a: 'local' },
+      unsetFieldIds: ['field_b'],
+    });
+    expect(scheduler.getSnapshot().entries).toHaveLength(0);
+    scheduler.stop();
+  });
+
   it('keeps IDEMPOTENCY_KEY_REUSED separate as a terminal safety error', async () => {
     const transport = fakeTransport();
     transport.mutate.mockRejectedValueOnce(
