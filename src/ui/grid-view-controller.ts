@@ -859,6 +859,41 @@ function withValues(
   return { ...record, values };
 }
 
+function controllerSnapshot(
+  snapshot: MutationQueueRecordSnapshot,
+): ControllerQueueSnapshot {
+  const error =
+    snapshot.lastError === undefined
+      ? undefined
+      : new LoomTableClientError(
+          snapshot.lastError.kind,
+          {
+            message: snapshot.lastError.message,
+            ...(snapshot.lastError.code === undefined ? {} : { code: snapshot.lastError.code }),
+            ...(snapshot.lastError.httpStatus === undefined
+              ? {}
+              : { httpStatus: snapshot.lastError.httpStatus }),
+            ...(snapshot.lastError.requestId === undefined
+              ? {}
+              : { requestId: snapshot.lastError.requestId }),
+          },
+          undefined,
+          snapshot.conflict,
+        );
+  if (snapshot.state === 'sending') {
+    return { state: 'saving', pending: snapshot.pending, ...(error === undefined ? {} : { error }) };
+  }
+  if (snapshot.state === 'auth-paused' || snapshot.state === 'terminal' || snapshot.state === 'error') {
+    return { state: 'error', pending: snapshot.pending, ...(error === undefined ? {} : { error }) };
+  }
+  return {
+    state: snapshot.state === 'queued' ? 'queued' : snapshot.state,
+    pending: snapshot.pending,
+    ...(error === undefined ? {} : { error }),
+    ...(snapshot.conflict === undefined ? {} : { conflict: snapshot.conflict }),
+  };
+}
+
 function gridSaveStatus(
   state: GridState,
   offline: boolean,
