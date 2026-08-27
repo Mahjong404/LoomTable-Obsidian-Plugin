@@ -44,7 +44,7 @@ export type MutationQueueSchedulerListener = (event: MutationQueueSchedulerEvent
 
 export interface DurableMutationQueuePort {
   enqueue(tableId: string, request: MutationRequest): Promise<MutationResult>;
-  retryConflict(
+  retryConflict?(
     recordId: string,
     conflictClientMutationId: string,
     newClientMutationId: string,
@@ -238,9 +238,9 @@ export class MutationQueueScheduler {
     }
 
     const now = this.#timestamp();
-    const request: MutationRequest = {
+    const request = {
       clientMutationId: newClientMutationId,
-      commands: [{ ...command, expectedRevision: conflict.currentRevision }],
+      commands: [{ ...command, expectedRevision: conflict.currentRevision }] as const,
     };
     const replacement: PersistedMutationQueueEntry = {
       tableId: entry.tableId,
