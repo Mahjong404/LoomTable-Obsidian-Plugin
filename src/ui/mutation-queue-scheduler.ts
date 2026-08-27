@@ -16,7 +16,7 @@ import {
 export const MUTATION_QUEUE_RETRY_BASE_DELAY_MS = 250;
 export const MUTATION_QUEUE_MAX_BACKOFF_MS = 24 * 60 * 60 * 1_000;
 
-type TimerHandle = ReturnType<typeof setTimeout>;
+type TimerHandle = number;
 
 export interface DurableMutationQueueTransport {
   mutate(tableId: string, request: MutationRequest): Promise<MutationResult>;
@@ -58,8 +58,8 @@ export class MutationQueueScheduler {
     this.#now = options.now ?? Date.now;
     this.#random = options.random ?? Math.random;
     this.#onApplied = options.onApplied;
-    this.#setTimer = options.setTimer ?? ((callback, delayMs) => setTimeout(callback, delayMs));
-    this.#clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer));
+    this.#setTimer = options.setTimer ?? ((callback, delayMs) => window.setTimeout(callback, delayMs));
+    this.#clearTimer = options.clearTimer ?? ((timer) => window.clearTimeout(timer));
     this.#state = this.#store.getSnapshot();
   }
 
@@ -139,7 +139,7 @@ export class MutationQueueScheduler {
       const drain = this.#runDrain();
       this.#drainPromise = drain.finally(() => {
         this.#drainPromise = null;
-        if (this.#drainRequested && this.#started) this.#requestDrain();
+        if (this.#drainRequested && this.#started) void this.#requestDrain();
       });
     }
     return this.#drainPromise;
@@ -189,7 +189,7 @@ export class MutationQueueScheduler {
 
       let result: MutationResult;
       try {
-        result = await this.#transport.mutate(sending.tableId, sending.request as MutationRequest);
+        result = await this.#transport.mutate(sending.tableId, sending.request);
       } catch (error) {
         if (this.#started) await this.#handleFailure(sending, error);
         return;
