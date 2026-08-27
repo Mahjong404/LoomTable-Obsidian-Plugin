@@ -419,6 +419,42 @@ describe('GridViewController', () => {
     scheduler.stop();
   });
 
+  it('preserves an existing optimistic edit when a later durable enqueue is rejected', async () => {
+    const queue = new QueuedDurableQueue();
+    const controller = new GridViewController(
+      new InMemoryLoomTableClient(createData(createRecords(1), createGridConfig(false))),
+      {
+        mutationQueue: queue,
+        mutationIdFactory: () => 'mut_0123456789ABCDEFGHJKMNPQRS',
+        isOffline: () => false,
+      },
+    );
+    await controller.load();
+
+    const firstEdit = controller.editCell('record_01', 'field_name', 'First local value');
+    await vi.waitFor(() => expect(queue.getRecordSnapshot('record_01').pending).toBe(1));
+    expect(controller.state.records[0]?.values.field_name).toBe('First local value');
+
+    await expect(
+      controller.editCell('record_01', 'field_name', 'Second local value'),
+    ).rejects.toMatchObject({ kind: 'authentication' });
+
+    expect(queue.getRecordSnapshot('record_01')).toMatchObject({
+      state: 'queued',
+      pending: 1,
+    });
+    expect(controller.state.records[0]?.values.field_name).toBe('First local value');
+    expect(controller.state.editError).toMatchObject({
+      message: 'Authentication is required before this mutation can be queued.',
+      httpStatus: 401,
+    });
+    expect(controller.state.saveStatus).toBe('error');
+    expect(controller.state.saveStatus).not.toBe('saved');
+
+    controller.dispose();
+    void firstEdit;
+  });
+
   it('can edit a Map-selected Record that is outside the current Grid page', async () => {
     const visible = createRecords(1)[0];
     if (visible === undefined) throw new Error('Grid fixture is missing.');
@@ -995,6 +1031,31 @@ function mutationResult(clientMutationId: string, value: string, revision: numbe
     ],
     changeCursor: 'change_02',
   };
+}
+
+class QueuedDurableQueue implements DurableMutationQueuePort {
+  readonly #listeners = new Set<(event: MutationQueueSchedulerEvent) => void>();
+  #snapshot: MutationQueueRecordSnapshot = { state: 'idle', pending: 0 };
+
+  subscribe(listener: (event: MutationQueueSchedulerEvent) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  getRecordSnapshot(): MutationQueueRecordSnapshot {
+    return this.#snapshot;
+  }
+
+  enqueue(): Promise<MutationResult> {
+    if (this.#snapshot.pending === 0) {
+      this.#snapshot = { state: 'queued', pending: 1 };
+      return new Promise(() => undefined);
+    }
+    throw new LoomTableClientError('authentication', {
+      message: 'Authentication is required before this mutation can be queued.',
+      httpStatus: 401,
+    });
+  }
 }
 
 class FakeDurableQueue implements DurableMutationQueuePort {
