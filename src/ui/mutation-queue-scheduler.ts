@@ -207,7 +207,7 @@ export class MutationQueueScheduler {
         return;
       }
 
-      const removed = await this.#removeEntry(sending.clientMutationId);
+      const removed = await this.#applySuccess(sending, result);
       if (removed) {
         try {
           this.#onApplied?.(sending, result);
@@ -282,14 +282,44 @@ export class MutationQueueScheduler {
     return next;
   }
 
-  async #removeEntry(clientMutationId: string): Promise<boolean> {
-    if (!this.#state.entries.some((entry) => entry.clientMutationId === clientMutationId)) {
+  async #applySuccess(
+    entry: PersistedMutationQueueEntry,
+    result: MutationResult,
+  ): Promise<boolean> {
+    if (
+      !this.#state.entries.some(
+        (candidate) => candidate.clientMutationId === entry.clientMutationId,
+      )
+    ) {
       return false;
     }
-    await this.#updateState((state) => ({
-      ...state,
-      entries: state.entries.filter((entry) => entry.clientMutationId !== clientMutationId),
-    }));
+
+    const latestRevision = latestRecordRevision(entry, result);
+    const updatedAt = latestRevision === undefined ? undefined : this.#timestamp();
+    await this.#updateState((state) => {
+      let entrySeen = false;
+      const entries: PersistedMutationQueueEntry[] = [];
+
+      for (const candidate of state.entries) {
+        if (candidate.clientMutationId === entry.clientMutationId) {
+          entrySeen = true;
+          continue;
+        }
+
+        if (
+          entrySeen &&
+          latestRevision !== undefined &&
+          candidate.recordId === entry.recordId &&
+          candidate.state === 'queued'
+        ) {
+          entries.push(withExpectedRevision(candidate, latestRevision, updatedAt));
+        } else {
+          entries.push(candidate);
+        }
+      }
+
+      return { ...state, entries };
+    });
     return true;
   }
 
@@ -409,6 +439,43 @@ function retryDelayMs(
       ? retryAfterMs
       : 0;
   return Math.min(MUTATION_QUEUE_MAX_BACKOFF_MS, Math.max(jitter, serverHint));
+}
+
+function latestRecordRevision(
+  entry: PersistedMutationQueueEntry,
+  result: MutationResult,
+): number | undefined {
+  const commandIndex = entry.request.commands.findIndex(
+    (command) => command.kind === 'updateRecord' && command.recordId === entry.recordId,
+  );
+  if (commandIndex < 0) return undefined;
+
+  const matchingResult = result.results.find(
+    (commandResult) =>
+      commandResult.index === commandIndex &&
+      commandResult.record.id === entry.recordId &&
+      commandResult.record.tableId === entry.tableId,
+  );
+  return matchingResult?.record.revision;
+}
+
+function withExpectedRevision(
+  entry: PersistedMutationQueueEntry,
+  expectedRevision: number,
+  updatedAt: string | undefined,
+): PersistedMutationQueueEntry {
+  const [command] = entry.request.commands;
+  if (command.kind !== 'updateRecord' || command.recordId !== entry.recordId) return entry;
+
+  return {
+    ...entry,
+    expectedRevision,
+    request: {
+      ...entry.request,
+      commands: [{ ...command, expectedRevision }],
+    },
+    ...(updatedAt === undefined ? {} : { updatedAt }),
+  };
 }
 
 function recoverSending(state: MutationQueueSettingsV1): MutationQueueSettingsV1 {

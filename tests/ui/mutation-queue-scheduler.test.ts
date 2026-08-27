@@ -140,14 +140,16 @@ describe('MutationQueueScheduler', () => {
   it('keeps one Record FIFO while allowing different Records to run in parallel', async () => {
     const calls: MutationRequest[] = [];
     const releases = new Map<string, () => void>();
+    const saves: MutationQueueSettingsV1[] = [];
     const transport: DurableMutationQueueTransport = {
       mutate: vi.fn(async (_tableId: string, request: MutationRequest): Promise<MutationResult> => {
         calls.push(request);
         const command = request.commands[0];
         if (command?.kind !== 'updateRecord') throw new Error('Unexpected command.');
-        if (command.recordId === 'record_01' && command.set?.field_a === 'one') {
+        if (command.recordId === 'record_01') {
+          const releaseKey = command.set?.field_a === 'one' ? 'record_01-one' : 'record_01-two';
           return new Promise<MutationResult>((resolve) => {
-            releases.set('record_01-one', () => {
+            releases.set(releaseKey, () => {
               resolve(result(request.clientMutationId, 'record_01', 2));
             });
           });
@@ -169,6 +171,8 @@ describe('MutationQueueScheduler', () => {
         entry({ recordId: 'record_02', value: 'two', id: MUTATION_IDS[2] }),
       ],
       transport,
+      () => 0,
+      saves,
     );
 
     await scheduler.setOnline(true);
@@ -179,7 +183,7 @@ describe('MutationQueueScheduler', () => {
     expect(calls.map(recordIdForRequest)).toEqual(['record_01', 'record_02']);
     releases.get('record_01-one')?.();
     releases.get('record_02-two')?.();
-    await started;
+    await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(3));
 
     expect(calls.map(recordIdForRequest)).toEqual(['record_01', 'record_02', 'record_01']);
     expect(calls[0]?.commands[0]).toMatchObject({
@@ -187,9 +191,28 @@ describe('MutationQueueScheduler', () => {
       set: { field_a: 'one' },
     });
     expect(calls[2]?.commands[0]).toMatchObject({
-      expectedRevision: 1,
+      expectedRevision: 2,
       set: { field_a: 'two' },
     });
+    expect(calls[2]?.clientMutationId).toBe(MUTATION_IDS[1]);
+    const persistedSecond = saves
+      .at(-1)
+      ?.entries.find((entry) => entry.clientMutationId === MUTATION_IDS[1]);
+    expect(persistedSecond?.state).toBe('sending');
+    expect(persistedSecond?.recordId).toBe('record_01');
+    expect(persistedSecond?.clientMutationId).toBe(MUTATION_IDS[1]);
+    expect(persistedSecond?.expectedRevision).toBe(2);
+    expect(persistedSecond?.request.clientMutationId).toBe(MUTATION_IDS[1]);
+    expect(persistedSecond?.request.commands[0]).toMatchObject({
+      kind: 'updateRecord',
+      recordId: 'record_01',
+      expectedRevision: 2,
+      set: { field_a: 'two' },
+    });
+
+    releases.get('record_01-two')?.();
+    await started;
+    expect(scheduler.getSnapshot().entries).toHaveLength(0);
     scheduler.stop();
   });
 
@@ -339,11 +362,26 @@ function createScheduler(
   entries: readonly PersistedMutationQueueEntry[],
   transport: DurableMutationQueueTransport,
   now: () => number = () => 0,
+  saves?: MutationQueueSettingsV1[],
 ): { scheduler: MutationQueueScheduler; store: MutationQueueStore } {
-  const store = new MutationQueueStore({
-    schemaVersion: 1,
-    entries,
-  });
+  const persistence =
+    saves === undefined
+      ? undefined
+      : {
+          async load() {
+            return { schemaVersion: 1, entries };
+          },
+          async save(value: MutationQueueSettingsV1): Promise<void> {
+            saves.push(value);
+          },
+        };
+  const store = new MutationQueueStore(
+    {
+      schemaVersion: 1,
+      entries,
+    },
+    persistence,
+  );
   return {
     store,
     scheduler: new MutationQueueScheduler({
