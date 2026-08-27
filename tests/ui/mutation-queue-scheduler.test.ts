@@ -476,7 +476,9 @@ describe('MutationQueueScheduler', () => {
 
     await startReady(scheduler);
 
-    expect(events.find((event) => event.applied !== undefined)?.applied?.result.results[0]).toMatchObject({
+    expect(
+      events.find((event) => event.applied !== undefined)?.applied?.result.results[0],
+    ).toMatchObject({
       status: 'unchanged',
       record: { id: 'record_01', revision: 2 },
     });
