@@ -49,7 +49,7 @@ export interface MapViewOptions {
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
-    action: 'use-server' | 'overwrite',
+    action: 'use-server' | 'overwrite' | 'discard-all',
   ) => void | Promise<void>;
   readonly providers?: readonly TileProviderSummary[];
   readonly selectedProvider?: TileProviderRef;
@@ -236,7 +236,10 @@ export class MapView {
         ...(this.options.onConflictAction === undefined
           ? {}
           : {
-              onConflictAction: async (recordId: string, action: 'use-server' | 'overwrite') => {
+              onConflictAction: async (
+                recordId: string,
+                action: 'use-server' | 'overwrite' | 'discard-all',
+              ) => {
                 await this.options.onConflictAction?.(recordId, action);
                 await this.#controller.openRecord(recordId);
               },
@@ -247,6 +250,7 @@ export class MapView {
           translate,
           fields: state.fields,
           offline: state.dataStatus === 'offline',
+          confirmDiscard: (message) => window.confirm(message),
           callbacks,
         }),
       );
