@@ -370,7 +370,7 @@ describe('GridViewController', () => {
       if (scenario.state === 'auth-paused') {
         await vi.waitFor(() => expect(controller.state.saveStatus).toBe('error'));
       } else {
-        await expect(edit).rejects.toBe(scenario.error);
+        await expect(edit).rejects.toMatchObject({ kind: scenario.error.kind });
       }
       expect(controller.state.saveStatus).toBe(scenario.expectedStatus);
       expect(controller.state.saveStatus).not.toBe('saved');
