@@ -239,10 +239,14 @@ describe('Record Detail Location seam', () => {
     const container = document.createElement('div');
     document.body.append(container);
     const onConflictAction = vi.fn();
+    const onClose = vi.fn();
     const onLocationEdit = vi
       .fn()
       .mockRejectedValue(new LoomTableClientError('conflict', { message: 'Revision conflict.' }));
     const conflict = {
+      clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+      failedCommandIndex: 0,
+      expectedRevision: 1,
       currentRevision: 2,
       currentValues: { field_location: { label: 'Server' } },
       submittedSet: { field_location: { label: 'Local' } },
@@ -255,6 +259,7 @@ describe('Record Detail Location seam', () => {
         translate: createTranslator('en'),
         callbacks: {
           onLocationEdit,
+          onClose,
           getConflict: () => conflict,
           onConflictAction,
         },
@@ -273,6 +278,15 @@ describe('Record Detail Location seam', () => {
     expect(container.querySelector('.loom-record-conflict-local')?.textContent).toContain(
       'field_archived',
     );
+    expect(container.querySelector('.loom-record-conflict-server')?.textContent).toContain(
+      'mut_0123456789ABCDEFGHJKMNPQRS',
+    );
+    expect(container.querySelector('.loom-record-conflict-server')?.textContent).toContain(
+      'failedCommandIndex',
+    );
+    expect(container.querySelector('.loom-record-conflict')?.getAttribute('aria-live')).toBe(
+      'polite',
+    );
     expect(document.activeElement).toBe(container.querySelector('.loom-record-conflict'));
 
     const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-record-conflict button');
@@ -280,6 +294,13 @@ describe('Record Detail Location seam', () => {
     buttons[1]?.click();
     expect(onConflictAction).toHaveBeenNthCalledWith(1, 'record_01', 'use-server');
     expect(onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite');
+
+    container.querySelector<HTMLButtonElement>('.loom-record-detail-header button')?.click();
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onConflictAction).toHaveBeenCalledTimes(2);
+
+    buttons[2]?.click();
+    expect(onConflictAction).toHaveBeenNthCalledWith(3, 'record_01', 'discard-all');
   });
 });
 
