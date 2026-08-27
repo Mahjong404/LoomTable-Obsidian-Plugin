@@ -365,8 +365,18 @@ export class GridViewController {
       action === 'overwrite'
         ? withValues(current, conflict.submittedSet ?? {}, conflict.submittedUnsetFieldIds)
         : current;
+    const authoritativeBefore = this.#authoritativeRecords.get(recordId);
     const complete = (): void => {
-      if (action === 'overwrite' && this.#pendingFor(recordId) === 0) return;
+      const authoritativeAfter = this.#authoritativeRecords.get(recordId);
+      if (
+        action !== 'discard-all' &&
+        this.#pendingFor(recordId) === 0 &&
+        authoritativeAfter !== undefined &&
+        authoritativeAfter !== authoritativeBefore &&
+        authoritativeAfter.revision >= current.revision
+      ) {
+        return;
+      }
       this.#authoritativeRecords.set(recordId, current);
       this.#optimisticRecords.set(recordId, display);
       if (action === 'discard-all' || this.#pendingFor(recordId) === 0) {
@@ -391,7 +401,20 @@ export class GridViewController {
               recordId,
               action === 'overwrite' ? 'overwrite' : 'adopt-server',
             );
-      void recovery.then(complete).catch((error: unknown) => {
+      void recovery
+        .then(() => {
+          const queueState = this.#durableQueue?.getRecordSnapshot(recordId).state;
+          if (
+            queueState === 'auth-paused' ||
+            queueState === 'conflict' ||
+            queueState === 'error' ||
+            queueState === 'terminal'
+          ) {
+            return;
+          }
+          complete();
+        })
+        .catch((error: unknown) => {
         const clientError = asClientError(error);
         this.#publish({
           editError: clientError.details,
