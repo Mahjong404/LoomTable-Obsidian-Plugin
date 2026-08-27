@@ -28,7 +28,10 @@ import {
   type MutationQueueRecordSnapshot,
   type MutationQueueSchedulerEvent,
 } from '../../src/ui/mutation-queue-scheduler';
-import { MutationQueueStore, type MutationQueueSettingsV1 } from '../../src/settings/mutation-queue-settings';
+import {
+  MutationQueueStore,
+  type MutationQueueSettingsV1,
+} from '../../src/settings/mutation-queue-settings';
 
 describe('GridViewController', () => {
   it('discovers the current Workspace/Base/Table/View and submits the saved query contract', async () => {
@@ -642,78 +645,78 @@ describe('GridViewController', () => {
   });
 });
 
-  it('uses the durable queue seam instead of the client mutation bypass and applies the full returned Record', async () => {
-    const data = createData(createRecords(1), createGridConfig(false));
-    const client = new InMemoryLoomTableClient(data);
-    const saves: MutationQueueSettingsV1[] = [];
-    const returnedRecord = {
-      ...data.records[0]!,
-      revision: 2,
-      values: { field_name: 'Server authoritative' },
-    };
-    const transport = {
-      mutate: vi.fn(async (_tableId: string, request: MutationRequest): Promise<MutationResult> => ({
-        clientMutationId: request.clientMutationId,
-        results: [{ index: 0, status: 'applied', record: returnedRecord }],
-        changeCursor: 'opaque-change-cursor',
-      })),
-    };
-    const store = new MutationQueueStore(
-      { schemaVersion: 1, entries: [] },
-      {
-        async load() {
-          return { schemaVersion: 1, entries: [] };
-        },
-        async save(value) {
-          saves.push(value);
-        },
+it('uses the durable queue seam instead of the client mutation bypass and applies the full returned Record', async () => {
+  const data = createData(createRecords(1), createGridConfig(false));
+  const client = new InMemoryLoomTableClient(data);
+  const saves: MutationQueueSettingsV1[] = [];
+  const returnedRecord = {
+    ...data.records[0]!,
+    revision: 2,
+    values: { field_name: 'Server authoritative' },
+  };
+  const transport = {
+    mutate: vi.fn(async (_tableId: string, request: MutationRequest): Promise<MutationResult> => ({
+      clientMutationId: request.clientMutationId,
+      results: [{ index: 0, status: 'applied', record: returnedRecord }],
+      changeCursor: 'opaque-change-cursor',
+    })),
+  };
+  const store = new MutationQueueStore(
+    { schemaVersion: 1, entries: [] },
+    {
+      async load() {
+        return { schemaVersion: 1, entries: [] };
       },
-    );
-    const scheduler = new MutationQueueScheduler({
-      store,
-      transport,
-      random: () => 0.5,
-    });
-    await scheduler.setOnline(true);
-    await scheduler.setAuthReady(true);
-    await scheduler.start();
-
-    const controller = new GridViewController(client, {
-      mutationQueue: scheduler,
-      mutationIdFactory: () => 'mut_0123456789ABCDEFGHJKMNPQRS',
-    });
-    await controller.load();
-    await controller.editCell('record_01', 'field_name', 'Local intent');
-
-    expect(client.mutationRequests).toHaveLength(0);
-    expect(transport.mutate).toHaveBeenCalledWith(
-      'table_01',
-      expect.objectContaining({
-        clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
-        commands: [
-          {
-            kind: 'updateRecord',
-            recordId: 'record_01',
-            expectedRevision: 1,
-            set: { field_name: 'Local intent' },
-          },
-        ],
-      }),
-    );
-    expect(controller.state.records[0]).toEqual(returnedRecord);
-    expect(controller.state.saveStatus).toBe('saved');
-    expect(
-      saves.some((snapshot) =>
-        snapshot.entries.some(
-          (entry) =>
-            entry.clientMutationId === 'mut_0123456789ABCDEFGHJKMNPQRS' &&
-            entry.request.commands[0]?.kind === 'updateRecord' &&
-            entry.request.commands[0].set?.field_name === 'Local intent',
-        ),
-      ),
-    ).toBe(true);
-    scheduler.stop();
+      async save(value) {
+        saves.push(value);
+      },
+    },
+  );
+  const scheduler = new MutationQueueScheduler({
+    store,
+    transport,
+    random: () => 0.5,
   });
+  await scheduler.setOnline(true);
+  await scheduler.setAuthReady(true);
+  await scheduler.start();
+
+  const controller = new GridViewController(client, {
+    mutationQueue: scheduler,
+    mutationIdFactory: () => 'mut_0123456789ABCDEFGHJKMNPQRS',
+  });
+  await controller.load();
+  await controller.editCell('record_01', 'field_name', 'Local intent');
+
+  expect(client.mutationRequests).toHaveLength(0);
+  expect(transport.mutate).toHaveBeenCalledWith(
+    'table_01',
+    expect.objectContaining({
+      clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+      commands: [
+        {
+          kind: 'updateRecord',
+          recordId: 'record_01',
+          expectedRevision: 1,
+          set: { field_name: 'Local intent' },
+        },
+      ],
+    }),
+  );
+  expect(controller.state.records[0]).toEqual(returnedRecord);
+  expect(controller.state.saveStatus).toBe('saved');
+  expect(
+    saves.some((snapshot) =>
+      snapshot.entries.some(
+        (entry) =>
+          entry.clientMutationId === 'mut_0123456789ABCDEFGHJKMNPQRS' &&
+          entry.request.commands[0]?.kind === 'updateRecord' &&
+          entry.request.commands[0].set?.field_name === 'Local intent',
+      ),
+    ),
+  ).toBe(true);
+  scheduler.stop();
+});
 
 describe('createGridQuery', () => {
   it('keeps the cursor and view query semantics separate from the route Table ID', () => {
