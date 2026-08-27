@@ -6,7 +6,10 @@ import {
   type MutationResult,
   type UpdateRecordCommand,
 } from '../../src/client/loomtable-client';
-import { MutationQueueStore, type MutationQueueSettingsV1 } from '../../src/settings/mutation-queue-settings';
+import {
+  MutationQueueStore,
+  type MutationQueueSettingsV1,
+} from '../../src/settings/mutation-queue-settings';
 import { MutationQueueRuntime } from '../../src/ui/mutation-queue-runtime';
 import { type DurableMutationQueueTransport } from '../../src/ui/mutation-queue-scheduler';
 
@@ -149,9 +152,11 @@ describe('MutationQueueRuntime', () => {
   });
 });
 
-function fakeTransport(options: {
-  readonly result?: MutationResult;
-} = {}): DurableMutationQueueTransport & {
+function fakeTransport(
+  options: {
+    readonly result?: MutationResult;
+  } = {},
+): DurableMutationQueueTransport & {
   readonly mutate: ReturnType<typeof vi.fn<DurableMutationQueueTransport['mutate']>>;
 } {
   return {
@@ -160,10 +165,7 @@ function fakeTransport(options: {
         options.result ??
         successResult(
           request.clientMutationId,
-          record(
-            (request.commands[0] as UpdateRecordCommand).expectedRevision + 1,
-            'server value',
-          ),
+          record((request.commands[0] as UpdateRecordCommand).expectedRevision + 1, 'server value'),
         )
       );
     }),
