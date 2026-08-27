@@ -366,6 +366,7 @@ export class GridViewController {
         ? withValues(current, conflict.submittedSet ?? {}, conflict.submittedUnsetFieldIds)
         : current;
     const complete = (): void => {
+      if (action === 'overwrite' && this.#pendingFor(recordId) === 0) return;
       this.#authoritativeRecords.set(recordId, current);
       this.#optimisticRecords.set(recordId, display);
       if (action === 'discard-all' || this.#pendingFor(recordId) === 0) {
