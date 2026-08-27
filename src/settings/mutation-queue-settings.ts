@@ -27,12 +27,7 @@ const ERROR_KINDS: readonly LoomTableClientErrorKind[] = [
 ];
 
 export type MutationQueueEntryState =
-  | 'queued'
-  | 'sending'
-  | 'auth-paused'
-  | 'terminal'
-  | 'error'
-  | 'conflict';
+  'queued' | 'sending' | 'auth-paused' | 'terminal' | 'error' | 'conflict';
 
 export interface PersistedMutationRequest {
   readonly clientMutationId: string;
@@ -136,11 +131,7 @@ export function normalizeMutationQueueSettings(
 
   const ids = new Set<string>();
   const entries = root.entries.map((candidate, index) => {
-    const entry = parseEntry(
-      candidate,
-      'mutationQueue.entries[' + index + ']',
-      recoverSending,
-    );
+    const entry = parseEntry(candidate, 'mutationQueue.entries[' + index + ']', recoverSending);
     if (ids.has(entry.clientMutationId)) {
       fail(
         'mutationQueue.entries[' + index + '].clientMutationId',
@@ -504,3 +495,4 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function fail(path: string, message: string): never {
   throw new MutationQueueSettingsError('Invalid ' + path + ': ' + message);
 }
+
