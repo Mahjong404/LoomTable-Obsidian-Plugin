@@ -640,11 +640,12 @@ export class GridViewController {
   }
 
   #handleLegacyQueueSnapshot(recordId: string, snapshot: MutationQueueSnapshot): void {
+    const conflict = this.#queue?.getConflict(recordId)?.error.conflict;
     this.#handleQueueSnapshot(recordId, {
-      ...snapshot,
-      ...(this.#queue?.getConflict(recordId)?.error.conflict === undefined
-        ? {}
-        : { conflict: this.#queue.getConflict(recordId)!.error.conflict }),
+      state: snapshot.state,
+      pending: snapshot.pending,
+      ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
+      ...(conflict === undefined ? {} : { conflict }),
     });
   }
 
