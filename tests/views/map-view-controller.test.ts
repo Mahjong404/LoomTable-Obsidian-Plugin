@@ -233,6 +233,53 @@ describe('MapViewController', () => {
     expect(controller.state.saveStatus).toBe('saved');
   });
 
+  it('does not roll back the opaque cursor when invalidation responses finish out of order', async () => {
+    const firstQuery = deferred<MapQueryResult>();
+    const secondSummary = deferred<MapSummaryResult>();
+    const secondQuery = deferred<MapQueryResult>();
+    const summarizeMap = vi.fn().mockResolvedValue(summaryResult('cursor_first_summary'));
+    const queryMap = vi.fn().mockResolvedValue(queryResult('record_initial', 1));
+    const controller = createController(
+      createClient({ summarizeMap, queryMap }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.refreshCurrentViewport();
+    queryMap
+      .mockReset()
+      .mockReturnValueOnce(firstQuery.promise)
+      .mockReturnValueOnce(secondQuery.promise);
+    summarizeMap
+      .mockReset()
+      .mockResolvedValueOnce(summaryResult('cursor_first_summary'))
+      .mockReturnValueOnce(secondSummary.promise);
+
+    const firstRefresh = controller.applyMutationInvalidation({
+      tableId: 'table_01',
+      recordId: 'record_01',
+      record: { ...createRecord('record_01'), revision: 2 },
+      changeCursor: 'event_cursor_old',
+    });
+    await vi.waitFor(() => expect(queryMap).toHaveBeenCalledTimes(1));
+
+    const secondRefresh = controller.applyMutationInvalidation({
+      tableId: 'table_01',
+      recordId: 'record_02',
+      record: { ...createRecord('record_02'), revision: 2 },
+      changeCursor: 'event_cursor_new',
+    });
+    secondSummary.resolve(summaryResult('cursor_second_summary'));
+    await vi.waitFor(() => expect(queryMap).toHaveBeenCalledTimes(2));
+
+    secondQuery.resolve({ ...queryResult('record_second', 1), changeCursor: 'cursor_second_query' });
+    firstQuery.resolve({ ...queryResult('record_first', 1), changeCursor: 'cursor_first_query' });
+    await Promise.all([firstRefresh, secondRefresh]);
+
+    expect(controller.state.changeCursor).toBe('cursor_second_query');
+    expect(controller.state.features).toEqual(queryResult('record_second', 1).features);
+  });
+
   it('debounces camera changes and queries with the latest camera', async () => {
     vi.useFakeTimers();
     try {
