@@ -58,8 +58,7 @@ export const simplifiedChineseMessages = {
   'grid.error.server': 'Server 在加载此网格时返回了错误。',
   'grid.editConflict': '此记录已在 Server 上发生变化。',
   'grid.editError': '单元格保存失败。',
-  'grid.idempotencyTerminal':
-    '此次保存已被阻止：该 mutation ID 已关联到不同请求，未执行重试。',
+  'grid.idempotencyTerminal': '此次保存已被阻止：该 mutation ID 已关联到不同请求，未执行重试。',
   'grid.loadMore': '加载更多',
   'grid.loading': '正在加载网格记录…',
   'grid.loadingMore': '正在加载更多…',
@@ -175,3 +174,4 @@ export const simplifiedChineseMessages = {
   'map.tiles.loading': '正在加载地图瓦片…',
   'map.tiles.ready': '地图瓦片已就绪。',
 } as const satisfies MessageCatalog;
+
