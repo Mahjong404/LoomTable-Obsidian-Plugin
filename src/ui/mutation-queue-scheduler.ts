@@ -649,6 +649,13 @@ export class MutationQueueScheduler {
   }
 }
 
+class MutationQueueDiscardedError extends Error {
+  constructor() {
+    super('The pending Record edits were discarded.');
+    this.name = 'MutationQueueDiscardedError';
+  }
+}
+
 type MutationFailureAction = 'requeue' | 'auth-paused' | 'conflict' | 'terminal';
 
 function conflictRetryEntry(
