@@ -235,6 +235,39 @@ describe('Record Detail Location seam', () => {
     expect(container.querySelector<HTMLButtonElement>('.loom-location-edit')?.disabled).toBe(true);
   });
 
+  it('renders an existing durable conflict in the detail view', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const detail = createRecordDetail(createRecord({ field_location: { label: 'Local value' } }), {
+      fields: [createField('field_location', 'Location')],
+      translate: createTranslator('en'),
+      callbacks: {
+        getConflict: () => ({
+          clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+          failedCommandIndex: 0,
+          expectedRevision: 1,
+          currentRevision: 2,
+          currentValues: { field_location: { label: 'Server value' } },
+          submittedSet: { field_location: { label: 'Local value' } },
+          submittedUnsetFieldIds: ['field_archived'],
+          message: 'Revision conflict.',
+        }),
+      },
+    });
+    container.append(detail);
+
+    expect(detail.querySelector('.loom-record-conflict')).not.toBeNull();
+    expect(detail.querySelector('.loom-record-conflict-server')?.textContent).toContain(
+      'Server value',
+    );
+    expect(detail.querySelector('.loom-record-conflict-server')?.textContent).toContain(
+      'mut_0123456789ABCDEFGHJKMNPQRS',
+    );
+    expect(detail.querySelector('.loom-record-conflict-local')?.textContent).toContain(
+      'field_archived',
+    );
+  });
+
   it('keeps the existing use-server and overwrite conflict actions in Location detail', async () => {
     const container = document.createElement('div');
     document.body.append(container);
