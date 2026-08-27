@@ -1061,13 +1061,14 @@ class QueuedDurableQueue implements DurableMutationQueuePort {
 
 class FakeDurableQueue implements DurableMutationQueuePort {
   readonly #listeners = new Set<(event: MutationQueueSchedulerEvent) => void>();
-  readonly #state: MutationQueueRecordSnapshot;
+  readonly #entryState: MutationQueueRecordSnapshot;
+  #snapshot: MutationQueueRecordSnapshot = { state: 'idle', pending: 0 };
 
   constructor(
     state: Extract<MutationQueueRecordSnapshot['state'], 'auth-paused' | 'terminal' | 'conflict'>,
     conflict?: MutationQueueRecordSnapshot['conflict'],
   ) {
-    this.#state = {
+    this.#entryState = {
       state,
       pending: 1,
       ...(conflict === undefined ? {} : { conflict }),
@@ -1079,23 +1080,25 @@ class FakeDurableQueue implements DurableMutationQueuePort {
     return () => this.#listeners.delete(listener);
   }
 
-  getRecordSnapshot(): MutationQueueRecordSnapshot {
-    return this.#state;
+  getRecordSnapshot(recordId: string): MutationQueueRecordSnapshot {
+    void recordId;
+    return this.#snapshot;
   }
 
   async enqueue(): Promise<MutationResult> {
+    this.#snapshot = this.#entryState;
     const event: MutationQueueSchedulerEvent = {
       recordId: 'record_01',
-      snapshot: this.#state,
+      snapshot: this.#snapshot,
     };
     for (const listener of this.#listeners) listener(event);
-    if (this.#state.state === 'auth-paused') return new Promise(() => undefined);
-    if (this.#state.state === 'conflict') {
+    if (this.#snapshot.state === 'auth-paused') return new Promise(() => undefined);
+    if (this.#snapshot.state === 'conflict') {
       throw new LoomTableClientError(
         'conflict',
         { message: 'The Record changed on the Server.', code: 'CONFLICT', httpStatus: 409 },
         undefined,
-        this.#state.conflict,
+        this.#snapshot.conflict,
       );
     }
     throw new LoomTableClientError('validation', {
