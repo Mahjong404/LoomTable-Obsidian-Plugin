@@ -22,11 +22,7 @@ import {
   normalizeLocationValue,
   type LocationEditIntent,
 } from './field-value-editor';
-import {
-  MutationQueue,
-  createMutationId,
-  type MutationQueueSnapshot,
-} from './mutation-queue';
+import { MutationQueue, createMutationId, type MutationQueueSnapshot } from './mutation-queue';
 import type {
   DurableMutationQueuePort,
   MutationQueueRecordSnapshot,
@@ -673,9 +669,7 @@ export class GridViewController {
     }
     const conflicts = [...this.#conflicts.values()];
     const editError =
-      snapshot.state === 'idle'
-        ? null
-        : (snapshot.error?.details ?? this.#state.editError);
+      snapshot.state === 'idle' ? null : (snapshot.error?.details ?? this.#state.editError);
     const nextState = {
       ...this.#state,
       editStatuses,
@@ -859,9 +853,7 @@ function withValues(
   return { ...record, values };
 }
 
-function controllerSnapshot(
-  snapshot: MutationQueueRecordSnapshot,
-): ControllerQueueSnapshot {
+function controllerSnapshot(snapshot: MutationQueueRecordSnapshot): ControllerQueueSnapshot {
   const error =
     snapshot.lastError === undefined
       ? undefined
@@ -881,9 +873,17 @@ function controllerSnapshot(
           snapshot.conflict,
         );
   if (snapshot.state === 'sending') {
-    return { state: 'saving', pending: snapshot.pending, ...(error === undefined ? {} : { error }) };
+    return {
+      state: 'saving',
+      pending: snapshot.pending,
+      ...(error === undefined ? {} : { error }),
+    };
   }
-  if (snapshot.state === 'auth-paused' || snapshot.state === 'terminal' || snapshot.state === 'error') {
+  if (
+    snapshot.state === 'auth-paused' ||
+    snapshot.state === 'terminal' ||
+    snapshot.state === 'error'
+  ) {
     return { state: 'error', pending: snapshot.pending, ...(error === undefined ? {} : { error }) };
   }
   return {
@@ -894,11 +894,7 @@ function controllerSnapshot(
   };
 }
 
-function gridSaveStatus(
-  state: GridState,
-  offline: boolean,
-  dirty = false,
-): ViewSaveStatus {
+function gridSaveStatus(state: GridState, offline: boolean, dirty = false): ViewSaveStatus {
   if (offline || state.status === 'offline') return 'offline-readonly';
   if (
     state.conflicts.length > 0 ||
