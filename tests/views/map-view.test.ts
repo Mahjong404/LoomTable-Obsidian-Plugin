@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { LoomTableRecord } from '../../src/client/loomtable-client';
+import { createTranslator } from '../../src/i18n';
 import type { MapViewController } from '../../src/views/map/map-view-controller';
 import { initialMapViewState } from '../../src/views/map/map-view-model';
 import { MapView } from '../../src/views/map/map-view';
@@ -66,6 +67,53 @@ describe('MapView', () => {
       true,
     );
     expect(container.querySelector('.loom-save-status')?.textContent).toContain('Offline');
+  });
+
+  it('uses the active Chinese translator for Map chrome and status text', () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const osm = { kind: 'built-in' as const, id: 'osm-standard' as const };
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('zh-CN'),
+      providers: [
+        {
+          ref: osm,
+          displayName: 'OpenStreetMap Standard',
+          credentialRequired: false,
+        },
+      ],
+      selectedProvider: osm,
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      tileStatus: 'ready',
+      summary: {
+        matchedRecordCount: 3,
+        renderableRecordCount: 1,
+        unlocatedRecordCount: 2,
+        unrenderableRecordCount: 0,
+      },
+    });
+
+    expect([...container.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
+      '刷新',
+      '适合全部',
+      '保存当前视角',
+    ]);
+    expect(
+      container.querySelector<HTMLSelectElement>('select[aria-label="地图瓦片提供方"]'),
+    ).not.toBeNull();
+    expect(container.querySelector('.loom-map-tile-status')?.textContent).toBe(
+      '地图瓦片已就绪。',
+    );
+    expect(container.querySelector('.loom-map-status')?.textContent).toBe(
+      '3 匹配 · 1 可渲染 · 2 未定位 · 0 不可渲染',
+    );
+    expect(container.querySelector('.loom-map-shell')?.getAttribute('aria-label')).toBe('地图');
+    expect(container.querySelector('option')?.textContent).toBe('OpenStreetMap Standard');
   });
 
   it('keeps selected Record details visible independently of tile status', () => {
