@@ -30,12 +30,16 @@ interface LoomTableClient {
   ): Promise<Attachment>;
   downloadAttachmentContent(attachmentId: string): Promise<AttachmentDownload>;
   query(request: QueryRequest): Promise<QueryResult>;
-  queryMap(request: MapQueryRequest): Promise<MapQueryResult>;
-  queryMapSummary(request: MapSummaryRequest): Promise<MapSummaryResult>;
-  queryMapClusterRecords(request: MapClusterRecordsQueryRequest): Promise<QueryResult>;
-  getRecord(recordId: string): Promise<Record>;
-  mutate(request: MutationRequest): Promise<MutationResult>;
-  pullChanges(request: ChangeRequest): Promise<ChangePage>;
+  pullChanges(tableId: string, request?: PullChangesRequest): Promise<ChangePage>;
+  mutate(tableId: string, request: MutationRequest): Promise<MutationResult>;
+  getRecord(recordId: string): Promise<LoomTableRecord>;
+  queryMap(viewId: string, request: MapQueryRequest): Promise<MapQueryResult>;
+  summarizeMap(viewId: string): Promise<MapSummaryResult>;
+  queryMapClusterRecords(
+    viewId: string,
+    request: MapClusterRecordsQueryRequest,
+  ): Promise<QueryResult>;
+  updateView(viewId: string, request: UpdateViewRequest): Promise<View>;
 }
 ```
 
@@ -55,7 +59,7 @@ Schema、Workspace、Base、Table、View 和 Attachment 的管理操作也通过
 - `query` 使用服务端筛选、排序、分组和游标分页。
 - `query` 返回查询快照的 `changeCursor`，供后续增量刷新使用。
 - `queryMap` 使用服务端视口查询，返回最多 500 个完整代表视口结果的 Map Point/Map Cluster 与 `changeCursor`；它不通过普通 Record Cursor 下载完整匹配数据集。
-- `queryMapSummary` 通过独立端点返回精确全局 Summary 和 Data Bounds；首次打开、保存的 Filter 改变或用户显式“适配全部结果”时调用，普通相机移动不调用。
+- `summarizeMap(viewId)` 通过独立端点返回精确全局 Summary 和 Data Bounds；首次打开、保存的 Filter 改变、显式“适配全部结果”或已应用 Record Mutation 失效时调用，普通相机移动不调用。
 - Map Point 只含 Record ID、坐标和 Primary Field 文本；`getRecord` 按需加载详情。`queryMapClusterRecords` 只消费 Map Query 返回的短期 Token，Token/Cursor 过期后刷新视口。
 - `mutate` 必须携带 `clientMutationId`。
 - 更新 Record 时必须携带 `expectedRevision`。

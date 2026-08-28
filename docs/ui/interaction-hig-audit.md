@@ -17,6 +17,18 @@
 
 The audit reads the published file tree and source blobs at the baseline commit, then records a concrete file/line anchor for each existing surface. A capability marked N/A is intentionally not implemented by this audit. A later repair PR must update the Test evidence column with its own merged main SHA and CI run.
 
+## Current P1.5 release checkpoint
+
+This checkpoint supplements the historical baseline rows below and records the disposition at the currently published Plugin main:
+
+- Plugin main is `9b4855e8943f98245dbf111247636e498b320ca8`; Conflict UI/recovery is merged by [PR #51](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/51) as `fffd9b30c3493204fc2252af1a3521b90a11a474`, and Map/Location invalidation is merged by [PR #52](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/52).
+- Server main remains `e02f055fecddc0852085dc5a71b4eb136860774a`; the Plugin OpenAPI source metadata remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`. The snapshot matches that source after the sync script's required final-newline normalization, and generated transport types are checked by `api:check`.
+- The published P1.5 wiring keeps the Server as the authority for Record values, Map membership, Summary and viewport results. Only scheduler `applied`/`unchanged` results publish the full returned Record; conflict, authentication-paused and terminal/idempotency-reused states do not publish applied invalidation. The per-table change cursor remains opaque and is accepted only from sequenced Server responses.
+- Current source checks cover the involved HIG surfaces: translated Map/Location/Conflict/Save Status copy, semantic live regions and labels, Escape/focus recovery and draft confirmation, complete conflict intent, offline read-only gating, `--loom-*` theme tokens, namespaced Leaflet selectors, reduced-motion handling, and English/Chinese catalog parity (165 keys each). The merged main push CI [33120060264](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33120060264) passed the complete `pnpm check`.
+- Real Obsidian/View smoke was not completed: Computer Use found one Obsidian window, but the accessibility-state request timed out waiting for app approval. The automated jsdom/controller evidence above is not desktop acceptance evidence. OSM/Tile live behavior, Grid/Detail/Map navigation, Location set/clear/unset, mutation refresh, and conflict/terminal/auth focus behavior therefore remain unverified in a real Obsidian window for this checkpoint.
+
+The matrix below retains historical baseline anchors and repair-order context; the checkpoint above is the current P1.5 release disposition.
+
 ## Matrix
 
 | Area / file or component | HIG clause | Remote-main evidence at baseline | Severity | Repair plan | Test evidence |
