@@ -106,9 +106,7 @@ describe('MapView', () => {
     expect(
       container.querySelector<HTMLSelectElement>('select[aria-label="地图瓦片提供方"]'),
     ).not.toBeNull();
-    expect(container.querySelector('.loom-map-tile-status')?.textContent).toBe(
-      '地图瓦片已就绪。',
-    );
+    expect(container.querySelector('.loom-map-tile-status')?.textContent).toBe('地图瓦片已就绪。');
     expect(container.querySelector('.loom-map-status')?.textContent).toBe(
       '3 匹配 · 1 可渲染 · 2 未定位 · 0 不可渲染',
     );
