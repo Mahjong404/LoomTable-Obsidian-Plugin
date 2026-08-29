@@ -11,14 +11,7 @@ type SelectField = Field & {
 };
 
 export type EditableFieldType =
-  | 'text'
-  | 'longText'
-  | 'number'
-  | 'checkbox'
-  | 'date'
-  | 'url'
-  | 'select'
-  | 'multiSelect';
+  'text' | 'longText' | 'number' | 'checkbox' | 'date' | 'url' | 'select' | 'multiSelect';
 
 export type FieldValueErrorCode =
   | 'FIELD_VALUE_COMPLEX_FIELD'
@@ -100,10 +93,7 @@ const FIELD_VALUE_ERROR_MESSAGES: Record<FieldValueErrorCode, MessageKey> = {
   FIELD_VALUE_LOCATION_LONGITUDE_RANGE: 'validation.fieldValue.locationLongitudeRange',
 };
 
-export function describeFieldValueError(
-  code: FieldValueErrorCode,
-  translate: Translator,
-): string {
+export function describeFieldValueError(code: FieldValueErrorCode, translate: Translator): string {
   return translate(FIELD_VALUE_ERROR_MESSAGES[code]);
 }
 
@@ -301,9 +291,7 @@ function normalizeSelect(field: SelectField, raw: unknown): CellValueResult {
   const valid = [...field.config.options, ...field.config.deletedOptions].some(
     (option) => option.id === value,
   );
-  return valid
-    ? { ok: true, value }
-    : { ok: false, code: 'FIELD_VALUE_SELECT_OPTION_INVALID' };
+  return valid ? { ok: true, value } : { ok: false, code: 'FIELD_VALUE_SELECT_OPTION_INVALID' };
 }
 
 function normalizeMultiSelect(field: SelectField, raw: unknown): CellValueResult {
@@ -346,9 +334,7 @@ function normalizeCoordinate(
   | { readonly ok: true; readonly value: number | undefined }
   | {
       readonly ok: false;
-      readonly code:
-        | 'FIELD_VALUE_LOCATION_LATITUDE_RANGE'
-        | 'FIELD_VALUE_LOCATION_LONGITUDE_RANGE';
+      readonly code: 'FIELD_VALUE_LOCATION_LATITUDE_RANGE' | 'FIELD_VALUE_LOCATION_LONGITUDE_RANGE';
     } {
   if (raw === undefined || raw === '') return { ok: true, value: undefined };
   const value =
@@ -373,3 +359,4 @@ function normalizeCoordinate(
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
+
