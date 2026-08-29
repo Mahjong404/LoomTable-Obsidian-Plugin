@@ -19,7 +19,11 @@ export interface GridRendererCallbacks {
     action: 'use-server' | 'overwrite' | 'discard-all',
   ) => void;
   readonly confirmDiscardAll?: (recordId: string) => boolean;
-  readonly confirmDangerousAction?: (message: string, host: HTMLElement) => Promise<boolean>;
+  readonly confirmDangerousAction?: (
+    message: string,
+    host: HTMLElement,
+    trigger?: HTMLElement,
+  ) => Promise<boolean>;
   readonly onRetryEdit?: (recordId: string) => void;
 }
 
@@ -327,6 +331,7 @@ export class ReadonlyGridRenderer {
         void this.#requestDangerousConfirmation(
           this.#translate('record.overwriteConfirm'),
           item,
+          overwrite,
         ).then((confirmed) => {
           if (confirmed) this.#callbacks.onConflictAction?.(conflict.recordId, 'overwrite');
         });
@@ -546,10 +551,14 @@ export class ReadonlyGridRenderer {
     }
   }
 
-  #requestDangerousConfirmation(message: string, host: HTMLElement): Promise<boolean> {
+  #requestDangerousConfirmation(
+    message: string,
+    host: HTMLElement,
+    trigger?: HTMLElement,
+  ): Promise<boolean> {
     return (
-      this.#callbacks.confirmDangerousAction?.(message, host) ??
-      confirmDangerousAction(host, message, this.#translate)
+      this.#callbacks.confirmDangerousAction?.(message, host, trigger) ??
+      confirmDangerousAction(host, message, this.#translate, trigger)
     );
   }
 
