@@ -49,7 +49,11 @@ export interface RecordDetailOptions {
   readonly fields: readonly Field[];
   readonly offline?: boolean;
   readonly confirmDiscard?: (message: string) => boolean;
-  readonly confirmDangerousAction?: (message: string, host: HTMLElement) => Promise<boolean>;
+  readonly confirmDangerousAction?: (
+    message: string,
+    host: HTMLElement,
+    trigger?: HTMLElement,
+  ) => Promise<boolean>;
   readonly callbacks?: RecordDetailCallbacks;
 }
 
@@ -379,9 +383,13 @@ function createLocationEditor(
       if (root.isConnected) setSaving(false);
     }
   };
-  const confirmAndSubmit = (intent: LocationEditIntent, message: string): void => {
+  const confirmAndSubmit = (
+    intent: LocationEditIntent,
+    message: string,
+    trigger: HTMLButtonElement,
+  ): void => {
     if (saving) return;
-    void requestDangerousConfirmation(options, root, message).then((confirmed) => {
+    void requestDangerousConfirmation(options, root, message, trigger).then((confirmed) => {
       if (confirmed) void submit(intent);
     });
   };
@@ -409,11 +417,19 @@ function createLocationEditor(
   });
   clear.addEventListener('click', (event) => {
     event.preventDefault();
-    confirmAndSubmit({ kind: 'clear' }, options.translate('record.location.clearConfirm'));
+    confirmAndSubmit(
+      { kind: 'clear' },
+      options.translate('record.location.clearConfirm'),
+      clear,
+    );
   });
   unset.addEventListener('click', (event) => {
     event.preventDefault();
-    confirmAndSubmit({ kind: 'unset' }, options.translate('record.location.unsetConfirm'));
+    confirmAndSubmit(
+      { kind: 'unset' },
+      options.translate('record.location.unsetConfirm'),
+      unset,
+    );
   });
   root.addEventListener('input', () => {
     root.dataset.dirty = 'true';
@@ -514,6 +530,7 @@ function renderConflict(
       options,
       box,
       options.translate('record.overwriteConfirm'),
+      overwrite,
     ).then((confirmed) => {
       if (confirmed) invoke('overwrite');
     });
@@ -589,10 +606,11 @@ function requestDangerousConfirmation(
   options: RecordDetailOptions,
   host: HTMLElement,
   message: string,
+  trigger?: HTMLElement,
 ): Promise<boolean> {
   return (
-    options.confirmDangerousAction?.(message, host) ??
-    showDangerousActionConfirmation(host, message, options.translate)
+    options.confirmDangerousAction?.(message, host, trigger) ??
+    showDangerousActionConfirmation(host, message, options.translate, trigger)
   );
 }
 
