@@ -249,6 +249,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
               this.containerEl,
               t('connection.deleteProfileConfirm'),
               t,
+              button.buttonEl,
             ))
           ) {
             return;
@@ -379,7 +380,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
           .setWarning()
           .onClick(async () => {
             if (
-              !(await confirmDangerousAction(this.containerEl, t('map.deleteCustomConfirm'), t))
+              !(await confirmDangerousAction(this.containerEl, t('map.deleteCustomConfirm'), t, button.buttonEl))
             ) {
               return;
             }
