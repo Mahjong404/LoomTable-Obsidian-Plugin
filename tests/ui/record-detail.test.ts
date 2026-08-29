@@ -65,6 +65,7 @@ describe('Record Detail Location seam', () => {
 
   it('names the detail region and protects a dirty Location draft', () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const confirmDiscard = vi.fn().mockReturnValue(false);
     const onClose = vi.fn();
     const detail = createRecordDetail(createRecord({}), {
@@ -98,6 +99,9 @@ describe('Record Detail Location seam', () => {
     confirmDiscard.mockReturnValue(true);
     container.querySelector<HTMLButtonElement>('.loom-location-editor button:last-child')?.click();
     expect(container.querySelector('.loom-location-editor')).toBeNull();
+    expect(document.activeElement).toBe(
+      container.querySelector<HTMLButtonElement>('.loom-location-edit'),
+    );
   });
 
   it('prevalidates Location form values before calling the mutation seam', async () => {
