@@ -132,14 +132,17 @@ describe('GridViewController', () => {
   it('rejects invalid Cell values without enqueueing a mutation', async () => {
     const data = createData(createRecords(1), createGridConfig(false));
     const client = new InMemoryLoomTableClient(data);
-    const controller = new GridViewController(client);
+    const controller = new GridViewController(client, {
+      translate: createTranslator('zh-CN'),
+    });
     await controller.load();
 
     await expect(
       controller.editCell('record_01', 'field_name', 'bad\u0000value'),
     ).rejects.toMatchObject({ kind: 'validation' });
     expect(client.mutationRequests).toHaveLength(0);
-    expect(controller.state.editError?.message).toContain('control characters');
+    expect(controller.state.editError?.code).toBe('FIELD_VALUE_TEXT_CONTROL');
+    expect(controller.state.editError?.message).toBe('文本包含不支持的控制字符。');
   });
 
   it('rejects Cell edits while offline before sending a Mutation', async () => {
