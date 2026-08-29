@@ -27,6 +27,13 @@ This is a remote-evidence log for the Plugin repository. It records published ch
 - The HIG audit records the actual published main, Map Chinese status, durable queue/runtime status, CI evidence, and the unverified desktop smoke boundary.
 - This PR adds this development log because the repository had release notes but no development log. No credentials are written.
 
+## P1.5 Map async request stability
+
+- Scope: harden Map `fitAll` and terminal Cluster pagination against out-of-order responses and callbacks that arrive after the View is disposed. No Dashboard, CRUD, Filter/Sort, tile/provider, Server, API, OpenAPI, or new offline semantics are included.
+- Design: `fitAll` uses a dedicated request sequence; Cluster pages use a response sequence plus the existing Map query epoch. Only the newest live request may publish summary, camera, items, opaque cursor, change cursor, or callbacks. Cursor values remain server-owned and are never decoded or reconstructed locally.
+- Regression evidence: added minimal controller tests for fitAll out-of-order and dispose-late responses, Cluster page out-of-order responses, opaque cursor non-regression, and dispose-late responses.
+- Delivery status at this commit: implementation, regression tests, and this log entry are prepared from Plugin main `d8aa9646876ffae4e0d62a3def3138e0c41cb3a6`; full `pnpm check`, PR CI, and merge status are intentionally recorded only after they actually pass.
+
 ## Remaining work
 
 - PR #56 must finish its remote format/full-check/PR-CI/merge gate before this slice is complete.

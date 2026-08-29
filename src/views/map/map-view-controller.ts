@@ -54,6 +54,8 @@ export class MapViewController {
   #providerMaxZoom = 19;
   #timer: number | null = null;
   #querySequence = 0;
+  #fitAllSequence = 0;
+  #clusterRequestSequence = 0;
   #destroyed = false;
   #mounted = false;
 
@@ -158,12 +160,14 @@ export class MapViewController {
 
   async fitAll(): Promise<void> {
     if (this.#destroyed) return;
+    const sequence = ++this.#fitAllSequence;
     if (this.#options.isOffline?.() === true) {
       this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
       return;
     }
     try {
       const result = await this.#client.summarizeMap(this.#view.id);
+      if (this.#destroyed || sequence !== this.#fitAllSequence) return;
       if (!this.applySummaryResult(result)) return;
       if (result.summary.dataBounds === undefined) {
         this.#options.renderer.setCamera(DEFAULT_MAP_CAMERA);
@@ -171,6 +175,7 @@ export class MapViewController {
         this.#options.renderer.fitBounds(result.summary.dataBounds);
       }
     } catch (error) {
+      if (this.#destroyed || sequence !== this.#fitAllSequence) return;
       this.handleDataError(error);
     }
   }
@@ -284,6 +289,8 @@ export class MapViewController {
     if (this.#destroyed) return;
     this.#destroyed = true;
     this.#querySequence += 1;
+    this.#fitAllSequence += 1;
+    this.#clusterRequestSequence += 1;
     if (this.#timer !== null) window.clearTimeout(this.#timer);
     this.#timer = null;
     this.#options.renderer.destroy();
@@ -370,6 +377,9 @@ export class MapViewController {
   }
 
   private async loadClusterPage(token: string, cursor: string | undefined): Promise<void> {
+    if (this.#destroyed) return;
+    const requestSequence = ++this.#clusterRequestSequence;
+    const requestEpoch = ++this.#querySequence;
     if (this.#options.isOffline?.() === true) {
       this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
       return;
@@ -379,6 +389,13 @@ export class MapViewController {
         clusterToken: token,
         ...(cursor === undefined ? {} : { cursor }),
       });
+      if (
+        this.#destroyed ||
+        requestSequence !== this.#clusterRequestSequence ||
+        requestEpoch !== this.#querySequence
+      ) {
+        return;
+      }
       this.publish({
         clusterRecords: result.items,
         clusterToken: token,
@@ -387,6 +404,13 @@ export class MapViewController {
       });
       this.#options.onClusterRecords?.(result.items);
     } catch (error) {
+      if (
+        this.#destroyed ||
+        requestSequence !== this.#clusterRequestSequence ||
+        requestEpoch !== this.#querySequence
+      ) {
+        return;
+      }
       const clientError = asClientError(error);
       if (clientError.kind === 'cursor-expired') {
         this.publish({ clusterRecords: [], clusterToken: null, clusterCursor: null });
