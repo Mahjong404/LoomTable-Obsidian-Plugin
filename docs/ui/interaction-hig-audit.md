@@ -73,9 +73,13 @@ This S0 smoke-evidence update records the supplied real Obsidian observations ag
 
 ## Remaining items
 
-- Real Obsidian/View smoke is partially evidenced by the supplied 2026-08-30 run; the remaining items are explicitly unverified / 未验收/未执行 or unverified / 环境限制.
-- Cross-repository runtime integration and any future UI work require separate approval and evidence.
+- This PR is a docs-only consistency correction based on Plugin main `880949b35037bcbac397711873d124f95ba8ddfa`; it reconciles only the residual boundary for the 2026-08-30 smoke evidence and changes no API/runtime behavior.
+- The directly observed PASS items are not remaining items: Grid first load, Detail open/close navigation, Map load, Provider display, actual tile rendering, Map Chinese status/summary, and located-point visibility. PASS remains scoped to the installed runtime-equivalent bundle built from `d3469e7e133ad4a1854833be4912de93953e8e2e`, not a `d4b3f1b812bf23652a79dcb869717c07ef843d7c` build.
+- Still unverified / 未验收/未执行: Location set/clear/unset actual save behavior; Grid keyboard editing; Save Status dirty→saving→saved transitions; offline transitions; Conflict/Auth/Forbidden/network/timeout/terminal fault injection; marker/cluster keyboard activation; Detail exact focus return; Location editor concrete mutations.
+- Still unverified / 环境限制: light theme and narrow layout (only dark/full-window coverage was observed).
+- Static review, jsdom/controller tests, and CI remain supporting evidence only; they do not replace real Obsidian smoke. Cross-repository runtime integration and any future UI work require separate approval and evidence.
 - Dashboard, CRUD, Field Renderer Registry, Select/MultiSelect Chip, full Attachment management, and new Map behavior remain outside this S0 correction.
+- Server stable-support/runtime/API freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`; this correction makes no Server, API, OpenAPI, or runtime change.
 
 ## Matrix
 

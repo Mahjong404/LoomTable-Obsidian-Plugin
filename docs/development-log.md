@@ -68,5 +68,9 @@ This is a remote-evidence log for the Plugin repository. It records published ch
 - Evidence boundary: PASS applies only to direct observation in the installed runtime-equivalent bundle. All other real-window items remain `unverified` with **未验收/未执行** or **环境限制**. Static/jsdom/controller/CI evidence does not replace real Obsidian smoke. No credentials, tokens, provider keys, or user data are recorded.
 ## Remaining work
 
-- Real Obsidian desktop/View smoke remains unverified — 未验收/环境阻塞 — including OSM/tile live behavior and end-to-end Grid/Detail/Map/Location/mutation focus behavior.
-- Follow-up cross-repository integration of the current Plugin main with the current Server docs/main remains to be completed; this documentation-only correction does not change Server, API, or OpenAPI.
+- This PR is a docs-only consistency correction based on Plugin main `880949b35037bcbac397711873d124f95ba8ddfa`; it only reconciles the residual boundary for the 2026-08-30 smoke evidence and changes no API/runtime behavior.
+- Not remaining: the observed PASS items for Grid first load, Detail open/close navigation, Map load, Provider display, actual tile rendering, Map Chinese status/summary, and located-point visibility. PASS remains scoped to the installed runtime-equivalent bundle built from `d3469e7e133ad4a1854833be4912de93953e8e2e`, not a `d4b3f1b812bf23652a79dcb869717c07ef843d7c` build.
+- Still unverified / 未验收/未执行: Location set/clear/unset actual save behavior; Grid keyboard editing; Save Status dirty→saving→saved transitions; offline transitions; Conflict/Auth/Forbidden/network/timeout/terminal fault injection; marker/cluster keyboard activation; Detail exact focus return; Location editor concrete mutations.
+- Still unverified / 环境限制: light theme and narrow layout (only dark/full-window coverage was observed).
+- Static review, jsdom/controller tests, and CI remain supporting evidence only; they do not replace real Obsidian smoke. Follow-up cross-repository integration remains separate work.
+- Server stable-support/runtime/API freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`; this correction makes no Server, API, OpenAPI, or runtime change.
