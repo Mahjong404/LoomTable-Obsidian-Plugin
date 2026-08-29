@@ -379,11 +379,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
           .setWarning()
           .onClick(async () => {
             if (
-              !(await confirmDangerousAction(
-                this.containerEl,
-                t('map.deleteCustomConfirm'),
-                t,
-              ))
+              !(await confirmDangerousAction(this.containerEl, t('map.deleteCustomConfirm'), t))
             ) {
               return;
             }
@@ -510,3 +506,4 @@ function renderConnectionDescription(
 function providerKey(ref: TileProviderRef): string {
   return ref.kind === 'built-in' ? `built-in:${ref.id}` : `custom:${ref.profileId}`;
 }
+
