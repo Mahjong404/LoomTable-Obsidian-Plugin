@@ -6,12 +6,14 @@ export function confirmDangerousAction(
   host: HTMLElement,
   message: string,
   translate: Translator,
+  trigger?: HTMLElement,
 ): Promise<boolean> {
   return new Promise((resolve) => {
     const previouslyFocused =
-      typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+      trigger ??
+      (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
         ? document.activeElement
-        : null;
+        : null);
     const dialog = document.createElement('div');
     dialog.className = 'loom-dangerous-confirmation';
     dialog.setAttribute('role', 'alertdialog');
