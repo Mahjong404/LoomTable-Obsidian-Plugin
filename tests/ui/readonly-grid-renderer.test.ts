@@ -121,12 +121,81 @@ describe('ReadonlyGridRenderer', () => {
     const secondEditor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(secondEditor).not.toBeNull();
     secondEditor?.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }),
+      new KeyboardEvent('keydown', {
+        key: 'Tab',
+        shiftKey: true,
+        bubbles: true,
+      }),
     );
 
     expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_second', 'Second value');
     expect(document.activeElement).toBe(
       container.querySelector('.loom-grid-cell[data-field-id="field_name"]'),
+    );
+  });
+
+  it('commits an editor on blur and keeps a saving Cell out of edit mode', async () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1));
+    const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.click();
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor).not.toBeNull();
+    editor?.dispatchEvent(new Event('blur', { bubbles: true }));
+    await vi.waitFor(() => expect(callbacks.onCellEdit).toHaveBeenCalledTimes(1));
+
+    renderer.render(createState(1, { editStatuses: { record_01: 'saving' } }));
+    const savingCell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"]',
+    );
+    savingCell?.click();
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
+  });
+
+  it('confirms Conflict Overwrite before invoking the recovery callback', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(
+      createState(1, {
+        conflicts: [
+          {
+            recordId: 'record_01',
+            clientMutationId: 'mutation_01',
+            failedCommandIndex: 0,
+            expectedRevision: 1,
+            currentRevision: 2,
+            currentValues: { field_name: 'Server value' },
+            submittedSet: { field_name: 'Local value' },
+            message: 'Revision conflict.',
+          },
+        ],
+      }),
+    );
+
+    const overwrite = container.querySelector<HTMLButtonElement>(
+      '.loom-grid-conflict-actions button:nth-child(2)',
+    );
+    overwrite?.click();
+    const firstDialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(firstDialog?.getAttribute('aria-modal')).toBe('true');
+    expect(firstDialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]')).not.toBeNull();
+    expect(firstDialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]')).not.toBeNull();
+    firstDialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]')?.click();
+    expect(callbacks.onConflictAction).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(overwrite);
+
+    overwrite?.click();
+    const secondDialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(secondDialog).not.toBeNull();
+    secondDialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]')?.click();
+    await vi.waitFor(() =>
+      expect(callbacks.onConflictAction).toHaveBeenCalledWith('record_01', 'overwrite'),
     );
   });
 
@@ -167,7 +236,10 @@ describe('ReadonlyGridRenderer', () => {
       createTranslator('en'),
       rendererCallbacks(),
     );
-    const state = createState(0, { status: 'offline', error: { message: 'offline' } });
+    const state = createState(0, {
+      status: 'offline',
+      error: { message: 'offline' },
+    });
 
     renderer.render(state);
 
@@ -270,7 +342,7 @@ describe('ReadonlyGridRenderer', () => {
     expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', 'changed');
   });
 
-  it('shows Server and local values with explicit conflict actions', () => {
+  it('shows Server and local values with explicit conflict actions', async () => {
     const container = document.createElement('div');
     document.body.append(container);
     const confirmDiscardAll = vi.fn().mockReturnValue(true);
@@ -320,8 +392,14 @@ describe('ReadonlyGridRenderer', () => {
     const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-grid-conflict button');
     buttons[0]?.click();
     buttons[1]?.click();
+    container
+      .querySelector<HTMLElement>('[role="alertdialog"]')
+      ?.querySelector<HTMLButtonElement>('[data-action="confirm"]')
+      ?.click();
+    await vi.waitFor(() =>
+      expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite'),
+    );
     expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(1, 'record_01', 'use-server');
-    expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite');
 
     buttons[2]?.click();
     expect(confirmDiscardAll).toHaveBeenCalledWith('record_01');
@@ -381,7 +459,10 @@ describe('ReadonlyGridRenderer', () => {
 
 describe('getVirtualRowRange', () => {
   it('keeps the rendered range bounded and overscanned', () => {
-    expect(getVirtualRowRange(20_000, 3_600, 360, 36)).toEqual({ start: 96, end: 114 });
+    expect(getVirtualRowRange(20_000, 3_600, 360, 36)).toEqual({
+      start: 96,
+      end: 114,
+    });
     expect(getVirtualRowRange(4, 0, 360, 36)).toEqual({ start: 0, end: 4 });
   });
 });
@@ -442,7 +523,13 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     status: 'ready',
     phase: 'idle',
     workspaces: [
-      { id: 'workspace_01', name: 'Personal', revision: 1, createdAt: '', updatedAt: '' },
+      {
+        id: 'workspace_01',
+        name: 'Personal',
+        revision: 1,
+        createdAt: '',
+        updatedAt: '',
+      },
     ],
     bases: [
       {
@@ -543,9 +630,18 @@ function locationState(value: JsonValue | undefined): GridState {
     views: [
       {
         ...view,
-        config: { ...view.config, projection: ['field_location'], columnOrder: ['field_location'] },
+        config: {
+          ...view.config,
+          projection: ['field_location'],
+          columnOrder: ['field_location'],
+        },
       },
     ],
-    records: [{ ...record, values: value === undefined ? {} : { field_location: value } }],
+    records: [
+      {
+        ...record,
+        values: value === undefined ? {} : { field_location: value },
+      },
+    ],
   };
 }

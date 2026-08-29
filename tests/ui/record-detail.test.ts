@@ -65,6 +65,7 @@ describe('Record Detail Location seam', () => {
 
   it('names the detail region and protects a dirty Location draft', () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const confirmDiscard = vi.fn().mockReturnValue(false);
     const onClose = vi.fn();
     const detail = createRecordDetail(createRecord({}), {
@@ -98,6 +99,9 @@ describe('Record Detail Location seam', () => {
     confirmDiscard.mockReturnValue(true);
     container.querySelector<HTMLButtonElement>('.loom-location-editor button:last-child')?.click();
     expect(container.querySelector('.loom-location-editor')).toBeNull();
+    expect(document.activeElement).toBe(
+      container.querySelector<HTMLButtonElement>('.loom-location-edit'),
+    );
   });
 
   it('prevalidates Location form values before calling the mutation seam', async () => {
@@ -170,8 +174,76 @@ describe('Record Detail Location seam', () => {
     expect(error?.dataset.errorCode).toBe('FIELD_VALUE_LOCATION_EMPTY');
   });
 
+  it('requires confirmation before Location clear/unset and keeps cancel side-effect free', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onLocationEdit = vi.fn().mockResolvedValue(undefined);
+    container.append(
+      createRecordDetail(createRecord({ field_location: { label: 'Local' } }), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: { onLocationEdit },
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const form = container.querySelector<HTMLFormElement>('.loom-location-editor');
+    expect(form).not.toBeNull();
+    if (form === null) return;
+    const actions = form.querySelectorAll<HTMLButtonElement>('button');
+    actions[1]?.focus();
+    actions[1]?.click();
+    await vi.waitFor(() => {
+      const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+      expect(dialog?.getAttribute('role')).toBe('alertdialog');
+      expect(dialog?.getAttribute('aria-modal')).toBe('true');
+      expect(document.activeElement).toBe(
+        dialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]'),
+      );
+    });
+    const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(dialog).not.toBeNull();
+    dialog?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(onLocationEdit).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(actions[1]);
+
+    actions[2]?.focus();
+    actions[2]?.click();
+    const confirmDialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(confirmDialog).not.toBeNull();
+    confirmDialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]')?.click();
+    await vi.waitFor(() =>
+      expect(onLocationEdit).toHaveBeenCalledWith(
+        'record_01',
+        'field_location',
+        { kind: 'unset' },
+        expect.anything(),
+      ),
+    );
+  });
+
+  it('hides Open in Map and explains the required configuration when no matching Map View exists', () => {
+    const container = document.createElement('div');
+    container.append(
+      createRecordDetail(createRecord({ field_location: { lat: 12, lng: 34 } }), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: {
+          canOpenLocationInMap: () => false,
+          onOpenLocationInMap: vi.fn(),
+        },
+      }),
+    );
+
+    expect(container.querySelector('.loom-location-open-map')).toBeNull();
+    expect(container.querySelector('.loom-location-map-unavailable')?.textContent).toContain(
+      'No Map View is configured',
+    );
+  });
+
   it('renders the complete returned Record after a Location save', async () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const returnedRecord = {
       ...createRecord({
         field_location: { label: 'Server value', lat: 3, lng: 4, precision: 'exact' },
@@ -197,6 +269,9 @@ describe('Record Detail Location seam', () => {
 
     await vi.waitFor(() => expect(onLocationEdit).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(container.querySelector('.loom-location-editor')).toBeNull());
+    expect(document.activeElement).toBe(
+      container.querySelector<HTMLButtonElement>('.loom-location-edit'),
+    );
     expect(container.querySelector('.loom-location-values')?.textContent).toContain('Server value');
     expect(container.querySelector('.loom-location-values')?.textContent).toContain('3');
     expect(container.querySelector('.loom-location-values')?.textContent).toContain('4');
@@ -348,8 +423,14 @@ describe('Record Detail Location seam', () => {
     const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-record-conflict button');
     buttons[0]?.click();
     buttons[1]?.click();
+    container
+      .querySelector<HTMLElement>('[role="alertdialog"]')
+      ?.querySelector<HTMLButtonElement>('[data-action="confirm"]')
+      ?.click();
+    await vi.waitFor(() =>
+      expect(onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite'),
+    );
     expect(onConflictAction).toHaveBeenNthCalledWith(1, 'record_01', 'use-server');
-    expect(onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite');
 
     container.querySelector<HTMLButtonElement>('.loom-record-detail-header button')?.click();
     expect(onClose).toHaveBeenCalledTimes(1);

@@ -3,6 +3,7 @@ import type { Field, JsonValue, LoomTableRecord } from '../client/loomtable-clie
 import type { GridConflict, GridState, GridStatus } from './grid-view-controller';
 import { editorTextValue, isEditableField } from './field-value-editor';
 import { renderSaveStatus } from './save-status';
+import { confirmDangerousAction } from './dangerous-action-confirmation';
 
 export interface GridRendererCallbacks {
   readonly onRefresh: () => void | Promise<void>;
@@ -18,6 +19,11 @@ export interface GridRendererCallbacks {
     action: 'use-server' | 'overwrite' | 'discard-all',
   ) => void;
   readonly confirmDiscardAll?: (recordId: string) => boolean;
+  readonly confirmDangerousAction?: (
+    message: string,
+    host: HTMLElement,
+    trigger?: HTMLElement,
+  ) => Promise<boolean>;
   readonly onRetryEdit?: (recordId: string) => void;
 }
 
@@ -321,9 +327,15 @@ export class ReadonlyGridRenderer {
       overwrite.type = 'button';
       overwrite.className = 'loom-button mod-warning';
       overwrite.textContent = this.#translate('grid.overwrite');
-      overwrite.addEventListener('click', () =>
-        this.#callbacks.onConflictAction?.(conflict.recordId, 'overwrite'),
-      );
+      overwrite.addEventListener('click', () => {
+        void this.#requestDangerousConfirmation(
+          this.#translate('record.overwriteConfirm'),
+          item,
+          overwrite,
+        ).then((confirmed) => {
+          if (confirmed) this.#callbacks.onConflictAction?.(conflict.recordId, 'overwrite');
+        });
+      });
       const discardAll = document.createElement('button');
       discardAll.type = 'button';
       discardAll.className = 'loom-button';
@@ -396,7 +408,9 @@ export class ReadonlyGridRenderer {
       cell.setAttribute('role', 'gridcell');
       cell.setAttribute('aria-colindex', String(fieldIndex + 2));
       cell.tabIndex = 0;
-      const canEdit = gridState?.status === 'ready';
+      const editStatus = gridState?.editStatuses[record.id];
+      const canEdit =
+        gridState?.status === 'ready' && editStatus !== 'queued' && editStatus !== 'saving';
       if (!isEditableField(field) || !canEdit) {
         cell.setAttribute('aria-readonly', 'true');
       } else {
@@ -413,7 +427,6 @@ export class ReadonlyGridRenderer {
         field.id,
       );
       cell.setAttribute('aria-label', field.name + ': ' + displayValue);
-      const editStatus = gridState?.editStatuses[record.id];
       if (editStatus !== undefined) cell.dataset.editState = editStatus;
       cell.addEventListener('focus', () => {
         this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
@@ -473,7 +486,9 @@ export class ReadonlyGridRenderer {
     if (
       !isEditableField(field) ||
       this.#virtualGrid?.state.status !== 'ready' ||
-      this.#virtualGrid?.state.editStatuses[record.id] === 'conflict'
+      this.#virtualGrid?.state.editStatuses[record.id] === 'conflict' ||
+      this.#virtualGrid?.state.editStatuses[record.id] === 'queued' ||
+      this.#virtualGrid?.state.editStatuses[record.id] === 'saving'
     ) {
       return;
     }
@@ -517,18 +532,34 @@ export class ReadonlyGridRenderer {
       if (keyboardEvent.key === 'Escape') {
         keyboardEvent.preventDefault();
         finish(false);
-      } else if (keyboardEvent.key === 'Enter' && !composing) {
+      } else if (keyboardEvent.key === 'Enter' && !composing && !keyboardEvent.isComposing) {
         keyboardEvent.preventDefault();
         finish(true);
-      } else if (keyboardEvent.key === 'Tab' && !composing) {
+      } else if (keyboardEvent.key === 'Tab' && !composing && !keyboardEvent.isComposing) {
         keyboardEvent.preventDefault();
         finish(true, keyboardEvent.shiftKey ? -1 : 1);
       }
+    });
+    editor.addEventListener('blur', () => {
+      window.setTimeout(() => {
+        if (!finished && !composing && document.activeElement !== editor) finish(true);
+      }, 0);
     });
     editor.focus();
     if (editor instanceof HTMLInputElement || editor instanceof HTMLTextAreaElement) {
       editor.select?.();
     }
+  }
+
+  #requestDangerousConfirmation(
+    message: string,
+    host: HTMLElement,
+    trigger?: HTMLElement,
+  ): Promise<boolean> {
+    return (
+      this.#callbacks.confirmDangerousAction?.(message, host, trigger) ??
+      confirmDangerousAction(host, message, this.#translate, trigger)
+    );
   }
 
   #emptyState(): GridState {

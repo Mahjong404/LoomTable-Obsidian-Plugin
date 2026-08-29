@@ -5,6 +5,7 @@ import {
   normalizeLocationValue,
   type LocationEditIntent,
 } from './field-value-editor';
+import { confirmDangerousAction as showDangerousActionConfirmation } from './dangerous-action-confirmation';
 
 export interface RecordDetailCallbacks {
   readonly onClose?: () => void;
@@ -19,6 +20,7 @@ export interface RecordDetailCallbacks {
     fieldId: string,
     location: LocationValue,
   ) => void | Promise<void>;
+  readonly canOpenLocationInMap?: (fieldId: string) => boolean;
   readonly onCopyCoordinates?: (
     recordId: string,
     fieldId: string,
@@ -47,6 +49,11 @@ export interface RecordDetailOptions {
   readonly fields: readonly Field[];
   readonly offline?: boolean;
   readonly confirmDiscard?: (message: string) => boolean;
+  readonly confirmDangerousAction?: (
+    message: string,
+    host: HTMLElement,
+    trigger?: HTMLElement,
+  ) => Promise<boolean>;
   readonly callbacks?: RecordDetailCallbacks;
 }
 
@@ -166,19 +173,28 @@ function renderLocationValue(
     wrapper.append(details);
     const coordinates = coordinatesFrom(location);
     if (coordinates !== null) {
-      const open = button(options.translate('record.location.openMap'));
-      open.classList.add('loom-location-open-map');
-      open.addEventListener(
-        'click',
-        () => void options.callbacks?.onOpenLocationInMap?.(record.id, field.id, location),
-      );
+      const canOpen = options.callbacks?.canOpenLocationInMap?.(field.id);
+      if (options.callbacks?.onOpenLocationInMap !== undefined && canOpen !== false) {
+        const open = button(options.translate('record.location.openMap'));
+        open.classList.add('loom-location-open-map');
+        open.addEventListener(
+          'click',
+          () => void options.callbacks?.onOpenLocationInMap?.(record.id, field.id, location),
+        );
+        wrapper.append(open);
+      } else if (canOpen === false) {
+        const unavailable = createText('span', options.translate('record.location.mapUnavailable'));
+        unavailable.className = 'loom-location-map-unavailable';
+        unavailable.setAttribute('role', 'status');
+        wrapper.append(unavailable);
+      }
       const copy = button(options.translate('record.location.copy'));
       copy.classList.add('loom-location-copy');
       copy.setAttribute('aria-label', options.translate('record.location.copy'));
       copy.addEventListener('click', () => {
         void copyCoordinates(record, field, coordinates, copy, options);
       });
-      wrapper.append(open, copy, createPreviewTrigger(coordinates, options.translate));
+      wrapper.append(copy, createPreviewTrigger(coordinates, options.translate));
     }
   } else {
     wrapper.append(createText('span', formatValue(raw, options.translate)));
@@ -318,7 +334,16 @@ function createLocationEditor(
   actions.append(save, clear, unset, cancel);
   root.append(actions);
 
+  let saving = false;
+  const setSaving = (value: boolean): void => {
+    saving = value;
+    root.dataset.saving = String(value);
+    root.setAttribute('aria-busy', String(value));
+    for (const action of [save, clear, unset, cancel]) action.disabled = value;
+  };
   const submit = async (intent: LocationEditIntent): Promise<void> => {
+    if (saving) return;
+    setSaving(true);
     try {
       const updatedRecord = await options.callbacks?.onLocationEdit?.(
         record.id,
@@ -335,7 +360,9 @@ function createLocationEditor(
             : intent.kind === 'clear'
               ? null
               : intent.value;
-      root.replaceWith(renderLocationValue(nextRecord, field, nextValue, options));
+      const next = renderLocationValue(nextRecord, field, nextValue, options);
+      root.replaceWith(next);
+      next.querySelector<HTMLButtonElement>('.loom-location-edit')?.focus();
     } catch (cause) {
       showLocationError(
         error,
@@ -352,7 +379,20 @@ function createLocationEditor(
         root.append(conflictBox);
         conflictBox.focus();
       }
+    } finally {
+      if (root.isConnected) setSaving(false);
     }
+  };
+  const confirmAndSubmit = (
+    intent: LocationEditIntent,
+    message: string,
+    trigger: HTMLButtonElement,
+  ): void => {
+    if (saving) return;
+    trigger.focus();
+    void requestDangerousConfirmation(options, root, message, trigger).then((confirmed) => {
+      if (confirmed) void submit(intent);
+    });
   };
   root.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -376,8 +416,14 @@ function createLocationEditor(
     }
     void submit({ kind: 'set', value: normalized.value as LocationValue });
   });
-  clear.addEventListener('click', () => void submit({ kind: 'clear' }));
-  unset.addEventListener('click', () => void submit({ kind: 'unset' }));
+  clear.addEventListener('click', (event) => {
+    event.preventDefault();
+    confirmAndSubmit({ kind: 'clear' }, options.translate('record.location.clearConfirm'), clear);
+  });
+  unset.addEventListener('click', (event) => {
+    event.preventDefault();
+    confirmAndSubmit({ kind: 'unset' }, options.translate('record.location.unsetConfirm'), unset);
+  });
   root.addEventListener('input', () => {
     root.dataset.dirty = 'true';
   });
@@ -392,7 +438,9 @@ function createLocationEditor(
     ) {
       return;
     }
-    root.replaceWith(renderLocationValue(record, field, raw, options));
+    const next = renderLocationValue(record, field, raw, options);
+    root.replaceWith(next);
+    next.querySelector<HTMLButtonElement>('.loom-location-edit')?.focus();
   });
   if (options.offline === true) {
     for (const action of [save, clear, unset]) action.disabled = true;
@@ -470,7 +518,16 @@ function renderConflict(
     }
   };
   useServer.addEventListener('click', () => invoke('use-server'));
-  overwrite.addEventListener('click', () => invoke('overwrite'));
+  overwrite.addEventListener('click', () => {
+    void requestDangerousConfirmation(
+      options,
+      box,
+      options.translate('record.overwriteConfirm'),
+      overwrite,
+    ).then((confirmed) => {
+      if (confirmed) invoke('overwrite');
+    });
+  });
   const discardAll = button(options.translate('record.discardAll'));
   discardAll.addEventListener('click', () => {
     if (!confirmDiscard(options, options.translate('record.discardAllConfirm'))) return;
@@ -536,6 +593,18 @@ let recordDetailId = 0;
 function nextRecordDetailId(): string {
   recordDetailId += 1;
   return 'loom-record-detail-heading-' + String(recordDetailId);
+}
+
+function requestDangerousConfirmation(
+  options: RecordDetailOptions,
+  host: HTMLElement,
+  message: string,
+  trigger?: HTMLElement,
+): Promise<boolean> {
+  return (
+    options.confirmDangerousAction?.(message, host, trigger) ??
+    showDangerousActionConfirmation(host, message, options.translate, trigger)
+  );
 }
 
 function confirmDiscard(options: RecordDetailOptions, message: string): boolean {

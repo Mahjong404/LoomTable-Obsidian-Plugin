@@ -11,6 +11,8 @@ export const englishMessages = {
   'connection.deleteProfile': 'Delete this connection profile',
   'connection.deleteProfileDescription':
     'Remove this Server connection profile from the Plugin; Server data is not affected.',
+  'connection.deleteProfileConfirm':
+    'Delete this connection profile from the Plugin? Server data will not be affected.',
   'connection.empty': 'No connection profile is configured.',
   'connection.name': 'Name',
   'connection.newName': 'LoomTable Server',
@@ -103,6 +105,8 @@ export const englishMessages = {
   'record.overwrite': 'Overwrite with local value',
   'record.discardAll': 'Discard all pending edits',
   'record.discardAllConfirm': 'Discard all pending edits for this Record? This cannot be undone.',
+  'record.overwriteConfirm':
+    'Overwrite the Server value with the local edit? This cannot be undone.',
   'record.location.previewHint': 'Ctrl/Cmd-hover to preview',
   'record.location.preview': 'Map preview',
   'record.location.attribution': 'Location only; no data was changed',
@@ -134,6 +138,7 @@ export const englishMessages = {
   'map.defaultProvider': 'Default tile provider',
   'map.invalidProvider':
     'The tile provider settings are invalid. Check the template and try again.',
+  'map.deleteCustomConfirm': 'Delete this custom tile provider profile? This cannot be undone.',
   'map.settings': 'Map and tile providers',
   'map.tiandituToken': 'TianDiTu Token',
   'settings.connections': 'Connection profiles',
@@ -143,6 +148,8 @@ export const englishMessages = {
   'view.title': 'LoomTable',
 
   'common.cancel': 'Cancel',
+  'common.confirm': 'Confirm',
+  'common.confirmationTitle': 'Confirm dangerous action',
   'common.emptyValue': 'Empty',
   'common.openDiagnostics': 'Show technical details',
   'grid.status': 'Grid status',
@@ -153,6 +160,10 @@ export const englishMessages = {
   'grid.cell.unchecked': 'Not checked',
   'record.location.invalid': 'Enter a valid Location value.',
   'record.location.discardConfirm': 'Discard unsaved Location changes?',
+  'record.location.clearConfirm': 'Clear this Location value? This cannot be undone.',
+  'record.location.unsetConfirm': 'Unset this Location field? This cannot be undone.',
+  'record.location.mapUnavailable':
+    'No Map View is configured for this Location field. Configure a matching Map View to open it.',
   'record.location.precision.none': 'Not specified',
   'record.location.precision.exact': 'Exact',
   'record.location.precision.rooftop': 'Rooftop',
