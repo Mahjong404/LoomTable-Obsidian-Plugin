@@ -213,12 +213,11 @@ export const englishMessages = {
     'Location needs a name, address, provider, or coordinates.',
   'validation.fieldValue.locationPrecisionAlone':
     'Location precision needs another Location member.',
-  'validation.fieldValue.locationLatitudeRange':
-    'Location latitude must be between -90 and 90.',
+  'validation.fieldValue.locationLatitudeRange': 'Location latitude must be between -90 and 90.',
   'validation.fieldValue.locationLongitudeRange':
     'Location longitude must be between -180 and 180.',
-
 } as const;
 
 export type MessageKey = keyof typeof englishMessages;
 export type MessageCatalog = { readonly [Key in MessageKey]: string };
+
