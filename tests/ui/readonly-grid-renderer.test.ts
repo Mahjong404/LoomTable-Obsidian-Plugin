@@ -130,6 +130,64 @@ describe('ReadonlyGridRenderer', () => {
     );
   });
 
+  it('commits an editor on blur and keeps a saving Cell out of edit mode', async () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1));
+    const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.click();
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor).not.toBeNull();
+    editor?.dispatchEvent(new Event('blur', { bubbles: true }));
+    await vi.waitFor(() => expect(callbacks.onCellEdit).toHaveBeenCalledTimes(1));
+
+    renderer.render(createState(1, { editStatuses: { record_01: 'saving' } }));
+    const savingCell = container.querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_01"]');
+    savingCell?.click();
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
+  });
+
+  it('confirms Conflict Overwrite before invoking the recovery callback', async () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(
+      createState(1, {
+        conflicts: [
+          {
+            recordId: 'record_01',
+            clientMutationId: 'mutation_01',
+            failedCommandIndex: 0,
+            expectedRevision: 1,
+            currentRevision: 2,
+            currentValues: { field_name: 'Server value' },
+            submittedSet: { field_name: 'Local value' },
+            message: 'Revision conflict.',
+          },
+        ],
+      }),
+    );
+
+    const overwrite = container.querySelector<HTMLButtonElement>('.loom-grid-conflict-actions button:nth-child(2)');
+    overwrite?.click();
+    expect(callbacks.onConflictAction).not.toHaveBeenCalled();
+    const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]');
+    dialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]')?.click();
+    expect(callbacks.onConflictAction).not.toHaveBeenCalled();
+
+    overwrite?.click();
+    document
+      .querySelector<HTMLElement>('[role="alertdialog"]')
+      ?.querySelector<HTMLButtonElement>('[data-action="confirm"]')
+      ?.click();
+    await vi.waitFor(() =>
+      expect(callbacks.onConflictAction).toHaveBeenCalledWith('record_01', 'overwrite'),
+    );
+  });
+
   it('keeps raw transport details behind the Grid diagnostic disclosure', () => {
     const container = document.createElement('div');
     const renderer = new ReadonlyGridRenderer(
