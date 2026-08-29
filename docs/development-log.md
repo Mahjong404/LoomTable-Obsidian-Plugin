@@ -5,7 +5,7 @@ This is a remote-evidence log for the Plugin repository. It records published ch
 ## Contract boundary
 
 - Historical Plugin checkpoint before the closeout slice: `7bcef66aebfc3548d4d446cb8e7113c968f71cd2`, merged by [PR #55](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/55).
-- Current Plugin main is `f3201aabf1701c99efc5f3c7133075dfcbab3a17), merged by [PR #58](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/58).
+- Current Plugin main is `f3201aabf1701c99efc5f3c7133075dfcbab3a17`, merged by [PR #58](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/58).
 - Current Server docs/main is `41a403cae63e75e5b523a1a10c2318e43834082a`; the Server runtime/API freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`.
 - Plugin OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
 - The checked-in OpenAPI snapshot and generated transport are validated by `pnpm api:check`; this documentation-only correction does not modify Server, OpenAPI, or generated transport files.
