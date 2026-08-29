@@ -20,6 +20,7 @@ import {
   type TileProviderRef,
 } from '../maps/providers/tile-provider-schema';
 import { createTranslator } from '../i18n';
+import { confirmDangerousAction } from '../ui/dangerous-action-confirmation';
 import { getLocaleOptions } from './locale-options';
 import {
   connectionCheckTone,
@@ -243,6 +244,15 @@ export class LoomTableSettingTab extends PluginSettingTab {
         .setButtonText(t('connection.deleteProfile'))
         .setWarning()
         .onClick(async () => {
+          if (
+            !(await confirmDangerousAction(
+              this.containerEl,
+              t('connection.deleteProfileConfirm'),
+              t,
+            ))
+          ) {
+            return;
+          }
           this.invalidateConnectionCheck(profile);
           this.credentials.delete(profile);
           removeConnectionProfile(this.loomTablePlugin.settings, profile.id);
@@ -368,6 +378,15 @@ export class LoomTableSettingTab extends PluginSettingTab {
           .setButtonText(t('common.delete'))
           .setWarning()
           .onClick(async () => {
+            if (
+              !(await confirmDangerousAction(
+                this.containerEl,
+                t('map.deleteCustomConfirm'),
+                t,
+              ))
+            ) {
+              return;
+            }
             this.loomTablePlugin.settings.mapPresentation.customProfiles =
               this.loomTablePlugin.settings.mapPresentation.customProfiles.filter(
                 (candidate) => candidate.id !== profile.id,
