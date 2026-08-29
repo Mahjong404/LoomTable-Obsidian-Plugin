@@ -91,6 +91,7 @@ export class LoomTableView extends ItemView {
     this.renderGrid(
       profile,
       new GridViewController(this.createClient(profile), {
+        translate: this.getTranslator(),
         ...(this.mutationQueue === null ? {} : { mutationQueue: this.mutationQueue }),
         onNonGridViewSelected: (view, state) => this.showMap(profile, view, state),
       }),
