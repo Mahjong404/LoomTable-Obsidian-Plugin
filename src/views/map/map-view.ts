@@ -46,6 +46,7 @@ export interface MapViewOptions {
     fieldId: string,
     location: LocationValue,
   ) => void | Promise<void>;
+  readonly canOpenLocationInMap?: (fieldId: string) => boolean;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
@@ -230,6 +231,9 @@ export class MapView {
         ...(this.options.onOpenLocationInMap === undefined
           ? {}
           : { onOpenLocationInMap: this.options.onOpenLocationInMap }),
+        ...(this.options.canOpenLocationInMap === undefined
+          ? {}
+          : { canOpenLocationInMap: this.options.canOpenLocationInMap }),
         ...(this.options.getConflict === undefined
           ? {}
           : { getConflict: this.options.getConflict }),
