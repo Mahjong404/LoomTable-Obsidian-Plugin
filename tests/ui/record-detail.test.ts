@@ -231,6 +231,7 @@ describe('Record Detail Location seam', () => {
 
   it('renders the complete returned Record after a Location save', async () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const returnedRecord = {
       ...createRecord({
         field_location: { label: 'Server value', lat: 3, lng: 4, precision: 'exact' },
@@ -256,6 +257,9 @@ describe('Record Detail Location seam', () => {
 
     await vi.waitFor(() => expect(onLocationEdit).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(container.querySelector('.loom-location-editor')).toBeNull());
+    expect(document.activeElement).toBe(
+      container.querySelector<HTMLButtonElement>('.loom-location-edit'),
+    );
     expect(container.querySelector('.loom-location-values')?.textContent).toContain('Server value');
     expect(container.querySelector('.loom-location-values')?.textContent).toContain('3');
     expect(container.querySelector('.loom-location-values')?.textContent).toContain('4');
