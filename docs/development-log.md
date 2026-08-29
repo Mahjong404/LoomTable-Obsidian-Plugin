@@ -1,0 +1,34 @@
+# LoomTable Obsidian Plugin Development Log
+
+This is a remote-evidence log for the Plugin repository. It records published checkpoints and does not contain credentials, tokens, real provider keys, or user data.
+
+## Contract boundary
+
+- Plugin main at the last pre-closeout checkpoint: `7bcef66aebfc3548d4d446cb8e7113c968f71cd2`, merged by [PR #55](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/55).
+- Server main remains `e02f055fecddc0852085dc5a71b4eb136860774a`.
+- Plugin OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
+- The checked-in OpenAPI snapshot and generated transport are validated by `pnpm api:check`; this closeout does not modify Server, OpenAPI, or generated transport files.
+
+## Published stages
+
+| Stage | Merged PRs and merge SHA | Remote CI evidence |
+|---|---|---|
+| P0 engineering baseline | [PR #2](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/2) → `6701a7986f425f09fab3ce483f7d038174d1bae7` | PR CI [31634547664](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/31634547664) passed the baseline `pnpm check`. |
+| P1 contract/Attachment and read-only Grid | [PR #6](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/6) → `65622e95b64d9c6a738c3e4f83a2d4ecf8c14aa0`; [PR #7](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/7) → `b02830badc17618878b8f9601bd8d8cb2520b93a` | PR #6 CI [31772956310](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/31772956310) and PR #7 CI [31785927308](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/31785927308) passed. |
+| P1 Location/Map lifecycle | [PR #29](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/29) → `992f2f46410dd45d8a80158770055aceacb62572` | PR CI [32909390981](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/32909390981) passed. |
+| P1.5 queue persistence, scheduler, runtime | [PR #34](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/34) → `25bee1c8d6d55260ed90280c34f3815be22a3bdf`; [PR #45](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/45) → `c4d90c063b518698d42d6a5aec57843a5db76fb0`; [PR #47](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/47) → `0754c7f75891c59b3992b10868af828108fe1ef0` | PR CI [33017617572](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33017617572), [33075674257](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33075674257), and [33099816369](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33099816369) passed. Offline remains read-only; no offline mutation is created. |
+| P1.5 HIG/accessibility, theme, Conflict, Map invalidation | [PR #38](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/38) → `398011c79c1d1823236733945fc835f3b7cb09cc`; [PR #43](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/43) → `a7ed22c3dc3694cb90c8f8b8e02548d48b589492`; [PR #51](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/51) → `fffd9b30c3493204fc2252af1a3521b90a11a474`; [PR #52](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/52) → `9b4855e8943f98245dbf111247636e498b320ca8` | PR CI [33022901843](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33022901843), [33025011868](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33025011868), [33117519504](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33117519504), and [33119954559](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33119954559) passed. Main push CI [33120060264](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33120060264) passed for the Map invalidation merge. |
+| Map Chinese chrome and HIG remediation docs | [PR #54](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/54) → `d3469e7e133ad4a1854833be4912de93953e8e2e`; [PR #55](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/55) → `7bcef66aebfc3548d4d446cb8e7113c968f71cd2` | Main push CI [33168842872](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33168842872) and PR #55 CI [33236744137](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33236744137) passed. |
+
+## This closeout slice
+
+- [PR #56](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/56) adds stable `FIELD_VALUE_*` domain error codes for every field/Location validation failure in `src/ui/field-value-editor.ts`.
+- English and Simplified Chinese diagnostics are cataloged and translated through the existing translator; Grid Controller and Record Detail pass the translator through the existing seams. Regression tests assert code stability, catalog parity, and localized output.
+- The HIG audit records the actual published main, Map Chinese status, durable queue/runtime status, CI evidence, and the unverified desktop smoke boundary.
+- This PR adds this development log because the repository had release notes but no development log. No credentials are written.
+
+## Remaining work
+
+- PR #56 must finish its remote format/full-check/PR-CI/merge gate before this slice is complete.
+- Real Obsidian desktop/View smoke remains unverified; the prior Computer Use attempt timed out waiting for app approval. OSM/tile live behavior and end-to-end Grid/Detail/Map/Location/mutation focus behavior therefore remain manual acceptance work.
+- Dangerous-operation confirmation, Location draft guard, editor focus recovery, Dashboard, and other later HIG backlog items are outside this slice.

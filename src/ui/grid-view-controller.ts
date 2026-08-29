@@ -18,6 +18,7 @@ import {
   type Workspace,
 } from '../client/loomtable-client';
 import {
+  describeFieldValueError,
   normalizeCellValue,
   normalizeLocationValue,
   type LocationEditIntent,
@@ -28,6 +29,7 @@ import type {
   MutationQueueRecordSnapshot,
   MutationQueueSchedulerEvent,
 } from './mutation-queue-scheduler';
+import { createTranslator, type Translator } from '../i18n';
 import type { ViewSaveStatus } from './save-status';
 
 export const DEFAULT_GRID_PAGE_SIZE = 100;
@@ -92,6 +94,7 @@ export interface GridViewControllerOptions {
   readonly mutationQueue?: DurableMutationQueuePort;
   readonly mutationIdFactory?: () => string;
   readonly mutationNetworkAttempts?: number;
+  readonly translate?: Translator;
   readonly onNonGridViewSelected?: (view: View, state: GridState) => void | Promise<void>;
 }
 
@@ -144,6 +147,7 @@ export class GridViewController {
   readonly #client: GridDataSource;
   readonly #pageSize: number;
   readonly #isOffline: () => boolean;
+  readonly #translate: Translator;
   readonly #listeners = new Set<GridStateListener>();
   readonly #queue: MutationQueue | null;
   readonly #durableQueue: DurableMutationQueuePort | null;
@@ -163,6 +167,7 @@ export class GridViewController {
     this.#client = client;
     this.#pageSize = normalizePageSize(options.pageSize ?? DEFAULT_GRID_PAGE_SIZE);
     this.#isOffline = options.isOffline ?? defaultOfflineCheck;
+    this.#translate = options.translate ?? createTranslator('en');
     this.#onNonGridViewSelected = options.onNonGridViewSelected;
     this.#durableQueue = options.mutationQueue ?? null;
     this.#mutationIdFactory = options.mutationIdFactory ?? createMutationId;
@@ -263,7 +268,12 @@ export class GridViewController {
       : field.type === 'location'
         ? normalizeLocationValue(rawValue)
         : normalizeCellValue(field, rawValue);
-    if (!normalized.ok) throw this.#publishEditFailure(normalized.message);
+    if (!normalized.ok) {
+      throw this.#publishEditFailure(
+        describeFieldValueError(normalized.code, this.#translate),
+        normalized.code,
+      );
+    }
     if (this.#queue === null && this.#durableQueue === null) {
       throw this.#publishEditFailure('Record editing is unavailable for this connection.');
     }
@@ -762,8 +772,11 @@ export class GridViewController {
     });
   }
 
-  #publishEditFailure(message: string): LoomTableClientError {
-    const error = new LoomTableClientError('validation', { message });
+  #publishEditFailure(message: string, code?: string): LoomTableClientError {
+    const error = new LoomTableClientError('validation', {
+      message,
+      ...(code === undefined ? {} : { code }),
+    });
     this.#publish({
       editError: error.details,
       saveStatus: this.#isOffline() ? 'offline-readonly' : 'error',

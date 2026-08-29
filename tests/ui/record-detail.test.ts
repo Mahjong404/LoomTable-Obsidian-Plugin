@@ -148,6 +148,28 @@ describe('Record Detail Location seam', () => {
     );
   });
 
+  it('renders the localized Location validation diagnostic and stable code', () => {
+    const container = document.createElement('div');
+    container.append(
+      createRecordDetail(createRecord({}), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('zh-CN'),
+        callbacks: { onLocationEdit: vi.fn() },
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const form = container.querySelector<HTMLFormElement>('.loom-location-editor');
+    expect(form).not.toBeNull();
+    if (form === null) return;
+
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    const error = form.querySelector<HTMLElement>('.loom-location-editor-error');
+    expect(error?.textContent).toBe('Location 需要名称、地址、提供方或坐标。');
+    expect(error?.dataset.errorCode).toBe('FIELD_VALUE_LOCATION_EMPTY');
+  });
+
   it('renders the complete returned Record after a Location save', async () => {
     const container = document.createElement('div');
     const returnedRecord = {
