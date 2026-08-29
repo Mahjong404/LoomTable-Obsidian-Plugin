@@ -1,6 +1,10 @@
 import type { Field, JsonValue, LocationValue, LoomTableRecord } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
-import { normalizeLocationValue, type LocationEditIntent } from './field-value-editor';
+import {
+  describeFieldValueError,
+  normalizeLocationValue,
+  type LocationEditIntent,
+} from './field-value-editor';
 
 export interface RecordDetailCallbacks {
   readonly onClose?: () => void;
@@ -365,6 +369,8 @@ function createLocationEditor(
         error,
         [label.input, address.input, provider.input, lat.input, lng.input, precision],
         options,
+        describeFieldValueError(normalized.code, options.translate),
+        normalized.code,
       );
       return;
     }
@@ -546,9 +552,13 @@ function showLocationError(
   error: HTMLElement,
   controls: readonly HTMLElement[],
   options: RecordDetailOptions,
+  message = options.translate('record.location.invalid'),
+  code?: string,
 ): void {
   error.hidden = false;
-  error.textContent = options.translate('record.location.invalid');
+  error.textContent = message;
+  if (code === undefined) delete error.dataset.errorCode;
+  else error.dataset.errorCode = code;
   for (const control of controls) control.setAttribute('aria-invalid', 'true');
 }
 
