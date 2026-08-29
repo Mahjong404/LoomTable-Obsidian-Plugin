@@ -176,6 +176,7 @@ describe('Record Detail Location seam', () => {
 
   it('requires confirmation before Location clear/unset and keeps cancel side-effect free', async () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const onLocationEdit = vi.fn().mockResolvedValue(undefined);
     container.append(
       createRecordDetail(createRecord({ field_location: { label: 'Local' } }), {
@@ -191,19 +192,24 @@ describe('Record Detail Location seam', () => {
     if (form === null) return;
     const actions = form.querySelectorAll<HTMLButtonElement>('button');
     actions[1]?.click();
+    await vi.waitFor(() => {
+      const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+      expect(dialog?.getAttribute('role')).toBe('alertdialog');
+      expect(dialog?.getAttribute('aria-modal')).toBe('true');
+      expect(document.activeElement).toBe(
+        dialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]'),
+      );
+    });
     const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
-    expect(dialog?.getAttribute('aria-modal')).toBe('true');
-    expect(document.activeElement).toBe(
-      dialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]'),
-    );
-    dialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]')?.click();
+    expect(dialog).not.toBeNull();
+    dialog?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(onLocationEdit).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(actions[1]);
 
     actions[2]?.click();
-    document
-      .querySelector<HTMLElement>('[role="alertdialog"]')
-      ?.querySelector<HTMLButtonElement>('[data-action="confirm"]')
-      ?.click();
+    const confirmDialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(confirmDialog).not.toBeNull();
+    confirmDialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]')?.click();
     await vi.waitFor(() =>
       expect(onLocationEdit).toHaveBeenCalledWith(
         'record_01',
