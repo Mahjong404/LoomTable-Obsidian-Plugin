@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { createTranslator } from '../../src/i18n';
 import type { Field } from '../../src/client/loomtable-client';
 import {
   describeFieldValueError,
