@@ -5,8 +5,8 @@ This is a remote-evidence log for the Plugin repository. It records published ch
 ## Contract boundary
 
 - Historical Plugin checkpoint before the closeout slice: `7bcef66aebfc3548d4d446cb8e7113c968f71cd2`, merged by [PR #55](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/55).
-- Current Plugin main is `f3201aabf1701c99efc5f3c7133075dfcbab3a17`, merged by [PR #58](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/58).
-- Current Server docs/main is `41a403cae63e75e5b523a1a10c2318e43834082a`; the Server runtime/API freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`.
+- S0 audit baseline Plugin main is `84fae88ab185598210fe35fd2a18de58d6c5d3ce`, merged by [PR #59](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/59); main push CI [33265049273](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33265049273) succeeded.
+- Current Server docs/main is `ab949d59c37680d53b4109e1502f8478b24cc655`; the Server runtime/API freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`.
 - Plugin OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
 - The checked-in OpenAPI snapshot and generated transport are validated by `pnpm api:check`; this documentation-only correction does not modify Server, OpenAPI, or generated transport files.
 
@@ -26,6 +26,7 @@ This is a remote-evidence log for the Plugin repository. It records published ch
 - [PR #56](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/56) merged to main as `03dab67835155e422aeb12a97a5c467d701503ab`. PR CI [33260706290](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33260706290) and main CI [33260804613](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33260804613) completed successfully.
 - [PR #57](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/57) merged to main as `d8aa9646876ffae4e0d62a3def3138e0c41cb3a6`. PR CI [33263420992](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33263420992) and main CI [33263498894](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33263498894) completed successfully. The slice records dangerous-operation confirmation, the Location Map guard, and editor focus recovery with IME/saving behavior.
 - [PR #58](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/58) merged to main as `f3201aabf1701c99efc5f3c7133075dfcbab3a17`. PR CI [33264526404](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264526404) and main CI [33264590407](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264590407) completed successfully. The slice hardens Map `fitAll` and Cluster async response protection.
+- [PR #59](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/59) merged to main as `84fae88ab185598210fe35fd2a18de58d6c5d3ce`. PR CI [33264976726](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264976726) and main push CI [33265049273](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33265049273) completed successfully; it corrected the development-log evidence.
 
 ## This closeout slice
 
@@ -41,7 +42,14 @@ This is a remote-evidence log for the Plugin repository. It records published ch
 - Scope: harden Map `fitAll` and terminal Cluster pagination against out-of-order responses and callbacks that arrive after the View is disposed. No Dashboard, CRUD, Filter/Sort, tile/provider, Server, API, OpenAPI, or new offline semantics are included.
 - Design: `fitAll` uses a dedicated request sequence; Cluster pages use a response sequence plus the existing Map query epoch. Only the newest live request may publish summary, camera, items, opaque cursor, change cursor, or callbacks. Cursor values remain server-owned and are never decoded or reconstructed locally.
 - Regression evidence: added minimal controller tests for fitAll out-of-order and dispose-late responses, Cluster page out-of-order responses, opaque cursor non-regression, and dispose-late responses.
-- Delivery status: merged to current Plugin main `f3201aabf1701c99efc5f3c7133075dfcbab3a17` via PR #58 after the complete `pnpm check` passed; PR CI [33264526404](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264526404) and main CI [33264590407](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264590407) both succeeded.
+- Delivery status: merged to Plugin main `f3201aabf1701c99efc5f3c7133075dfcbab3a17` via PR #58 after the complete `pnpm check` passed; PR CI [33264526404](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264526404) and main CI [33264590407](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264590407) both succeeded.
+
+## 2026-08-30 S0 audit evidence correction
+
+- Scope: correct the current Plugin checkpoint to the independently verified `84fae88ab185598210fe35fd2a18de58d6c5d3ce`, record the merged PR #56–#59 and their PR/main CI evidence, and add the explicit S0 real-Obsidian smoke matrix.
+- The smoke matrix marks Grid/Detail/Map navigation, Location set/clear/unset, Save Status, Conflict/Auth/Forbidden/Offline, Map marker/cluster/provider/tile, and light/dark/narrow layout as `unverified`: this session had no controlled Computer Use approval/activation, and jsdom/static/CI evidence is not desktop acceptance.
+- This correction changes only `docs/ui/interaction-hig-audit.md` and `docs/development-log.md`; it does not change Server, API, OpenAPI, Plugin runtime, offline semantics, or any UI behavior. No credentials, tokens, provider keys, or user data are recorded.
+- The delivery PR and its final merge/main CI evidence must be appended only after the connector reports them; no SHA is inferred.
 
 ## Remaining work
 
