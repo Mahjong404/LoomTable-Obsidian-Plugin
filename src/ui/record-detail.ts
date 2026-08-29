@@ -417,19 +417,11 @@ function createLocationEditor(
   });
   clear.addEventListener('click', (event) => {
     event.preventDefault();
-    confirmAndSubmit(
-      { kind: 'clear' },
-      options.translate('record.location.clearConfirm'),
-      clear,
-    );
+    confirmAndSubmit({ kind: 'clear' }, options.translate('record.location.clearConfirm'), clear);
   });
   unset.addEventListener('click', (event) => {
     event.preventDefault();
-    confirmAndSubmit(
-      { kind: 'unset' },
-      options.translate('record.location.unsetConfirm'),
-      unset,
-    );
+    confirmAndSubmit({ kind: 'unset' }, options.translate('record.location.unsetConfirm'), unset);
   });
   root.addEventListener('input', () => {
     root.dataset.dirty = 'true';
