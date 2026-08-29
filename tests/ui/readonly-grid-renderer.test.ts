@@ -339,7 +339,7 @@ describe('ReadonlyGridRenderer', () => {
     expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', 'changed');
   });
 
-  it('shows Server and local values with explicit conflict actions', () => {
+  it('shows Server and local values with explicit conflict actions', async () => {
     const container = document.createElement('div');
     document.body.append(container);
     const confirmDiscardAll = vi.fn().mockReturnValue(true);
