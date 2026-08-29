@@ -181,6 +181,43 @@ export const englishMessages = {
   'map.tiles.error': 'Tile provider error. Retry or choose another provider.',
   'map.tiles.loading': 'Loading tiles…',
   'map.tiles.ready': 'Tiles ready.',
+  'validation.fieldValue.complex': 'This field is edited from Record details.',
+  'validation.fieldValue.textType': 'Text value must be text.',
+  'validation.fieldValue.textControl': 'Text contains unsupported control characters.',
+  'validation.fieldValue.textTooLong': 'Text is too long.',
+  'validation.fieldValue.longTextType': 'Long text value must be text.',
+  'validation.fieldValue.longTextControl': 'Long text contains unsupported control characters.',
+  'validation.fieldValue.longTextTooLong': 'Long text is too long.',
+  'validation.fieldValue.numberNotFinite': 'Number must be finite.',
+  'validation.fieldValue.numberNotNumeric': 'Number must be numeric.',
+  'validation.fieldValue.checkboxBoolean': 'Checkbox must be true or false.',
+  'validation.fieldValue.dateFormat': 'Date must use YYYY-MM-DD.',
+  'validation.fieldValue.dateInvalid': 'Date is not a valid Gregorian date.',
+  'validation.fieldValue.urlAbsolute': 'URL must be an absolute HTTP(S) URL.',
+  'validation.fieldValue.urlTooLong': 'URL is too long.',
+  'validation.fieldValue.selectOptionType': 'Select value must be an option.',
+  'validation.fieldValue.selectOptionInvalid': 'Select option is not valid.',
+  'validation.fieldValue.multiSelectType': 'Multi-select value must contain option IDs.',
+  'validation.fieldValue.multiSelectInvalid': 'Multi-select contains an invalid option.',
+  'validation.fieldValue.multiSelectLimit':
+    'Multi-select options must be unique and contain at most 100 items.',
+  'validation.fieldValue.locationObject': 'Location must be an object or cleared.',
+  'validation.fieldValue.locationUnsupportedMember': 'Location contains an unsupported member.',
+  'validation.fieldValue.locationMemberType': 'Location member must be text.',
+  'validation.fieldValue.locationMemberControl':
+    'Location contains unsupported control characters.',
+  'validation.fieldValue.locationCoordinatesPair':
+    'Location latitude and longitude must be provided together.',
+  'validation.fieldValue.locationPrecisionInvalid': 'Location precision is not valid.',
+  'validation.fieldValue.locationEmpty':
+    'Location needs a name, address, provider, or coordinates.',
+  'validation.fieldValue.locationPrecisionAlone':
+    'Location precision needs another Location member.',
+  'validation.fieldValue.locationLatitudeRange':
+    'Location latitude must be between -90 and 90.',
+  'validation.fieldValue.locationLongitudeRange':
+    'Location longitude must be between -180 and 180.',
+
 } as const;
 
 export type MessageKey = keyof typeof englishMessages;
