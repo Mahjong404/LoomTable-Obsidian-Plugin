@@ -380,7 +380,12 @@ export class LoomTableSettingTab extends PluginSettingTab {
           .setWarning()
           .onClick(async () => {
             if (
-              !(await confirmDangerousAction(this.containerEl, t('map.deleteCustomConfirm'), t, button.buttonEl))
+              !(await confirmDangerousAction(
+                this.containerEl,
+                t('map.deleteCustomConfirm'),
+                t,
+                button.buttonEl,
+              ))
             ) {
               return;
             }
