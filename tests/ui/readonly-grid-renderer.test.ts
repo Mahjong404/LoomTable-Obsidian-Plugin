@@ -181,16 +181,17 @@ describe('ReadonlyGridRenderer', () => {
       '.loom-grid-conflict-actions button:nth-child(2)',
     );
     overwrite?.click();
-    expect(callbacks.onConflictAction).not.toHaveBeenCalled();
-    const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
-    dialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]')?.click();
+    const firstDialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(firstDialog?.getAttribute('aria-modal')).toBe('true');
+    expect(firstDialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]')).not.toBeNull();
+    expect(firstDialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]')).not.toBeNull();
+    firstDialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]')?.click();
     expect(callbacks.onConflictAction).not.toHaveBeenCalled();
 
     overwrite?.click();
-    document
-      .querySelector<HTMLElement>('[role="alertdialog"]')
-      ?.querySelector<HTMLButtonElement>('[data-action="confirm"]')
-      ?.click();
+    const secondDialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(secondDialog).not.toBeNull();
+    secondDialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]')?.click();
     await vi.waitFor(() =>
       expect(callbacks.onConflictAction).toHaveBeenCalledWith('record_01', 'overwrite'),
     );
