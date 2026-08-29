@@ -389,6 +389,7 @@ function createLocationEditor(
     trigger: HTMLButtonElement,
   ): void => {
     if (saving) return;
+    trigger.focus();
     void requestDangerousConfirmation(options, root, message, trigger).then((confirmed) => {
       if (confirmed) void submit(intent);
     });
