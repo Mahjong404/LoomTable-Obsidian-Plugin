@@ -157,6 +157,7 @@ describe('ReadonlyGridRenderer', () => {
 
   it('confirms Conflict Overwrite before invoking the recovery callback', async () => {
     const container = document.createElement('div');
+    document.body.append(container);
     const callbacks = rendererCallbacks();
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
 
@@ -187,6 +188,7 @@ describe('ReadonlyGridRenderer', () => {
     expect(firstDialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]')).not.toBeNull();
     firstDialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]')?.click();
     expect(callbacks.onConflictAction).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(overwrite);
 
     overwrite?.click();
     const secondDialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
