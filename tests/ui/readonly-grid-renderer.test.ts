@@ -182,7 +182,7 @@ describe('ReadonlyGridRenderer', () => {
     );
     overwrite?.click();
     expect(callbacks.onConflictAction).not.toHaveBeenCalled();
-    const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]');
+    const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
     dialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]')?.click();
     expect(callbacks.onConflictAction).not.toHaveBeenCalled();
 
@@ -389,8 +389,14 @@ describe('ReadonlyGridRenderer', () => {
     const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-grid-conflict button');
     buttons[0]?.click();
     buttons[1]?.click();
+    container
+      .querySelector<HTMLElement>('[role="alertdialog"]')
+      ?.querySelector<HTMLButtonElement>('[data-action="confirm"]')
+      ?.click();
+    await vi.waitFor(() =>
+      expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite'),
+    );
     expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(1, 'record_01', 'use-server');
-    expect(callbacks.onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite');
 
     buttons[2]?.click();
     expect(confirmDiscardAll).toHaveBeenCalledWith('record_01');
