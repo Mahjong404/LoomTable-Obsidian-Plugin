@@ -191,7 +191,7 @@ describe('Record Detail Location seam', () => {
     if (form === null) return;
     const actions = form.querySelectorAll<HTMLButtonElement>('button');
     actions[1]?.click();
-    const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]');
+    const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
     expect(dialog?.getAttribute('aria-modal')).toBe('true');
     expect(document.activeElement).toBe(
       dialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]'),
@@ -415,8 +415,14 @@ describe('Record Detail Location seam', () => {
     const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-record-conflict button');
     buttons[0]?.click();
     buttons[1]?.click();
+    container
+      .querySelector<HTMLElement>('[role="alertdialog"]')
+      ?.querySelector<HTMLButtonElement>('[data-action="confirm"]')
+      ?.click();
+    await vi.waitFor(() =>
+      expect(onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite'),
+    );
     expect(onConflictAction).toHaveBeenNthCalledWith(1, 'record_01', 'use-server');
-    expect(onConflictAction).toHaveBeenNthCalledWith(2, 'record_01', 'overwrite');
 
     container.querySelector<HTMLButtonElement>('.loom-record-detail-header button')?.click();
     expect(onClose).toHaveBeenCalledTimes(1);
