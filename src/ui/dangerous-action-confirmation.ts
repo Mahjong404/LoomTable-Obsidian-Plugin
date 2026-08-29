@@ -57,6 +57,7 @@ export function confirmDangerousAction(
     dialog.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
+      event.stopPropagation();
       finish(false);
     });
     cancel.focus();
