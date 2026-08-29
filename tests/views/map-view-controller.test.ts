@@ -7,6 +7,7 @@ import {
   type LoomTableRecord,
   type MapQueryResult,
   type MapSummaryResult,
+  type QueryResult,
   type View,
 } from '../../src/client/loomtable-client';
 import { TileProviderRegistry } from '../../src/maps/providers/tile-provider-registry';
@@ -132,6 +133,65 @@ describe('MapViewController', () => {
 
     expect(controller.state.features).toEqual(queryResult('record_new', 1).features);
     expect(renderer.features).toEqual(queryResult('record_new', 1).features);
+  });
+
+  it('discards a late fitAll response after a newer request starts', async () => {
+    const first = deferred<MapSummaryResult>();
+    const second = deferred<MapSummaryResult>();
+    const summarizeMap = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const renderer = new FakeRenderer();
+    const controller = createController(
+      createClient({ summarizeMap }),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { renderer },
+    );
+    const oldResult: MapSummaryResult = {
+      ...summaryResult('fit_old'),
+      summary: {
+        ...summaryResult('fit_old').summary,
+        dataBounds: { boxes: [{ west: -10, south: -10, east: -5, north: -5 }] },
+      },
+    };
+    const newResult: MapSummaryResult = {
+      ...summaryResult('fit_new'),
+      summary: {
+        ...summaryResult('fit_new').summary,
+        dataBounds: { boxes: [{ west: 10, south: 10, east: 15, north: 15 }] },
+      },
+    };
+
+    const firstRequest = controller.fitAll();
+    const secondRequest = controller.fitAll();
+    first.resolve(oldResult);
+    second.resolve(newResult);
+    await Promise.all([firstRequest, secondRequest]);
+
+    expect(renderer.fitBoundsCalls).toEqual([newResult.summary.dataBounds]);
+    expect(controller.state.changeCursor).toBe('fit_new');
+  });
+
+  it('ignores a late fitAll response after dispose', async () => {
+    const pending = deferred<MapSummaryResult>();
+    const summarizeMap = vi.fn().mockReturnValue(pending.promise);
+    const renderer = new FakeRenderer();
+    const controller = createController(
+      createClient({ summarizeMap }),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { renderer },
+    );
+
+    const request = controller.fitAll();
+    controller.dispose();
+    pending.resolve(summaryResult('fit_late'));
+    await request;
+
+    expect(renderer.fitBoundsCalls).toHaveLength(0);
+    expect(controller.state.changeCursor).toBeNull();
   });
 
   it('updates the open Record and refreshes Map data after a successful Location mutation', async () => {
@@ -422,6 +482,113 @@ describe('MapViewController', () => {
       clusterToken: 'cluster_token',
     });
     expect(onClusterRecords).toHaveBeenCalledWith([record]);
+  });
+
+  it('discards an out-of-order terminal Cluster page response', async () => {
+    const first = deferred<QueryResult>();
+    const second = deferred<QueryResult>();
+    const onClusterRecords = vi.fn();
+    const queryMapClusterRecords = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const controller = createController(
+      createClient({ queryMapClusterRecords }),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { onClusterRecords },
+    );
+
+    await controller.refreshCurrentViewport();
+    const firstRequest = controller.openCluster('cluster_01');
+    const secondRequest = controller.openCluster('cluster_01');
+    first.resolve({
+      items: [createRecord('record_old')],
+      hasMore: true,
+      nextCursor: 'cursor_old',
+      changeCursor: 'change_old',
+    });
+    second.resolve({
+      items: [createRecord('record_new')],
+      hasMore: true,
+      nextCursor: 'cursor_new',
+      changeCursor: 'change_new',
+    });
+    await Promise.all([firstRequest, secondRequest]);
+
+    expect(controller.state.clusterRecords).toEqual([createRecord('record_new')]);
+    expect(controller.state.clusterCursor).toBe('cursor_new');
+    expect(onClusterRecords).toHaveBeenCalledTimes(1);
+    expect(onClusterRecords).toHaveBeenCalledWith([createRecord('record_new')]);
+  });
+
+  it('never regresses an opaque Cluster cursor when page responses finish out of order', async () => {
+    const first = deferred<QueryResult>();
+    const second = deferred<QueryResult>();
+    const initial = createRecord('record_initial');
+    const queryMapClusterRecords = vi
+      .fn()
+      .mockResolvedValueOnce({
+        items: [initial],
+        hasMore: true,
+        nextCursor: 'cursor_01',
+        changeCursor: 'change_01',
+      })
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const controller = createController(
+      createClient({ queryMapClusterRecords }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.refreshCurrentViewport();
+    await controller.openCluster('cluster_01');
+
+    const firstRequest = controller.loadNextClusterPage();
+    const secondRequest = controller.loadNextClusterPage();
+    second.resolve({
+      items: [createRecord('record_new')],
+      hasMore: true,
+      nextCursor: 'cursor_02',
+      changeCursor: 'change_02',
+    });
+    first.resolve({
+      items: [createRecord('record_stale')],
+      hasMore: true,
+      nextCursor: 'cursor_01',
+      changeCursor: 'change_stale',
+    });
+    await Promise.all([firstRequest, secondRequest]);
+
+    expect(controller.state.clusterRecords).toEqual([createRecord('record_new')]);
+    expect(controller.state.clusterCursor).toBe('cursor_02');
+  });
+
+  it('ignores a late terminal Cluster response after dispose', async () => {
+    const pending = deferred<QueryResult>();
+    const queryMapClusterRecords = vi.fn().mockReturnValue(pending.promise);
+    const onClusterRecords = vi.fn();
+    const controller = createController(
+      createClient({ queryMapClusterRecords }),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { onClusterRecords },
+    );
+
+    await controller.refreshCurrentViewport();
+    const request = controller.openCluster('cluster_01');
+    controller.dispose();
+    pending.resolve({
+      items: [createRecord('record_late')],
+      hasMore: false,
+      changeCursor: 'change_late',
+    });
+    await request;
+
+    expect(controller.state.clusterRecords).toEqual([]);
+    expect(controller.state.clusterCursor).toBeNull();
+    expect(onClusterRecords).not.toHaveBeenCalled();
   });
 
   it('stores the latest Map cursor and revalidates before an explicit refresh', async () => {
