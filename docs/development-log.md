@@ -4,10 +4,11 @@ This is a remote-evidence log for the Plugin repository. It records published ch
 
 ## Contract boundary
 
-- Plugin main at the last pre-closeout checkpoint: `7bcef66aebfc3548d4d446cb8e7113c968f71cd2`, merged by [PR #55](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/55).
-- Server main remains `e02f055fecddc0852085dc5a71b4eb136860774a`.
+- Historical Plugin checkpoint before the closeout slice: `7bcef66aebfc3548d4d446cb8e7113c968f71cd2`, merged by [PR #55](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/55).
+- Current Plugin main is `f3201aabf1701c99efc5f3c7133075dfcbab3a17`, merged by [PR #58](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/58).
+- Current Server docs/main is `41a403cae63e75e5b523a1a10c2318e43834082a`; the Server runtime/API freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`.
 - Plugin OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
-- The checked-in OpenAPI snapshot and generated transport are validated by `pnpm api:check`; this closeout does not modify Server, OpenAPI, or generated transport files.
+- The checked-in OpenAPI snapshot and generated transport are validated by `pnpm api:check`; this documentation-only correction does not modify Server, OpenAPI, or generated transport files.
 
 ## Published stages
 
@@ -20,22 +21,29 @@ This is a remote-evidence log for the Plugin repository. It records published ch
 | P1.5 HIG/accessibility, theme, Conflict, Map invalidation | [PR #38](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/38) → `398011c79c1d1823236733945fc835f3b7cb09cc`; [PR #43](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/43) → `a7ed22c3dc3694cb90c8f8b8e02548d48b589492`; [PR #51](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/51) → `fffd9b30c3493204fc2252af1a3521b90a11a474`; [PR #52](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/52) → `9b4855e8943f98245dbf111247636e498b320ca8` | PR CI [33022901843](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33022901843), [33025011868](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33025011868), [33117519504](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33117519504), and [33119954559](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33119954559) passed. Main push CI [33120060264](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33120060264) passed for the Map invalidation merge. |
 | Map Chinese chrome and HIG remediation docs | [PR #54](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/54) → `d3469e7e133ad4a1854833be4912de93953e8e2e`; [PR #55](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/55) → `7bcef66aebfc3548d4d446cb8e7113c968f71cd2` | Main push CI [33168842872](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33168842872) and PR #55 CI [33236744137](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33236744137) passed. |
 
+## Closeout merge evidence
+
+- [PR #56](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/56) merged to main as `03dab67835155e422aeb12a97a5c467d701503ab`. PR CI [33260706290](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33260706290) and main CI [33260804613](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33260804613) completed successfully.
+- [PR #57](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/57) merged to main as `d8aa9646876ffae4e0d62a3def3138e0c41cb3a6`. PR CI [33263420992](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33263420992) and main CI [33263498894](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33263498894) completed successfully. The slice records dangerous-operation confirmation, the Location Map guard, and editor focus recovery with IME/saving behavior.
+- [PR #58](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/58) merged to main as `f3201aabf1701c99efc5f3c7133075dfcbab3a17`. PR CI [33264526404](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264526404) and main CI [33264590407](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264590407) completed successfully. The slice hardens Map `fitAll` and Cluster async response protection.
+
 ## This closeout slice
 
-- [PR #56](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/56) adds stable `FIELD_VALUE_*` domain error codes for every field/Location validation failure in `src/ui/field-value-editor.ts`.
-- English and Simplified Chinese diagnostics are cataloged and translated through the existing translator; Grid Controller and Record Detail pass the translator through the existing seams. Regression tests assert code stability, catalog parity, and localized output.
-- The HIG audit records the actual published main, Map Chinese status, durable queue/runtime status, CI evidence, and the unverified desktop smoke boundary.
-- This PR adds this development log because the repository had release notes but no development log. No credentials are written.
+- [PR #56](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/56) added stable `FIELD_VALUE_*` domain error codes for every field/Location validation failure in `src/ui/field-value-editor.ts`.
+- English and Simplified Chinese diagnostics were cataloged and translated through the existing translator; Grid Controller and Record Detail pass the translator through the existing seams. Regression tests assert code stability, catalog parity, and localized output.
+- [PR #57](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/57) added the approved dangerous-operation confirmations, Location Map configuration guard, and editor focus/IME/saving behavior.
+- [PR #58](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/58) added Map `fitAll` and terminal Cluster pagination protection against out-of-order responses and callbacks after View disposal.
+- The HIG audit records the published main, Map Chinese status, durable queue/runtime status, CI evidence, and the unverified desktop smoke boundary.
+- PR #56 introduced this development log because the repository had release notes but no development log. No credentials are written.
 
 ## P1.5 Map async request stability
 
 - Scope: harden Map `fitAll` and terminal Cluster pagination against out-of-order responses and callbacks that arrive after the View is disposed. No Dashboard, CRUD, Filter/Sort, tile/provider, Server, API, OpenAPI, or new offline semantics are included.
 - Design: `fitAll` uses a dedicated request sequence; Cluster pages use a response sequence plus the existing Map query epoch. Only the newest live request may publish summary, camera, items, opaque cursor, change cursor, or callbacks. Cursor values remain server-owned and are never decoded or reconstructed locally.
 - Regression evidence: added minimal controller tests for fitAll out-of-order and dispose-late responses, Cluster page out-of-order responses, opaque cursor non-regression, and dispose-late responses.
-- Delivery status at this commit: implementation, regression tests, and this log entry are prepared from Plugin main `d8aa9646876ffae4e0d62a3def3138e0c41cb3a6`; full `pnpm check`, PR CI, and merge status are intentionally recorded only after they actually pass.
+- Delivery status: merged to current Plugin main `f3201aabf1701c99efc5f3c7133075dfcbab3a17` via PR #58 after the complete `pnpm check` passed; PR CI [33264526404](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264526404) and main CI [33264590407](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33264590407) both succeeded.
 
 ## Remaining work
 
-- PR #56 must finish its remote format/full-check/PR-CI/merge gate before this slice is complete.
-- Real Obsidian desktop/View smoke remains unverified; the prior Computer Use attempt timed out waiting for app approval. OSM/tile live behavior and end-to-end Grid/Detail/Map/Location/mutation focus behavior therefore remain manual acceptance work.
-- Dangerous-operation confirmation, Location draft guard, editor focus recovery, Dashboard, and other later HIG backlog items are outside this slice.
+- Real Obsidian desktop/View smoke remains unverified, including OSM/tile live behavior and end-to-end Grid/Detail/Map/Location/mutation focus behavior.
+- Follow-up cross-repository integration of the current Plugin main with the current Server docs/main remains to be completed; this documentation-only correction does not change Server, API, or OpenAPI.
