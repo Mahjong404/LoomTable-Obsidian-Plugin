@@ -191,6 +191,7 @@ describe('Record Detail Location seam', () => {
     expect(form).not.toBeNull();
     if (form === null) return;
     const actions = form.querySelectorAll<HTMLButtonElement>('button');
+    actions[1]?.focus();
     actions[1]?.click();
     await vi.waitFor(() => {
       const dialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
@@ -206,6 +207,7 @@ describe('Record Detail Location seam', () => {
     expect(onLocationEdit).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(actions[1]);
 
+    actions[2]?.focus();
     actions[2]?.click();
     const confirmDialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
     expect(confirmDialog).not.toBeNull();
