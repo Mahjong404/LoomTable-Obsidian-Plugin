@@ -167,6 +167,10 @@ export class LoomTableView extends ItemView {
         this.#gridController?.resolveConflict(recordId, action),
       onOpenLocationInMap: (recordId, fieldId) =>
         this.openLocationInMap(profile, navigationState, recordId, fieldId),
+      canOpenLocationInMap: (fieldId) =>
+        navigationState.views.some(
+          (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
+        ),
       providers: this.mapContext.registry.list(),
       selectedProvider: provider,
       onProviderChange: async (nextProvider) => {
@@ -258,6 +262,10 @@ export class LoomTableView extends ItemView {
         onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
         onOpenLocationInMap: (recordId, fieldId) =>
           this.openLocationInMap(profile, controller.state, recordId, fieldId),
+        canOpenLocationInMap: (fieldId) =>
+          controller.state.views.some(
+            (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
+          ),
       },
     });
     this.contentEl.append(detail);
