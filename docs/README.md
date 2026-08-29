@@ -8,6 +8,7 @@
 - [产品范围](./product/scope.md)
 - [LoomTable Interaction HIG](./ui/interaction-hig.md)
 - [HIG 落地计划](./ui/interaction-hig-rollout.md)
+- [HIG 问题修复与实施顺序](./ui/interaction-hig-remediation-plan.md)
 - [UI Design System](./ui/design-system.md)
 - [Grid View 规范](./ui/grid-spec.md)
 - [Map View 与瓦片提供方规范](./ui/map-spec.md)
