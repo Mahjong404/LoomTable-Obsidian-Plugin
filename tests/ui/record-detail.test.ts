@@ -170,6 +170,65 @@ describe('Record Detail Location seam', () => {
     expect(error?.dataset.errorCode).toBe('FIELD_VALUE_LOCATION_EMPTY');
   });
 
+  it('requires confirmation before Location clear/unset and keeps cancel side-effect free', async () => {
+    const container = document.createElement('div');
+    const onLocationEdit = vi.fn().mockResolvedValue(undefined);
+    container.append(
+      createRecordDetail(createRecord({ field_location: { label: 'Local' } }), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: { onLocationEdit },
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const form = container.querySelector<HTMLFormElement>('.loom-location-editor');
+    expect(form).not.toBeNull();
+    if (form === null) return;
+    const actions = form.querySelectorAll<HTMLButtonElement>('button');
+    actions[1]?.click();
+    const dialog = document.querySelector<HTMLElement>('[role="alertdialog"]');
+    expect(dialog?.getAttribute('aria-modal')).toBe('true');
+    expect(document.activeElement).toBe(
+      dialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]'),
+    );
+    dialog?.querySelector<HTMLButtonElement>('[data-action="cancel"]')?.click();
+    expect(onLocationEdit).not.toHaveBeenCalled();
+
+    actions[2]?.click();
+    document
+      .querySelector<HTMLElement>('[role="alertdialog"]')
+      ?.querySelector<HTMLButtonElement>('[data-action="confirm"]')
+      ?.click();
+    await vi.waitFor(() =>
+      expect(onLocationEdit).toHaveBeenCalledWith(
+        'record_01',
+        'field_location',
+        { kind: 'unset' },
+        expect.anything(),
+      ),
+    );
+  });
+
+  it('hides Open in Map and explains the required configuration when no matching Map View exists', () => {
+    const container = document.createElement('div');
+    container.append(
+      createRecordDetail(createRecord({ field_location: { lat: 12, lng: 34 } }), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: {
+          canOpenLocationInMap: () => false,
+          onOpenLocationInMap: vi.fn(),
+        },
+      }),
+    );
+
+    expect(container.querySelector('.loom-location-open-map')).toBeNull();
+    expect(container.querySelector('.loom-location-map-unavailable')?.textContent).toContain(
+      'No Map View is configured',
+    );
+  });
+
   it('renders the complete returned Record after a Location save', async () => {
     const container = document.createElement('div');
     const returnedRecord = {
