@@ -211,7 +211,12 @@ describe('Record Detail Location seam', () => {
     actions[2]?.click();
     const confirmDialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
     expect(confirmDialog).not.toBeNull();
-    confirmDialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]')?.click();
+    const confirmButton =
+      confirmDialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]');
+    expect(confirmButton?.classList.contains('loom-button-danger')).toBe(true);
+    expect(confirmButton?.dataset.variant).toBe('danger');
+    expect(confirmButton?.classList.contains('mod-warning')).toBe(false);
+    confirmButton?.click();
     await vi.waitFor(() =>
       expect(onLocationEdit).toHaveBeenCalledWith(
         'record_01',
@@ -421,6 +426,9 @@ describe('Record Detail Location seam', () => {
     expect(document.activeElement).toBe(container.querySelector('.loom-record-conflict'));
 
     const buttons = container.querySelectorAll<HTMLButtonElement>('.loom-record-conflict button');
+    expect(buttons[1]?.classList.contains('loom-button-danger')).toBe(true);
+    expect(buttons[1]?.dataset.variant).toBe('danger');
+    expect(buttons[1]?.classList.contains('mod-warning')).toBe(false);
     buttons[0]?.click();
     buttons[1]?.click();
     container

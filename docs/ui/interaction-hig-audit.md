@@ -6,6 +6,15 @@
 >
 > Normative sources: Interaction HIG, Design System, Grid spec, Map spec, Client Contract, and HIG rollout. Current Server docs/main is `ab949d59c37680d53b4109e1502f8478b24cc655`; the Server stable-support/runtime/API freeze baseline remains `e02f055fecddc0852085dc5a71b4eb136860774a`; the Plugin OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
 
+## S1-A control geometry and danger semantics
+
+- This slice starts from the connector-verified Plugin `main` `05b90dd6710e35ede161dbaeaf055bff90e07dd6`; it changes only existing Plugin CSS and existing destructive-action button semantics.
+- `.loom-button` now has an explicit tokenized minimum height, block/inline padding, focus-visible and disabled rules. Existing native input/select/textarea controls under `.loom-root` share the same interaction height, radius, box sizing and focus-visible treatment without adding global selectors.
+- Leaflet zoom links remain under `.loom-map-shell` and use the tokenized shared control size and focus ring. Map data, Provider, tile behavior and attribution are unchanged.
+- Existing custom Conflict/confirmation danger buttons use the Loom-owned `loom-button-danger` class and `data-variant="danger"`; Obsidian `Setting#setWarning()` is unchanged. Confirmation timing, cancellation, focus return and Mutation/Conflict behavior are unchanged.
+- Automated evidence is limited to `tests/ui/styles-audit.test.ts`, existing Grid/Detail DOM confirmation tests, and `tests/maps/leaflet-map-renderer.test.ts`. No real Obsidian smoke was rerun; static/jsdom tests do not replace desktop acceptance.
+- S1 remains incomplete. Remaining S1 gaps include localized settings copy/diagnostic actions, settings confirmation DOM coverage/focus containment, Map camera duplicate-submit protection, actionable auth/permission errors, and the broader focus/error and light/dark/narrow acceptance rows.
+
 ## Severity and disposition
 
 - **P0 / MUST**: release-blocking HIG violation; fix in the next UI slice and add a focused regression or DOM/accessibility test.

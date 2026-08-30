@@ -181,6 +181,9 @@ describe('ReadonlyGridRenderer', () => {
     const overwrite = container.querySelector<HTMLButtonElement>(
       '.loom-grid-conflict-actions button:nth-child(2)',
     );
+    expect(overwrite?.classList.contains('loom-button-danger')).toBe(true);
+    expect(overwrite?.dataset.variant).toBe('danger');
+    expect(overwrite?.classList.contains('mod-warning')).toBe(false);
     overwrite?.click();
     const firstDialog = container.querySelector<HTMLElement>('[role="alertdialog"]');
     expect(firstDialog?.getAttribute('aria-modal')).toBe('true');

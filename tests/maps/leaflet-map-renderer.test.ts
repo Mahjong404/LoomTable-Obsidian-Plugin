@@ -70,4 +70,26 @@ describe('Leaflet tile layer adapter options', () => {
     map.remove();
     container.remove();
   });
+
+  it('exposes namespaced zoom controls for the shared hit-size contract', () => {
+    const container = document.createElement('div');
+    const shell = document.createElement('div');
+    shell.className = 'loom-map-shell';
+    Object.defineProperties(container, {
+      clientWidth: { configurable: true, value: 400 },
+      clientHeight: { configurable: true, value: 300 },
+      offsetWidth: { configurable: true, value: 400 },
+      offsetHeight: { configurable: true, value: 300 },
+    });
+    shell.append(container);
+    document.body.append(shell);
+    const map = new LeafletMapAdapter().createMap(container);
+
+    const zoomLinks = shell.querySelectorAll('.leaflet-control-zoom a');
+    expect(zoomLinks).toHaveLength(2);
+    expect(shell.querySelector('.loom-map-shell .leaflet-control-zoom')).not.toBeNull();
+
+    map.remove();
+    shell.remove();
+  });
 });

@@ -19,6 +19,10 @@
   --loom-focus: var(--interactive-accent, #7c3aed);
   --loom-radius-sm: var(--radius-s, 4px);
   --loom-radius-md: var(--radius-m, 8px);
+  --loom-control-min-height: 2rem;
+  --loom-control-padding-block: var(--loom-space-1);
+  --loom-control-padding-inline: var(--loom-space-2);
+  --loom-map-control-size: 2rem;
   --loom-space-1: var(--size-4-1, 4px);
   --loom-space-2: var(--size-4-2, 8px);
   --loom-space-3: var(--size-4-3, 12px);
@@ -122,7 +126,9 @@
 }
 
 .loom-button {
-  padding: var(--loom-space-1) var(--loom-space-2);
+  box-sizing: border-box;
+  min-height: var(--loom-control-min-height);
+  padding: var(--loom-control-padding-block) var(--loom-control-padding-inline);
   border: 1px solid var(--loom-border);
   border-radius: var(--loom-radius-sm);
   background: var(--loom-control-bg);
@@ -138,6 +144,38 @@
 .loom-button:disabled {
   cursor: default;
   opacity: 0.6;
+}
+
+.loom-button[data-variant='danger'],
+.loom-button-danger {
+  border-color: var(--loom-text-error);
+  background: var(--loom-bg-error);
+  color: var(--loom-text-error);
+  font-weight: var(--loom-font-semibold);
+}
+
+.loom-button[data-variant='danger']:hover:not(:disabled),
+.loom-button[data-variant='danger']:focus-visible,
+.loom-button-danger:hover:not(:disabled),
+.loom-button-danger:focus-visible {
+  background: var(--loom-bg-error);
+}
+
+.loom-root input,
+.loom-root select,
+.loom-root textarea {
+  box-sizing: border-box;
+  min-height: var(--loom-control-min-height);
+  padding-block: var(--loom-control-padding-block);
+  padding-inline: var(--loom-control-padding-inline);
+  border-radius: var(--loom-radius-sm);
+}
+
+.loom-root input:focus-visible,
+.loom-root select:focus-visible,
+.loom-root textarea:focus-visible {
+  outline: 2px solid var(--loom-focus);
+  outline-offset: 2px;
 }
 
 .loom-grid-select {
@@ -199,6 +237,7 @@
 }
 
 .loom-grid-editor {
+  box-sizing: border-box;
   width: 100%;
   min-width: 0;
   margin: 0;
@@ -705,14 +744,21 @@
 
 .loom-map-shell .leaflet-control-zoom a {
   display: block;
-  width: 26px;
-  height: 26px;
+  width: var(--loom-map-control-size);
+  height: var(--loom-map-control-size);
   border-block-end: 1px solid var(--loom-border);
   background: var(--loom-bg-primary);
   color: var(--loom-text-normal);
-  font: bold 18px/26px var(--loom-font-mono);
+  font: bold 18px/var(--loom-map-control-size) var(--loom-font-mono);
   text-align: center;
   text-decoration: none;
+}
+
+.loom-map-shell .leaflet-control-zoom a:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--loom-focus);
+  outline-offset: -2px;
 }
 
 .loom-map-shell .leaflet-control-zoom a:last-child {

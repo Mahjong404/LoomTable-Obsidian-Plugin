@@ -325,7 +325,8 @@ export class ReadonlyGridRenderer {
       );
       const overwrite = document.createElement('button');
       overwrite.type = 'button';
-      overwrite.className = 'loom-button mod-warning';
+      overwrite.className = 'loom-button loom-button-danger';
+      overwrite.dataset.variant = 'danger';
       overwrite.textContent = this.#translate('grid.overwrite');
       overwrite.addEventListener('click', () => {
         void this.#requestDangerousConfirmation(
