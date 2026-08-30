@@ -12,7 +12,8 @@ export const simplifiedChineseMessages = {
   'connection.deleteProfile': '删除此连接档案',
   'connection.deleteProfileDescription':
     '从 Plugin 中移除此 Server 连接档案；不会影响 Server 数据。',
-  'connection.deleteProfileConfirm': '从 Plugin 中删除此连接档案？不会影响 Server 数据。',
+  'connection.deleteProfileConfirm':
+    '从 Plugin 中删除连接档案“{name}”？这会断开本次会话 Token，但不会删除 Server 数据或已记住的 Secret Storage 条目。选择“确认”删除，或选择“取消”保留。',
   'connection.empty': '尚未配置连接档案。',
   'connection.name': '名称',
   'connection.newName': 'LoomTable Server',
@@ -128,7 +129,17 @@ export const simplifiedChineseMessages = {
   'map.customUrlDescription': '必须包含 {z}、{x}、{y}；非回环地址必须使用 HTTPS。',
   'map.defaultProvider': '默认瓦片提供方',
   'map.invalidProvider': '地图瓦片提供方设置无效；请检查模板后重试。',
-  'map.deleteCustomConfirm': '删除此自定义地图瓦片提供方？此操作无法撤销。',
+  'map.providerError.configurationRequired':
+    '需要配置地图瓦片提供方；请添加所需凭据或选择其他提供方。',
+  'map.providerError.invalidProfile': '地图瓦片提供方配置档无效；请检查名称、缩放范围和署名信息。',
+  'map.providerError.invalidOrigin':
+    '地图瓦片提供方地址无效；非本机地址必须使用 HTTPS，HTTP 仅允许用于 localhost。',
+  'map.providerError.invalidTemplate':
+    '地图瓦片 URL 模板无效；请包含 {z}、{x}、{y}，并仅使用支持的占位符。',
+  'map.providerError.unsupportedCrs': '地图瓦片提供方使用了不支持的坐标系；请使用 EPSG:3857。',
+  'map.providerError.tileError': '地图瓦片加载失败；请重试或选择其他提供方。',
+  'map.deleteCustomConfirm':
+    '删除自定义地图瓦片提供方“{name}”？这会移除本地提供方配置；已有 Map View 需要改用其他提供方。选择“确认”删除，或选择“取消”保留。',
   'map.settings': '地图与瓦片提供方',
   'map.tiandituToken': '天地图 Token',
   'settings.connections': '连接档案',

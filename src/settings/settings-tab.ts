@@ -12,6 +12,7 @@ import type LoomTablePlugin from '../main';
 import type { ProfileCredentialStore } from '../credentials/profile-credential-store';
 import type { TileCredentialStore } from '../maps/credentials/tile-credential-store';
 import { getBuiltInMapCredentialEntries } from './map-credential-entries';
+import { describeTileProviderError, formatNamedConfirmation } from './settings-presentation';
 import { TileProviderRegistry } from '../maps/providers/tile-provider-registry';
 import {
   credentialBindingKey,
@@ -20,7 +21,10 @@ import {
   type TileProviderRef,
 } from '../maps/providers/tile-provider-schema';
 import { createTranslator } from '../i18n';
-import { confirmDangerousAction } from '../ui/dangerous-action-confirmation';
+import {
+  confirmDangerousAction,
+  runAfterDangerousConfirmation,
+} from '../ui/dangerous-action-confirmation';
 import { getLocaleOptions } from './locale-options';
 import {
   connectionCheckTone,
@@ -244,22 +248,23 @@ export class LoomTableSettingTab extends PluginSettingTab {
         .setButtonText(t('connection.deleteProfile'))
         .setWarning()
         .onClick(async () => {
-          if (
-            !(await confirmDangerousAction(
-              this.containerEl,
-              t('connection.deleteProfileConfirm'),
-              t,
-              button.buttonEl,
-            ))
-          ) {
-            return;
-          }
-          this.invalidateConnectionCheck(profile);
-          this.credentials.delete(profile);
-          removeConnectionProfile(this.loomTablePlugin.settings, profile.id);
-          await this.loomTablePlugin.saveSettings();
-          this.display();
-          this.loomTablePlugin.refreshViews();
+          await runAfterDangerousConfirmation(
+            () =>
+              confirmDangerousAction(
+                this.containerEl,
+                formatNamedConfirmation(t('connection.deleteProfileConfirm'), profile.name),
+                t,
+                button.buttonEl,
+              ),
+            async () => {
+              this.invalidateConnectionCheck(profile);
+              this.credentials.delete(profile);
+              removeConnectionProfile(this.loomTablePlugin.settings, profile.id);
+              await this.loomTablePlugin.saveSettings();
+              this.display();
+              this.loomTablePlugin.refreshViews();
+            },
+          );
         }),
     );
   }
@@ -307,7 +312,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
         t('map.tiandituToken'),
         entry.ref,
         entry.slotId,
-        entry.slotName,
+        t(entry.slotName),
         t('map.tiandituCredentialDescription'),
       );
     }
@@ -357,7 +362,7 @@ export class LoomTableSettingTab extends PluginSettingTab {
           };
           const error = validateCustomTileProviderProfile(profile);
           if (error !== null) {
-            new Notice(t('map.invalidProvider'));
+            new Notice(describeTileProviderError(error, t));
             return;
           }
           this.loomTablePlugin.settings.mapPresentation.customProfiles.push(profile);
@@ -379,22 +384,23 @@ export class LoomTableSettingTab extends PluginSettingTab {
           .setButtonText(t('common.delete'))
           .setWarning()
           .onClick(async () => {
-            if (
-              !(await confirmDangerousAction(
-                this.containerEl,
-                t('map.deleteCustomConfirm'),
-                t,
-                button.buttonEl,
-              ))
-            ) {
-              return;
-            }
-            this.loomTablePlugin.settings.mapPresentation.customProfiles =
-              this.loomTablePlugin.settings.mapPresentation.customProfiles.filter(
-                (candidate) => candidate.id !== profile.id,
-              );
-            await this.loomTablePlugin.saveSettings();
-            this.display();
+            await runAfterDangerousConfirmation(
+              () =>
+                confirmDangerousAction(
+                  this.containerEl,
+                  formatNamedConfirmation(t('map.deleteCustomConfirm'), profile.name),
+                  t,
+                  button.buttonEl,
+                ),
+              async () => {
+                this.loomTablePlugin.settings.mapPresentation.customProfiles =
+                  this.loomTablePlugin.settings.mapPresentation.customProfiles.filter(
+                    (candidate) => candidate.id !== profile.id,
+                  );
+                await this.loomTablePlugin.saveSettings();
+                this.display();
+              },
+            );
           }),
       );
   }
