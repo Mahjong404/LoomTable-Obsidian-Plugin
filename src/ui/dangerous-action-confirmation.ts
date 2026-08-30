@@ -50,19 +50,64 @@ export function confirmDangerousAction(
       if (settled) return;
       settled = true;
       dialog.remove();
-      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+      if (previouslyFocused?.isConnected) {
+        previouslyFocused.focus();
+      } else if (host.isConnected) {
+        if (!host.hasAttribute('tabindex')) host.setAttribute('tabindex', '-1');
+        host.focus();
+      }
       resolve(value);
     };
     cancel.addEventListener('click', () => finish(false));
     confirm.addEventListener('click', () => finish(true));
     dialog.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape') return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const focusable = getFocusableElements(dialog);
+      if (focusable.length === 0) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      const active = document.activeElement;
+      const currentIndex = active instanceof HTMLElement ? focusable.indexOf(active) : -1;
+      const nextIndex = event.shiftKey
+        ? currentIndex <= 0
+          ? focusable.length - 1
+          : currentIndex - 1
+        : currentIndex === -1 || currentIndex === focusable.length - 1
+          ? 0
+          : currentIndex + 1;
       event.preventDefault();
       event.stopPropagation();
-      finish(false);
+      focusable[nextIndex]?.focus();
     });
     cancel.focus();
   });
+}
+
+export async function runAfterDangerousConfirmation(
+  confirm: () => Promise<boolean>,
+  action: () => void | Promise<void>,
+): Promise<boolean> {
+  if (!(await confirm())) return false;
+  await action();
+  return true;
+}
+
+function getFocusableElements(dialog: HTMLElement): HTMLElement[] {
+  return [
+    ...dialog.querySelectorAll<HTMLElement>(
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  ].filter(
+    (element) => !element.hasAttribute('hidden') && element.getAttribute('aria-hidden') !== 'true',
+  );
 }
 
 function nextConfirmationId(): string {

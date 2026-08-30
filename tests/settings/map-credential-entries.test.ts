@@ -10,7 +10,7 @@ describe('map credential settings entries', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({
       slotId: 'tianditu-token',
-      slotName: '天地图 Token',
+      slotName: 'map.tiandituToken',
     });
     expect(credentialBindingKey(entries[0]!.ref, entries[0]!.slotId)).toBe(
       credentialBindingKey({ kind: 'built-in', id: 'tianditu-terrain' }, 'tianditu-token'),

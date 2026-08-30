@@ -12,7 +12,7 @@ export const englishMessages = {
   'connection.deleteProfileDescription':
     'Remove this Server connection profile from the Plugin; Server data is not affected.',
   'connection.deleteProfileConfirm':
-    'Delete this connection profile from the Plugin? Server data will not be affected.',
+    'Delete connection profile “{name}”? This removes it from the Plugin, disconnects its session token, and does not delete Server data or the remembered Secret Storage entry. Choose Confirm to remove it or Cancel to keep it.',
   'connection.empty': 'No connection profile is configured.',
   'connection.name': 'Name',
   'connection.newName': 'LoomTable Server',
@@ -138,7 +138,19 @@ export const englishMessages = {
   'map.defaultProvider': 'Default tile provider',
   'map.invalidProvider':
     'The tile provider settings are invalid. Check the template and try again.',
-  'map.deleteCustomConfirm': 'Delete this custom tile provider profile? This cannot be undone.',
+  'map.providerError.configurationRequired':
+    'Tile provider configuration is required. Add the required credential or choose another provider.',
+  'map.providerError.invalidProfile':
+    'The tile provider profile is invalid. Check its name, zoom range, and attribution.',
+  'map.providerError.invalidOrigin':
+    'The tile provider origin is invalid. Use HTTPS for non-local origins; HTTP is allowed only for localhost.',
+  'map.providerError.invalidTemplate':
+    'The tile URL template is invalid. Include {z}, {x}, and {y}; use only supported placeholders.',
+  'map.providerError.unsupportedCrs':
+    'The tile provider uses an unsupported coordinate system. Use EPSG:3857.',
+  'map.providerError.tileError': 'Tile loading failed. Retry or choose another provider.',
+  'map.deleteCustomConfirm':
+    'Delete custom tile provider “{name}”? This removes its local provider configuration; existing Map Views will need another provider. Choose Confirm to remove it or Cancel to keep it.',
   'map.settings': 'Map and tile providers',
   'map.tiandituToken': 'TianDiTu Token',
   'settings.connections': 'Connection profiles',
