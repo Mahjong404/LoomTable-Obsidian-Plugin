@@ -37,7 +37,8 @@ export function confirmDangerousAction(
     cancel.textContent = translate('common.cancel');
     const confirm = document.createElement('button');
     confirm.type = 'button';
-    confirm.className = 'loom-button mod-warning';
+    confirm.className = 'loom-button loom-button-danger';
+    confirm.dataset.variant = 'danger';
     confirm.dataset.action = 'confirm';
     confirm.textContent = translate('common.confirm');
     actions.append(cancel, confirm);

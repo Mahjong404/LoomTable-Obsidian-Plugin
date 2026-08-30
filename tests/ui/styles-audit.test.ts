@@ -55,4 +55,26 @@ describe('LoomTable CSS contract', () => {
     expect(styles).toContain('box-shadow: inset 0 0 0 2px var(--loom-focus)');
     expect(styles).toContain('outline: 2px solid var(--loom-focus)');
   });
+
+  it('defines a shared namespaced control geometry contract', () => {
+    expect(tokenRoot()).toContain('--loom-control-min-height: 2rem');
+    expect(tokenRoot()).toContain('--loom-control-padding-block: var(--loom-space-1)');
+    expect(tokenRoot()).toContain('--loom-control-padding-inline: var(--loom-space-2)');
+    expect(styles).toContain('min-height: var(--loom-control-min-height)');
+    expect(styles).toContain('box-sizing: border-box');
+    expect(styles).toContain('.loom-root input:focus-visible');
+    expect(styles).toContain('.loom-root select:focus-visible');
+    expect(styles).toContain('.loom-root textarea:focus-visible');
+    expect(styles).not.toMatch(/^\s*(?:button|input|textarea|select)\b/m);
+  });
+
+  it('uses a Loom danger variant and a namespaced zoom hit target', () => {
+    expect(styles).toContain(".loom-button[data-variant='danger']");
+    expect(styles).toContain('.loom-button-danger');
+    expect(styles).toContain('--loom-map-control-size: 2rem');
+    expect(styles).toContain('width: var(--loom-map-control-size)');
+    expect(styles).toContain('height: var(--loom-map-control-size)');
+    expect(styles).toContain('.loom-map-shell .leaflet-control-zoom a:focus-visible');
+    expect(styles).not.toContain('mod-warning');
+  });
 });

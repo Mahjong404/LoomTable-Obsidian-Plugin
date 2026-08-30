@@ -16,6 +16,13 @@ This is a remote-evidence log for the Plugin repository. It records published ch
 - Plugin OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
 - The checked-in OpenAPI snapshot and generated transport are validated by `pnpm api:check`; this documentation-only correction does not modify Server, OpenAPI, or generated transport files.
 
+## 2026-08-31 S1-A control geometry and danger semantics
+
+- Baseline: connector-verified Plugin `main` `05b90dd6710e35ede161dbaeaf055bff90e07dd6`; Server stable-support/runtime/API freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
+- Scope: establish namespaced Loom control geometry for existing Button/Input/Select/Textarea surfaces, enlarge and focus-style the existing namespaced Leaflet zoom controls, and replace custom danger-button `mod-warning` usage with Loom-owned danger semantics. No data, mutation, conflict, offline, Map provider, endpoint, API, OpenAPI, or Server behavior changed.
+- Regression evidence: styles-audit assertions cover tokenized geometry, scoped native controls, danger semantics, zoom hit-size and the no-global/no-`transition: all` contracts; Grid/Detail confirmation DOM tests cover the three custom danger-button call sites; Leaflet DOM tests cover the existing zoom controls.
+- Delivery status: this entry is part of the S1-A implementation change; the final PR/merge/main CI evidence is recorded after remote delivery. S1 is not complete; copy/diagnostic, confirmation coverage, duplicate async submission, and broader focus/error/theme/layout rows remain.
+
 ## Published stages
 
 | Stage | Merged PRs and merge SHA | Remote CI evidence |

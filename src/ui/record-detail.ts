@@ -503,7 +503,8 @@ function renderConflict(
   actions.className = 'loom-record-conflict-actions';
   const useServer = button(options.translate('record.useServer'));
   const overwrite = button(options.translate('record.overwrite'));
-  overwrite.classList.add('mod-warning');
+  overwrite.classList.add('loom-button-danger');
+  overwrite.dataset.variant = 'danger';
   const invoke = (action: 'use-server' | 'overwrite' | 'discard-all'): void => {
     const restoreFocus = (): void => detailRoot.focus();
     try {
