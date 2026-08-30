@@ -1,18 +1,18 @@
 # Interaction HIG Audit Matrix
 
-> Current S0 audit checkpoint for this evidence (independently verified before this docs-only correction): the published Plugin `main` before this correction is `3b85f41c420245a686a6f758e668149a76425719`, the squash-merge result of [PR #66](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/66).
-> PR #66 changed only the two audit/log documents. The installed bundle was built from exact source `a3137a754c35fd7c898cc70aba3329c9d065255b`, which is runtime-equivalent to that published main; this correction records direct read-only smoke from that installed bundle.
+> The published S1-A implementation checkpoint is Plugin main `8c97223067a641ad39035c84fb449966fa6e77fd`, the squash-merge result of [PR #68](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/68). This follow-up only records the final S1-A evidence; it does not change runtime behavior.
+> PR #68 changed existing Plugin CSS, existing danger-button semantics, tests, and this audit/log evidence. The historical S0 rows below remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 > The historical rows below remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 >
 > Normative sources: Interaction HIG, Design System, Grid spec, Map spec, Client Contract, and HIG rollout. Current Server docs/main is `ab949d59c37680d53b4109e1502f8478b24cc655`; the Server stable-support/runtime/API freeze baseline remains `e02f055fecddc0852085dc5a71b4eb136860774a`; the Plugin OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
 
-## S1-A control geometry and danger semantics
+## S1-A control geometry and danger semantics (published)
 
-- This slice starts from the connector-verified Plugin `main` `05b90dd6710e35ede161dbaeaf055bff90e07dd6`; it changes only existing Plugin CSS and existing destructive-action button semantics.
+- This slice started from the connector-verified Plugin `main` `05b90dd6710e35ede161dbaeaf055bff90e07dd6` and was published by PR #68 at `8c97223067a641ad39035c84fb449966fa6e77fd`.
 - `.loom-button` now has an explicit tokenized minimum height, block/inline padding, focus-visible and disabled rules. Existing native input/select/textarea controls under `.loom-root` share the same interaction height, radius, box sizing and focus-visible treatment without adding global selectors.
 - Leaflet zoom links remain under `.loom-map-shell` and use the tokenized shared control size and focus ring. Map data, Provider, tile behavior and attribution are unchanged.
 - Existing custom Conflict/confirmation danger buttons use the Loom-owned `loom-button-danger` class and `data-variant="danger"`; Obsidian `Setting#setWarning()` is unchanged. Confirmation timing, cancellation, focus return and Mutation/Conflict behavior are unchanged.
-- Automated evidence is limited to `tests/ui/styles-audit.test.ts`, existing Grid/Detail DOM confirmation tests, and `tests/maps/leaflet-map-renderer.test.ts`. No real Obsidian smoke was rerun; static/jsdom tests do not replace desktop acceptance.
+- Automated evidence: PR CI [33325405977](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33325405977) and main push CI [33325494268](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33325494268) succeeded. The focused tests are `tests/ui/styles-audit.test.ts`, existing Grid/Detail DOM confirmation tests, and `tests/maps/leaflet-map-renderer.test.ts`. No real Obsidian smoke was rerun; static/jsdom tests do not replace desktop acceptance.
 - S1 remains incomplete. Remaining S1 gaps include localized settings copy/diagnostic actions, settings confirmation DOM coverage/focus containment, Map camera duplicate-submit protection, actionable auth/permission errors, and the broader focus/error and light/dark/narrow acceptance rows.
 
 ## Severity and disposition
@@ -24,7 +24,7 @@
 
 ## Audit method
 
-This S0 correction reads the published Plugin tree, PR metadata, workflow run records, and contract-source metadata through the GitHub connector. It does not use the local dirty checkout as release evidence. The smoke matrix deliberately separates automated evidence from controlled Obsidian/View acceptance.
+This audit reads the published Plugin tree, PR metadata, workflow run records, and contract-source metadata through the GitHub connector. It does not use the local dirty checkout as release evidence. The smoke matrix deliberately separates automated evidence from controlled Obsidian/View acceptance.
 
 ## Current P1.5 checkpoint
 
@@ -43,8 +43,9 @@ The GitHub connector verified the following merged Plugin chain. `PR CI` is the 
 | [#64](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/64) | `47939eba9d3e36e341b1577bf55421ff7115d25e` / `docs/s0-smoke-residual-boundary-20260830` | `376619f09958f1545857081c322e4e04c613bfeb` | [33272931206](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33272931206) — success | [33272985244](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33272985244) — success |
 | [#65](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/65) | `76439a215f906e53ea4c9baced3aef133fa5c1b7` / `docs/s0-final-main-evidence-20260830` | `a3137a754c35fd7c898cc70aba3329c9d065255b` | [33308306718](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33308306718) — success | [33308375315](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33308375315) — success |
 | [#66](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/66) | `620ec6db8b8e8b67381600e08a02ad84e04810ad` / `docs/s0-current-main-installed-20260830` | `3b85f41c420245a686a6f758e668149a76425719` | [33309256383](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33309256383) — success | [33309342098](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33309342098) — success |
+| [#68](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/68) | `e0d64539ba7fcf45235da88ec23b417bcf8621fe` / `s1a-control-geometry-danger-20260831` | `8c97223067a641ad39035c84fb449966fa6e77fd` | [33325405977](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33325405977) — success | [33325494268](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33325494268) — success |
 
-PRs #56–#66 are closed and merged. PR #59 remains the historical S0 baseline; PR #60 is the history/start baseline; PR #61 and PR #62 are preceding S0 checkpoints; PR #63 records historical smoke evidence; PR #64 is the preceding docs-only residual-boundary correction; PR #65 is the preceding exact-main build/install boundary correction; PR #66 records the installed runtime-equivalent bundle and current desktop smoke. PR #56 supplies stable translated `FIELD_VALUE_*` diagnostics; PR #57 supplies the approved destructive-action, Location Map guard, and editor focus/IME/saving behavior; PR #58 supplies Map async response protection. Map Chinese chrome/status, durable queue/scheduler, Conflict recovery, Map/Location invalidation, HIG theme tokens, CSS/Leaflet namespace, reduced-motion, ARIA labels/live regions, and offline read-only boundaries are published in this chain. No Server/API/OpenAPI/runtime code is changed by this S0 smoke-evidence update.
+PRs #56–#68 are closed and merged. PR #59 remains the historical S0 baseline; PR #60 is the history/start baseline; PR #61 and PR #62 are preceding S0 checkpoints; PR #63 records historical smoke evidence; PR #64 is the preceding docs-only residual-boundary correction; PR #65 is the preceding exact-main build/install boundary correction; PR #66 and PR #67 record the installed runtime-equivalent bundle and current desktop smoke; PR #68 is the S1-A implementation. PR #56 supplies stable translated `FIELD_VALUE_*` diagnostics; PR #57 supplies the approved destructive-action, Location Map guard, and editor focus/IME/saving behavior; PR #58 supplies Map async response protection. Map Chinese chrome/status, durable queue/scheduler, Conflict recovery, Map/Location invalidation, HIG theme tokens, CSS/Leaflet namespace, reduced-motion, ARIA labels/live regions, and offline read-only boundaries are published in this chain. PR #68 adds only shared CSS geometry/danger semantics and regression coverage; it does not change Server/API/OpenAPI or data/mutation behavior.
 
 ## S0 historical real Obsidian/View smoke evidence (2026-08-30)
 
