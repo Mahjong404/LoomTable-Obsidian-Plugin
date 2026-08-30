@@ -1,8 +1,8 @@
 # Interaction HIG Audit Matrix
 
-> Current S0 audit checkpoint for this evidence (independently verified before this docs-only correction): the Plugin remote `main` source is `a3137a754c35fd7c898cc70aba3329c9d065255b`, the squash-merge result of [PR #65](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/65).
-> PR #65 recorded the prior exact-main build and backup permission boundary. This correction records a successful exact-source build and installation, but current-main desktop smoke remains unverified because Computer Use could not activate the Obsidian window after one fresh rebind.
-> The historical rows below are not current-source runtime acceptance evidence; the local checkout is not release evidence.
+> Current S0 audit checkpoint for this evidence (independently verified before this docs-only correction): the published Plugin `main` before this correction is `3b85f41c420245a686a6f758e668149a76425719`, the squash-merge result of [PR #66](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/66).
+> PR #66 changed only the two audit/log documents. The installed bundle was built from exact source `a3137a754c35fd7c898cc70aba3329c9d065255b`, which is runtime-equivalent to that published main; this correction records direct read-only smoke from that installed bundle.
+> The historical rows below remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 >
 > Normative sources: Interaction HIG, Design System, Grid spec, Map spec, Client Contract, and HIG rollout. Current Server docs/main is `ab949d59c37680d53b4109e1502f8478b24cc655`; the Server stable-support/runtime/API freeze baseline remains `e02f055fecddc0852085dc5a71b4eb136860774a`; the Plugin OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
 
@@ -33,10 +33,11 @@ The GitHub connector verified the following merged Plugin chain. `PR CI` is the 
 | [#63](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/63) | `8762d57aadbff5fb16076c1533fbed633df61247` / `docs/p1-5-s0-real-smoke-20260830` | `880949b35037bcbac397711873d124f95ba8ddfa` | [33272567333](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33272567333) — success | [33272618035](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33272618035) — success |
 | [#64](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/64) | `47939eba9d3e36e341b1577bf55421ff7115d25e` / `docs/s0-smoke-residual-boundary-20260830` | `376619f09958f1545857081c322e4e04c613bfeb` | [33272931206](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33272931206) — success | [33272985244](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33272985244) — success |
 | [#65](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/65) | `76439a215f906e53ea4c9baced3aef133fa5c1b7` / `docs/s0-final-main-evidence-20260830` | `a3137a754c35fd7c898cc70aba3329c9d065255b` | [33308306718](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33308306718) — success | [33308375315](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33308375315) — success |
+| [#66](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/66) | `620ec6db8b8e8b67381600e08a02ad84e04810ad` / `docs/s0-current-main-installed-20260830` | `3b85f41c420245a686a6f758e668149a76425719` | [33309256383](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33309256383) — success | [33309342098](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33309342098) — success |
 
-PRs #56–#65 are closed and merged. PR #59 remains the historical S0 baseline; PR #60 is the history/start baseline; PR #61 and PR #62 are preceding S0 checkpoints; PR #63 records historical smoke evidence; PR #64 is the preceding docs-only residual-boundary correction; PR #65 is the preceding exact-main build/install boundary correction. PR #56 supplies stable translated `FIELD_VALUE_*` diagnostics; PR #57 supplies the approved destructive-action, Location Map guard, and editor focus/IME/saving behavior; PR #58 supplies Map async response protection. Map Chinese chrome/status, durable queue/scheduler, Conflict recovery, Map/Location invalidation, HIG theme tokens, CSS/Leaflet namespace, reduced-motion, ARIA labels/live regions, and offline read-only boundaries are published in this chain. No Server/API/OpenAPI/runtime code is changed by this S0 smoke-evidence update.
+PRs #56–#66 are closed and merged. PR #59 remains the historical S0 baseline; PR #60 is the history/start baseline; PR #61 and PR #62 are preceding S0 checkpoints; PR #63 records historical smoke evidence; PR #64 is the preceding docs-only residual-boundary correction; PR #65 is the preceding exact-main build/install boundary correction; PR #66 records the installed runtime-equivalent bundle and current desktop smoke. PR #56 supplies stable translated `FIELD_VALUE_*` diagnostics; PR #57 supplies the approved destructive-action, Location Map guard, and editor focus/IME/saving behavior; PR #58 supplies Map async response protection. Map Chinese chrome/status, durable queue/scheduler, Conflict recovery, Map/Location invalidation, HIG theme tokens, CSS/Leaflet namespace, reduced-motion, ARIA labels/live regions, and offline read-only boundaries are published in this chain. No Server/API/OpenAPI/runtime code is changed by this S0 smoke-evidence update.
 
-## S0 real Obsidian/View smoke evidence (2026-08-30)
+## S0 historical real Obsidian/View smoke evidence (2026-08-30)
 
 ### Environment and provenance
 
@@ -72,25 +73,39 @@ PRs #56–#65 are closed and merged. PR #59 remains the historical S0 baseline; 
 | Light theme | unverified / 环境限制 | Only dark theme was observed. |
 | Narrow layout | unverified / 环境限制 | Only the full-window layout was observed. |
 | Location editor concrete mutations | unverified / 未验收/未执行 | Not executed in this run. |
-## S0 exact current-main bundle build, installation, and desktop boundary (2026-08-30)
+## S0 exact current-main bundle build, installation, and desktop smoke (2026-08-31)
 
-- The GitHub connector verified the Plugin remote `main` ref as `a3137a754c35fd7c898cc70aba3329c9d065255b`; the complete source tree at that exact SHA contained 113 blobs, all matched against the connector tree metadata, and was reconstructed into isolated staging.
-- In that exact-source staging, `pnpm install --frozen-lockfile` and the formal `pnpm build` both completed successfully (`pnpm typecheck` plus production esbuild). The resulting `main.js` is SHA256 `999D22997F2CCD0E6A7491C5550AE67ED233EBACFE1334A31DC680C209E65FF9`, `340850 bytes`, with build output timestamp `2026-08-30T11:24:35.4770916Z`.
-- The target installation was read-only verified as Plugin id `loomtable`, name `LoomTable`, version `0.1.3`; before replacement its installed `main.js` was SHA256 `0E846E9A2CC465F794618EEAC9D6D0C7D8676186750112E09494D560459F1A54`, `328244 bytes`. Obsidian process count was 0 at the preflight.
-- A timestamped backup `main.js.s0-backup-20260830-112609904.bak` was created in the target plugin directory and verified at the old SHA/size. The new bundle was copied through a temporary sibling and the target `main.js` was then verified at the exact-source SHA/size above. No `data.json`, notes, credentials, manifest, styles, or unrelated plugin file was read or modified.
-- After installation, Computer Use launched the existing Obsidian application and returned one window titled `LoomTable - Learning Notes - Obsidian 1.13.7`. The first activation attempt failed with `failed to activate captured window`; a fresh selection/rebind using the returned window ID and a second activation attempt failed with the same error. The screenshot-backed state remained the desktop background, so no reliable Obsidian application state was captured.
-- Therefore the exact-source current-main Grid/Detail/Map smoke was not performed and remains `unverified / 环境阻塞`; there is no current-source PASS claim for Grid rows/status, Detail navigation, Map provider/tiles/Chinese status, or any other desktop row. The earlier direct PASS observations remain explicitly historical `d3469e7...` evidence only.
+- The published Plugin main before this docs-only correction is `3b85f41c420245a686a6f758e668149a76425719`. PR #66 is docs-only, so the installed bundle built from exact source `a3137a754c35fd7c898cc70aba3329c9d065255b` is runtime-equivalent for this smoke.
+- The exact-source staging build completed successfully: `pnpm install --frozen-lockfile` and formal `pnpm build`; `main.js` SHA256 `999D22997F2CCD0E6A7491C5550AE67ED233EBACFE1334A31DC680C209E65FF9`, `340850 bytes`, built at `2026-08-30T11:24:35.4770916Z`.
+- The target was verified as Plugin id `loomtable`, name `LoomTable`, version `0.1.3`. Before replacement, the installed bundle was SHA256 `0E846E9A2CC465F794618EEAC9D6D0C7D8676186750112E09494D560459F1A54`, `328244 bytes`. Backup `main.js.s0-backup-20260830-112609904.bak` matched that old SHA/size; after replacement the target matched the exact-source SHA/size.
+- Obsidian `1.13.7` was launched in vault `Learning Notes`, window `LoomTable - Learning Notes - Obsidian 1.13.7`. No credential, token, provider secret, `data.json`, note content, or real data mutation was used or recorded by this smoke.
+
+### Direct read-only smoke result
+
+| Surface | Status | Direct evidence and boundary |
+|---|---|---|
+| Grid first load | PASS | Current installed runtime-equivalent bundle loaded the configured Workspace/Base/Table/View selectors, 3 existing rows, `刷新`, and initial `已保存`. |
+| Detail open/close | PASS | Opened the labelled `打开详情` action for an existing located record; `记录详情` showed Name and Location, then `关闭` returned to Grid. |
+| Detail exact focus return | unverified / residual | After close, focus was reported at the RootWebArea rather than a stable business-cell target; exact return to the invoking row was not asserted. |
+| Map switch/load | PASS | Switched to Map; direct state showed `刷新`, `适合全部`, `保存当前视角`, `地图瓦片提供方`, `已保存`, summary `3 匹配 · 1 可渲染 · 2 未定位 · 0 不可渲染`, and `地图瓦片已就绪。` |
+| Map Provider/tiles/attribution | PASS | Provider `天地图矢量` was visible; actual base-map tiles rendered; Leaflet attribution `© 天地图` was visible. |
+| Map located-point/controls | PASS | Located point was visible; `Zoom in`/`Zoom out` controls and the marker button were present. Marker/cluster keyboard activation was not tested. |
+| Dark theme/full-window | PASS | Direct screenshot observation in the existing dark full-window profile. |
+| Light theme/narrow layout | unverified / residual | Not changed because this smoke must not alter user settings or window configuration. |
+
+This completes the approved current-source read-only S0 smoke gate. S0 may be announced complete with the residual unverified rows above; mutation, fault-injection, keyboard, light-theme, narrow-layout, and exact-focus rows remain explicitly unverified.
 ## S0 correction scope
 
-This S0 record preserves the historical real Obsidian observations and records the exact-source build, successful bundle installation, and desktop activation boundary. It updates only audit evidence and the development log. It does not add UI behavior, fields, Views, CRUD, Map functionality, Server changes, API changes, OpenAPI changes, or runtime changes. The historical bundle provenance remains `d3469e7e133ad4a1854833be4912de93953e8e2e`; the exact-source build and installed bundle provenance is `a3137a754c35fd7c898cc70aba3329c9d065255b`.
+This S0 record preserves the historical real Obsidian observations and records the exact-source build, reversible installation, and direct current-source read-only Grid/Detail/Map smoke. It updates only audit evidence and the development log. It does not add UI behavior, fields, Views, CRUD, Map functionality, Server changes, API changes, OpenAPI changes, or runtime changes. The historical bundle provenance remains `d3469e7e133ad4a1854833be4912de93953e8e2e`; the installed runtime-equivalent bundle provenance is exact source `a3137a754c35fd7c898cc70aba3329c9d065255b`, published through docs-only PR #66 at `3b85f41c420245a686a6f758e668149a76425719`.
+
+The approved S0 read-only gate is complete with the residual unverified rows recorded below; this is not evidence that mutation, fault-injection, keyboard, theme, layout, or exact-focus behavior passed.
 
 ## Remaining items
 
-- S0 is not yet passable: exact-source build and installation succeeded, but the current-source desktop smoke could not begin because Computer Use failed to activate the returned Obsidian window after one fresh rebind.
-- Historical direct PASS observations (Grid/Detail/Map basics, Chinese Map status, provider/tiles, located point, and dark theme) remain scoped to the installed `d3469e7...` bundle and are not current-source acceptance.
-- Still unverified / 未验收/未执行: Location set/clear/unset actual save behavior; Grid keyboard editing; Save Status dirty→saving→saved transitions; offline transitions; Conflict/Auth/Forbidden/network/timeout/terminal fault injection; marker/cluster keyboard activation; Detail exact focus return; Location editor concrete mutations.
-- Still unverified / 环境限制: light theme and narrow layout; all requested current-source Grid/Detail/Map smoke rows remain unverified because the Obsidian window could not be activated.
-- Static review, jsdom/controller tests, and CI remain supporting evidence only; they do not replace real Obsidian smoke. A user-side Computer Use/Obsidian activation recovery is required before S0 can be announced complete.
+- S0 approved read-only smoke is complete with residual unverified rows; no current-source smoke failure was observed.
+- Unverified / 未验收/未执行: Location set/clear/unset actual save behavior; Grid keyboard editing; Save Status dirty→saving→saved transitions; offline transitions; Conflict/Auth/Forbidden/network/timeout/terminal fault injection; marker/cluster keyboard activation; Location editor concrete mutations.
+- Unverified / residual: Detail exact focus return (post-close focus was RootWebArea, not a stable business-cell target); light theme; narrow layout.
+- No real data mutation was performed. Static review, jsdom/controller tests, and CI remain supporting evidence only for behavior not directly exercised.
 - Dashboard, CRUD, Field Renderer Registry, Select/MultiSelect Chip, full Attachment management, and new Map behavior remain outside this S0 correction.
 - Server stable-support/runtime/API freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`; this correction makes no Server, API, OpenAPI, or runtime change.
 ## Matrix
