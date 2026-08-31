@@ -6,6 +6,7 @@ import type {
   SelectFieldConfig,
 } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
+import type { MessageKey } from '../i18n/messages';
 import { editorTextValue } from './field-value-editor';
 
 type SelectField = FieldBase & { readonly type: 'select'; readonly config: SelectFieldConfig };
@@ -93,6 +94,9 @@ export interface RenderedFieldValueElementOptions {
   readonly translate?: Translator;
   readonly attachmentDownloadDisabled?: boolean;
   readonly onAttachmentDownload?: (attachment: RenderedAttachment) => void | Promise<void>;
+  readonly attachmentOpenPreviewDisabled?: boolean;
+  readonly onAttachmentOpen?: (attachment: RenderedAttachment) => void | Promise<void>;
+  readonly onAttachmentPreview?: (attachment: RenderedAttachment) => void | Promise<void>;
 }
 
 export interface FieldRendererRegistry {
@@ -439,54 +443,141 @@ function createAttachmentElement(
     card.append(document.createTextNode(' — '), hint);
   }
 
-  const offline = options.attachmentDownloadDisabled === true;
-  const canRenderDownload =
-    attachment.state === 'ready' &&
-    attachment.id !== undefined &&
-    options.translate !== undefined &&
-    (options.onAttachmentDownload !== undefined || offline);
-  if (canRenderDownload) {
-    const action = document.createElement('button');
-    action.type = 'button';
-    action.className = 'loom-button loom-attachment-action';
-    action.textContent = options.translate('record.attachment.action.download');
-    action.setAttribute(
-      'aria-label',
-      offline
-        ? options.translate('record.attachment.action.offline')
-        : `${options.translate('record.attachment.action.download')} ${attachment.filename ?? attachment.statusText}`,
-    );
-    action.disabled = offline || options.onAttachmentDownload === undefined;
-    const actionStatus = document.createElement('span');
-    actionStatus.className = 'loom-attachment-action-status';
-    actionStatus.setAttribute('aria-live', 'polite');
-    if (offline) actionStatus.textContent = options.translate('record.attachment.action.offline');
-    let busy = false;
-    if (!action.disabled) {
-      action.addEventListener('click', () => {
-        if (busy) return;
-        busy = true;
-        action.disabled = true;
-        action.setAttribute('aria-busy', 'true');
-        action.textContent = options.translate?.('record.attachment.action.downloading') ?? '';
-        void (async () => {
-          try {
-            await options.onAttachmentDownload?.(attachment);
-          } catch {
-            actionStatus.textContent =
-              options.translate?.('record.attachment.action.downloadFailed') ?? '';
-          } finally {
-            busy = false;
-            action.disabled = false;
-            action.removeAttribute('aria-busy');
-            action.textContent = options.translate?.('record.attachment.action.download') ?? '';
-          }
-        })();
-      });
-    }
-    card.append(document.createTextNode(' '), action, document.createTextNode(' '), actionStatus);
-  }
+  const actions = [
+    createAttachmentAction(attachment, options, {
+      kind: 'download',
+      labelKey: 'record.attachment.action.download',
+      pendingKey: 'record.attachment.action.downloading',
+      failedKey: 'record.attachment.action.downloadFailed',
+      offlineKey: 'record.attachment.action.offline',
+      callback: options.onAttachmentDownload,
+      disabled: options.attachmentDownloadDisabled === true,
+    }),
+    createAttachmentAction(attachment, options, {
+      kind: 'open',
+      labelKey: 'record.attachment.action.open',
+      pendingKey: 'record.attachment.action.opening',
+      failedKey: 'record.attachment.action.openFailed',
+      offlineKey: 'record.attachment.action.offlineOpenPreview',
+      callback: options.onAttachmentOpen,
+      disabled: options.attachmentOpenPreviewDisabled === true,
+    }),
+    createAttachmentAction(attachment, options, {
+      kind: 'preview',
+      labelKey: 'record.attachment.action.preview',
+      pendingKey: 'record.attachment.action.previewing',
+      failedKey: 'record.attachment.action.previewFailed',
+      offlineKey: 'record.attachment.action.offlineOpenPreview',
+      callback: options.onAttachmentPreview,
+      disabled: options.attachmentOpenPreviewDisabled === true,
+    }),
+  ].filter((action): action is HTMLElement => action !== null);
+  if (actions.length > 0) card.append(document.createTextNode(' '), ...interleaveSpaces(actions));
   return card;
+}
+
+type AttachmentActionKind = 'download' | 'open' | 'preview';
+
+interface AttachmentActionSpec {
+  readonly kind: AttachmentActionKind;
+  readonly labelKey: MessageKey;
+  readonly pendingKey: MessageKey;
+  readonly failedKey: MessageKey;
+  readonly offlineKey: MessageKey;
+  readonly callback: ((attachment: RenderedAttachment) => void | Promise<void>) | undefined;
+  readonly disabled: boolean;
+}
+
+function createAttachmentAction(
+  attachment: RenderedAttachment,
+  options: RenderedFieldValueElementOptions,
+  spec: AttachmentActionSpec,
+): HTMLElement | null {
+  const translate = options.translate;
+  const offline = spec.disabled;
+  if (
+    attachment.state !== 'ready' ||
+    attachment.id === undefined ||
+    translate === undefined ||
+    (spec.callback === undefined && !(spec.kind === 'download' && offline))
+  ) {
+    return null;
+  }
+
+  const action = document.createElement('button');
+  action.type = 'button';
+  action.className = `loom-button loom-attachment-action loom-attachment-${spec.kind}-action`;
+  const label = translate(spec.labelKey);
+  const actionStatus = document.createElement('span');
+  actionStatus.className =
+    spec.kind === 'download'
+      ? 'loom-attachment-action-status'
+      : `loom-attachment-${spec.kind}-action-status loom-attachment-action-status`;
+  actionStatus.setAttribute('aria-live', 'polite');
+  actionStatus.id = nextAttachmentActionStatusId();
+  action.setAttribute('aria-describedby', actionStatus.id);
+  action.textContent = label;
+  action.setAttribute(
+    'aria-label',
+    offline
+      ? translate(spec.offlineKey)
+      : `${label} ${attachment.filename ?? attachment.statusText}`,
+  );
+  action.disabled = offline || spec.callback === undefined;
+  if (offline) actionStatus.textContent = translate(spec.offlineKey);
+
+  let busy = false;
+  let restoreFocus = false;
+  if (!action.disabled) {
+    action.addEventListener('click', () => {
+      if (busy || spec.callback === undefined) return;
+      busy = true;
+      restoreFocus = document.activeElement === action;
+      action.disabled = true;
+      action.setAttribute('aria-busy', 'true');
+      const pendingLabel = translate(spec.pendingKey);
+      action.textContent = pendingLabel;
+      action.setAttribute('aria-label', pendingLabel);
+      void (async () => {
+        try {
+          await spec.callback?.(attachment);
+        } catch {
+          actionStatus.textContent = translate(spec.failedKey);
+        } finally {
+          busy = false;
+          action.disabled = false;
+          action.removeAttribute('aria-busy');
+          action.textContent = label;
+          action.setAttribute(
+            'aria-label',
+            `${label} ${attachment.filename ?? attachment.statusText}`,
+          );
+          if (restoreFocus && action.isConnected) action.focus();
+        }
+      })();
+    });
+  }
+  return appendAction(action, actionStatus);
+}
+
+function appendAction(action: HTMLButtonElement, status: HTMLSpanElement): HTMLElement {
+  const wrapper = document.createElement('span');
+  wrapper.className = 'loom-attachment-action-group';
+  wrapper.append(action, document.createTextNode(' '), status);
+  return wrapper;
+}
+
+function interleaveSpaces(elements: readonly HTMLElement[]): Node[] {
+  return elements.flatMap((element, index) =>
+    index === elements.length - 1 ? [element] : [element, document.createTextNode(' ')],
+  );
+}
+
+let attachmentActionStatusId = 0;
+
+function nextAttachmentActionStatusId(): string {
+  attachmentActionStatusId += 1;
+  return `loom-attachment-action-status-${attachmentActionStatusId}`;
 }
 
 function renderMultiSelectValue(
@@ -719,3 +810,4 @@ function isJsonObject(value: JsonValue): value is Readonly<Record<string, JsonVa
 function isJsonArray(value: JsonValue): value is readonly JsonValue[] {
   return Array.isArray(value);
 }
+

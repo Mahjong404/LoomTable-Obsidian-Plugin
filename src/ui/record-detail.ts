@@ -39,6 +39,16 @@ export interface RecordDetailCallbacks {
     fieldId: string,
     attachment: RenderedAttachment,
   ) => void | Promise<void>;
+  readonly onAttachmentOpen?: (
+    recordId: string,
+    fieldId: string,
+    attachment: RenderedAttachment,
+  ) => void | Promise<void>;
+  readonly onAttachmentPreview?: (
+    recordId: string,
+    fieldId: string,
+    attachment: RenderedAttachment,
+  ) => void | Promise<void>;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
@@ -162,11 +172,28 @@ function renderField(
             return options.callbacks?.onAttachmentDownload?.(record.id, field.id, attachment);
           }
         : undefined;
+    const onAttachmentOpen =
+      field.type === 'attachment' && options.callbacks?.onAttachmentOpen !== undefined
+        ? (attachment: RenderedAttachment): void | Promise<void> => {
+            if (attachment.id === undefined) return;
+            return options.callbacks?.onAttachmentOpen?.(record.id, field.id, attachment);
+          }
+        : undefined;
+    const onAttachmentPreview =
+      field.type === 'attachment' && options.callbacks?.onAttachmentPreview !== undefined
+        ? (attachment: RenderedAttachment): void | Promise<void> => {
+            if (attachment.id === undefined) return;
+            return options.callbacks?.onAttachmentPreview?.(record.id, field.id, attachment);
+          }
+        : undefined;
     body.append(
       createRenderedFieldValueElement(displayValue, {
         translate: options.translate,
         attachmentDownloadDisabled: options.offline === true,
+        attachmentOpenPreviewDisabled: options.offline === true,
         ...(onAttachmentDownload === undefined ? {} : { onAttachmentDownload }),
+        ...(onAttachmentOpen === undefined ? {} : { onAttachmentOpen }),
+        ...(onAttachmentPreview === undefined ? {} : { onAttachmentPreview }),
       }),
     );
     body.setAttribute('aria-label', field.name + ': ' + displayValue.ariaLabel);
@@ -833,3 +860,4 @@ function createText<K extends keyof HTMLElementTagNameMap>(
   element.textContent = text;
   return element;
 }
+

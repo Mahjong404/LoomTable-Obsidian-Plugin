@@ -111,6 +111,13 @@ export const englishMessages = {
   'record.attachment.action.downloading': 'Downloading…',
   'record.attachment.action.downloadFailed': 'Download failed. Check the attachment and try again.',
   'record.attachment.action.offline': 'Offline. Reconnect to download.',
+  'record.attachment.action.open': 'Open',
+  'record.attachment.action.opening': 'Opening…',
+  'record.attachment.action.openFailed': 'Open failed. Check the attachment and try again.',
+  'record.attachment.action.preview': 'Preview',
+  'record.attachment.action.previewing': 'Previewing…',
+  'record.attachment.action.previewFailed': 'Preview failed. Check the attachment and try again.',
+  'record.attachment.action.offlineOpenPreview': 'Offline. Reconnect to open or preview.',
   'record.location.edit': 'Edit Location',
   'record.location.label': 'Label',
   'record.location.address': 'Address',
@@ -286,3 +293,4 @@ export const englishMessages = {
 
 export type MessageKey = keyof typeof englishMessages;
 export type MessageCatalog = { readonly [Key in MessageKey]: string };
+

@@ -339,6 +339,61 @@ describe('MapView', () => {
     );
   });
 
+  it('passes selected-record Attachment Open and Preview through the Detail callbacks', async () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const attachmentField: Field = {
+      id: 'field_attachment',
+      tableId: 'table_01',
+      name: 'Attachments',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'attachment',
+      config: { maxCount: 10 },
+    };
+    const record: LoomTableRecord = {
+      id: 'record_map',
+      tableId: 'table_01',
+      revision: 1,
+      values: {
+        field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+      },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const onAttachmentOpen = vi.fn();
+    const onAttachmentPreview = vi.fn();
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      onAttachmentOpen,
+      onAttachmentPreview,
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      fields: [attachmentField],
+      selectedRecord: record,
+    });
+
+    container.querySelector<HTMLButtonElement>('.loom-attachment-open-action')?.click();
+    container.querySelector<HTMLButtonElement>('.loom-attachment-preview-action')?.click();
+    await vi.waitFor(() => expect(onAttachmentOpen).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onAttachmentPreview).toHaveBeenCalledTimes(1));
+    expect(onAttachmentOpen).toHaveBeenCalledWith(
+      'record_map',
+      'field_attachment',
+      expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
+    );
+    expect(onAttachmentPreview).toHaveBeenCalledWith(
+      'record_map',
+      'field_attachment',
+      expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
+    );
+  });
+
   it.each([
     [
       'configuration-required',
@@ -836,3 +891,4 @@ function createLocationRecord(id: string, label: string): LoomTableRecord {
     updatedAt: '',
   };
 }
+

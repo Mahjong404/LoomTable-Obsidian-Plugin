@@ -104,6 +104,13 @@ export const simplifiedChineseMessages = {
   'record.attachment.action.downloading': '下载中…',
   'record.attachment.action.downloadFailed': '下载失败；请检查附件后重试。',
   'record.attachment.action.offline': '当前离线；恢复连接后才能下载。',
+  'record.attachment.action.open': '打开',
+  'record.attachment.action.opening': '打开中…',
+  'record.attachment.action.openFailed': '打开失败；请检查附件后重试。',
+  'record.attachment.action.preview': '预览',
+  'record.attachment.action.previewing': '预览中…',
+  'record.attachment.action.previewFailed': '预览失败；请检查附件后重试。',
+  'record.attachment.action.offlineOpenPreview': '当前离线；恢复连接后才能打开或预览。',
   'record.location.edit': '编辑地点',
   'record.location.label': '标签',
   'record.location.address': '地址',
@@ -265,3 +272,4 @@ export const simplifiedChineseMessages = {
   'validation.fieldValue.locationLatitudeRange': 'Location 纬度必须介于 -90 和 90 之间。',
   'validation.fieldValue.locationLongitudeRange': 'Location 经度必须介于 -180 和 180 之间。',
 } as const satisfies MessageCatalog;
+

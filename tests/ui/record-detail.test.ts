@@ -767,6 +767,39 @@ describe('Record Detail Location seam', () => {
     expect(withoutCallback.querySelector('.loom-attachment-action')).toBeNull();
   });
 
+  it('forwards typed Open and Preview callbacks from Record Detail', async () => {
+    const attachmentField: Field = {
+      ...createField('field_attachment', 'Attachment'),
+      type: 'attachment',
+      config: { maxCount: 10 },
+    };
+    const record = createRecord({
+      field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+    });
+    const onAttachmentOpen = vi.fn();
+    const onAttachmentPreview = vi.fn();
+    const detail = createRecordDetail(record, {
+      fields: [attachmentField],
+      translate: createTranslator('en'),
+      callbacks: { onAttachmentOpen, onAttachmentPreview },
+    });
+
+    detail.querySelector<HTMLButtonElement>('.loom-attachment-open-action')?.click();
+    detail.querySelector<HTMLButtonElement>('.loom-attachment-preview-action')?.click();
+    await vi.waitFor(() => expect(onAttachmentOpen).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onAttachmentPreview).toHaveBeenCalledTimes(1));
+    expect(onAttachmentOpen).toHaveBeenCalledWith(
+      'record_01',
+      'field_attachment',
+      expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
+    );
+    expect(onAttachmentPreview).toHaveBeenCalledWith(
+      'record_01',
+      'field_attachment',
+      expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
+    );
+  });
+
   it('disables attachment download with an accessible offline explanation', () => {
     const attachmentField: Field = {
       ...createField('field_attachment', 'Attachment'),
@@ -851,3 +884,4 @@ function createRecord(values: Record<string, unknown>): LoomTableRecord {
     updatedAt: '',
   };
 }
+
