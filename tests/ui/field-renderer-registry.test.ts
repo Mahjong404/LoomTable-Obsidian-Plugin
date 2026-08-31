@@ -246,6 +246,116 @@ describe('Field renderer registry', () => {
     await vi.waitFor(() => expect(onDownload).toHaveBeenCalledTimes(1));
   });
 
+  it('exposes typed Open and Preview actions only for ready attachments and guards duplicate activation', async () => {
+    const translate = createTranslator('en');
+    const field = createField('attachment', { maxCount: 10 });
+    const rendered = registry.render(
+      field,
+      [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+      { translate },
+    );
+    const onOpen = vi.fn(async (): Promise<void> => undefined);
+    const onPreview = vi.fn(async (): Promise<void> => {
+      throw new Error('secret path');
+    });
+    const element = createRenderedFieldValueElement(rendered, {
+      translate,
+      onAttachmentOpen: onOpen,
+      onAttachmentPreview: onPreview,
+    });
+
+    const open = element.querySelector<HTMLButtonElement>('.loom-attachment-open-action');
+    const preview = element.querySelector<HTMLButtonElement>('.loom-attachment-preview-action');
+    expect(open?.textContent).toBe('Open');
+    expect(preview?.textContent).toBe('Preview');
+    expect(open?.getAttribute('aria-label')).toBe('Open notes.md');
+    expect(preview?.getAttribute('aria-label')).toBe('Preview notes.md');
+    expect(open?.parentElement?.querySelector('[aria-live="polite"]')).not.toBeNull();
+    expect(preview?.parentElement?.querySelector('[aria-live="polite"]')).not.toBeNull();
+
+    open?.focus();
+    open?.click();
+    open?.click();
+    preview?.focus();
+    preview?.click();
+    preview?.click();
+
+    await vi.waitFor(() => expect(onOpen).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(onPreview).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(element.querySelector('.loom-attachment-preview-action-status')?.textContent).toBe(
+        'Preview failed. Check the attachment and try again.',
+      ),
+    );
+    expect(element.textContent).not.toContain('secret path');
+  });
+
+  it('does not expose Open or Preview for unavailable attachments or without callbacks', () => {
+    const translate = createTranslator('en');
+    const field = createField('attachment', { maxCount: 10 });
+    const ready = registry.render(
+      field,
+      [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+      { translate },
+    );
+    const withoutCallbacks = createRenderedFieldValueElement(ready, { translate });
+    expect(withoutCallbacks.querySelector('.loom-attachment-open-action')).toBeNull();
+    expect(withoutCallbacks.querySelector('.loom-attachment-preview-action')).toBeNull();
+    const offlineWithoutCallbacks = createRenderedFieldValueElement(ready, {
+      translate,
+      attachmentOpenPreviewDisabled: true,
+    });
+    expect(offlineWithoutCallbacks.querySelector('.loom-attachment-open-action')).toBeNull();
+    expect(offlineWithoutCallbacks.querySelector('.loom-attachment-preview-action')).toBeNull();
+
+    const pending = registry.render(
+      field,
+      [{ id: 'attachment_1', source: 'vault', filename: 'notes.md', status: 'pending' }],
+      { translate },
+    );
+    const onOpen = vi.fn();
+    const onPreview = vi.fn();
+    const unavailable = createRenderedFieldValueElement(pending, {
+      translate,
+      onAttachmentOpen: onOpen,
+      onAttachmentPreview: onPreview,
+    });
+    expect(unavailable.querySelector('.loom-attachment-open-action')).toBeNull();
+    expect(unavailable.querySelector('.loom-attachment-preview-action')).toBeNull();
+  });
+
+  it('disables Open and Preview offline with a translated accessible explanation', () => {
+    const translate = createTranslator('zh-CN');
+    const field = createField('attachment', { maxCount: 10 });
+    const rendered = registry.render(
+      field,
+      [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+      { translate },
+    );
+    const onOpen = vi.fn();
+    const onPreview = vi.fn();
+    const element = createRenderedFieldValueElement(rendered, {
+      translate,
+      attachmentOpenPreviewDisabled: true,
+      onAttachmentOpen: onOpen,
+      onAttachmentPreview: onPreview,
+    });
+
+    const open = element.querySelector<HTMLButtonElement>('.loom-attachment-open-action');
+    const preview = element.querySelector<HTMLButtonElement>('.loom-attachment-preview-action');
+    expect(open?.disabled).toBe(true);
+    expect(preview?.disabled).toBe(true);
+    expect(open?.getAttribute('aria-label')).toBe('当前离线；恢复连接后才能打开或预览。');
+    expect(preview?.getAttribute('aria-label')).toBe('当前离线；恢复连接后才能打开或预览。');
+    expect(element.querySelector('.loom-attachment-open-action-status')?.textContent).toBe(
+      '当前离线；恢复连接后才能打开或预览。',
+    );
+    open?.click();
+    preview?.click();
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(onPreview).not.toHaveBeenCalled();
+  });
+
   it('publishes MultiSelect values as semantic chips instead of a comma string', () => {
     const translate = createTranslator('en');
     const field = createField('multiSelect', {

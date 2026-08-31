@@ -62,6 +62,16 @@ export interface MapViewOptions {
     fieldId: string,
     attachment: RenderedAttachment,
   ) => void | Promise<void>;
+  readonly onAttachmentOpen?: (
+    recordId: string,
+    fieldId: string,
+    attachment: RenderedAttachment,
+  ) => void | Promise<void>;
+  readonly onAttachmentPreview?: (
+    recordId: string,
+    fieldId: string,
+    attachment: RenderedAttachment,
+  ) => void | Promise<void>;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
@@ -437,6 +447,12 @@ export class MapView {
         ...(this.options.onAttachmentDownload === undefined
           ? {}
           : { onAttachmentDownload: this.options.onAttachmentDownload }),
+        ...(this.options.onAttachmentOpen === undefined
+          ? {}
+          : { onAttachmentOpen: this.options.onAttachmentOpen }),
+        ...(this.options.onAttachmentPreview === undefined
+          ? {}
+          : { onAttachmentPreview: this.options.onAttachmentPreview }),
         ...(this.options.getConflict === undefined
           ? {}
           : { getConflict: this.options.getConflict }),
