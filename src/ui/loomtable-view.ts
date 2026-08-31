@@ -18,6 +18,12 @@ import { MapViewController, type MapViewportSource } from '../views/map/map-view
 import { MapView, type MapViewNavigation } from '../views/map/map-view';
 import { createAttachmentDownloadCallback } from './attachment-download';
 import { createAttachmentAddCallback } from './attachment-upload';
+import {
+  createAttachmentOpenCallback,
+  createAttachmentPreviewCallback,
+  createBrowserAttachmentPreviewHost,
+  createObsidianAttachmentOpenHost,
+} from './attachment-host';
 import { createRecordDetail } from './record-detail';
 
 export const LOOMTABLE_VIEW_TYPE = 'loomtable-main';
@@ -209,6 +215,13 @@ export class LoomTableView extends ItemView {
           (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
         ),
       onAttachmentDownload: createAttachmentDownloadCallback(client),
+      onAttachmentOpen: createAttachmentOpenCallback(
+        createObsidianAttachmentOpenHost(this.app),
+      ),
+      onAttachmentPreview: createAttachmentPreviewCallback(client, {
+        translate: this.getTranslator(),
+        host: createBrowserAttachmentPreviewHost(document),
+      }),
       ...(this.#gridController === null
         ? {}
         : {
@@ -343,6 +356,13 @@ export class LoomTableView extends ItemView {
             (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
           ),
         onAttachmentDownload: createAttachmentDownloadCallback(client),
+        onAttachmentOpen: createAttachmentOpenCallback(
+          createObsidianAttachmentOpenHost(this.app),
+        ),
+        onAttachmentPreview: createAttachmentPreviewCallback(client, {
+          translate: this.getTranslator(),
+          host: createBrowserAttachmentPreviewHost(document),
+        }),
         onAttachmentAdd: createAttachmentAddCallback(client, {
           isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
           updateRecord: async (recordId, fieldId, references, sourceRecord) => {
