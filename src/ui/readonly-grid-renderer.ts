@@ -59,6 +59,7 @@ export class ReadonlyGridRenderer {
   #focusedCellPosition: { readonly rowIndex: number; readonly fieldIndex: number } | null = null;
   #lastConflictIds = new Set<string>();
   #lastState: GridState | null = null;
+  #dismissedEditDraftKey: string | null = null;
   readonly #pendingActions = new Set<GridAction>();
   readonly #actionButtons = new Map<HTMLButtonElement, GridActionButtonSpec>();
   #focusedAction: GridAction | null = null;
@@ -108,6 +109,8 @@ export class ReadonlyGridRenderer {
     this.#syncActionButtons();
     if (hasNewConflict) {
       this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus();
+    } else if (this.#restoreFailedEditDraft(state)) {
+      return;
     } else if (this.#focusedAction !== null) {
       this.#restoreFocusedAction();
     } else {
@@ -249,6 +252,7 @@ export class ReadonlyGridRenderer {
 
   #renderEditError(state: GridState): HTMLElement {
     const status = createElement('div', 'loom-status loom-grid-edit-status is-error');
+    status.id = 'loom-grid-edit-status';
     status.setAttribute('role', 'alert');
     status.setAttribute('aria-live', 'assertive');
     const terminal = Object.values(state.editStatuses).some((value) => value === 'terminal');
@@ -501,6 +505,7 @@ export class ReadonlyGridRenderer {
     field: Field,
     rowIndex: number,
     fieldIndex: number,
+    initialValue: unknown = record.values[field.id],
   ): void {
     if (
       !isEditableField(field) ||
@@ -513,8 +518,9 @@ export class ReadonlyGridRenderer {
     }
     if (cell.querySelector('input, textarea, select') !== null) return;
 
+    this.#dismissedEditDraftKey = null;
     this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
-    const editor = createEditor(field, record.values[field.id], this.#translate);
+    const editor = createEditor(field, initialValue, this.#translate);
     editor.classList.add('loom-grid-editor');
     editor.setAttribute('aria-label', field.name);
     cell.replaceChildren(editor);
@@ -524,6 +530,7 @@ export class ReadonlyGridRenderer {
       if (finished) return;
       finished = true;
       if (!commit) {
+        this.#dismissedEditDraftKey = editDraftKey(record.id, field.id);
         this.render(this.#virtualGrid?.state ?? this.#emptyState());
         return;
       }
@@ -581,6 +588,46 @@ export class ReadonlyGridRenderer {
     );
   }
 
+  #restoreFailedEditDraft(state: GridState): boolean {
+    if (state.status === 'offline' || state.saveStatus === 'offline-readonly') return false;
+    const errorRecordId =
+      state.editErrorRecordId ??
+      Object.entries(state.editStatuses).find(([, status]) => status === 'error')?.[0];
+    if (state.editError === null || errorRecordId === undefined) return false;
+    const draft = state.editDrafts.find(
+      (candidate) =>
+        candidate.recordId === errorRecordId &&
+        state.editStatuses[candidate.recordId] === 'error' &&
+        candidate.rawValue !== undefined,
+    );
+    if (
+      draft === undefined ||
+      this.#dismissedEditDraftKey === editDraftKey(draft.recordId, draft.fieldId)
+    ) {
+      return false;
+    }
+    const record = state.records.find((candidate) => candidate.id === draft.recordId);
+    const field = state.fields.find((candidate) => candidate.id === draft.fieldId);
+    if (record === undefined || field === undefined || !isEditableField(field)) return false;
+    const rowIndex = state.records.indexOf(record);
+    const fieldIndex = orderedFields(state).indexOf(field);
+    if (rowIndex < 0 || fieldIndex < 0) return false;
+    let cell = this.#findCellForRecordField(draft.recordId, draft.fieldId);
+    if (cell === null && this.#virtualGrid !== null) {
+      this.#virtualGrid.viewport.scrollTop = rowIndex * this.#virtualGrid.rowHeight;
+      this.#renderVirtualRows();
+      cell = this.#findCellForRecordField(draft.recordId, draft.fieldId);
+    }
+    if (cell === null) return false;
+    this.#beginCellEdit(cell, record, field, rowIndex, fieldIndex, draft.rawValue);
+    const editor = cell.querySelector<HTMLElement>('.loom-grid-editor');
+    if (editor === null) return false;
+    editor.setAttribute('aria-invalid', 'true');
+    editor.setAttribute('aria-describedby', 'loom-grid-edit-status');
+    editor.focus();
+    return true;
+  }
+
   #emptyState(): GridState {
     return {
       status: 'idle',
@@ -604,6 +651,8 @@ export class ReadonlyGridRenderer {
       editStatuses: {},
       conflicts: [],
       editError: null,
+      editDrafts: [],
+      editErrorRecordId: null,
       saveStatus: 'saved',
     };
   }
@@ -632,6 +681,16 @@ export class ReadonlyGridRenderer {
         (cell) =>
           cell.dataset.rowIndex === String(rowIndex) &&
           cell.dataset.fieldIndex === String(fieldIndex),
+      ) ?? null
+    );
+  }
+
+  #findCellForRecordField(recordId: string, fieldId: string): HTMLElement | null {
+    const grid = this.#virtualGrid;
+    if (grid === null) return null;
+    return (
+      [...grid.rowLayer.querySelectorAll<HTMLElement>('.loom-grid-cell')].find(
+        (cell) => cell.dataset.recordId === recordId && cell.dataset.fieldId === fieldId,
       ) ?? null
     );
   }
@@ -939,12 +998,12 @@ function createGridCell(text: string, className: string): HTMLElement {
 
 function createEditor(
   field: Field,
-  value: JsonValue | undefined,
+  value: unknown,
   translate: Translator,
 ): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
   if (field.type === 'longText') {
     const editor = document.createElement('textarea');
-    editor.value = editorTextValue(value, field);
+    editor.value = editorTextValue(value as JsonValue | undefined, field);
     return editor;
   }
   if (field.type === 'select') {
@@ -971,8 +1030,12 @@ function createEditor(
   const editor = document.createElement('input');
   editor.type =
     field.type === 'number' || field.type === 'date' || field.type === 'url' ? field.type : 'text';
-  editor.value = editorTextValue(value, field);
+  editor.value = editorTextValue(value as JsonValue | undefined, field);
   return editor;
+}
+
+function editDraftKey(recordId: string, fieldId: string): string {
+  return recordId + '\u0000' + fieldId;
 }
 
 function renderDiagnostic(label: string, details: string): HTMLElement {

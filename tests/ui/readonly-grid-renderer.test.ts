@@ -405,6 +405,67 @@ describe('ReadonlyGridRenderer', () => {
     expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', 'changed');
   });
 
+  it('restores a failed Cell draft with an associated fixable error', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(
+      createState(1, {
+        editDrafts: [
+          {
+            recordId: 'record_01',
+            fieldId: 'field_name',
+            rawValue: 'invalid local value',
+          },
+        ],
+        editStatuses: { record_01: 'error' },
+        editError: { code: 'BAD_REQUEST', message: 'The value is invalid.' },
+        saveStatus: 'error',
+      }),
+    );
+
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor?.value).toBe('invalid local value');
+    expect(editor?.getAttribute('aria-invalid')).toBe('true');
+    expect(editor?.getAttribute('aria-describedby')).toBe('loom-grid-edit-status');
+    expect(container.querySelector('#loom-grid-edit-status')).not.toBeNull();
+    expect(document.activeElement).toBe(editor);
+    expect(container.querySelector('.loom-save-status')?.textContent).not.toContain('Saved');
+  });
+
+  it('lets Escape dismiss a failed draft without resubmitting it', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(
+      createState(1, {
+        editDrafts: [
+          { recordId: 'record_01', fieldId: 'field_name', rawValue: 'invalid local value' },
+        ],
+        editStatuses: { record_01: 'error' },
+        editErrorRecordId: 'record_01',
+        editError: { code: 'BAD_REQUEST', message: 'The value is invalid.' },
+        saveStatus: 'error',
+      }),
+    );
+
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    editor?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
+    expect(callbacks.onCellEdit).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(
+      container.querySelector('.loom-grid-cell[data-record-id="record_01"]'),
+    );
+  });
+
   it('shows Server and local values with explicit conflict actions', async () => {
     const container = document.createElement('div');
     document.body.append(container);
@@ -646,6 +707,8 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     editStatuses: {},
     conflicts: [],
     editError: null,
+    editDrafts: [],
+    editErrorRecordId: null,
     saveStatus: 'saved',
     ...update,
   };

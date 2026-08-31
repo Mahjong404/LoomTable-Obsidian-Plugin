@@ -143,6 +143,16 @@ describe('GridViewController', () => {
     expect(client.mutationRequests).toHaveLength(0);
     expect(controller.state.editError?.code).toBe('FIELD_VALUE_TEXT_CONTROL');
     expect(controller.state.editError?.message).toBe('文本包含不支持的控制字符。');
+    expect(controller.state.editStatuses.record_01).toBe('error');
+    expect(controller.state.editDrafts).toEqual([
+      {
+        recordId: 'record_01',
+        fieldId: 'field_name',
+        rawValue: 'bad\u0000value',
+      },
+    ]);
+    expect(controller.state.editErrorRecordId).toBe('record_01');
+    expect(controller.state.saveStatus).toBe('error');
   });
 
   it('rejects Cell edits while offline before sending a Mutation', async () => {
@@ -546,6 +556,7 @@ describe('GridViewController', () => {
     expect(controller.state.records[0]?.revision).toBe(2);
     expect(controller.state.records[0]?.values.field_name).toBe('Optimistic');
     expect(controller.state.editStatuses.record_01).toBeUndefined();
+    expect(controller.state.editDrafts).toEqual([]);
   });
 
   it('rolls back an optimistic value while preserving the mutation error state', async () => {
@@ -569,6 +580,13 @@ describe('GridViewController', () => {
       code: 'BAD_REQUEST',
       message: 'The clientMutationId is invalid.',
     });
+    expect(controller.state.editDrafts).toEqual([
+      {
+        recordId: 'record_01',
+        fieldId: 'field_name',
+        rawValue: 'Optimistic',
+      },
+    ]);
   });
 
   it('binds a prototype mutation method and accepts an unchanged response', async () => {
