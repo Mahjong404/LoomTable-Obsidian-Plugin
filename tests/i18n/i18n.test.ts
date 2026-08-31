@@ -52,4 +52,3 @@ describe('i18n', () => {
     expect(normalizePluginSettings({}).locale).toBe('auto');
   });
 });
-
