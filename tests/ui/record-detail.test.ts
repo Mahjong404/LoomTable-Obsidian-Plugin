@@ -104,6 +104,31 @@ describe('Record Detail Location seam', () => {
     );
   });
 
+  it('returns focus to a stable fallback when the invoking control is gone', () => {
+    const trigger = document.createElement('button');
+    const fallback = document.createElement('button');
+    document.body.append(trigger, fallback);
+    trigger.focus();
+    const container = document.createElement('div');
+    const onClose = vi.fn();
+    const detail = createRecordDetail(createRecord({}), {
+      fields: [createField('field_location', 'Location')],
+      translate: createTranslator('en'),
+      returnFocus: trigger,
+      focusFallback: () => fallback,
+      callbacks: { onClose },
+    });
+    container.append(detail);
+    trigger.remove();
+
+    detail.querySelector<HTMLButtonElement>('.loom-record-detail-header button')?.click();
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(fallback);
+    container.remove();
+    fallback.remove();
+  });
+
   it('prevalidates Location form values before calling the mutation seam', async () => {
     const container = document.createElement('div');
     const onLocationEdit = vi.fn().mockResolvedValue(undefined);
@@ -150,6 +175,102 @@ describe('Record Detail Location seam', () => {
       },
       record,
     );
+  });
+
+  it('focuses the Location error target and clears stale invalid state when editing resumes', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    container.append(
+      createRecordDetail(createRecord({}), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: { onLocationEdit: vi.fn() },
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const form = container.querySelector<HTMLFormElement>('.loom-location-editor');
+    expect(form).not.toBeNull();
+    if (form === null) return;
+    const label = form.querySelector<HTMLInputElement>('input[aria-label="Label"]');
+    const error = form.querySelector<HTMLElement>('.loom-location-editor-error');
+    expect(label).not.toBeNull();
+    expect(error).not.toBeNull();
+    if (label === null || error === null) return;
+
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    expect(document.activeElement).toBe(label);
+    expect(label.getAttribute('aria-describedby')).toBe(error.id);
+    expect(label.getAttribute('aria-invalid')).toBe('true');
+    label.value = 'A place';
+    label.dispatchEvent(new Event('input', { bubbles: true }));
+
+    expect(error.hidden).toBe(true);
+    expect(label.getAttribute('aria-invalid')).toBe('false');
+  });
+
+  it('uses a unique error association for each Location editor', () => {
+    const container = document.createElement('div');
+    container.append(
+      createRecordDetail(createRecord({}), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: { onLocationEdit: vi.fn() },
+      }),
+      createRecordDetail(createRecord({}), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: { onLocationEdit: vi.fn() },
+      }),
+    );
+    container.querySelectorAll<HTMLButtonElement>('.loom-location-edit').forEach((edit) => {
+      edit.click();
+    });
+
+    const errors = [...container.querySelectorAll<HTMLElement>('.loom-location-editor-error')];
+    expect(errors).toHaveLength(2);
+    expect(errors[0]?.id).not.toBe(errors[1]?.id);
+    for (const form of container.querySelectorAll<HTMLFormElement>('.loom-location-editor')) {
+      const errorId = form.querySelector<HTMLElement>('.loom-location-editor-error')?.id;
+      expect(errorId).toBeTruthy();
+      expect(
+        [...form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select')].every(
+          (control) => control.getAttribute('aria-describedby') === errorId,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it('focuses a Location submission error while keeping raw details disclosed', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onLocationEdit = vi
+      .fn()
+      .mockRejectedValue(new LoomTableClientError('network', { message: 'raw network detail' }));
+    container.append(
+      createRecordDetail(createRecord({ field_location: { label: 'Current' } }), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: { onLocationEdit },
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const form = container.querySelector<HTMLFormElement>('.loom-location-editor');
+    expect(form).not.toBeNull();
+    if (form === null) return;
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => expect(onLocationEdit).toHaveBeenCalledTimes(1));
+    const error = form.querySelector<HTMLElement>('.loom-location-editor-error');
+    expect(error?.hidden).toBe(false);
+    expect(error?.firstChild?.textContent).not.toContain('raw network detail');
+    expect(error?.querySelector('.loom-diagnostic pre')?.textContent).toContain(
+      'raw network detail',
+    );
+    expect(document.activeElement).toBe(error);
+    container.remove();
   });
 
   it('renders the localized Location validation diagnostic and stable code', () => {

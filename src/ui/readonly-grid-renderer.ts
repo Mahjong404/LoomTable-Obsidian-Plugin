@@ -111,7 +111,8 @@ export class ReadonlyGridRenderer {
     } else if (this.#focusedAction !== null) {
       this.#restoreFocusedAction();
     } else {
-      this.#restoreFocusedCell();
+      const restored = this.#restoreFocusedCell();
+      if (this.#focusedCellKey !== null && !restored) this.#focusGridFallback();
     }
   }
 
@@ -635,9 +636,9 @@ export class ReadonlyGridRenderer {
     );
   }
 
-  #restoreFocusedCell(): void {
+  #restoreFocusedCell(): boolean {
     const grid = this.#virtualGrid;
-    if (grid === null || this.#focusedCellKey === null) return;
+    if (grid === null || this.#focusedCellKey === null) return false;
     let target = this.#findCellByKey(this.#focusedCellKey);
     if (target === null && this.#focusedCellPosition !== null && grid.state.records.length > 0) {
       const rowIndex = Math.max(
@@ -652,12 +653,21 @@ export class ReadonlyGridRenderer {
       if (target === null) {
         grid.viewport.scrollTop = rowIndex * grid.rowHeight;
         this.#renderVirtualRows();
-        return;
+        return true;
       }
       this.#focusedCellPosition = { rowIndex, fieldIndex };
       this.#focusedCellKey = target.dataset.focusKey ?? this.#focusedCellKey;
     }
-    target?.focus();
+    if (target === null) return false;
+    target.focus();
+    return true;
+  }
+
+  #focusGridFallback(): void {
+    const fallback =
+      this.#container.querySelector<HTMLElement>('.loom-grid-status') ??
+      this.#container.querySelector<HTMLElement>('.loom-grid-shell');
+    fallback?.focus();
   }
 
   #focusAdjacentCell(
@@ -691,6 +701,7 @@ export class ReadonlyGridRenderer {
     statusBox.setAttribute('role', 'status');
     statusBox.setAttribute('aria-live', 'polite');
     statusBox.setAttribute('aria-atomic', 'true');
+    statusBox.tabIndex = -1;
     const message = statusMessage(status, state, this.#translate);
     const action = this.#renderStatusAction(status);
     statusBox.append(createTextElement('p', message), ...(action === null ? [] : [action]));

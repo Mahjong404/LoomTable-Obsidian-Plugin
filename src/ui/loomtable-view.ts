@@ -40,6 +40,8 @@ export class LoomTableView extends ItemView {
   #invalidationUnsubscribe: (() => void) | null = null;
   #gridController: GridViewController | null = null;
   #mapView: MapView | null = null;
+  #gridHost: HTMLElement | null = null;
+  #detailHost: HTMLElement | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -100,6 +102,7 @@ export class LoomTableView extends ItemView {
   }
 
   private renderGrid(profile: ConnectionProfile, controller: GridViewController): void {
+    if (!this.prepareForNavigation()) return;
     this.#mapView?.destroy();
     this.#mapView = null;
     this.#gridUnsubscribe?.();
@@ -108,13 +111,32 @@ export class LoomTableView extends ItemView {
     this.#invalidationUnsubscribe = null;
     this.contentEl.empty();
     this.contentEl.addClass('loom-root');
+    const gridHost = document.createElement('div');
+    gridHost.className = 'loom-grid-host';
+    const detailHost = document.createElement('div');
+    detailHost.className = 'loom-detail-host';
+    this.contentEl.append(gridHost, detailHost);
+    this.#gridHost = gridHost;
+    this.#detailHost = detailHost;
 
-    const renderer = new ReadonlyGridRenderer(this.contentEl, this.getTranslator(), {
+    const renderer = new ReadonlyGridRenderer(gridHost, this.getTranslator(), {
       onRefresh: () => controller.refresh(),
-      onWorkspaceChange: (workspaceId) => controller.selectWorkspace(workspaceId),
-      onBaseChange: (baseId) => controller.selectBase(baseId),
-      onTableChange: (tableId) => controller.selectTable(tableId),
-      onViewChange: (viewId) => controller.selectView(viewId),
+      onWorkspaceChange: async (workspaceId) => {
+        if (!this.prepareForNavigation()) return;
+        await controller.selectWorkspace(workspaceId);
+      },
+      onBaseChange: async (baseId) => {
+        if (!this.prepareForNavigation()) return;
+        await controller.selectBase(baseId);
+      },
+      onTableChange: async (tableId) => {
+        if (!this.prepareForNavigation()) return;
+        await controller.selectTable(tableId);
+      },
+      onViewChange: async (viewId) => {
+        if (!this.prepareForNavigation()) return;
+        await controller.selectView(viewId);
+      },
       onLoadMore: () => controller.loadNextPage(),
       onRecordOpen: (record) => void this.showRecordDetail(record, profile, controller),
       onCellEdit: (recordId, fieldId, value) => controller.editCell(recordId, fieldId, value),
@@ -142,12 +164,16 @@ export class LoomTableView extends ItemView {
     focusRecordId?: string,
   ): void {
     if (view.type !== 'map') return;
+    if (!this.prepareForNavigation()) return;
     this.#gridUnsubscribe?.();
     this.#gridUnsubscribe = null;
     this.#invalidationUnsubscribe?.();
     this.#invalidationUnsubscribe = null;
     this.#mapView?.destroy();
+    this.#gridHost = null;
+    this.#detailHost = null;
     const client = this.createClient(profile);
+    let mapView: MapView | null = null;
     const instance = this.mapContext.createRenderer();
     const controller = new MapViewController(client, view, navigationState.fields, {
       renderer: instance.renderer,
@@ -156,16 +182,16 @@ export class LoomTableView extends ItemView {
       provider: providerForView(this.getSettings(), view.id),
       viewport: instance.viewport,
       isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+      beforeRecordSelected: () => mapView?.confirmDiscardIfNeeded() ?? true,
     });
     const navigation = this.mapNavigation(profile, navigationState, view);
     const provider = providerForView(this.getSettings(), view.id);
-    this.#mapView = new MapView(this.contentEl, controller, {
+    mapView = new MapView(this.contentEl, controller, {
       translate: this.getTranslator(),
       navigation,
       onClusterNextPage: () => controller.loadNextClusterPage(),
-      onLocationEdit: async (recordId, fieldId, intent, record) => {
-        await this.#gridController?.editLocation(recordId, fieldId, intent, record);
-      },
+      onLocationEdit: (recordId, fieldId, intent, record) =>
+        this.#gridController?.editLocation(recordId, fieldId, intent, record),
       getConflict: (recordId) => this.#gridController?.getConflict(recordId),
       onConflictAction: (recordId, action) =>
         this.#gridController?.resolveConflict(recordId, action),
@@ -185,7 +211,9 @@ export class LoomTableView extends ItemView {
       ...(this.mapContext.openSettings === undefined
         ? {}
         : { onOpenSettings: this.mapContext.openSettings }),
+      confirmDiscard: (message) => window.confirm(message),
     });
+    this.#mapView = mapView;
     if (this.invalidations !== null) {
       this.#invalidationUnsubscribe = subscribeMutationInvalidation(
         this.invalidations,
@@ -214,18 +242,22 @@ export class LoomTableView extends ItemView {
       selectedTableId: state.selectedTableId,
       selectedViewId: view.id,
       onWorkspaceChange: async (workspaceId) => {
+        if (!this.prepareForNavigation()) return;
         await controller.selectWorkspace(workspaceId);
         this.showMapForCurrentSelection(profile, controller);
       },
       onBaseChange: async (baseId) => {
+        if (!this.prepareForNavigation()) return;
         await controller.selectBase(baseId);
         this.showMapForCurrentSelection(profile, controller);
       },
       onTableChange: async (tableId) => {
+        if (!this.prepareForNavigation()) return;
         await controller.selectTable(tableId);
         this.showMapForCurrentSelection(profile, controller);
       },
       onViewChange: async (viewId) => {
+        if (!this.prepareForNavigation()) return;
         const selected = controller.state.views.find((candidate) => candidate.id === viewId);
         if (selected?.type === 'map') {
           await controller.selectView(viewId);
@@ -254,12 +286,21 @@ export class LoomTableView extends ItemView {
     profile: ConnectionProfile,
     controller: GridViewController,
   ): Promise<void> {
+    if (!this.prepareForNavigation()) return;
+    const invokingElement =
+      typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
     const detailRecord = await controller.getRecordForDetail(record);
+    const detailHost = this.#detailHost;
+    if (detailHost === null || !detailHost.isConnected) return;
     let detail: HTMLElement;
     detail = createRecordDetail(detailRecord, {
       translate: this.getTranslator(),
       fields: controller.state.fields,
       offline: typeof navigator !== 'undefined' && navigator.onLine === false,
+      returnFocus: invokingElement,
+      focusFallback: () => this.#gridHost?.querySelector<HTMLElement>('.loom-grid-shell') ?? null,
       confirmDiscard: (message) => window.confirm(message),
       callbacks: {
         onClose: () => detail.remove(),
@@ -275,8 +316,29 @@ export class LoomTableView extends ItemView {
           ),
       },
     });
-    this.contentEl.append(detail);
+    detailHost.append(detail);
     detail.focus();
+  }
+
+  private prepareForNavigation(): boolean {
+    if (!this.confirmDiscardOpenDetail()) return false;
+    this.#detailHost?.replaceChildren();
+    return true;
+  }
+
+  private confirmDiscardOpenDetail(): boolean {
+    const draft = this.#detailHost?.querySelector('.loom-location-editor[data-dirty="true"]');
+    if (draft === null || draft === undefined) {
+      return true;
+    }
+    const message = this.getTranslator()('record.location.discardConfirm');
+    try {
+      return typeof window !== 'undefined' && typeof window.confirm === 'function'
+        ? window.confirm(message)
+        : false;
+    } catch {
+      return false;
+    }
   }
 
   private openLocationInMap(
@@ -302,6 +364,8 @@ export class LoomTableView extends ItemView {
     this.#invalidationUnsubscribe = null;
     this.#gridController?.dispose();
     this.#gridController = null;
+    this.#gridHost = null;
+    this.#detailHost = null;
   }
 }
 

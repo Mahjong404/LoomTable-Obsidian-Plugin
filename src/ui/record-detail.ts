@@ -48,6 +48,8 @@ export interface RecordDetailOptions {
   readonly translate: Translator;
   readonly fields: readonly Field[];
   readonly offline?: boolean;
+  readonly returnFocus?: HTMLElement | null;
+  readonly focusFallback?: () => HTMLElement | null;
   readonly confirmDiscard?: (message: string) => boolean;
   readonly confirmDangerousAction?: (
     message: string,
@@ -69,9 +71,11 @@ export function createRecordDetail(
   heading.id = nextRecordDetailId();
   root.setAttribute('aria-labelledby', heading.id);
   const returnFocus =
-    typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
+    options.returnFocus !== undefined
+      ? options.returnFocus
+      : typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
 
   const closeDetail = (): void => {
     const draft = root.querySelector<HTMLElement>('.loom-location-editor[data-dirty="true"]');
@@ -83,6 +87,10 @@ export function createRecordDetail(
     }
     options.callbacks?.onClose?.();
     if (returnFocus?.isConnected) returnFocus.focus();
+    else {
+      const fallback = options.focusFallback?.();
+      if (fallback?.isConnected) fallback.focus();
+    }
   };
 
   const header = document.createElement('div');
@@ -307,18 +315,13 @@ function createLocationEditor(
 
   const error = document.createElement('div');
   error.className = 'loom-location-editor-error';
-  error.id = 'loom-location-editor-error';
+  error.id = nextLocationEditorErrorId();
   error.setAttribute('role', 'alert');
   error.setAttribute('aria-live', 'assertive');
+  error.tabIndex = -1;
   error.hidden = true;
-  for (const control of [
-    label.input,
-    address.input,
-    provider.input,
-    lat.input,
-    lng.input,
-    precision,
-  ]) {
+  const controls = [label.input, address.input, provider.input, lat.input, lng.input, precision];
+  for (const control of controls) {
     control.setAttribute('aria-describedby', error.id);
     control.setAttribute('aria-invalid', 'false');
   }
@@ -364,11 +367,7 @@ function createLocationEditor(
       root.replaceWith(next);
       next.querySelector<HTMLButtonElement>('.loom-location-edit')?.focus();
     } catch (cause) {
-      showLocationError(
-        error,
-        [label.input, address.input, provider.input, lat.input, lng.input, precision],
-        options,
-      );
+      showLocationError(error, controls, options);
       if (cause instanceof Error) {
         error.append(renderDiagnostic(options.translate('common.openDiagnostics'), cause.message));
       }
@@ -378,6 +377,8 @@ function createLocationEditor(
         const conflictBox = renderConflict(record.id, conflict, options, root);
         root.append(conflictBox);
         conflictBox.focus();
+      } else {
+        error.focus();
       }
     } finally {
       if (root.isConnected) setSaving(false);
@@ -407,11 +408,12 @@ function createLocationEditor(
     if (!normalized.ok) {
       showLocationError(
         error,
-        [label.input, address.input, provider.input, lat.input, lng.input, precision],
+        controls,
         options,
         describeFieldValueError(normalized.code, options.translate),
         normalized.code,
       );
+      controls[0]?.focus();
       return;
     }
     void submit({ kind: 'set', value: normalized.value as LocationValue });
@@ -426,9 +428,11 @@ function createLocationEditor(
   });
   root.addEventListener('input', () => {
     root.dataset.dirty = 'true';
+    clearLocationError(error, controls);
   });
   root.addEventListener('change', () => {
     root.dataset.dirty = 'true';
+    clearLocationError(error, controls);
   });
   cancel.addEventListener('click', (event) => {
     event.preventDefault();
@@ -590,10 +594,16 @@ function createPreviewTrigger(
 }
 
 let recordDetailId = 0;
+let locationEditorErrorId = 0;
 
 function nextRecordDetailId(): string {
   recordDetailId += 1;
   return 'loom-record-detail-heading-' + String(recordDetailId);
+}
+
+function nextLocationEditorErrorId(): string {
+  locationEditorErrorId += 1;
+  return 'loom-location-editor-error-' + String(locationEditorErrorId);
 }
 
 function requestDangerousConfirmation(
@@ -630,6 +640,13 @@ function showLocationError(
   if (code === undefined) delete error.dataset.errorCode;
   else error.dataset.errorCode = code;
   for (const control of controls) control.setAttribute('aria-invalid', 'true');
+}
+
+function clearLocationError(error: HTMLElement, controls: readonly HTMLElement[]): void {
+  error.hidden = true;
+  error.replaceChildren();
+  delete error.dataset.errorCode;
+  for (const control of controls) control.setAttribute('aria-invalid', 'false');
 }
 
 function renderDiagnostic(label: string, details: string): HTMLElement {

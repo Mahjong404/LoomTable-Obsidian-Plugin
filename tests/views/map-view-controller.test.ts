@@ -111,6 +111,23 @@ describe('MapViewController', () => {
     expect(summarizeMap).not.toHaveBeenCalled();
   });
 
+  it('does not switch the selected Record when its draft guard declines', async () => {
+    const getRecord = vi.fn().mockResolvedValue(createRecord('record_02'));
+    const beforeRecordSelected = vi.fn().mockReturnValue(false);
+    const controller = createController(
+      createClient({ getRecord }),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { beforeRecordSelected },
+    );
+
+    await controller.openRecord('record_02');
+
+    expect(beforeRecordSelected).toHaveBeenCalledWith('record_02');
+    expect(getRecord).not.toHaveBeenCalled();
+    expect(controller.state.selectedRecord).toBeNull();
+  });
+
   it('discards a late viewport response after a newer request starts', async () => {
     const first = deferred<MapQueryResult>();
     const second = deferred<MapQueryResult>();
@@ -1034,6 +1051,9 @@ function createController(
     },
     ...(options.debounceMs === undefined ? {} : { debounceMs: options.debounceMs }),
     ...(options.isOffline === undefined ? {} : { isOffline: options.isOffline }),
+    ...(options.beforeRecordSelected === undefined
+      ? {}
+      : { beforeRecordSelected: options.beforeRecordSelected }),
     ...(options.onRecordSelected === undefined
       ? {}
       : { onRecordSelected: options.onRecordSelected }),

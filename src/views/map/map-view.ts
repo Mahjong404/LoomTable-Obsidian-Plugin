@@ -41,7 +41,7 @@ export interface MapViewOptions {
     fieldId: string,
     intent: LocationEditIntent,
     record?: LoomTableRecord,
-  ) => void | Promise<void>;
+  ) => void | LoomTableRecord | Promise<void | LoomTableRecord>;
   readonly onOpenLocationInMap?: (
     recordId: string,
     fieldId: string,
@@ -57,6 +57,7 @@ export interface MapViewOptions {
   readonly selectedProvider?: TileProviderRef;
   readonly onProviderChange?: (provider: TileProviderRef) => void | Promise<void>;
   readonly onOpenSettings?: () => void | Promise<void>;
+  readonly confirmDiscard?: (message: string) => boolean;
 }
 
 type MapAction = 'refresh' | 'fitAll' | 'saveCamera' | 'settings';
@@ -224,6 +225,22 @@ export class MapView {
     this.#restoreFocusedAction();
   }
 
+  confirmDiscardIfNeeded(): boolean {
+    if (this.#details?.querySelector('.loom-location-editor[data-dirty="true"]') === null) {
+      return true;
+    }
+    const message = (this.options.translate ?? createTranslator('en'))(
+      'record.location.discardConfirm',
+    );
+    if (this.options.confirmDiscard !== undefined) return this.options.confirmDiscard(message);
+    if (typeof window === 'undefined' || typeof window.confirm !== 'function') return false;
+    try {
+      return window.confirm(message);
+    } catch {
+      return false;
+    }
+  }
+
   #createActionButton(
     action: MapAction,
     labelKey: MessageKey,
@@ -310,11 +327,33 @@ export class MapView {
   #renderDetails(state: MapViewState, translate: Translator): void {
     if (this.#details === null) return;
     const selectedRecordChanged = this.#selectedRecordId !== state.selectedRecord?.id;
+    const existingRecord = this.#details.querySelector<HTMLElement>('.loom-map-record-detail');
+    const existingDraft = existingRecord?.querySelector<HTMLElement>(
+      '.loom-location-editor[data-dirty="true"]',
+    );
+    if (
+      existingDraft !== null &&
+      existingDraft !== undefined &&
+      selectedRecordChanged &&
+      !this.confirmDiscardIfNeeded()
+    ) {
+      return;
+    }
+    const nextRecordVersion =
+      state.selectedRecord === null ? null : recordVersion(state.selectedRecord);
+    const preserveExistingRecord =
+      state.selectedRecord !== null &&
+      existingRecord !== null &&
+      !selectedRecordChanged &&
+      ((existingDraft !== null && existingDraft !== undefined) ||
+        existingRecord.dataset.recordVersion === nextRecordVersion);
+
     this.#selectedRecordId = state.selectedRecord?.id ?? null;
-    this.#details.replaceChildren();
-    if (state.selectedRecord !== null) {
+    if (!preserveExistingRecord) this.#details.replaceChildren();
+    if (state.selectedRecord !== null && !preserveExistingRecord) {
       const record = document.createElement('section');
       record.className = 'loom-map-record-detail';
+      record.dataset.recordVersion = nextRecordVersion ?? '';
       const callbacks = {
         ...(this.options.onLocationEdit === undefined
           ? {}
@@ -325,8 +364,14 @@ export class MapView {
                 intent: LocationEditIntent,
                 recordValue?: LoomTableRecord,
               ) => {
-                await this.options.onLocationEdit?.(recordId, fieldId, intent, recordValue);
+                const updatedRecord = await this.options.onLocationEdit?.(
+                  recordId,
+                  fieldId,
+                  intent,
+                  recordValue,
+                );
                 await this.#controller.openRecord(recordId);
+                return updatedRecord;
               },
             }),
         ...(this.options.onOpenLocationInMap === undefined
@@ -364,6 +409,12 @@ export class MapView {
         record.querySelector<HTMLElement>('.loom-record-detail')?.focus();
       }
     }
+    this.#renderClusterDetails(state, translate);
+  }
+
+  #renderClusterDetails(state: MapViewState, translate: Translator): void {
+    if (this.#details === null) return;
+    this.#details.querySelector('.loom-map-cluster-records')?.remove();
     if (state.clusterRecords.length > 0 || state.clusterCursor !== null) {
       const cluster = document.createElement('section');
       cluster.className = 'loom-map-cluster-records';
@@ -384,6 +435,10 @@ export class MapView {
       this.#details.append(cluster);
     }
   }
+}
+
+function recordVersion(record: LoomTableRecord): string {
+  return [record.id, record.revision, record.updatedAt].join(':');
 }
 
 function renderNavigation(navigation: MapViewNavigation, translate: Translator): HTMLElement {
