@@ -4,6 +4,7 @@ import {
   type ConflictBody,
   type ConflictDetails,
   type Field,
+  type AttachmentRef,
   type LoomTableClient,
   type LoomTableClientErrorDetails,
   type LoomTableRecord,
@@ -108,6 +109,7 @@ export interface GridViewControllerOptions {
 
 export interface GridEditOptions {
   readonly unset?: boolean;
+  readonly attachmentReferences?: readonly AttachmentRef[];
 }
 
 export type GridStateListener = (state: GridState) => void;
@@ -276,11 +278,14 @@ export class GridViewController {
         editDraft,
       );
     }
-    const normalized = options.unset
-      ? { ok: true as const, value: null }
-      : field.type === 'location'
-        ? normalizeLocationValue(rawValue)
-        : normalizeCellValue(field, rawValue);
+    const normalized =
+      options.attachmentReferences !== undefined && field.type === 'attachment'
+        ? { ok: true as const, value: options.attachmentReferences as unknown as MutationValue }
+        : options.unset
+          ? { ok: true as const, value: null }
+          : field.type === 'location'
+            ? normalizeLocationValue(rawValue)
+            : normalizeCellValue(field, rawValue);
     if (!normalized.ok) {
       throw this.#publishEditFailure(
         describeFieldValueError(normalized.code, this.#translate),

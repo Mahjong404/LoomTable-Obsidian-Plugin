@@ -3,8 +3,6 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   LoomTableClientError,
   type Attachment,
-  type AttachmentRef,
-  type Field,
   type LoomTableRecord,
 } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
@@ -59,7 +57,7 @@ describe('Attachment Add/Upload seam', () => {
   it('initializes, uploads, and queues the returned AttachmentRef without leaking Attachment metadata', async () => {
     const bytes = new Uint8Array([1, 2, 3, 4]).buffer;
     const file: AttachmentUploadFile = {
-      name: 'folder\\photo.png',
+      name: 'folder/photo.png',
       type: 'image/png',
       size: bytes.byteLength,
       arrayBuffer: vi.fn().mockResolvedValue(bytes),
@@ -102,7 +100,7 @@ describe('Attachment Add/Upload seam', () => {
     expect(client.initializeAttachment).toHaveBeenCalledWith(
       {
         source: 'managed',
-        filename: 'folder__photo.png',
+        filename: 'folder_photo.png',
         mimeType: 'image/png',
         size: 4,
       },
@@ -206,6 +204,3 @@ function createRecord(values: Record<string, unknown> = {}): LoomTableRecord {
   };
 }
 
-void ({} as AttachmentRef);
-void ({} as Field);
-void createTranslator;

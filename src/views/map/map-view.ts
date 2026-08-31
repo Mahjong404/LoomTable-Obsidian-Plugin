@@ -15,6 +15,7 @@ import type {
   TileProviderSummary,
 } from '../../maps/providers/tile-provider-schema';
 import type { LocationEditIntent } from '../../ui/field-value-editor';
+import type { AttachmentAddHandler } from '../../ui/attachment-upload';
 import {
   createRenderedFieldValueElement,
   defaultFieldRendererRegistry,
@@ -72,6 +73,7 @@ export interface MapViewOptions {
     fieldId: string,
     attachment: RenderedAttachment,
   ) => void | Promise<void>;
+  readonly onAttachmentAdd?: AttachmentAddHandler;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
@@ -453,6 +455,25 @@ export class MapView {
         ...(this.options.onAttachmentPreview === undefined
           ? {}
           : { onAttachmentPreview: this.options.onAttachmentPreview }),
+        ...(this.options.onAttachmentAdd === undefined
+          ? {}
+          : {
+              onAttachmentAdd: async (
+                recordId: string,
+                fieldId: string,
+                recordValue: LoomTableRecord,
+                maxCount: number,
+              ) => {
+                const updated = await this.options.onAttachmentAdd?.(
+                  recordId,
+                  fieldId,
+                  recordValue,
+                  maxCount,
+                );
+                if (updated !== null) await this.#controller.openRecord(recordId);
+                return updated;
+              },
+            }),
         ...(this.options.getConflict === undefined
           ? {}
           : { getConflict: this.options.getConflict }),
