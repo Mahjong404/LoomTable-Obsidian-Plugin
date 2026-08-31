@@ -11,6 +11,11 @@ import {
   type RenderedAttachment,
 } from './field-renderer-registry';
 import { confirmDangerousAction as showDangerousActionConfirmation } from './dangerous-action-confirmation';
+import {
+  describeAttachmentUploadError,
+  readAttachmentReferences,
+  type AttachmentAddHandler,
+} from './attachment-upload';
 
 const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
 type LocationPresentationState = 'located' | 'unlocated' | 'unrenderable';
@@ -49,6 +54,7 @@ export interface RecordDetailCallbacks {
     fieldId: string,
     attachment: RenderedAttachment,
   ) => void | Promise<void>;
+  readonly onAttachmentAdd?: AttachmentAddHandler;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
@@ -136,10 +142,26 @@ export function createRecordDetail(
   const fields = options.fields.length > 0 ? options.fields : fallbackFields(record);
   const values = document.createElement('dl');
   values.className = 'loom-record-fields';
-  for (const field of fields) {
-    values.append(...renderField(record, field, options, root));
-  }
-  root.append(values);
+  const detailStatus = document.createElement('p');
+  detailStatus.className = 'loom-record-detail-status';
+  detailStatus.setAttribute('role', 'status');
+  detailStatus.setAttribute('aria-live', 'polite');
+  detailStatus.hidden = true;
+  const announce = (message: string): void => {
+    detailStatus.hidden = false;
+    detailStatus.textContent = message;
+  };
+  let currentRecord = record;
+  const renderValues = (nextRecord: LoomTableRecord): void => {
+    currentRecord = nextRecord;
+    values.replaceChildren(
+      ...fields.flatMap((field) =>
+        renderField(currentRecord, field, options, root, renderValues, announce),
+      ),
+    );
+  };
+  renderValues(record);
+  root.append(detailStatus, values);
   const existingConflict = options.callbacks?.getConflict?.(record.id);
   if (existingConflict !== undefined) {
     root.append(renderConflict(record.id, existingConflict, options, root));
@@ -152,6 +174,8 @@ function renderField(
   field: Field,
   options: RecordDetailOptions,
   detailRoot: HTMLElement,
+  onRecordUpdated: (record: LoomTableRecord) => void,
+  announce: (message: string) => void,
 ): HTMLElement[] {
   const value = record.values[field.id];
   const label = createText('dt', field.name);
@@ -198,6 +222,13 @@ function renderField(
     );
     body.setAttribute('aria-label', field.name + ': ' + displayValue.ariaLabel);
     body.dataset.valueState = displayValue.state;
+    if (
+      field.type === 'attachment' &&
+      options.callbacks?.onAttachmentAdd !== undefined &&
+      canAddAttachment(value, field.config.maxCount)
+    ) {
+      body.append(createAttachmentAddAction(record, field, options, onRecordUpdated, announce));
+    }
   }
   return [label, body];
 }
@@ -859,4 +890,87 @@ function createText<K extends keyof HTMLElementTagNameMap>(
   const element = document.createElement(tag);
   element.textContent = text;
   return element;
+}
+
+function canAddAttachment(value: JsonValue | undefined, maxCount: number): boolean {
+  const references = readAttachmentReferences(value);
+  return references !== null && Number.isInteger(maxCount) && maxCount > references.length;
+}
+
+function createAttachmentAddAction(
+  record: LoomTableRecord,
+  field: Extract<Field, { readonly type: 'attachment' }>,
+  options: RecordDetailOptions,
+  onRecordUpdated: (record: LoomTableRecord) => void,
+  announce: (message: string) => void,
+): HTMLElement {
+  const group = document.createElement('span');
+  group.className = 'loom-attachment-add-action-group';
+  const action = button(options.translate('record.attachment.action.add'));
+  action.classList.add('loom-attachment-add-action');
+  const status = document.createElement('span');
+  status.className = 'loom-attachment-add-action-status';
+  status.setAttribute('role', 'status');
+  status.setAttribute('aria-live', 'polite');
+  const statusId = nextAttachmentAddStatusId();
+  status.id = statusId;
+  action.setAttribute('aria-describedby', statusId);
+
+  const offline = options.offline === true;
+  action.disabled = offline;
+  action.setAttribute(
+    'aria-label',
+    offline
+      ? options.translate('record.attachment.action.offlineAdd')
+      : options.translate('record.attachment.action.add'),
+  );
+  if (offline) status.textContent = options.translate('record.attachment.action.offlineAdd');
+
+  let busy = false;
+  action.addEventListener('click', () => {
+    if (busy || action.disabled || options.callbacks?.onAttachmentAdd === undefined) return;
+    busy = true;
+    action.disabled = true;
+    action.setAttribute('aria-busy', 'true');
+    const pendingLabel = options.translate('record.attachment.action.adding');
+    action.textContent = pendingLabel;
+    action.setAttribute('aria-label', pendingLabel);
+    status.textContent = pendingLabel;
+    void (async () => {
+      try {
+        const updated = await options.callbacks?.onAttachmentAdd?.(
+          record.id,
+          field.id,
+          record,
+          field.config.maxCount,
+        );
+        if (updated === null) {
+          status.textContent = options.translate('record.attachment.action.addCancelled');
+          return;
+        }
+        if (updated !== undefined) onRecordUpdated(updated);
+        announce(options.translate('record.attachment.action.added'));
+      } catch (error) {
+        status.textContent = describeAttachmentUploadError(error, options.translate);
+      } finally {
+        busy = false;
+        if (action.isConnected) {
+          action.disabled = false;
+          action.removeAttribute('aria-busy');
+          action.textContent = options.translate('record.attachment.action.add');
+          action.setAttribute('aria-label', options.translate('record.attachment.action.add'));
+          action.focus();
+        }
+      }
+    })();
+  });
+  group.append(action, document.createTextNode(' '), status);
+  return group;
+}
+
+let attachmentAddStatusId = 0;
+
+function nextAttachmentAddStatusId(): string {
+  attachmentAddStatusId += 1;
+  return 'loom-attachment-add-status-' + String(attachmentAddStatusId);
 }

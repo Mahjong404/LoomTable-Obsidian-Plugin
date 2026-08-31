@@ -17,6 +17,7 @@ import { ReadonlyGridRenderer } from './readonly-grid-renderer';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
 import { MapView, type MapViewNavigation } from '../views/map/map-view';
 import { createAttachmentDownloadCallback } from './attachment-download';
+import { createAttachmentAddCallback } from './attachment-upload';
 import { createRecordDetail } from './record-detail';
 
 export const LOOMTABLE_VIEW_TYPE = 'loomtable-main';
@@ -208,6 +209,25 @@ export class LoomTableView extends ItemView {
           (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
         ),
       onAttachmentDownload: createAttachmentDownloadCallback(client),
+      ...(this.#gridController === null
+        ? {}
+        : {
+            onAttachmentAdd: createAttachmentAddCallback(client, {
+              isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+              updateRecord: async (recordId, fieldId, references, sourceRecord) => {
+                await this.#gridController!.editCell(
+                  recordId,
+                  fieldId,
+                  references,
+                  { attachmentReferences: references },
+                  sourceRecord,
+                );
+                return this.#gridController!.state.records.find(
+                  (candidate) => candidate.id === recordId,
+                );
+              },
+            }),
+          }),
       providers: this.mapContext.registry.list(),
       selectedProvider: provider,
       onProviderChange: async (nextProvider) => {
@@ -323,6 +343,19 @@ export class LoomTableView extends ItemView {
             (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
           ),
         onAttachmentDownload: createAttachmentDownloadCallback(client),
+        onAttachmentAdd: createAttachmentAddCallback(client, {
+          isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+          updateRecord: async (recordId, fieldId, references, sourceRecord) => {
+            await controller.editCell(
+              recordId,
+              fieldId,
+              references,
+              { attachmentReferences: references },
+              sourceRecord,
+            );
+            return controller.state.records.find((candidate) => candidate.id === recordId);
+          },
+        }),
       },
     });
     detailHost.append(detail);
