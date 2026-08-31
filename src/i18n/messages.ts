@@ -112,6 +112,7 @@ export const englishMessages = {
   'record.location.previewHint': 'Ctrl/Cmd-hover to preview',
   'record.location.preview': 'Map preview',
   'record.location.attribution': 'Location only; no data was changed',
+  'record.location.located': 'Located',
   'record.location.unlocated': 'Unlocated',
   'record.location.unrenderable': 'Not renderable at this Map scale',
   'map.summary.matched': 'matched',
@@ -251,3 +252,4 @@ export const englishMessages = {
 
 export type MessageKey = keyof typeof englishMessages;
 export type MessageCatalog = { readonly [Key in MessageKey]: string };
+
