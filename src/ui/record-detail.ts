@@ -219,8 +219,7 @@ function renderField(
         ...(field.type === 'attachment'
           ? {
               canAttachmentOpen: (attachment: RenderedAttachment) =>
-                attachment.source === 'vault' &&
-                isSafeAttachmentVaultPath(attachment.vaultPath),
+                attachment.source === 'vault' && isSafeAttachmentVaultPath(attachment.vaultPath),
               canAttachmentPreview: (attachment: RenderedAttachment) =>
                 attachment.source === 'managed',
             }
@@ -984,3 +983,4 @@ function nextAttachmentAddStatusId(): string {
   attachmentAddStatusId += 1;
   return 'loom-attachment-add-status-' + String(attachmentAddStatusId);
 }
+
