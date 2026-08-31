@@ -8,6 +8,7 @@ import {
 import {
   createRenderedFieldValueElement,
   defaultFieldRendererRegistry,
+  type RenderedAttachment,
 } from './field-renderer-registry';
 import { confirmDangerousAction as showDangerousActionConfirmation } from './dangerous-action-confirmation';
 
@@ -32,6 +33,11 @@ export interface RecordDetailCallbacks {
     recordId: string,
     fieldId: string,
     coordinates: { readonly lat: number; readonly lng: number },
+  ) => void | Promise<void>;
+  readonly onAttachmentDownload?: (
+    recordId: string,
+    fieldId: string,
+    attachmentId: string,
   ) => void | Promise<void>;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
@@ -149,7 +155,19 @@ function renderField(
     const displayValue = defaultFieldRendererRegistry.render(field, value, {
       translate: options.translate,
     });
-    body.append(createRenderedFieldValueElement(displayValue));
+    const onAttachmentDownload =
+      field.type === 'attachment' && options.callbacks?.onAttachmentDownload !== undefined
+        ? (attachment: RenderedAttachment): void | Promise<void> => {
+            if (attachment.id === undefined) return;
+            return options.callbacks?.onAttachmentDownload?.(record.id, field.id, attachment.id);
+          }
+        : undefined;
+    body.append(
+      createRenderedFieldValueElement(displayValue, {
+        translate: options.translate,
+        ...(onAttachmentDownload === undefined ? {} : { onAttachmentDownload }),
+      }),
+    );
     body.setAttribute('aria-label', field.name + ': ' + displayValue.ariaLabel);
     body.dataset.valueState = displayValue.state;
   }

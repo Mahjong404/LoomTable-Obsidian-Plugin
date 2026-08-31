@@ -606,6 +606,67 @@ describe('ReadonlyGridRenderer', () => {
     expect(cell?.dataset.valueState).toBe('empty');
   });
 
+  it('keeps Grid attachment values as compact non-interactive summaries', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    const state = createState(1);
+    const nameField = state.fields[0];
+    const record = state.records[0];
+    if (nameField === undefined || record === undefined) {
+      throw new Error('Grid fixture is missing.');
+    }
+    const attachmentField: Field = {
+      id: 'field_attachment',
+      tableId: 'table_01',
+      name: 'Attachment',
+      position: 1,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'attachment',
+      config: { maxCount: 10 },
+    };
+
+    renderer.render({
+      ...state,
+      views: state.views.map((view) =>
+        view.type === 'grid'
+          ? {
+              ...view,
+              config: {
+                ...view.config,
+                projection: ['field_name', 'field_attachment'],
+                columnOrder: ['field_name', 'field_attachment'],
+              },
+            }
+          : view,
+      ),
+      records: [
+        {
+          ...record,
+          values: {
+            field_attachment: [
+              { id: 'attachment_1', source: 'vault', filename: 'notes.md' },
+              { id: 'attachment_2', source: 'managed', filename: 'image.png', status: 'pending' },
+            ],
+          },
+        },
+      ],
+      fields: [nameField, attachmentField],
+    });
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_attachment"]',
+    );
+    expect(cell?.textContent).toContain('2 attachments');
+    expect(cell?.querySelector('.loom-attachment-list')).toBeNull();
+    expect(cell?.querySelector('button, a, input, select, textarea')).toBeNull();
+    expect(cell?.innerHTML).not.toContain('attachment_1');
+  });
+
   it('renders MultiSelect chips and opens its native multiple editor', () => {
     const container = document.createElement('div');
     const callbacks = rendererCallbacks();
