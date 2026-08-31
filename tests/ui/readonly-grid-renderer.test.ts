@@ -786,4 +786,3 @@ function locationState(value: JsonValue | undefined): GridState {
     ],
   };
 }
-
