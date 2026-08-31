@@ -6,7 +6,6 @@ import {
   type LoomTableRecord,
 } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
-import type { MessageKey } from '../i18n/messages';
 import { createMutationId } from './mutation-queue';
 
 export interface AttachmentUploadFile {

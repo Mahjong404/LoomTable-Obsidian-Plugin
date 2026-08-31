@@ -954,12 +954,13 @@ function createAttachmentAddAction(
         status.textContent = describeAttachmentUploadError(error, options.translate);
       } finally {
         busy = false;
-        if (!action.isConnected) return;
-        action.disabled = false;
-        action.removeAttribute('aria-busy');
-        action.textContent = options.translate('record.attachment.action.add');
-        action.setAttribute('aria-label', options.translate('record.attachment.action.add'));
-        action.focus();
+        if (action.isConnected) {
+          action.disabled = false;
+          action.removeAttribute('aria-busy');
+          action.textContent = options.translate('record.attachment.action.add');
+          action.setAttribute('aria-label', options.translate('record.attachment.action.add'));
+          action.focus();
+        }
       }
     })();
   });
