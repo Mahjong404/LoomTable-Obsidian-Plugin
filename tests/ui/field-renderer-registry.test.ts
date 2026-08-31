@@ -160,4 +160,3 @@ function createField(type: Field['type'], config: Field['config'] = {}): Field {
     config,
   } as Field;
 }
-
