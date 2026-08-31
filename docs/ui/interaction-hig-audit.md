@@ -274,3 +274,12 @@ Out of scope remains new Record creation/import, Relation/Formula/Lookup/Rollup,
 | Build / contract / PR CI | PASS | Build provenance above; PR #83/#84 checks passed, and no Server/API/OpenAPI changes were made. |
 
 S2 final-gate verdict: **not complete**. The implementation and documentation/CI chain is published, but the current-main real Obsidian gate remains blocked by the unavailable target window/Computer Use activation. The residual rows above are intentionally not converted to PASS.
+
+## S3-A Field Renderer/Editor foundation — implementation evidence (2026-08-31)
+
+- Implementation baseline and merge: Plugin main `3006c6217ef7e764ccc6c54b2a1c4d826b0a7eaf`; PR #86 code head `400cff073958bc51c61ec34b0a320c6a1d5adb8a`; squash merge/main `81f616a43784b55643a413a02d7da70def225aac`.
+- Shared seam: `src/ui/field-renderer-registry.ts` provides typed field capabilities and translated render results consumed by Grid, Record Detail, and Map cluster labels. Existing Text, LongText, Number, Checkbox, Date, URL, Location, Attachment, Select, and MultiSelect field types are represented; MultiSelect chip/option interaction remains deferred to S3-B.
+- Value semantics: missing/undefined is Unset, explicit null is Cleared, natural empty Text/LongText and empty arrays remain natural empty values. Location retains located/unlocated/unrenderable states; Attachment display is structured as filename/type/size without raw JSON.
+- Automated evidence: clean staging ran `pnpm install --frozen-lockfile` and `pnpm check`: format passed, lint had 0 errors with existing warnings, typecheck passed, 39 test files / 348 tests passed, OpenAPI drift passed, and production build passed. The verified local build output was `main.js`, 366215 bytes, SHA-256 `679348D1C1D31F2903273639785D09A1C5A173A7BC7AE8F36C03C1090B3DB0D5`.
+- Desktop evidence: UNVERIFIED for this S3-A current-main bundle; no user data, credentials, settings, Provider, or API contract was changed. Existing desktop smoke evidence must retain its recorded bundle provenance and is not relabeled as this build.
+- S3-A does not change Server/API/OpenAPI, offline read-only behavior, mutation/Conflict/revision/changeCursor semantics, or URL safety. S3-B Select/MultiSelect chip and option interaction has not started.
