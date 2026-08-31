@@ -65,6 +65,7 @@ export interface RenderedAttachment {
   readonly id?: string;
   readonly filename?: string;
   readonly source?: AttachmentSource;
+  readonly vaultPath?: string;
   readonly sourceText?: string;
   readonly mimeType?: string;
   readonly sizeText?: string;
@@ -96,7 +97,9 @@ export interface RenderedFieldValueElementOptions {
   readonly onAttachmentDownload?: (attachment: RenderedAttachment) => void | Promise<void>;
   readonly attachmentOpenPreviewDisabled?: boolean;
   readonly onAttachmentOpen?: (attachment: RenderedAttachment) => void | Promise<void>;
+  readonly canAttachmentOpen?: (attachment: RenderedAttachment) => boolean;
   readonly onAttachmentPreview?: (attachment: RenderedAttachment) => void | Promise<void>;
+  readonly canAttachmentPreview?: (attachment: RenderedAttachment) => boolean;
 }
 
 export interface FieldRendererRegistry {
@@ -460,6 +463,7 @@ function createAttachmentElement(
       failedKey: 'record.attachment.action.openFailed',
       offlineKey: 'record.attachment.action.offlineOpenPreview',
       callback: options.onAttachmentOpen,
+      available: options.canAttachmentOpen,
       disabled: options.attachmentOpenPreviewDisabled === true,
     }),
     createAttachmentAction(attachment, options, {
@@ -469,6 +473,7 @@ function createAttachmentElement(
       failedKey: 'record.attachment.action.previewFailed',
       offlineKey: 'record.attachment.action.offlineOpenPreview',
       callback: options.onAttachmentPreview,
+      available: options.canAttachmentPreview,
       disabled: options.attachmentOpenPreviewDisabled === true,
     }),
   ].filter((action): action is HTMLElement => action !== null);
@@ -485,6 +490,7 @@ interface AttachmentActionSpec {
   readonly failedKey: MessageKey;
   readonly offlineKey: MessageKey;
   readonly callback: ((attachment: RenderedAttachment) => void | Promise<void>) | undefined;
+  readonly available?: (attachment: RenderedAttachment) => boolean;
   readonly disabled: boolean;
 }
 
@@ -499,7 +505,8 @@ function createAttachmentAction(
     attachment.state !== 'ready' ||
     attachment.id === undefined ||
     translate === undefined ||
-    (spec.callback === undefined && !(spec.kind === 'download' && offline))
+    (spec.callback === undefined && !(spec.kind === 'download' && offline)) ||
+    (spec.available !== undefined && !spec.available(attachment))
   ) {
     return null;
   }
@@ -671,6 +678,13 @@ function renderAttachment(value: JsonValue, translate: Translator): RenderedAtta
       : undefined;
   const source =
     object?.source === 'managed' || object?.source === 'vault' ? object.source : undefined;
+  const vaultPath =
+    source === 'vault' &&
+    object !== null &&
+    typeof object.vaultPath === 'string' &&
+    object.vaultPath !== ''
+      ? object.vaultPath
+      : undefined;
   const mimeType =
     object !== null && typeof object.mimeType === 'string' && object.mimeType !== ''
       ? object.mimeType
@@ -713,6 +727,7 @@ function renderAttachment(value: JsonValue, translate: Translator): RenderedAtta
     ...(id === undefined ? {} : { id }),
     ...(filename === undefined ? {} : { filename }),
     ...(source === undefined ? {} : { source }),
+    ...(vaultPath === undefined ? {} : { vaultPath }),
     ...(sourceText === undefined ? {} : { sourceText }),
     ...(mimeType === undefined ? {} : { mimeType }),
     ...(sizeText === undefined ? {} : { sizeText }),
