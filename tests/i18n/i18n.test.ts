@@ -18,6 +18,10 @@ describe('i18n', () => {
     expect(createTranslator('zh-CN')('common.openSettings')).toBe('打开设置');
     expect(createTranslator('en')('map.refreshing')).toBe('Refreshing…');
     expect(createTranslator('zh-CN')('map.refreshing')).toBe('正在刷新…');
+    expect(createTranslator('en')('record.value.unavailable')).toBe('Value unavailable');
+    expect(createTranslator('zh-CN')('record.value.unavailable')).toBe('值不可用');
+    expect(createTranslator('en')('record.attachment.type')).toBe('Type');
+    expect(createTranslator('zh-CN')('record.attachment.type')).toBe('类型');
   });
 
   it('resolves auto to the current Obsidian language on every translation call', () => {
@@ -48,3 +52,4 @@ describe('i18n', () => {
     expect(normalizePluginSettings({}).locale).toBe('auto');
   });
 });
+
