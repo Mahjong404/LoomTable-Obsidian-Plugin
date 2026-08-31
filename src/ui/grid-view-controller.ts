@@ -57,6 +57,12 @@ export interface GridConflict extends ConflictBody {
   readonly message: string;
 }
 
+export interface GridEditDraft {
+  readonly recordId: string;
+  readonly fieldId: string;
+  readonly rawValue: unknown;
+}
+
 export interface GridState {
   readonly status: GridStatus;
   readonly phase: GridPhase;
@@ -79,6 +85,8 @@ export interface GridState {
   readonly editStatuses: Readonly<Record<string, GridEditStatus>>;
   readonly conflicts: readonly GridConflict[];
   readonly editError: LoomTableClientErrorDetails | null;
+  readonly editDrafts: readonly GridEditDraft[];
+  readonly editErrorRecordId: string | null;
   readonly saveStatus: ViewSaveStatus;
 }
 
@@ -140,6 +148,8 @@ const INITIAL_STATE: GridState = {
   editStatuses: {},
   conflicts: [],
   editError: null,
+  editDrafts: [],
+  editErrorRecordId: null,
   saveStatus: 'saved',
 };
 
@@ -255,12 +265,15 @@ export class GridViewController {
     if (field === undefined || record === undefined || tableId === null) {
       throw this.#publishEditFailure('The selected Grid Cell is no longer available.');
     }
+    const editDraft: GridEditDraft = { recordId, fieldId, rawValue };
     const offline = this.#isOffline();
     if (offline || this.#state.status !== 'ready') {
       throw this.#publishEditFailure(
         offline || this.#state.status === 'offline'
           ? 'Grid editing is unavailable while offline.'
           : 'Grid editing is unavailable until the Grid is ready.',
+        undefined,
+        editDraft,
       );
     }
     const normalized = options.unset
@@ -272,16 +285,23 @@ export class GridViewController {
       throw this.#publishEditFailure(
         describeFieldValueError(normalized.code, this.#translate),
         normalized.code,
+        editDraft,
       );
     }
     if (this.#queue === null && this.#durableQueue === null) {
-      throw this.#publishEditFailure('Record editing is unavailable for this connection.');
+      throw this.#publishEditFailure(
+        'Record editing is unavailable for this connection.',
+        undefined,
+        editDraft,
+      );
     }
 
     const value = normalized.value;
     const authoritative = this.#authoritativeRecords.get(recordId) ?? record;
     const durablePendingBefore = this.#durableQueue?.getRecordSnapshot(recordId).pending ?? 0;
     const preEditDisplay = record;
+    const editStatuses = { ...this.#state.editStatuses };
+    delete editStatuses[recordId];
     this.#dirtyRecords.add(recordId);
     const optimistic = options.unset
       ? withoutCellValue(record, fieldId)
@@ -289,7 +309,11 @@ export class GridViewController {
     this.#optimisticRecords.set(recordId, optimistic);
     this.#publish({
       records: replaceRecord(this.#state.records, optimistic),
+      editStatuses,
       editError: null,
+      editErrorRecordId:
+        this.#state.editErrorRecordId === recordId ? null : this.#state.editErrorRecordId,
+      editDrafts: upsertEditDraft(this.#state.editDrafts, editDraft),
       saveStatus: 'dirty',
     });
 
@@ -333,13 +357,21 @@ export class GridViewController {
         this.#optimisticRecords.set(recordId, preEditDisplay);
         this.#publish({
           records: replaceRecord(this.#state.records, preEditDisplay),
+          editStatuses: { ...this.#state.editStatuses, [recordId]: 'error' },
           editError: clientError.details,
+          editErrorRecordId: recordId,
+          editDrafts: upsertEditDraft(this.#state.editDrafts, editDraft),
           saveStatus: this.#isOffline() ? 'offline-readonly' : 'error',
         });
       } else if (!isConflict) {
         const fallback = this.#authoritativeRecords.get(recordId) ?? record;
         this.#optimisticRecords.set(recordId, fallback);
-        this.#publish({ records: replaceRecord(this.#state.records, fallback) });
+        this.#publish({
+          records: replaceRecord(this.#state.records, fallback),
+          editError: asClientError(error).details,
+          editErrorRecordId: recordId,
+          editDrafts: upsertEditDraft(this.#state.editDrafts, editDraft),
+        });
       }
       throw error;
     }
@@ -709,10 +741,12 @@ export class GridViewController {
       this.#dirtyRecords.delete(recordId);
     }
     this.#conflicts.delete(recordId);
+    const clearsEditError = this.#state.editErrorRecordId === recordId;
     this.#publish({
       records: replaceRecord(this.#state.records, this.#optimisticRecords.get(recordId) ?? record),
       conflicts: [...this.#conflicts.values()],
-      editError: null,
+      editError: clearsEditError ? null : this.#state.editError,
+      editErrorRecordId: clearsEditError ? null : this.#state.editErrorRecordId,
     });
   }
 
@@ -757,28 +791,57 @@ export class GridViewController {
     }
     const conflicts = [...this.#conflicts.values()];
     const editError =
-      snapshot.state === 'idle' ? null : (snapshot.error?.details ?? this.#state.editError);
+      snapshot.state === 'idle' && this.#state.editErrorRecordId === recordId
+        ? null
+        : (snapshot.error?.details ?? this.#state.editError);
+    const editErrorRecordId =
+      snapshot.state === 'idle' && this.#state.editErrorRecordId === recordId
+        ? null
+        : snapshot.error !== undefined ||
+            snapshot.state === 'conflict' ||
+            snapshot.state === 'error' ||
+            snapshot.state === 'terminal'
+          ? recordId
+          : this.#state.editErrorRecordId;
+    const editDrafts =
+      snapshot.state === 'idle'
+        ? removeEditDraftsForRecord(this.#state.editDrafts, recordId)
+        : this.#state.editDrafts;
     const nextState = {
       ...this.#state,
       editStatuses,
       conflicts,
       editError,
+      editErrorRecordId,
     };
     this.#publish({
       editStatuses,
       conflicts,
       editError,
+      editErrorRecordId,
+      editDrafts,
       saveStatus: gridSaveStatus(nextState, this.#isOffline(), this.#dirtyRecords.size > 0),
     });
   }
 
-  #publishEditFailure(message: string, code?: string): LoomTableClientError {
+  #publishEditFailure(
+    message: string,
+    code?: string,
+    editDraft?: GridEditDraft,
+  ): LoomTableClientError {
     const error = new LoomTableClientError('validation', {
       message,
       ...(code === undefined ? {} : { code }),
     });
     this.#publish({
       editError: error.details,
+      ...(editDraft === undefined
+        ? {}
+        : {
+            editStatuses: { ...this.#state.editStatuses, [editDraft.recordId]: 'error' as const },
+            editDrafts: upsertEditDraft(this.#state.editDrafts, editDraft),
+            editErrorRecordId: editDraft.recordId,
+          }),
       saveStatus: this.#isOffline() ? 'offline-readonly' : 'error',
     });
     return error;
@@ -934,6 +997,25 @@ function withoutCellValue(record: LoomTableRecord, fieldId: string): LoomTableRe
   return { ...record, values };
 }
 
+function upsertEditDraft(
+  drafts: readonly GridEditDraft[],
+  draft: GridEditDraft,
+): readonly GridEditDraft[] {
+  return [
+    ...drafts.filter(
+      (candidate) => candidate.recordId !== draft.recordId || candidate.fieldId !== draft.fieldId,
+    ),
+    draft,
+  ];
+}
+
+function removeEditDraftsForRecord(
+  drafts: readonly GridEditDraft[],
+  recordId: string,
+): readonly GridEditDraft[] {
+  return drafts.filter((draft) => draft.recordId !== recordId);
+}
+
 function withValues(
   record: LoomTableRecord,
   set: Readonly<Record<string, MutationValue>>,
@@ -1009,3 +1091,4 @@ function gridSaveStatus(state: GridState, offline: boolean, dirty = false): View
   if (dirty) return 'dirty';
   return 'saved';
 }
+
