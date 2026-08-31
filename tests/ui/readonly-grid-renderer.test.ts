@@ -247,6 +247,50 @@ describe('ReadonlyGridRenderer', () => {
     renderer.render(state);
 
     expect(container.querySelector('.loom-grid-status')?.textContent).toContain('offline');
+    expect(container.querySelector('.loom-grid-status button')).toBeNull();
+  });
+
+  it.each([
+    ['authentication', 'Open Settings'],
+    ['forbidden', 'Open Settings'],
+    ['network', 'Retry'],
+    ['server-error', 'Retry'],
+  ] as const)('offers the correct actionable %s state', async (status, label) => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const retry = deferred<void>();
+    callbacks.onRefresh.mockReturnValue(retry.promise);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...callbacks,
+      onOpenSettings: callbacks.onOpenSettings,
+    });
+    renderer.render(
+      createState(0, {
+        status,
+        error: { message: 'transport detail', code: 'TRANSPORT_ERROR' },
+      }),
+    );
+
+    const action = container.querySelector<HTMLButtonElement>('.loom-grid-status button');
+    expect(action?.textContent).toBe(label);
+    expect(container.querySelector('.loom-grid-status > p')?.textContent).not.toContain(
+      'transport detail',
+    );
+    expect(container.querySelector('.loom-grid-status .loom-diagnostic')).not.toBeNull();
+    if (status === 'authentication' || status === 'forbidden') {
+      action?.click();
+      await vi.waitFor(() => expect(callbacks.onOpenSettings).toHaveBeenCalledTimes(1));
+      return;
+    }
+
+    action?.click();
+    action?.click();
+    await vi.waitFor(() => expect(callbacks.onRefresh).toHaveBeenCalledTimes(1));
+    expect(action?.disabled).toBe(true);
+    expect(action?.getAttribute('aria-busy')).toBe('true');
+    expect(action?.textContent).toBe('Refreshing…');
+    retry.resolve();
+    await vi.waitFor(() => expect(action?.textContent).toBe('Retry'));
   });
 
   it('renders the View save status as an accessible live value', () => {
@@ -482,7 +526,22 @@ function rendererCallbacks() {
     onCellEdit: vi.fn(),
     onConflictAction: vi.fn(),
     onRetryEdit: vi.fn(),
+    onOpenSettings: vi.fn(),
   };
+}
+
+function deferred<T>(): {
+  readonly promise: Promise<T>;
+  readonly resolve: (value: T | PromiseLike<T>) => void;
+  readonly reject: (reason?: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
 }
 
 function createState(recordCount: number, update: Partial<GridState> = {}): GridState {

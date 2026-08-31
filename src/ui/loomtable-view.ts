@@ -32,6 +32,7 @@ export interface LoomTableMapContext {
   readonly credentials: TileCredentialReader;
   readonly saveSettings: () => Promise<void>;
   readonly createRenderer: () => MapRendererInstance;
+  readonly openSettings?: () => void | Promise<void>;
 }
 
 export class LoomTableView extends ItemView {
@@ -120,6 +121,9 @@ export class LoomTableView extends ItemView {
       onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
       confirmDiscardAll: () => window.confirm(this.getTranslator()('grid.discardAllConfirm')),
       onRetryEdit: (recordId) => controller.retryEdit(recordId),
+      ...(this.mapContext.openSettings === undefined
+        ? {}
+        : { onOpenSettings: this.mapContext.openSettings }),
     });
     this.#gridController = controller;
     this.#gridUnsubscribe = controller.subscribe((state) => renderer.render(state));
@@ -178,6 +182,9 @@ export class LoomTableView extends ItemView {
         this.getSettings().mapPresentation.perViewProvider[view.id] = nextProvider;
         await this.mapContext.saveSettings();
       },
+      ...(this.mapContext.openSettings === undefined
+        ? {}
+        : { onOpenSettings: this.mapContext.openSettings }),
     });
     if (this.invalidations !== null) {
       this.#invalidationUnsubscribe = subscribeMutationInvalidation(

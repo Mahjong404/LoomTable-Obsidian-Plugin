@@ -977,6 +977,25 @@ describe('MapViewController', () => {
     expect(controller.state.saveStatus).toBe('offline-readonly');
   });
 
+  it('keeps camera Save Status in error when the Server rejects the save', async () => {
+    const updateView = vi.fn().mockRejectedValue(
+      new LoomTableClientError('forbidden', {
+        message: 'transport detail',
+        code: 'FORBIDDEN',
+      }),
+    );
+    const controller = createController(
+      createClient({ updateView }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.saveDefaultCamera();
+
+    expect(updateView).toHaveBeenCalledTimes(1);
+    expect(controller.state.saveStatus).toBe('error');
+  });
+
   it.each([
     ['authentication', 'authentication'],
     ['forbidden', 'forbidden'],
