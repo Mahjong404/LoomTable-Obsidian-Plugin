@@ -274,4 +274,3 @@ function isJsonObject(value: JsonValue): value is Readonly<Record<string, JsonVa
 function isJsonArray(value: JsonValue): value is readonly JsonValue[] {
   return Array.isArray(value);
 }
-
