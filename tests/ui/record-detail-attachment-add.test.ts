@@ -23,9 +23,7 @@ describe('Record Detail Attachment Add', () => {
     const add = detail.querySelector<HTMLButtonElement>('.loom-attachment-add-action');
     expect(add?.textContent).toBe('Add attachment');
     expect(add?.getAttribute('aria-live')).toBeNull();
-    expect(
-      add?.parentElement?.querySelector<HTMLElement>('[aria-live="polite"]'),
-    ).not.toBeNull();
+    expect(add?.parentElement?.querySelector<HTMLElement>('[aria-live="polite"]')).not.toBeNull();
 
     add?.click();
     add?.click();
@@ -120,3 +118,4 @@ function createRecord(values: Record<string, unknown>): LoomTableRecord {
     updatedAt: '',
   };
 }
+

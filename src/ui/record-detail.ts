@@ -227,9 +227,7 @@ function renderField(
       options.callbacks?.onAttachmentAdd !== undefined &&
       canAddAttachment(value, field.config.maxCount)
     ) {
-      body.append(
-        createAttachmentAddAction(record, field, options, onRecordUpdated, announce),
-      );
+      body.append(createAttachmentAddAction(record, field, options, onRecordUpdated, announce));
     }
   }
   return [label, body];
@@ -894,7 +892,6 @@ function createText<K extends keyof HTMLElementTagNameMap>(
   return element;
 }
 
-
 function canAddAttachment(value: JsonValue | undefined, maxCount: number): boolean {
   const references = readAttachmentReferences(value);
   return references !== null && Number.isInteger(maxCount) && maxCount > references.length;
@@ -961,10 +958,7 @@ function createAttachmentAddAction(
         action.disabled = false;
         action.removeAttribute('aria-busy');
         action.textContent = options.translate('record.attachment.action.add');
-        action.setAttribute(
-          'aria-label',
-          options.translate('record.attachment.action.add'),
-        );
+        action.setAttribute('aria-label', options.translate('record.attachment.action.add'));
         action.focus();
       }
     })();
@@ -979,3 +973,4 @@ function nextAttachmentAddStatusId(): string {
   attachmentAddStatusId += 1;
   return 'loom-attachment-add-status-' + String(attachmentAddStatusId);
 }
+

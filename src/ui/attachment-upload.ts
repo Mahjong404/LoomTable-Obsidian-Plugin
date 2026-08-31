@@ -103,10 +103,7 @@ export function createAttachmentAddCallback(
   };
 }
 
-export function describeAttachmentUploadError(
-  error: unknown,
-  translate: Translator,
-): string {
+export function describeAttachmentUploadError(error: unknown, translate: Translator): string {
   const clientError = error instanceof LoomTableClientError ? error : null;
   const status = clientError?.details.httpStatus;
   if (status === 401 || clientError?.kind === 'authentication') {
@@ -132,9 +129,7 @@ export function describeAttachmentUploadError(
   return translate('record.attachment.addServer');
 }
 
-export function readAttachmentReferences(
-  value: unknown,
-): readonly AttachmentRef[] | null {
+export function readAttachmentReferences(value: unknown): readonly AttachmentRef[] | null {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) return null;
   const references: AttachmentRef[] = [];
@@ -163,9 +158,7 @@ function isAttachmentRefObject(value: unknown): value is Record<string, unknown>
   for (const key of ['size', 'width', 'height'] as const) {
     if (
       candidate[key] !== undefined &&
-      (typeof candidate[key] !== 'number' ||
-        !Number.isFinite(candidate[key]) ||
-        candidate[key] < 0)
+      (typeof candidate[key] !== 'number' || !Number.isFinite(candidate[key]) || candidate[key] < 0)
     ) {
       return false;
     }
@@ -253,3 +246,4 @@ function sanitizeAttachmentFilename(filename: string): string {
 function defaultIsOffline(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
+

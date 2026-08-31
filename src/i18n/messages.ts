@@ -122,7 +122,8 @@ export const englishMessages = {
   'record.attachment.action.adding': 'Adding attachment…',
   'record.attachment.action.added': 'Attachment added.',
   'record.attachment.action.addCancelled': 'Add cancelled.',
-  'record.attachment.action.addFailed': 'Attachment could not be added. Check the file and try again.',
+  'record.attachment.action.addFailed':
+    'Attachment could not be added. Check the file and try again.',
   'record.attachment.action.offlineAdd': 'Offline. Reconnect to add an attachment.',
   'record.attachment.addAuth':
     'Authentication is required to add an attachment. Check Connection Settings.',
@@ -131,10 +132,8 @@ export const englishMessages = {
   'record.attachment.addUnsupported': 'This attachment type is not supported.',
   'record.attachment.addInvalid':
     'The attachment or Record value was rejected. Check the file and try again.',
-  'record.attachment.addNetwork':
-    'The attachment could not be uploaded. Reconnect and try again.',
-  'record.attachment.addServer':
-    'The Server could not add this attachment. Try again later.',
+  'record.attachment.addNetwork': 'The attachment could not be uploaded. Reconnect and try again.',
+  'record.attachment.addServer': 'The Server could not add this attachment. Try again later.',
   'record.attachment.addConflict':
     'The Record changed while adding this attachment. Review the conflict before retrying.',
   'record.attachment.addCapability': 'Attachment upload is not available on this Server.',
@@ -313,3 +312,4 @@ export const englishMessages = {
 
 export type MessageKey = keyof typeof englishMessages;
 export type MessageCatalog = { readonly [Key in MessageKey]: string };
+

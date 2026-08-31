@@ -95,7 +95,9 @@ describe('Attachment Add/Upload seam', () => {
       idFactory: () => 'mut_init',
     });
 
-    await expect(add('record_01', 'field_attachment', createRecord(), 10)).resolves.toBe(authoritative);
+    await expect(add('record_01', 'field_attachment', createRecord(), 10)).resolves.toBe(
+      authoritative,
+    );
 
     expect(client.initializeAttachment).toHaveBeenCalledWith(
       {
@@ -141,7 +143,12 @@ describe('Attachment Add/Upload seam', () => {
     });
 
     await expect(
-      add('record_01', 'field_attachment', createRecord({ field_attachment: [{ id: 'missing' }] }), 10),
+      add(
+        'record_01',
+        'field_attachment',
+        createRecord({ field_attachment: [{ id: 'missing' }] }),
+        10,
+      ),
     ).rejects.toMatchObject({ kind: 'validation' });
     expect(client.initializeAttachment).not.toHaveBeenCalled();
   });
