@@ -128,8 +128,10 @@ export function isSafeAttachmentVaultPath(vaultPath: string | undefined): vaultP
     return false;
   }
   const segments = vaultPath.split('/');
-  return segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..') &&
-    !containsControlCharacter(vaultPath);
+  return (
+    segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..') &&
+    !containsControlCharacter(vaultPath)
+  );
 }
 
 function isVaultFile(value: unknown, vaultPath: string): value is TFile {
@@ -238,3 +240,4 @@ function defaultIsOffline(): boolean {
 }
 
 let previewId = 0;
+
