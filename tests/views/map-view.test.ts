@@ -590,6 +590,57 @@ describe('MapView', () => {
     expect(container.querySelector('.loom-save-status')?.textContent).toBe('Save failed');
     expect(container.querySelector('.loom-save-status')?.textContent).not.toBe('Saved');
   });
+
+  it('uses the shared field renderer for structured Cluster previews', () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const attachmentField: Field = {
+      id: 'field_attachment',
+      tableId: 'table_01',
+      name: 'Attachment',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'attachment',
+      config: { maxCount: 10 },
+    };
+    const record: LoomTableRecord = {
+      id: 'record_01',
+      tableId: 'table_01',
+      revision: 1,
+      values: {
+        field_attachment: [
+          {
+            id: 'attachment_1',
+            source: 'vault',
+            filename: 'notes.md',
+            mimeType: 'text/markdown',
+            size: 2048,
+          },
+        ],
+      },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      clusterStatus: 'ready',
+      fields: [attachmentField],
+      clusterRecords: [record],
+      clusterToken: 'cluster-token',
+      clusterCursor: null,
+    } as unknown as ReturnType<typeof initialMapViewState>);
+
+    const cluster = container.querySelector<HTMLElement>('.loom-map-cluster-records');
+    expect(cluster?.textContent).toContain('notes.md · Type: text/markdown · Size: 2 KB');
+    expect(cluster?.textContent).not.toContain('attachment_1');
+    expect(cluster?.textContent).not.toContain('"filename"');
+  });
 });
 
 function fakeController(): {
@@ -683,3 +734,4 @@ function createLocationRecord(id: string, label: string): LoomTableRecord {
     updatedAt: '',
   };
 }
+
