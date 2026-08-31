@@ -7,6 +7,9 @@ import {
 } from './field-value-editor';
 import { confirmDangerousAction as showDangerousActionConfirmation } from './dangerous-action-confirmation';
 
+const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
+type LocationPresentationState = 'located' | 'unlocated' | 'unrenderable';
+
 export interface RecordDetailCallbacks {
   readonly onClose?: () => void;
   readonly onLocationEdit?: (
@@ -114,7 +117,7 @@ export function createRecordDetail(
   const values = document.createElement('dl');
   values.className = 'loom-record-fields';
   for (const field of fields) {
-    values.append(...renderField(record, field, options));
+    values.append(...renderField(record, field, options, root));
   }
   root.append(values);
   const existingConflict = options.callbacks?.getConflict?.(record.id);
@@ -128,6 +131,7 @@ function renderField(
   record: LoomTableRecord,
   field: Field,
   options: RecordDetailOptions,
+  detailRoot: HTMLElement,
 ): HTMLElement[] {
   const value = record.values[field.id];
   const label = createText('dt', field.name);
@@ -136,7 +140,7 @@ function renderField(
   body.dataset.fieldId = field.id;
 
   if (field.type === 'location') {
-    body.append(renderLocationValue(record, field, value, options));
+    body.append(renderLocationValue(record, field, value, options, detailRoot));
   } else {
     body.textContent = formatValue(value, options.translate);
   }
@@ -148,16 +152,22 @@ function renderLocationValue(
   field: Field,
   raw: JsonValue | undefined,
   options: RecordDetailOptions,
+  detailRoot: HTMLElement,
 ): HTMLElement {
   const wrapper = document.createElement('div');
   wrapper.className = 'loom-location-field';
 
   if (raw === undefined) {
-    wrapper.append(createText('span', options.translate('record.field.unset')));
+    wrapper.dataset.locationState = 'unset';
+    wrapper.append(createLocationStatus('unset', options.translate('record.field.unset')));
   } else if (raw === null) {
-    wrapper.append(createText('span', options.translate('record.field.cleared')));
+    wrapper.dataset.locationState = 'cleared';
+    wrapper.append(createLocationStatus('cleared', options.translate('record.field.cleared')));
   } else if (isLocationValue(raw)) {
     const location = raw;
+    const coordinates = coordinatesFrom(location);
+    const state = locationPresentationState(coordinates);
+    wrapper.dataset.locationState = state;
     const details = document.createElement('dl');
     details.className = 'loom-location-values';
     for (const [key, messageKey] of [
@@ -178,11 +188,14 @@ function renderLocationValue(
             : JSON.stringify(item);
       details.append(createText('dt', options.translate(messageKey)), createText('dd', text));
     }
-    wrapper.append(details);
-    const coordinates = coordinatesFrom(location);
+    wrapper.append(details, createLocationStatus(state, locationStatusText(state, options)));
     if (coordinates !== null) {
       const canOpen = options.callbacks?.canOpenLocationInMap?.(field.id);
-      if (options.callbacks?.onOpenLocationInMap !== undefined && canOpen !== false) {
+      if (
+        state === 'located' &&
+        options.callbacks?.onOpenLocationInMap !== undefined &&
+        canOpen !== false
+      ) {
         const open = button(options.translate('record.location.openMap'));
         open.classList.add('loom-location-open-map');
         open.addEventListener(
@@ -213,7 +226,7 @@ function renderLocationValue(
   edit.disabled = options.offline === true || options.callbacks?.onLocationEdit === undefined;
   edit.addEventListener('click', () => {
     if (options.callbacks?.onLocationEdit === undefined) return;
-    const editor = createLocationEditor(record, field, raw, options);
+    const editor = createLocationEditor(record, field, raw, options, detailRoot);
     wrapper.replaceChildren(editor);
   });
   wrapper.append(edit);
@@ -248,6 +261,7 @@ function createLocationEditor(
   field: Field,
   raw: JsonValue | undefined,
   options: RecordDetailOptions,
+  detailRoot: HTMLElement,
 ): HTMLElement {
   const root = document.createElement('form');
   root.className = 'loom-location-editor';
@@ -363,19 +377,19 @@ function createLocationEditor(
             : intent.kind === 'clear'
               ? null
               : intent.value;
-      const next = renderLocationValue(nextRecord, field, nextValue, options);
+      const next = renderLocationValue(nextRecord, field, nextValue, options, detailRoot);
       root.replaceWith(next);
       next.querySelector<HTMLButtonElement>('.loom-location-edit')?.focus();
     } catch (cause) {
-      showLocationError(error, controls, options);
+      showLocationError(error, controls, options, undefined, undefined, false);
       if (cause instanceof Error) {
         error.append(renderDiagnostic(options.translate('common.openDiagnostics'), cause.message));
       }
       const conflict = options.callbacks?.getConflict?.(record.id);
       if (conflict !== undefined) {
-        root.querySelector('.loom-record-conflict')?.remove();
-        const conflictBox = renderConflict(record.id, conflict, options, root);
-        root.append(conflictBox);
+        detailRoot.querySelector('.loom-record-conflict')?.remove();
+        const conflictBox = renderConflict(record.id, conflict, options, detailRoot);
+        detailRoot.append(conflictBox);
         conflictBox.focus();
       } else {
         error.focus();
@@ -442,7 +456,7 @@ function createLocationEditor(
     ) {
       return;
     }
-    const next = renderLocationValue(record, field, raw, options);
+    const next = renderLocationValue(record, field, raw, options, detailRoot);
     root.replaceWith(next);
     next.querySelector<HTMLButtonElement>('.loom-location-edit')?.focus();
   });
@@ -634,12 +648,15 @@ function showLocationError(
   options: RecordDetailOptions,
   message = options.translate('record.location.invalid'),
   code?: string,
+  markInvalid = true,
 ): void {
   error.hidden = false;
   error.textContent = message;
   if (code === undefined) delete error.dataset.errorCode;
   else error.dataset.errorCode = code;
-  for (const control of controls) control.setAttribute('aria-invalid', 'true');
+  for (const control of controls) {
+    control.setAttribute('aria-invalid', String(markInvalid));
+  }
 }
 
 function clearLocationError(error: HTMLElement, controls: readonly HTMLElement[]): void {
@@ -699,9 +716,42 @@ function numberInputValue(value: JsonValue | undefined): number | undefined {
 function coordinatesFrom(
   value: Readonly<Record<string, JsonValue>>,
 ): { readonly lat: number; readonly lng: number } | null {
-  return typeof value.lat === 'number' && typeof value.lng === 'number'
+  return typeof value.lat === 'number' &&
+    Number.isFinite(value.lat) &&
+    value.lat >= -90 &&
+    value.lat <= 90 &&
+    typeof value.lng === 'number' &&
+    Number.isFinite(value.lng) &&
+    value.lng >= -180 &&
+    value.lng <= 180
     ? { lat: value.lat, lng: value.lng }
     : null;
+}
+
+function locationPresentationState(
+  coordinates: { readonly lat: number; readonly lng: number } | null,
+): LocationPresentationState {
+  if (coordinates === null) return 'unlocated';
+  return Math.abs(coordinates.lat) > MAX_RENDERABLE_LATITUDE ? 'unrenderable' : 'located';
+}
+
+function locationStatusText(
+  state: LocationPresentationState,
+  options: RecordDetailOptions,
+): string {
+  if (state === 'located') return options.translate('record.location.located');
+  if (state === 'unrenderable') return options.translate('record.location.unrenderable');
+  return options.translate('record.location.unlocated');
+}
+
+function createLocationStatus(
+  state: LocationPresentationState | 'cleared' | 'unset',
+  text: string,
+): HTMLElement {
+  const status = createText('span', text);
+  status.className = 'loom-location-status';
+  status.dataset.state = state;
+  return status;
 }
 
 function isLocationValue(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
@@ -753,3 +803,4 @@ function createText<K extends keyof HTMLElementTagNameMap>(
   element.textContent = text;
   return element;
 }
+
