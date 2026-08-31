@@ -415,3 +415,15 @@ S3-C3 尚未开始。后续需分别定义并安全接入 add/upload/open/previe
 自动化证据：PR #94 与 main push CI 均运行并通过完整 `pnpm check`；DOM/controller/i18n/ARIA 测试提供 seam 证据。current-main 真实 Obsidian smoke 仍为 `UNVERIFIED`，不能由 jsdom/CI 替代；没有用户数据、凭据、Provider/Settings、Server/API/OpenAPI 或 offline/mutation/Conflict/revision/changeCursor 语义变更。
 
 S3-C3-B 尚未开始：Add/Upload 与 Record attachment-reference lifecycle；S3-C3-C 尚未开始：Delete、Retry 与 resource lifecycle。后续必须先明确安全的 host file picker/save/open 与 published reference contract，再分别实现，不显示假动作或猜测新的 API。
+
+## S3-C3-B 实施记录：Attachment Add/Upload lifecycle（2026-08-31）
+
+S3-C3-B 从 connector-核验的 Plugin main `e2beb521225d046386b30a89a4c06132c8f520e9` 开始，通过代码 PR #96 交付：head `644b25b9f1a14267859f656004fa0e20aada7bef`，squash merge/main `49ce233d48763c6a72c47704a8ca4b4abe416da1`。PR CI run `33410607549` / job `99548938858` 与 main push CI run `33410782178` / job `99549515642` 均成功，并运行仓库 `pnpm check`。
+
+本片消费已发布的 `POST /v1/attachments/init`、Managed 内容 `PUT /v1/attachments/{attachmentId}/content` 与既有 `records/mutate` 合同：Record Detail（Grid 打开与 Map selected-record）提供 Add；取消文件选择零副作用；在线流程为 initialize/pending、upload/ready，再通过现有 Grid controller 的 Mutation Queue 写回完整 AttachmentRef 列表。返回的完整 Record 用于 authoritative Detail/Map selected-record 更新，不猜 revision，不覆盖其他字段。
+
+本片保持离线只读：offline 时 Add 为禁用且有翻译说明，不打开 picker、不发起请求、不创建离线 Mutation。上传状态、确定性错误分流、重复提交保护、ARIA/live、焦点、i18n 与跨 View 回写有代码回归；不写 Vault、不暴露 raw response/ID/path/credential/stack。
+
+边界：本片不实现 S3-C3-C 的 Delete、Retry 与 resource lifecycle，不新增 Open/Preview 行为，不改变 Attachment wire、Mutation/Conflict/revision/changeCursor、Server/API/OpenAPI 合同；当前 main 的真实 Obsidian desktop smoke 未执行，继续标记 `UNVERIFIED`。
+
+S3-C3-B 已交付，整个 S3-C3/S3 仍未完成。下一项 S3-C3-C 为 Delete/Retry/resource lifecycle 及其安全引用生命周期；开始前仍需保持现有 published contract、HIG、离线只读和数据/凭据边界。
