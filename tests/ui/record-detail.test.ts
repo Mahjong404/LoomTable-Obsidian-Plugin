@@ -717,8 +717,54 @@ describe('Record Detail Location seam', () => {
     expect(text?.dataset.valueState).toBe('empty');
     expect(text?.getAttribute('aria-label')).toBe('Text: Empty');
     expect(checkbox?.textContent).toBe('Checked');
-    expect(attachment?.textContent).toBe('notes.md · Type: text/markdown · Size: 2 KB');
+    expect(attachment?.textContent).toBe(
+      'notes.md · Source: Vault · Type: text/markdown · Size: 2 KB · Ready',
+    );
     expect(attachment?.textContent).not.toContain('{');
+  });
+
+  it('exposes only a typed attachment download action and keeps failures translated', async () => {
+    const container = document.createElement('div');
+    const attachmentField: Field = {
+      ...createField('field_attachment', 'Attachment'),
+      type: 'attachment',
+      config: { maxCount: 10 },
+    };
+    const record = createRecord({
+      field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+    });
+    const onAttachmentDownload = vi.fn().mockRejectedValue(new Error('secret path'));
+
+    const detail = createRecordDetail(record, {
+      fields: [attachmentField],
+      translate: createTranslator('en'),
+      callbacks: {
+        onAttachmentDownload,
+      },
+    });
+    container.append(detail);
+
+    const download = detail.querySelector<HTMLButtonElement>('.loom-attachment-action');
+    expect(download?.getAttribute('aria-label')).toBe('Download notes.md');
+    download?.click();
+    download?.click();
+    await vi.waitFor(() => expect(onAttachmentDownload).toHaveBeenCalledTimes(1));
+    expect(onAttachmentDownload).toHaveBeenCalledWith(
+      'record_01',
+      'field_attachment',
+      'attachment_1',
+    );
+    await vi.waitFor(() =>
+      expect(detail.querySelector('.loom-attachment-action-status')?.textContent).toBe(
+        'Download failed. Check the attachment and try again.',
+      ),
+    );
+
+    const withoutCallback = createRecordDetail(record, {
+      fields: [attachmentField],
+      translate: createTranslator('en'),
+    });
+    expect(withoutCallback.querySelector('.loom-attachment-action')).toBeNull();
   });
 
   it('renders Select and MultiSelect option names consistently as accessible values', () => {

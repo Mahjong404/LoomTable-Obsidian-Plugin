@@ -258,6 +258,51 @@
   color: var(--loom-text-muted);
 }
 
+.loom-attachment-summary,
+.loom-attachment-list {
+  min-width: 0;
+}
+
+.loom-attachment-list {
+  display: grid;
+  gap: var(--loom-space-1);
+}
+
+.loom-attachment-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--loom-space-1);
+  min-width: 0;
+  padding: var(--loom-space-1);
+  border: 1px solid var(--loom-border);
+  border-radius: var(--loom-radius-sm);
+}
+
+.loom-attachment-filename {
+  overflow-wrap: anywhere;
+  font-weight: var(--loom-font-semibold);
+}
+
+.loom-attachment-metadata,
+.loom-attachment-status,
+.loom-attachment-status-hint,
+.loom-attachment-action-status {
+  color: var(--loom-text-muted);
+  overflow-wrap: anywhere;
+}
+
+.loom-attachment-card[data-attachment-state='pending'],
+.loom-attachment-card[data-attachment-state='stale'],
+.loom-attachment-card[data-attachment-state='invalid'],
+.loom-attachment-card[data-attachment-state='unknown'] {
+  border-style: dashed;
+}
+
+.loom-attachment-action {
+  flex: 0 0 auto;
+}
+
 .loom-grid-cell .loom-field-value {
   min-width: 0;
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Field } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
@@ -109,9 +109,141 @@ describe('Field renderer registry', () => {
       ],
       { translate },
     );
-    expect(renderedAttachment.text).toBe('notes.md · Type: text/markdown · Size: 2 KB');
+    expect(renderedAttachment.text).toBe(
+      'notes.md · Source: Vault · Type: text/markdown · Size: 2 KB · Ready',
+    );
     expect(renderedAttachment.text).not.toContain('attachment_1');
     expect(renderedAttachment.text).not.toContain('{');
+  });
+
+  it('normalizes attachment states and preserves the published ref boundary', () => {
+    const translate = createTranslator('en');
+    const field = createField('attachment', { maxCount: 10 });
+    const rendered = registry.render(
+      field,
+      [
+        {
+          id: 'attachment_ready',
+          source: 'vault',
+          filename: 'ready.md',
+          mimeType: 'text/markdown',
+          size: 2048,
+        },
+        {
+          id: 'attachment_pending',
+          source: 'managed',
+          filename: 'pending.png',
+          status: 'pending',
+        },
+        {
+          id: 'attachment_stale',
+          source: 'vault',
+          filename: 'stale.pdf',
+          status: 'ready',
+          deletedAt: '2026-08-31T00:00:00Z',
+        },
+        {
+          id: 'attachment_unknown',
+          source: 'vault',
+          filename: 'unknown.bin',
+          status: 'unknown',
+        },
+        { id: 'attachment_incomplete', source: 'vault' },
+      ],
+      { translate },
+    );
+
+    expect(rendered.state).toBe('value');
+    expect(rendered.attachments).toMatchObject([
+      {
+        state: 'ready',
+        id: 'attachment_ready',
+        filename: 'ready.md',
+        source: 'vault',
+        sourceText: 'Vault',
+        statusText: 'Ready',
+        mimeType: 'text/markdown',
+        sizeText: '2 KB',
+      },
+      {
+        state: 'pending',
+        id: 'attachment_pending',
+        source: 'managed',
+        statusText: 'Pending',
+      },
+      { state: 'stale', id: 'attachment_stale', statusText: 'Stale reference' },
+      { state: 'unknown', id: 'attachment_unknown', statusText: 'Unknown attachment reference' },
+      { state: 'invalid', statusText: 'Invalid attachment reference' },
+    ]);
+    expect(rendered.ariaLabel).toContain('Source: Vault');
+    expect(rendered.ariaLabel).toContain('Pending');
+    expect(rendered.ariaLabel).toContain('Stale reference');
+    expect(rendered.ariaLabel).not.toContain('attachment_ready');
+    expect(rendered.ariaLabel).not.toContain('"filename"');
+
+    const zhRendered = registry.render(
+      field,
+      [{ id: 'attachment_zh', source: 'managed', filename: '说明.pdf' }],
+      { translate: createTranslator('zh-CN') },
+    );
+    expect(zhRendered.text).toContain('来源: 托管');
+    expect(zhRendered.text).toContain('已就绪');
+    expect(zhRendered.ariaLabel).not.toContain('attachment_zh');
+
+    expect(registry.render(field, undefined, { translate }).text).toBe('Unset');
+    expect(registry.render(field, null, { translate }).text).toBe('Cleared');
+    expect(registry.render(field, [], { translate })).toMatchObject({
+      state: 'empty',
+      text: 'Empty',
+      attachments: [],
+    });
+    expect(
+      registry.render(field, [{ id: 'bad', source: 'remote', filename: 'unknown.bin' }], {
+        translate,
+      }),
+    ).toMatchObject({ state: 'unavailable' });
+  });
+
+  it('renders attachment cards and a compact summary without leaking identifiers', async () => {
+    const translate = createTranslator('en');
+    const field = createField('attachment', { maxCount: 10 });
+    const rendered = registry.render(
+      field,
+      [
+        { id: 'attachment_1', source: 'vault', filename: 'notes.md', size: 2048 },
+        { id: 'attachment_2', source: 'managed', filename: 'image.png', status: 'pending' },
+      ],
+      { translate },
+    );
+
+    const detail = createRenderedFieldValueElement(rendered);
+    expect(detail.querySelector('.loom-attachment-list')).not.toBeNull();
+    expect(detail.querySelectorAll('.loom-attachment-card')).toHaveLength(2);
+    expect(detail.querySelector('.loom-attachment-filename')?.textContent).toBe('notes.md');
+    expect(detail.querySelector('.loom-attachment-status')?.textContent).toBe('Ready');
+    expect(detail.textContent).toContain('Source: Vault');
+    expect(detail.textContent).toContain('Pending');
+    expect(detail.innerHTML).not.toContain('attachment_1');
+    expect(detail.innerHTML).not.toContain('"filename"');
+    expect(detail.querySelector('button')).toBeNull();
+
+    const compact = createRenderedFieldValueElement(rendered, { compactAttachments: true });
+    expect(compact.querySelector('.loom-attachment-list')).toBeNull();
+    expect(compact.textContent).toContain('2 attachments');
+    expect(compact.textContent).toContain('notes.md');
+
+    const onDownload = vi.fn(async (attachmentId: string | undefined): Promise<void> => {
+      void attachmentId;
+    });
+    const actionable = createRenderedFieldValueElement(rendered, {
+      translate,
+      onAttachmentDownload: (attachment) => onDownload(attachment.id),
+    });
+    const download = actionable.querySelector<HTMLButtonElement>('.loom-attachment-action');
+    expect(download?.textContent).toBe('Download');
+    download?.click();
+    download?.click();
+    await vi.waitFor(() => expect(onDownload).toHaveBeenCalledTimes(1));
   });
 
   it('publishes MultiSelect values as semantic chips instead of a comma string', () => {

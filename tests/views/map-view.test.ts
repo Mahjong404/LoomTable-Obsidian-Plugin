@@ -688,9 +688,13 @@ describe('MapView', () => {
     } as unknown as ReturnType<typeof initialMapViewState>);
 
     const cluster = container.querySelector<HTMLElement>('.loom-map-cluster-records');
-    expect(cluster?.textContent).toContain('notes.md · Type: text/markdown · Size: 2 KB');
+    expect(cluster?.textContent).toContain(
+      'notes.md · Source: Vault · Type: text/markdown · Size: 2 KB · Ready',
+    );
     expect(cluster?.textContent).not.toContain('attachment_1');
     expect(cluster?.textContent).not.toContain('"filename"');
+    expect(cluster?.querySelector('.loom-attachment-list')).toBeNull();
+    expect(cluster?.querySelector('.loom-attachment-action')).toBeNull();
   });
 });
 

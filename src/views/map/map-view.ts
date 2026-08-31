@@ -568,7 +568,10 @@ function clusterRecordLabel(
   label.className = 'loom-map-cluster-record-label';
   label.append(document.createTextNode(`${translate('map.clusterRecord')}: ${record.id}`));
   if (preview !== undefined) {
-    label.append(document.createTextNode(' — '), createRenderedFieldValueElement(preview));
+    label.append(
+      document.createTextNode(' — '),
+      createRenderedFieldValueElement(preview, { compactAttachments: true }),
+    );
   }
   return label;
 }

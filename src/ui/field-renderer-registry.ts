@@ -1,4 +1,10 @@
-import type { Field, FieldBase, JsonValue, SelectFieldConfig } from '../client/loomtable-client';
+import type {
+  AttachmentSource,
+  Field,
+  FieldBase,
+  JsonValue,
+  SelectFieldConfig,
+} from '../client/loomtable-client';
 import type { Translator } from '../i18n';
 import { editorTextValue } from './field-value-editor';
 
@@ -51,11 +57,29 @@ export interface RenderedFieldChip {
   readonly statusText?: string;
 }
 
+export type AttachmentDisplayState = 'ready' | 'pending' | 'stale' | 'invalid' | 'unknown';
+
+export interface RenderedAttachment {
+  readonly state: AttachmentDisplayState;
+  readonly id?: string;
+  readonly filename?: string;
+  readonly source?: AttachmentSource;
+  readonly sourceText?: string;
+  readonly mimeType?: string;
+  readonly sizeText?: string;
+  readonly statusText: string;
+  readonly statusHint?: string;
+  readonly metadataText: string;
+  readonly text: string;
+  readonly ariaLabel: string;
+}
+
 export interface RenderedFieldValue {
   readonly state: FieldDisplayState;
   readonly text: string;
   readonly ariaLabel: string;
   readonly chips?: readonly RenderedFieldChip[];
+  readonly attachments?: readonly RenderedAttachment[];
 }
 
 export interface FieldRenderContext {
@@ -63,6 +87,12 @@ export interface FieldRenderContext {
 }
 
 export type FieldEditorElement = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+
+export interface RenderedFieldValueElementOptions {
+  readonly compactAttachments?: boolean;
+  readonly translate?: Translator;
+  readonly onAttachmentDownload?: (attachment: RenderedAttachment) => void | Promise<void>;
+}
 
 export interface FieldRendererRegistry {
   capability(field: Field): FieldCapability;
@@ -319,10 +349,33 @@ function renderSelectValue(
   );
 }
 
-export function createRenderedFieldValueElement(rendered: RenderedFieldValue): HTMLElement {
+export function createRenderedFieldValueElement(
+  rendered: RenderedFieldValue,
+  options: RenderedFieldValueElementOptions = {},
+): HTMLElement {
   const root = document.createElement('span');
   root.className = 'loom-field-value';
   root.dataset.valueState = rendered.state;
+  if (rendered.attachments !== undefined && rendered.attachments.length > 0) {
+    root.setAttribute('aria-label', rendered.ariaLabel);
+    if (options.compactAttachments === true) {
+      const summary = document.createElement('span');
+      summary.className = 'loom-attachment-summary';
+      summary.textContent = rendered.text;
+      root.append(summary);
+      return root;
+    }
+
+    const list = document.createElement('span');
+    list.className = 'loom-attachment-list';
+    list.setAttribute('role', 'list');
+    list.setAttribute('aria-label', rendered.ariaLabel);
+    for (const attachment of rendered.attachments) {
+      list.append(createAttachmentElement(attachment, options));
+    }
+    root.append(list);
+    return root;
+  }
   if (rendered.chips === undefined) {
     root.setAttribute('aria-label', rendered.ariaLabel);
     root.textContent = rendered.text;
@@ -350,6 +403,82 @@ export function createRenderedFieldValueElement(rendered: RenderedFieldValue): H
   }
   root.append(list);
   return root;
+}
+
+function createAttachmentElement(
+  attachment: RenderedAttachment,
+  options: RenderedFieldValueElementOptions,
+): HTMLElement {
+  const card = document.createElement('span');
+  card.className = 'loom-attachment-card';
+  card.dataset.attachmentState = attachment.state;
+  card.setAttribute('role', 'listitem');
+  card.setAttribute('aria-label', attachment.ariaLabel);
+
+  const filename = document.createElement('span');
+  filename.className = 'loom-attachment-filename';
+  filename.textContent = attachment.filename ?? attachment.statusText;
+  card.append(filename);
+  if (attachment.metadataText !== '') {
+    card.append(document.createTextNode(' · '));
+    const metadata = document.createElement('span');
+    metadata.className = 'loom-attachment-metadata';
+    metadata.textContent = attachment.metadataText;
+    card.append(metadata);
+  }
+  card.append(document.createTextNode(' · '));
+  const status = document.createElement('span');
+  status.className = 'loom-attachment-status';
+  status.textContent = attachment.statusText;
+  card.append(status);
+  if (attachment.statusHint !== undefined) {
+    const hint = document.createElement('span');
+    hint.className = 'loom-attachment-status-hint';
+    hint.textContent = attachment.statusHint;
+    card.append(document.createTextNode(' — '), hint);
+  }
+
+  if (
+    attachment.state === 'ready' &&
+    attachment.id !== undefined &&
+    options.translate !== undefined &&
+    options.onAttachmentDownload !== undefined
+  ) {
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'loom-button loom-attachment-action';
+    action.textContent = options.translate('record.attachment.action.download');
+    action.setAttribute(
+      'aria-label',
+      `${options.translate('record.attachment.action.download')} ${attachment.filename ?? attachment.statusText}`,
+    );
+    const actionStatus = document.createElement('span');
+    actionStatus.className = 'loom-attachment-action-status';
+    actionStatus.setAttribute('aria-live', 'polite');
+    let busy = false;
+    action.addEventListener('click', () => {
+      if (busy) return;
+      busy = true;
+      action.disabled = true;
+      action.setAttribute('aria-busy', 'true');
+      action.textContent = options.translate?.('record.attachment.action.downloading') ?? '';
+      void (async () => {
+        try {
+          await options.onAttachmentDownload?.(attachment);
+        } catch {
+          actionStatus.textContent =
+            options.translate?.('record.attachment.action.downloadFailed') ?? '';
+        } finally {
+          busy = false;
+          action.disabled = false;
+          action.removeAttribute('aria-busy');
+          action.textContent = options.translate?.('record.attachment.action.download') ?? '';
+        }
+      })();
+    });
+    card.append(document.createTextNode(' '), action, document.createTextNode(' '), actionStatus);
+  }
+  return card;
 }
 
 function renderMultiSelectValue(
@@ -418,27 +547,118 @@ function renderLocationValue(value: JsonValue, translate: Translator): RenderedF
 
 function renderAttachmentValue(value: JsonValue, translate: Translator): RenderedFieldValue {
   if (!isJsonArray(value)) return unavailable(translate);
-  if (value.length === 0) return empty(translate);
-  const attachments = value
-    .map((item) => formatAttachment(item, translate))
-    .filter((item): item is string => item !== null);
-  return attachments.length === value.length
-    ? renderedValue(attachments.join(', '))
-    : unavailable(translate);
+  if (value.length === 0) {
+    return { ...empty(translate), attachments: [] };
+  }
+  const attachments = value.map((item) => renderAttachment(item, translate));
+  const hasRenderableAttachment = attachments.some(
+    (attachment) => attachment.state === 'ready' || attachment.state === 'pending',
+  );
+  return {
+    state: hasRenderableAttachment ? 'value' : 'unavailable',
+    text: attachmentSummaryText(attachments, translate),
+    ariaLabel: attachments.map((attachment) => attachment.ariaLabel).join(', '),
+    attachments,
+  };
 }
 
-function formatAttachment(value: JsonValue, translate: Translator): string | null {
-  if (!isJsonObject(value) || typeof value.filename !== 'string' || value.filename === '') {
-    return null;
+function renderAttachment(value: JsonValue, translate: Translator): RenderedAttachment {
+  const object = isJsonObject(value) ? value : null;
+  const id =
+    object !== null && typeof object.id === 'string' && object.id !== '' ? object.id : undefined;
+  const filename =
+    object !== null && typeof object.filename === 'string' && object.filename !== ''
+      ? object.filename
+      : undefined;
+  const source =
+    object?.source === 'managed' || object?.source === 'vault' ? object.source : undefined;
+  const mimeType =
+    object !== null && typeof object.mimeType === 'string' && object.mimeType !== ''
+      ? object.mimeType
+      : undefined;
+  const sizeText =
+    object !== null &&
+    typeof object.size === 'number' &&
+    Number.isFinite(object.size) &&
+    object.size >= 0
+      ? formatAttachmentSize(object.size)
+      : undefined;
+  const hasStatus = object !== null && Object.prototype.hasOwnProperty.call(object, 'status');
+  const rawStatus = object?.status;
+  let state: AttachmentDisplayState;
+  if (filename === undefined || id === undefined || source === undefined) {
+    state = 'invalid';
+  } else if (hasStatus && rawStatus !== 'pending' && rawStatus !== 'ready') {
+    state = 'unknown';
+  } else if (typeof object?.deletedAt === 'string' && object.deletedAt !== '') {
+    state = 'stale';
+  } else {
+    state = rawStatus === 'pending' ? 'pending' : 'ready';
   }
-  const parts = [value.filename];
-  if (typeof value.mimeType === 'string' && value.mimeType !== '') {
-    parts.push(`${translate('record.attachment.type')}: ${value.mimeType}`);
-  }
-  if (typeof value.size === 'number' && Number.isFinite(value.size) && value.size >= 0) {
-    parts.push(`${translate('record.attachment.size')}: ${formatAttachmentSize(value.size)}`);
-  }
-  return parts.join(' · ');
+  const statusText = attachmentStatusText(state, translate);
+  const statusHint = attachmentStatusHint(state, translate);
+  const sourceText = source === undefined ? undefined : attachmentSourceText(source, translate);
+  const metadataParts = [
+    sourceText === undefined
+      ? undefined
+      : `${translate('record.attachment.source')}: ${sourceText}`,
+    mimeType === undefined ? undefined : `${translate('record.attachment.type')}: ${mimeType}`,
+    sizeText === undefined ? undefined : `${translate('record.attachment.size')}: ${sizeText}`,
+  ].filter((part): part is string => part !== undefined);
+  const metadataText = metadataParts.join(' · ');
+  const text = [filename ?? statusText, metadataText, statusText, statusHint]
+    .filter((part): part is string => part !== undefined && part !== '')
+    .join(' · ');
+  return {
+    state,
+    ...(id === undefined ? {} : { id }),
+    ...(filename === undefined ? {} : { filename }),
+    ...(source === undefined ? {} : { source }),
+    ...(sourceText === undefined ? {} : { sourceText }),
+    ...(mimeType === undefined ? {} : { mimeType }),
+    ...(sizeText === undefined ? {} : { sizeText }),
+    statusText,
+    ...(statusHint === undefined ? {} : { statusHint }),
+    metadataText,
+    text,
+    ariaLabel: text,
+  };
+}
+
+function attachmentStatusText(state: AttachmentDisplayState, translate: Translator): string {
+  if (state === 'ready') return translate('record.attachment.status.ready');
+  if (state === 'pending') return translate('record.attachment.status.pending');
+  if (state === 'stale') return translate('record.attachment.status.stale');
+  if (state === 'unknown') return translate('record.attachment.status.unknown');
+  return translate('record.attachment.status.invalid');
+}
+
+function attachmentStatusHint(
+  state: AttachmentDisplayState,
+  translate: Translator,
+): string | undefined {
+  if (state === 'ready') return undefined;
+  if (state === 'pending') return translate('record.attachment.status.pendingHint');
+  if (state === 'stale') return translate('record.attachment.status.staleHint');
+  if (state === 'unknown') return translate('record.attachment.status.unknownHint');
+  return translate('record.attachment.status.invalidHint');
+}
+
+function attachmentSourceText(source: AttachmentSource, translate: Translator): string {
+  return source === 'managed'
+    ? translate('record.attachment.source.managed')
+    : translate('record.attachment.source.vault');
+}
+
+function attachmentSummaryText(
+  attachments: readonly RenderedAttachment[],
+  translate: Translator,
+): string {
+  const first = attachments[0];
+  if (first === undefined) return translate('common.emptyValue');
+  if (attachments.length === 1) return first.text;
+  const statusTexts = [...new Set(attachments.map((attachment) => attachment.statusText))];
+  return `${first.filename ?? first.statusText} · ${attachments.length} ${translate('record.attachment.count')} · ${statusTexts.join(', ')}`;
 }
 
 function formatAttachmentSize(size: number): string {

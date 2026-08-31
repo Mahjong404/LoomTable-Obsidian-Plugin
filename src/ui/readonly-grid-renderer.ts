@@ -434,7 +434,7 @@ export class ReadonlyGridRenderer {
         translate: this.#translate,
       });
       const cell = createGridCell('', 'loom-grid-cell');
-      cell.append(createRenderedFieldValueElement(displayValue));
+      cell.append(createRenderedFieldValueElement(displayValue, { compactAttachments: true }));
       cell.setAttribute('role', 'gridcell');
       cell.setAttribute('aria-colindex', String(fieldIndex + 2));
       cell.tabIndex = 0;
