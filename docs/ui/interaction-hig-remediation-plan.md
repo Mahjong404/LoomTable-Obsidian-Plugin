@@ -352,21 +352,31 @@ Dashboard 不因本计划自动加入 Grid，也不在 HIG 中提前写入完整
 8. 同步统筹、Plugin 和 Server session 的当前阶段、阻塞点、合同和下一目标。
 9. 前一组未通过门禁时，不启动后一组的实现。
 
-## 6. 当前下一步（截至 Plugin main `7502990873d61eee6d26bb556393c5a2c4d381ea`）
+## 6. 当前下一步（截至 Plugin main `ac8313edfb24c3fd972b25fc1faa2ad91b2dc313`）
 
-S0、S1、S2 的代码/文档切片和 PR/CI 追溯已发布，但它们不能仅凭静态检查或 CI 被宣布为完整 HIG/桌面验收完成。当前仍明确保留：
+S0、S1、S2 的已交付切片、S3-A registry 基础和 S3-B Select/MultiSelect 代码切片均有可追溯的自动化与远端 CI 证据；它们不能仅凭静态检查或 CI 被宣布为完整桌面验收完成。当前仍明确保留：
 
-- current-main Obsidian 的 Grid、Detail、Location、Map、Settings 关键路径与错误/保存/焦点/键盘状态未能在本轮受控窗口复验；
+- current-main Obsidian 的完整 Grid、Detail、Location、Map、Settings 关键路径与错误/保存/焦点/键盘状态，及本片真实 Select/MultiSelect 编辑，仍需受控窗口复验；
 - 浅色、深色、窄容器、marker/cluster 键盘激活、故障注入和保存/冲突恢复的完整桌面证据仍需受控环境；
 - 自动化 DOM/controller、构建和合同检查只能作为支持证据，不能替代真实 Obsidian smoke。
 
-因此，当前计划不宣布 S1 或 S2 全部完成。下一项仅记录为 **S3 follow-up**：Field Renderer/Editor 的范围、能力矩阵和验收标准可以进入后续设计与产品排期；本次 S2 最终门禁不实现 S3，不新增字段、View、CRUD、Dashboard、Server/API 或 OpenAPI 行为。
+因此，不宣布整个 S1/S2 或 S3 完成。下一项是 **S3-C Attachment 交互/管理**；本计划只记录其顺序，不在 S3-B 文档收口中实现，也不新增字段、View、CRUD、Dashboard、Server/API 或 OpenAPI 行为。
 
 本计划不修改规范性 HIG 正文；HIG 只描述稳定规则，本文件负责解决顺序、范围、门禁和实施记录。
 
-
 ## S3-A 当前实施记录（2026-08-31）
 
-S3-A 以 Plugin main `3006c6217ef7e764ccc6c54b2a1c4d826b0a7eaf` 为基线，经 PR #86（head `400cff073958bc51c61ec34b0a320c6a1d5adb8a`）合并至 `81f616a43784b55643a413a02d7da70def225aac`。本片建立 `src/ui/field-renderer-registry.ts` 共享 Registry/Capability seam，并让 Grid、Record Detail、Map cluster 使用同一套翻译渲染语义，覆盖既有字段类型与 undefined/null/自然空值、Location 状态、结构化 Attachment 展示。MultiSelect 的 Chip/选项交互不在本片，S3-B 尚未开始。
+S3-A 以 Plugin main `3006c6217ef7e764ccc6c54b2a1c4d826b0a7eaf` 为基线，经 PR #86（head `400cff073958bc51c61ec34b0a320c6a1d5adb8a`）合并至 `81f616a43784b55643a413a02d7da70def225aac`。本片建立 `src/ui/field-renderer-registry.ts` 共享 Registry/Capability seam，并让 Grid、Record Detail、Map cluster 使用同一套翻译渲染语义，覆盖既有字段类型与 undefined/null/自然空值、Location 状态、结构化 Attachment 展示。MultiSelect 的 Chip/选项交互不在本片，S3-B 已在后续代码切片交付；S3-C 尚未开始。
 
 自动化证据为 clean staging 的 `pnpm install --frozen-lockfile` 与 `pnpm check`：39 个测试文件、348 个测试通过，OpenAPI drift 与 production build 通过；lint 无 error，仅保留既有 warning。当前 main 构建对应的真实 Obsidian smoke 未在本片执行，继续标记为 UNVERIFIED；不得用 jsdom/CI 替代。Server/API/OpenAPI、offline 只读语义和 mutation/Conflict/revision/changeCursor 合同未修改。
+
+
+## S3-B 当前实施记录（2026-08-31）
+
+S3-B 以 Plugin main `23e94b749841a7ba9ec0e65f30a7bd0ad1765bf2` 为代码基线，通过 PR #88（head `071eacd37e8f611ec7d927a2ef4569da50862c60`）交付，squash merge/main 为 `ac8313edfb24c3fd972b25fc1faa2ad91b2dc313`。PR CI run `33391496749` 与 main push CI run `33391623666` 均成功。
+
+本片只在既有 Field Renderer/Editor registry seam 上实现 Select/MultiSelect：Grid、Record Detail、Map Cluster 共用 option name、Deleted option、Unset/Cleared、自然空值和 invalid 语义；MultiSelect 使用结构化可访问 Chip DOM；编辑使用原生 Select/multiple-select，保留已选 deleted option，并以安全 unavailable 状态呈现 unknown option。既有 set/unset 归一化、expectedRevision、clientMutationId、Mutation Queue、Conflict/revision/changeCursor、offline read-only 和 Server/API/OpenAPI 合同未改变。
+
+自动化证据：完整 `pnpm.cmd check` 通过，包含 39 个测试文件 / 355 个测试、format、lint（既有 warnings）、typecheck、OpenAPI drift 和 production build；registry、Grid、Detail、Map、样式和 i18n 回归覆盖已发布行为。真实 Obsidian smoke 未在本片执行，继续标记为 `unverified`，不能由 jsdom/CI 替代。
+
+S3-B 已交付，但整个 S3 未完成。下一项是 S3-C Attachment 交互/管理；本计划不在本片宣称 S3 完成，也不开始 S4/S5/S6、新字段、View、CRUD、Tag、Dashboard 或 Server/API/OpenAPI 行为。
