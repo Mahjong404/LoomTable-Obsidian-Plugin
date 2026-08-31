@@ -15,7 +15,10 @@ import type {
   TileProviderSummary,
 } from '../../maps/providers/tile-provider-schema';
 import type { LocationEditIntent } from '../../ui/field-value-editor';
-import { defaultFieldRendererRegistry } from '../../ui/field-renderer-registry';
+import {
+  createRenderedFieldValueElement,
+  defaultFieldRendererRegistry,
+} from '../../ui/field-renderer-registry';
 import { createRecordDetail, type RecordConflictView } from '../../ui/record-detail';
 import { renderSaveStatus } from '../../ui/save-status';
 import type { MapViewController } from './map-view-controller';
@@ -546,7 +549,7 @@ function clusterRecordLabel(
   record: LoomTableRecord,
   fields: readonly Field[],
   translate: Translator,
-): string {
+): HTMLElement {
   const candidates =
     fields.length > 0
       ? fields.map((field) => ({ field, value: record.values[field.id] }))
@@ -557,9 +560,17 @@ function clusterRecordLabel(
   const preview = candidates
     .map(({ field, value }) => defaultFieldRendererRegistry.render(field, value, { translate }))
     .find(
-      (value) => (value.state === 'value' || value.state === 'located') && value.text !== '',
-    )?.text;
-  return `${translate('map.clusterRecord')}: ${record.id}${preview === null || preview === undefined ? '' : ` — ${preview}`}`;
+      (value) =>
+        (value.state === 'value' || value.state === 'located') &&
+        (value.chips === undefined ? value.text !== '' : value.chips.length > 0),
+    );
+  const label = document.createElement('span');
+  label.className = 'loom-map-cluster-record-label';
+  label.append(document.createTextNode(`${translate('map.clusterRecord')}: ${record.id}`));
+  if (preview !== undefined) {
+    label.append(document.createTextNode(' — '), createRenderedFieldValueElement(preview));
+  }
+  return label;
 }
 
 function fallbackTextField(tableId: string, id: string, position: number): Field {
@@ -668,11 +679,16 @@ function providerKey(provider: TileProviderRef): string {
   return provider.kind === 'built-in' ? `built-in:${provider.id}` : `custom:${provider.profileId}`;
 }
 
-function button(label: string, onClick: () => void, disabled = false): HTMLButtonElement {
+function button(
+  label: string | HTMLElement,
+  onClick: () => void,
+  disabled = false,
+): HTMLButtonElement {
   const element = document.createElement('button');
   element.type = 'button';
   element.className = 'loom-button';
-  element.textContent = label;
+  if (typeof label === 'string') element.textContent = label;
+  else element.append(label);
   element.disabled = disabled;
   element.addEventListener('click', onClick);
   return element;
