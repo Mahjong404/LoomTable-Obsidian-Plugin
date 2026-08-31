@@ -579,6 +579,32 @@ describe('ReadonlyGridRenderer', () => {
     container.querySelector<HTMLButtonElement>('.loom-grid-edit-status button')?.click();
     expect(callbacks.onRetryEdit).toHaveBeenCalledWith('record_01');
   });
+
+  it('uses shared field value semantics and an accessible value state for Grid cells', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    const state = createState(1);
+    const field = state.fields[0];
+    const record = state.records[0];
+    if (field === undefined || record === undefined) throw new Error('Grid fixture is missing.');
+
+    renderer.render({
+      ...state,
+      records: [{ ...record, values: { field_name: '' } }],
+      fields: [field],
+    });
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_name"]',
+    );
+    expect(cell?.textContent).toBe('Empty');
+    expect(cell?.getAttribute('aria-label')).toBe('Name: Empty');
+    expect(cell?.dataset.valueState).toBe('empty');
+  });
 });
 
 describe('getVirtualRowRange', () => {
@@ -786,3 +812,4 @@ function locationState(value: JsonValue | undefined): GridState {
     ],
   };
 }
+
