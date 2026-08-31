@@ -285,11 +285,159 @@ describe('MapView', () => {
     });
 
     expect(container.querySelector('.loom-map-tile-status')?.textContent).toContain(
-      'Tile provider error',
+      'Tile loading failed. Retry or choose another provider.',
     );
     expect(container.querySelector('.loom-map-tile-status .loom-diagnostic')).not.toBeNull();
     expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain('record_01');
     expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain('A record');
+  });
+
+  it.each([
+    [
+      'configuration-required',
+      '需要配置地图瓦片提供方；请添加所需凭据或选择其他提供方。',
+      '打开设置',
+    ],
+    ['invalid-profile', '地图瓦片提供方配置档无效；请检查名称、缩放范围和署名信息。', '打开设置'],
+    [
+      'invalid-template',
+      '地图瓦片 URL 模板无效；请包含 {z}、{x}、{y}，并仅使用支持的占位符。',
+      '打开设置',
+    ],
+    [
+      'invalid-origin',
+      '地图瓦片提供方地址无效；非本机地址必须使用 HTTPS，HTTP 仅允许用于 localhost。',
+      '打开设置',
+    ],
+    ['unsupported-crs', '地图瓦片提供方使用了不支持的坐标系；请使用 EPSG:3857。', '打开设置'],
+    ['tile-error', '地图瓦片加载失败；请重试或选择其他提供方。', '重试地图瓦片'],
+  ] as const)(
+    'routes tile error kind %s to translated copy and action',
+    async (kind, text, actionText) => {
+      const container = document.createElement('div');
+      const controller = fakeController();
+      const onOpenSettings = vi.fn();
+      const onTileRetry = vi.fn();
+      const view = new MapView(container, controller as unknown as MapViewController, {
+        translate: createTranslator('zh-CN'),
+        onOpenSettings,
+        onTileRetry,
+      });
+
+      view.mount();
+      view.renderState({
+        ...initialMapViewState(createMapView()),
+        dataStatus: 'ready',
+        tileStatus: kind === 'tile-error' ? 'error' : 'configuration-required',
+        tileError: {
+          kind,
+          providerId: 'custom-provider',
+          message: 'diagnostic detail',
+        },
+      });
+
+      expect(container.querySelector('.loom-map-tile-status')?.textContent).toContain(text);
+      const action = [
+        ...container.querySelectorAll<HTMLButtonElement>('.loom-map-tile-status button'),
+      ].find((button) => button.textContent === actionText);
+      expect(action).not.toBeUndefined();
+      action?.click();
+      if (kind === 'tile-error') {
+        await vi.waitFor(() => expect(onTileRetry).toHaveBeenCalledTimes(1));
+      } else {
+        await vi.waitFor(() => expect(onOpenSettings).toHaveBeenCalledTimes(1));
+      }
+      expect(container.querySelector('.loom-map-tile-status')?.textContent).not.toContain(
+        'diagnostic detail',
+      );
+    },
+  );
+
+  it('renders Cluster Records as an accessible list instead of raw JSON', () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const record: LoomTableRecord = {
+      id: 'record_01',
+      tableId: 'table_01',
+      revision: 1,
+      values: { name: 'Shanghai Office' },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      onClusterNextPage: vi.fn(),
+      onClusterRetry: vi.fn(),
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      clusterStatus: 'ready',
+      clusterRecords: [record],
+      clusterToken: 'cluster-token',
+      clusterCursor: 'next-cursor',
+    } as unknown as ReturnType<typeof initialMapViewState>);
+
+    const cluster = container.querySelector<HTMLElement>('.loom-map-cluster-records');
+    expect(cluster).not.toBeNull();
+    expect(cluster?.querySelector('pre')).toBeNull();
+    expect(cluster?.querySelector('[role="list"]')).not.toBeNull();
+    expect(cluster?.querySelector('[role="listitem"]')?.textContent).toContain('record_01');
+    expect(cluster?.textContent).toContain('Shanghai Office');
+    expect(cluster?.textContent).not.toContain('"values"');
+    expect(cluster?.querySelector<HTMLButtonElement>('.loom-map-cluster-close')).not.toBeNull();
+    expect(cluster?.querySelector<HTMLButtonElement>('.loom-map-cluster-next')).not.toBeNull();
+  });
+
+  it('exposes Cluster loading, empty, error, retry, and close states', async () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const onClusterRetry = vi.fn();
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('zh-CN'),
+      onClusterRetry,
+    });
+    view.mount();
+
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      clusterStatus: 'loading',
+      clusterToken: 'cluster-token',
+      clusterCursor: null,
+    } as unknown as ReturnType<typeof initialMapViewState>);
+    expect(container.querySelector('.loom-map-cluster-status')?.textContent).toBe(
+      '正在加载聚合记录…',
+    );
+
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      clusterStatus: 'empty',
+      clusterToken: 'cluster-token',
+      clusterCursor: null,
+    } as unknown as ReturnType<typeof initialMapViewState>);
+    expect(container.querySelector('.loom-map-cluster-status')?.textContent).toBe(
+      '此聚合中没有记录。',
+    );
+
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      clusterStatus: 'error',
+      clusterError: { message: 'cluster diagnostic', code: 'NETWORK_ERROR' },
+      clusterToken: 'cluster-token',
+      clusterCursor: null,
+    } as unknown as ReturnType<typeof initialMapViewState>);
+    expect(container.querySelector('.loom-map-cluster-status')?.textContent).toContain(
+      '无法加载聚合记录；请重试。',
+    );
+    expect(container.querySelector('.loom-map-cluster-status')?.textContent).not.toContain(
+      'cluster diagnostic',
+    );
+    container.querySelector<HTMLButtonElement>('.loom-map-cluster-retry')?.click();
+    await vi.waitFor(() => expect(onClusterRetry).toHaveBeenCalledTimes(1));
+
+    container.querySelector<HTMLButtonElement>('.loom-map-cluster-close')?.click();
+    expect(controller.closeCluster).toHaveBeenCalledTimes(1);
   });
 
   it('preserves a dirty Location draft when the Map redraws the same Record', () => {
@@ -454,6 +602,7 @@ function fakeController(): {
   fitAll: ReturnType<typeof vi.fn>;
   saveDefaultCamera: ReturnType<typeof vi.fn>;
   loadNextClusterPage: ReturnType<typeof vi.fn>;
+  closeCluster: ReturnType<typeof vi.fn>;
   openRecord: ReturnType<typeof vi.fn>;
 } {
   const state = initialMapViewState(createMapView());
@@ -469,6 +618,7 @@ function fakeController(): {
     fitAll: vi.fn(),
     saveDefaultCamera: vi.fn(),
     loadNextClusterPage: vi.fn(),
+    closeCluster: vi.fn(),
     openRecord: vi.fn(),
     dispose: vi.fn(),
   };

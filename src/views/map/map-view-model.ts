@@ -24,6 +24,7 @@ export type MapDataStatus =
 
 export type MapTileStatus = 'idle' | 'loading' | 'ready' | 'configuration-required' | 'error';
 export type MapTilePlanStatus = 'idle' | 'ready' | 'configuration-required' | 'error';
+export type MapClusterStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 export interface MapViewState {
   readonly dataStatus: MapDataStatus;
@@ -39,9 +40,11 @@ export interface MapViewState {
   readonly changeCursor: string | null;
   readonly viewRevision: number | null;
   readonly selectedRecord: LoomTableRecord | null;
+  readonly clusterStatus: MapClusterStatus;
   readonly clusterRecords: readonly LoomTableRecord[];
   readonly clusterToken: string | null;
   readonly clusterCursor: string | null;
+  readonly clusterError: LoomTableClientErrorDetails | null;
   readonly error: LoomTableClientErrorDetails | null;
   readonly tileError: TileProviderError | LoomTableClientErrorDetails | null;
   readonly saveStatus: ViewSaveStatus;
@@ -71,9 +74,11 @@ export function initialMapViewState(
     changeCursor: null,
     viewRevision: null,
     selectedRecord: null,
+    clusterStatus: 'idle',
     clusterRecords: [],
     clusterToken: null,
     clusterCursor: null,
+    clusterError: null,
     error: null,
     tileError: null,
     saveStatus: 'saved',

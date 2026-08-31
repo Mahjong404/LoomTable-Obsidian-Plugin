@@ -57,6 +57,7 @@ export class MapViewController {
   #querySequence = 0;
   #fitAllSequence = 0;
   #clusterRequestSequence = 0;
+  #recordRequestSequence = 0;
   #destroyed = false;
   #mounted = false;
 
@@ -239,6 +240,8 @@ export class MapViewController {
   }
 
   async openRecord(recordId: string): Promise<void> {
+    if (this.#destroyed) return;
+    const requestSequence = ++this.#recordRequestSequence;
     if (this.#options.isOffline?.() === true) {
       this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
       return;
@@ -252,14 +255,17 @@ export class MapViewController {
     }
     try {
       const record = await this.#client.getRecord(recordId);
+      if (this.#destroyed || requestSequence !== this.#recordRequestSequence) return;
       this.publish({ selectedRecord: record });
       this.#options.onRecordSelected?.(record);
     } catch (error) {
+      if (this.#destroyed || requestSequence !== this.#recordRequestSequence) return;
       this.handleDataError(error);
     }
   }
 
   async openCluster(clusterId: string): Promise<void> {
+    if (this.#destroyed) return;
     const cluster = this.#state.features.find(
       (feature) => feature.kind === 'cluster' && feature.clusterId === clusterId,
     );
@@ -272,8 +278,31 @@ export class MapViewController {
   }
 
   async loadNextClusterPage(): Promise<void> {
-    if (this.#state.clusterToken === null || this.#state.clusterCursor === null) return;
+    if (this.#destroyed || this.#state.clusterToken === null || this.#state.clusterCursor === null)
+      return;
     await this.loadClusterPage(this.#state.clusterToken, this.#state.clusterCursor);
+  }
+
+  async retryCluster(): Promise<void> {
+    if (this.#destroyed || this.#state.clusterToken === null) return;
+    await this.loadClusterPage(this.#state.clusterToken, this.#state.clusterCursor ?? undefined);
+  }
+
+  closeCluster(): void {
+    if (this.#destroyed) return;
+    this.#clusterRequestSequence += 1;
+    this.publish({
+      clusterStatus: 'idle',
+      clusterRecords: [],
+      clusterToken: null,
+      clusterCursor: null,
+      clusterError: null,
+    });
+  }
+
+  retryTiles(): void {
+    if (this.#destroyed || this.#options.isOffline?.() === true) return;
+    this.setProvider(this.#providerRef);
   }
 
   setProvider(provider: TileProviderRef): void {
@@ -299,6 +328,7 @@ export class MapViewController {
     this.#querySequence += 1;
     this.#fitAllSequence += 1;
     this.#clusterRequestSequence += 1;
+    this.#recordRequestSequence += 1;
     if (this.#timer !== null) window.clearTimeout(this.#timer);
     this.#timer = null;
     this.#options.renderer.destroy();
@@ -388,11 +418,22 @@ export class MapViewController {
     if (this.#destroyed) return;
     const requestSequence = ++this.#clusterRequestSequence;
     const requestEpoch = ++this.#querySequence;
-    if (this.#options.isOffline?.() === true) {
-      this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
-      return;
-    }
+    this.publish({
+      clusterStatus: 'loading',
+      clusterError: null,
+      ...(cursor === undefined
+        ? { clusterRecords: [], clusterToken: token, clusterCursor: null }
+        : {}),
+    });
     try {
+      if (this.#options.isOffline?.() === true) {
+        this.publish({
+          dataStatus: 'offline',
+          saveStatus: 'offline-readonly',
+          clusterStatus: 'idle',
+        });
+        return;
+      }
       const result = await this.#client.queryMapClusterRecords(this.#view.id, {
         clusterToken: token,
         ...(cursor === undefined ? {} : { cursor }),
@@ -405,10 +446,12 @@ export class MapViewController {
         return;
       }
       this.publish({
+        clusterStatus: result.items.length === 0 ? 'empty' : 'ready',
         clusterRecords: result.items,
         clusterToken: token,
         clusterCursor: result.nextCursor ?? null,
         changeCursor: result.changeCursor,
+        clusterError: null,
       });
       this.#options.onClusterRecords?.(result.items);
     } catch (error) {
@@ -421,11 +464,17 @@ export class MapViewController {
       }
       const clientError = asClientError(error);
       if (clientError.kind === 'cursor-expired') {
-        this.publish({ clusterRecords: [], clusterToken: null, clusterCursor: null });
+        this.publish({
+          clusterStatus: 'idle',
+          clusterRecords: [],
+          clusterToken: null,
+          clusterCursor: null,
+          clusterError: null,
+        });
         await this.refreshCurrentViewport();
         return;
       }
-      this.handleDataError(error);
+      this.publish({ clusterStatus: 'error', clusterError: clientError.details });
     }
   }
 

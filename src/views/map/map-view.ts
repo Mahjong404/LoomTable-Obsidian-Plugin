@@ -1,5 +1,6 @@
 import type {
   Base,
+  Field,
   LocationValue,
   LoomTableRecord,
   Table,
@@ -10,6 +11,7 @@ import { createTranslator, type Translator } from '../../i18n';
 import type { MessageKey } from '../../i18n/messages';
 import type {
   TileProviderRef,
+  TileProviderError,
   TileProviderSummary,
 } from '../../maps/providers/tile-provider-schema';
 import type { LocationEditIntent } from '../../ui/field-value-editor';
@@ -36,6 +38,8 @@ export interface MapViewOptions {
   readonly translate?: Translator;
   readonly navigation?: MapViewNavigation;
   readonly onClusterNextPage?: () => void | Promise<void>;
+  readonly onClusterRetry?: () => void | Promise<void>;
+  readonly onTileRetry?: () => void | Promise<void>;
   readonly onLocationEdit?: (
     recordId: string,
     fieldId: string,
@@ -60,7 +64,8 @@ export interface MapViewOptions {
   readonly confirmDiscard?: (message: string) => boolean;
 }
 
-type MapAction = 'refresh' | 'fitAll' | 'saveCamera' | 'settings';
+type MapAction =
+  'refresh' | 'fitAll' | 'saveCamera' | 'settings' | 'tileRetry' | 'clusterRetry' | 'clusterNext';
 
 interface MapActionButtonSpec {
   readonly action: MapAction;
@@ -75,6 +80,7 @@ export class MapView {
   #status: HTMLElement | null = null;
   #saveStatus: HTMLElement | null = null;
   #tileStatus: HTMLElement | null = null;
+  #tileActionButton: HTMLButtonElement | null = null;
   #details: HTMLElement | null = null;
   #selectedRecordId: string | null = null;
   #errorActionButton: HTMLButtonElement | null = null;
@@ -82,6 +88,7 @@ export class MapView {
   #destroyed = false;
   readonly #pendingActions = new Set<MapAction>();
   readonly #actionButtons = new Map<HTMLButtonElement, MapActionButtonSpec>();
+  readonly #clusterActionButtons = new Set<HTMLButtonElement>();
   #focusedAction: MapAction | null = null;
 
   constructor(
@@ -148,6 +155,7 @@ export class MapView {
     mapContainer.className = 'loom-map-container';
     mapContainer.setAttribute('role', 'region');
     mapContainer.setAttribute('aria-label', translate('map.region'));
+    mapContainer.tabIndex = -1;
     const details = document.createElement('div');
     details.className = 'loom-map-details';
     details.setAttribute('role', 'region');
@@ -179,12 +187,14 @@ export class MapView {
     this.#status = null;
     this.#saveStatus = null;
     this.#tileStatus = null;
+    this.#tileActionButton = null;
     this.#details = null;
     this.#selectedRecordId = null;
     this.#errorActionButton = null;
     this.#lastState = null;
     this.#focusedAction = null;
     this.#actionButtons.clear();
+    this.#clusterActionButtons.clear();
     this.#container.replaceChildren();
   }
 
@@ -198,8 +208,13 @@ export class MapView {
     );
     const translate = this.options.translate ?? createTranslator('en');
     if (this.#errorActionButton !== null) this.#actionButtons.delete(this.#errorActionButton);
+    if (this.#tileActionButton !== null) this.#actionButtons.delete(this.#tileActionButton);
+    for (const element of this.#clusterActionButtons) this.#actionButtons.delete(element);
+    this.#clusterActionButtons.clear();
     this.#errorActionButton = null;
+    this.#tileActionButton = null;
     const dataAction = this.#renderDataAction();
+    const tileAction = this.#renderTileAction();
     this.#status.dataset.status = state.dataStatus;
     this.#status.replaceChildren(
       document.createTextNode(describeDataState(state, translate)),
@@ -211,6 +226,7 @@ export class MapView {
     this.#tileStatus.dataset.status = state.tileStatus;
     this.#tileStatus.replaceChildren(
       document.createTextNode(describeTileState(state, translate)),
+      ...(tileAction === null ? [] : [tileAction]),
       ...(state.tileError === null
         ? []
         : [
@@ -324,6 +340,34 @@ export class MapView {
     return null;
   }
 
+  #renderTileAction(): HTMLButtonElement | null {
+    if (this.#lastState === null) return null;
+    if (
+      this.#lastState.tileStatus === 'configuration-required' &&
+      this.options.onOpenSettings !== undefined
+    ) {
+      const action = this.#createActionButton(
+        'settings',
+        'common.openSettings',
+        'common.openingSettings',
+        this.options.onOpenSettings,
+      );
+      this.#tileActionButton = action;
+      return action;
+    }
+    if (this.#lastState.tileStatus === 'error' && this.options.onTileRetry !== undefined) {
+      const action = this.#createActionButton(
+        'tileRetry',
+        'map.retryTiles',
+        'map.retryingTiles',
+        this.options.onTileRetry,
+      );
+      this.#tileActionButton = action;
+      return action;
+    }
+    return null;
+  }
+
   #renderDetails(state: MapViewState, translate: Translator): void {
     if (this.#details === null) return;
     const selectedRecordChanged = this.#selectedRecordId !== state.selectedRecord?.id;
@@ -415,26 +459,112 @@ export class MapView {
   #renderClusterDetails(state: MapViewState, translate: Translator): void {
     if (this.#details === null) return;
     this.#details.querySelector('.loom-map-cluster-records')?.remove();
-    if (state.clusterRecords.length > 0 || state.clusterCursor !== null) {
-      const cluster = document.createElement('section');
-      cluster.className = 'loom-map-cluster-records';
-      const title = document.createElement('strong');
-      title.textContent = translate('map.clusterRecords');
-      const records = document.createElement('pre');
-      records.textContent = JSON.stringify(state.clusterRecords, null, 2);
-      cluster.append(title, records);
-      if (state.clusterCursor !== null) {
-        cluster.append(
-          button(
-            translate('map.loadMoreClusterRecords'),
-            () => void this.options.onClusterNextPage?.(),
-            state.dataStatus === 'offline',
+    if (state.clusterStatus === 'idle') return;
+
+    const cluster = document.createElement('section');
+    cluster.className = 'loom-map-cluster-records';
+    cluster.setAttribute('role', 'region');
+    cluster.setAttribute('aria-live', 'polite');
+    const title = document.createElement('h3');
+    title.textContent = translate('map.clusterRecords');
+    cluster.append(title);
+
+    const status = document.createElement('p');
+    status.className = 'loom-map-cluster-status';
+    if (state.clusterStatus === 'loading') {
+      status.textContent = translate('map.clusterLoading');
+    } else if (state.clusterStatus === 'empty') {
+      status.textContent = translate('map.clusterEmpty');
+    } else if (state.clusterStatus === 'error') {
+      status.textContent = translate('map.clusterError');
+      if (state.clusterError !== null) {
+        status.append(
+          renderDiagnostic(
+            translate('common.openDiagnostics'),
+            errorDiagnostic(state.clusterError),
           ),
         );
       }
-      this.#details.append(cluster);
+      if (this.options.onClusterRetry !== undefined) {
+        const retry = this.#createActionButton(
+          'clusterRetry',
+          'map.retryCluster',
+          'map.retryingCluster',
+          this.options.onClusterRetry,
+        );
+        retry.classList.add('loom-map-cluster-retry');
+        this.#clusterActionButtons.add(retry);
+        status.append(retry);
+      }
     }
+    if (status.textContent !== '') cluster.append(status);
+
+    if (state.clusterRecords.length > 0) {
+      const records = document.createElement('ul');
+      records.setAttribute('role', 'list');
+      for (const record of state.clusterRecords) {
+        const item = document.createElement('li');
+        item.setAttribute('role', 'listitem');
+        const open = button(
+          clusterRecordLabel(record, state.fields, translate),
+          () => {
+            void this.#controller.openRecord(record.id);
+          },
+          state.dataStatus === 'offline',
+        );
+        open.classList.add('loom-map-cluster-record');
+        item.append(open);
+        records.append(item);
+      }
+      cluster.append(records);
+    }
+
+    if (state.clusterCursor !== null && this.options.onClusterNextPage !== undefined) {
+      const next = this.#createActionButton(
+        'clusterNext',
+        'map.loadMoreClusterRecords',
+        'map.loadingMoreClusterRecords',
+        this.options.onClusterNextPage,
+      );
+      next.classList.add('loom-map-cluster-next');
+      this.#clusterActionButtons.add(next);
+      cluster.append(next);
+    }
+
+    const close = button(translate('map.closeCluster'), () => {
+      this.#controller.closeCluster();
+      this.#container.querySelector<HTMLElement>('.loom-map-container')?.focus();
+    });
+    close.classList.add('loom-map-cluster-close');
+    cluster.append(close);
+    this.#details.append(cluster);
   }
+}
+
+function clusterRecordLabel(
+  record: LoomTableRecord,
+  fields: readonly Field[],
+  translate: Translator,
+): string {
+  const preview = (
+    fields.length > 0
+      ? fields.map((field) => record.values[field.id])
+      : Object.values(record.values)
+  )
+    .map(clusterValuePreview)
+    .find((value): value is string => value !== null);
+  return `${translate('map.clusterRecord')}: ${record.id}${preview === null || preview === undefined ? '' : ` — ${preview}`}`;
+}
+
+function clusterValuePreview(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim() !== '') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  for (const key of ['name', 'label', 'title']) {
+    const candidate = (value as Record<string, unknown>)[key];
+    if (typeof candidate === 'string' && candidate.trim() !== '') return candidate;
+  }
+  return null;
 }
 
 function recordVersion(record: LoomTableRecord): string {
@@ -563,6 +693,17 @@ function describeDataState(state: MapViewState, translate: Translator): string {
 }
 
 function describeTileState(state: MapViewState, translate: Translator): string {
+  if (state.tileError !== null && isTileProviderError(state.tileError)) {
+    const messageKeys: Record<TileProviderError['kind'], MessageKey> = {
+      'configuration-required': 'map.providerError.configurationRequired',
+      'invalid-profile': 'map.providerError.invalidProfile',
+      'invalid-origin': 'map.providerError.invalidOrigin',
+      'invalid-template': 'map.providerError.invalidTemplate',
+      'unsupported-crs': 'map.providerError.unsupportedCrs',
+      'tile-error': 'map.providerError.tileError',
+    };
+    return translate(messageKeys[state.tileError.kind]);
+  }
   if (state.tileStatus === 'configuration-required') {
     return translate('map.tiles.configuration');
   }
@@ -572,6 +713,22 @@ function describeTileState(state: MapViewState, translate: Translator): string {
   if (state.tileStatus === 'loading') return translate('map.tiles.loading');
   if (state.tileStatus === 'ready') return translate('map.tiles.ready');
   return '';
+}
+
+function isTileProviderError(error: MapViewState['tileError']): error is TileProviderError {
+  return (
+    error !== null &&
+    'kind' in error &&
+    typeof error.kind === 'string' &&
+    [
+      'configuration-required',
+      'invalid-profile',
+      'invalid-origin',
+      'invalid-template',
+      'unsupported-crs',
+      'tile-error',
+    ].includes(error.kind)
+  );
 }
 
 function renderDiagnostic(label: string, details: string): HTMLElement {
