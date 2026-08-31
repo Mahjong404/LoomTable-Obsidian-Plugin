@@ -352,7 +352,7 @@ Dashboard 不因本计划自动加入 Grid，也不在 HIG 中提前写入完整
 8. 同步统筹、Plugin 和 Server session 的当前阶段、阻塞点、合同和下一目标。
 9. 前一组未通过门禁时，不启动后一组的实现。
 
-## 6. 当前下一步（截至 Plugin main `ac8313edfb24c3fd972b25fc1faa2ad91b2dc313`）
+## 6. 当前下一步（截至 Plugin main `6022a7b4b887a38251977b9fe1054b6eeea04b38`）
 
 S0、S1、S2 的已交付切片、S3-A registry 基础和 S3-B Select/MultiSelect 代码切片均有可追溯的自动化与远端 CI 证据；它们不能仅凭静态检查或 CI 被宣布为完整桌面验收完成。当前仍明确保留：
 
@@ -360,7 +360,7 @@ S0、S1、S2 的已交付切片、S3-A registry 基础和 S3-B Select/MultiSelec
 - 浅色、深色、窄容器、marker/cluster 键盘激活、故障注入和保存/冲突恢复的完整桌面证据仍需受控环境；
 - 自动化 DOM/controller、构建和合同检查只能作为支持证据，不能替代真实 Obsidian smoke。
 
-因此，不宣布整个 S1/S2 或 S3 完成。下一项是 **S3-C Attachment 交互/管理**；本计划只记录其顺序，不在 S3-B 文档收口中实现，也不新增字段、View、CRUD、Dashboard、Server/API 或 OpenAPI 行为。
+因此，不宣布整个 S1/S2 或 S3 完成。S3-C 第一代码切片已由 PR #90 交付；下一项仍是安全的 host download/open/preview 与 attachment-reference 管理后续。本计划只记录其顺序，不在本片实现 add/upload/delete/retry，也不新增字段、View、CRUD、Dashboard、Server/API 或 OpenAPI 行为。
 
 本计划不修改规范性 HIG 正文；HIG 只描述稳定规则，本文件负责解决顺序、范围、门禁和实施记录。
 
@@ -380,3 +380,14 @@ S3-B 以 Plugin main `23e94b749841a7ba9ec0e65f30a7bd0ad1765bf2` 为代码基线�
 自动化证据：完整 `pnpm.cmd check` 通过，包含 39 个测试文件 / 355 个测试、format、lint（既有 warnings）、typecheck、OpenAPI drift 和 production build；registry、Grid、Detail、Map、样式和 i18n 回归覆盖已发布行为。真实 Obsidian smoke 未在本片执行，继续标记为 `unverified`，不能由 jsdom/CI 替代。
 
 S3-B 已交付，但整个 S3 未完成。下一项是 S3-C Attachment 交互/管理；本计划不在本片宣称 S3 完成，也不开始 S4/S5/S6、新字段、View、CRUD、Tag、Dashboard 或 Server/API/OpenAPI 行为。
+
+
+## S3-C 第一代码切片（2026-08-31）
+
+本片从 S3-B 交付后的 Plugin main `11e102bdf099e51c1f7d75e6f28381b56a7d26c3` 开始，通过代码 PR #90 交付：head `3c5c6faefc3574aa1a92ab7a3fa3568c995b2a48`，squash merge/main `6022a7b4b887a38251977b9fe1054b6eeea04b38`。PR CI run `33394735067` / job `99496442039` 与 main push CI run `33394847118` / job `99496806710` 均成功。
+
+本片在既有 Field Renderer/Registry seam 上交付共享结构化 Attachment 展示：统一 `undefined`/缺失、`null`、空数组语义；以已发布 `AttachmentRef` 的 `id`、`source`、`filename` 为必需身份，以 MIME/size 等作为可选元数据；以 `ready`、`pending`、`stale`、`invalid`、`unknown` 表达安全展示状态。Grid 使用紧凑摘要，Record Detail 使用结构化 cards，Map cluster 使用共享的非交互摘要；typed `onAttachmentDownload` 仅在 host callback 存在时出现。i18n、ARIA、非颜色状态和 CSS namespace 回归已纳入代码 PR。
+
+本片不接入真实 LoomTableView/Obsidian host 的 download/open/preview；不实现 add/upload/delete/retry，因为这些动作需要安全的文件 picker/save/open 流程以及明确的 Record attachment-reference 更新路径。不得把 callback seam 当成真实动作完成，也不得由本片新增 API 或改变 offline、Mutation、Conflict、revision、changeCursor 合同。当前 main 的真实 Obsidian smoke 仍为 `unverified`。
+
+自动化证据：完整 `pnpm check` 通过，包含 format、lint（既有 warnings）、typecheck、39 个测试文件 / 359 个测试、OpenAPI drift 和 production build；代码 PR #90 与 main push CI 均成功。S3-C 仍未完成，后续只可在上述 host/引用合同明确后分片处理动作管理。
