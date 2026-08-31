@@ -24,7 +24,7 @@ export type AttachmentReferenceUpdater = (
   fieldId: string,
   references: readonly AttachmentRef[],
   sourceRecord: LoomTableRecord,
-) => Promise<LoomTableRecord | void>;
+) => Promise<LoomTableRecord | undefined>;
 
 export type AttachmentAddHandler = (
   recordId: string,
