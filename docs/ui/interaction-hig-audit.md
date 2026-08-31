@@ -1,6 +1,6 @@
 # Interaction HIG Audit Matrix
 
-> S1-E audit baseline is the connector-verified current Plugin main `505ba4d46910698313e08910c0fc3fc841957377`, following the S1-D runtime merge in [PR #74](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/74) and the docs checkpoint in [PR #75](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/75). This audit corrects current-main evidence; it does not announce S1 complete.
+> S2-A audit baseline is the connector-verified current Plugin main `f615ca39978829dda14bc0389a5c40da8bd9c893`, following S1-E and the published S2-A Grid draft/error slice in [PR #77](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/77). S1 remains incomplete; this entry records only the smallest delivered S2-A slice.
 > Current-main runtime inputs, Map renderer semantics, and CSS audit contracts are reviewed below. Historical S0 rows remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 >
 > Normative sources: Interaction HIG, Design System, Grid spec, Map spec, Client Contract, and HIG rollout. Current Server docs/main is `ab949d59c37680d53b4109e1502f8478b24cc655`; the Server stable-support/runtime/API freeze baseline remains `e02f055fecddc0852085dc5a71b4eb136860774a`; the Plugin OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`, whose checked-in snapshot/blob is `92b416993ce6be4664d8bee783f2dcaed36e05b5`.
@@ -64,6 +64,14 @@
 
 - S1-E conclusion: the current-main source/test audit passes for the reviewed marker/cluster accessibility and shared CSS contracts, but S1 cannot be announced complete because the current-main desktop gate has no reliable Grid/Detail/Map evidence. The remaining rows are evidence gaps, not a claim of runtime failure. This slice makes no Server/API/OpenAPI/runtime change.
 
+## S2-A Grid edit draft/error seam (published)
+
+- This smallest S2-A slice started from connector-verified Plugin main `54eb68795cbd6caf006b961ef19f65bf31a2f248` and was published by [PR #77](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/77), head `3c826b68cf920e4351ca7d9a6c7233bbe1aa1b17`, squash-merged as current main `f615ca39978829dda14bc0389a5c40da8bd9c893`.
+- The controller now keeps a typed `GridEditDraft` per Record/Field with the raw local editor value through validation, queue-entry, and non-conflict submission failures. The renderer restores the failed editor by stable Record/Field identity, associates `aria-invalid="true"` and `aria-describedby` with the visible edit error, returns focus to the fixable editor, and lets Escape cancel without resubmitting.
+- Drafts are cleared only for the completed Record when its queue returns idle; a successful applied response still uses the existing authoritative full Record path. Error, conflict, terminal/idempotency, and offline states remain outside Saved; no Mutation/Conflict/revision/changeCursor contract was changed.
+- Regression coverage is in `tests/ui/grid-view-controller.test.ts` and `tests/ui/readonly-grid-renderer.test.ts`, alongside the existing Record Detail/Location tests. PR CI [33373286347](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33373286347) / job `99428997829`, and main push CI [33373376608](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33373376608) / job `99429283112` succeeded. The full remote check reported 37 test files / 322 tests; local check also passed after providing the temporary local Git index required by the repository OpenAPI drift script.
+- Current-main audit confirms the existing S1-D Detail/Location invoking-focus, dirty-draft guard, clear/unset confirmation, no-matching-Map guard, and Location error association remain unchanged and covered by prior tests; this slice did not rewrite them. No real current-main Obsidian smoke was run, so desktop Grid editing, mutation failures, exact focus return, Location mutation, and light/dark/narrow acceptance remain unverified.
+- S2-A is not fully complete: this entry is the first minimal Grid failure-recovery slice. Detail/Location end-to-end desktop acceptance and any deeper editor/CRUD/View work remain outside this delivery. This slice makes no Server, API, OpenAPI, or offline-read-only change.
 ## Severity and disposition
 
 - **P0 / MUST**: release-blocking HIG violation; fix in the next UI slice and add a focused regression or DOM/accessibility test.
