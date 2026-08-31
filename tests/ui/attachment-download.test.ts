@@ -132,4 +132,3 @@ function renderedAttachment(overrides: Partial<RenderedAttachment> = {}): Render
     ...overrides,
   };
 }
-

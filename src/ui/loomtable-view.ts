@@ -393,4 +393,3 @@ function defaultProfile(settings: PluginSettings): ConnectionProfile | null {
     null
   );
 }
-
