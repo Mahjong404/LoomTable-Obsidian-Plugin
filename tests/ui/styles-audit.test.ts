@@ -77,4 +77,13 @@ describe('LoomTable CSS contract', () => {
     expect(styles).toContain('.loom-map-shell .leaflet-control-zoom a:focus-visible');
     expect(styles).not.toContain('mod-warning');
   });
+
+  it('keeps field Chips structured, namespaced, and readable without color-only state', () => {
+    expect(styles).toContain('.loom-field-value-chips');
+    expect(styles).toContain('.loom-field-value-chip');
+    expect(styles).toContain(".loom-field-value-chip[data-chip-state='deleted']");
+    expect(styles).toContain('border-style: dashed');
+    expect(styles).toContain('var(--loom-radius-sm)');
+    expect(styles).toContain('.loom-map-cluster-record-label');
+  });
 });
