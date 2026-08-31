@@ -3,6 +3,7 @@ import type { MessageKey } from '../i18n/messages';
 import type { Field, JsonValue, LoomTableRecord } from '../client/loomtable-client';
 import type { GridConflict, GridState, GridStatus } from './grid-view-controller';
 import { editorTextValue, isEditableField } from './field-value-editor';
+import { defaultFieldRendererRegistry } from './field-renderer-registry';
 import { renderSaveStatus } from './save-status';
 import { confirmDangerousAction } from './dangerous-action-confirmation';
 
@@ -426,8 +427,10 @@ export class ReadonlyGridRenderer {
     row.append(indexCell);
 
     for (const [fieldIndex, field] of fields.entries()) {
-      const displayValue = formatCellValue(record.values[field.id], field, this.#translate);
-      const cell = createGridCell(displayValue, 'loom-grid-cell');
+      const displayValue = defaultFieldRendererRegistry.render(field, record.values[field.id], {
+        translate: this.#translate,
+      });
+      const cell = createGridCell(displayValue.text, 'loom-grid-cell');
       cell.setAttribute('role', 'gridcell');
       cell.setAttribute('aria-colindex', String(fieldIndex + 2));
       cell.tabIndex = 0;
@@ -449,7 +452,8 @@ export class ReadonlyGridRenderer {
         record.id,
         field.id,
       );
-      cell.setAttribute('aria-label', field.name + ': ' + displayValue);
+      cell.setAttribute('aria-label', field.name + ': ' + displayValue.ariaLabel);
+      cell.dataset.valueState = displayValue.state;
       if (editStatus !== undefined) cell.dataset.editState = editStatus;
       cell.addEventListener('focus', () => {
         this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
@@ -898,74 +902,6 @@ function clampColumnWidth(width: number): number {
   return Math.max(80, Math.min(500, Math.round(width)));
 }
 
-function formatCellValue(
-  value: JsonValue | undefined,
-  field: Field,
-  translate: Translator,
-): string {
-  if (value === undefined) {
-    return field.type === 'location'
-      ? translate('record.field.unset')
-      : translate('common.emptyValue');
-  }
-  if (value === null) {
-    return field.type === 'location'
-      ? translate('record.field.cleared')
-      : translate('common.emptyValue');
-  }
-  if (field.type === 'checkbox' && typeof value === 'boolean') {
-    return value ? translate('grid.cell.checked') : translate('grid.cell.unchecked');
-  }
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  if (isJsonArray(value)) {
-    return value
-      .map((item) => {
-        if (isAttachmentReference(item)) return item.filename;
-        return typeof item === 'string' ? item : JSON.stringify(item);
-      })
-      .join(', ');
-  }
-  if (isLocationValue(value)) {
-    const coordinates = locationCoordinates(value);
-    if (coordinates === null) return translate('record.location.unlocated');
-    if (Math.abs(coordinates.lat) > 85.0511287798066) {
-      return translate('record.location.unrenderable');
-    }
-    if (typeof value.label === 'string') return value.label;
-    if (typeof value.address === 'string') return value.address;
-    return `${coordinates.lat}, ${coordinates.lng}`;
-  }
-  return JSON.stringify(value);
-}
-
-function locationCoordinates(
-  value: Readonly<Record<string, JsonValue>>,
-): { readonly lat: number; readonly lng: number } | null {
-  const lat = value.lat;
-  const lng = value.lng;
-  return typeof lat === 'number' && typeof lng === 'number' ? { lat, lng } : null;
-}
-
-function isAttachmentReference(value: JsonValue): value is Readonly<Record<string, JsonValue>> & {
-  readonly filename: string;
-} {
-  return isJsonObject(value) && typeof value.filename === 'string';
-}
-
-function isLocationValue(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
-  return isJsonObject(value);
-}
-
-function isJsonObject(value: JsonValue): value is Readonly<Record<string, JsonValue>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isJsonArray(value: JsonValue): value is readonly JsonValue[] {
-  return Array.isArray(value);
-}
-
 function statusMessage(status: GridStatus, state: GridState, translate: Translator): string {
   if (status === 'loading') return translate('grid.loading');
   if (status === 'offline') return translate('grid.error.offline');
@@ -1001,12 +937,13 @@ function createEditor(
   value: unknown,
   translate: Translator,
 ): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
-  if (field.type === 'longText') {
+  const editorKind = defaultFieldRendererRegistry.capability(field).editor.kind;
+  if (editorKind === 'longText') {
     const editor = document.createElement('textarea');
     editor.value = editorTextValue(value as JsonValue | undefined, field);
     return editor;
   }
-  if (field.type === 'select') {
+  if (editorKind === 'select' && field.type === 'select') {
     const editor = document.createElement('select');
     const empty = document.createElement('option');
     empty.value = '';
@@ -1021,7 +958,7 @@ function createEditor(
     editor.value = typeof value === 'string' ? value : '';
     return editor;
   }
-  if (field.type === 'checkbox') {
+  if (editorKind === 'checkbox') {
     const editor = document.createElement('input');
     editor.type = 'checkbox';
     editor.checked = value === true;
@@ -1029,7 +966,7 @@ function createEditor(
   }
   const editor = document.createElement('input');
   editor.type =
-    field.type === 'number' || field.type === 'date' || field.type === 'url' ? field.type : 'text';
+    editorKind === 'number' || editorKind === 'date' || editorKind === 'url' ? editorKind : 'text';
   editor.value = editorTextValue(value as JsonValue | undefined, field);
   return editor;
 }
@@ -1094,3 +1031,4 @@ function createTextElement<K extends keyof HTMLElementTagNameMap>(
   element.textContent = text;
   return element;
 }
+
