@@ -15,6 +15,7 @@ import type {
   TileProviderSummary,
 } from '../../maps/providers/tile-provider-schema';
 import type { LocationEditIntent } from '../../ui/field-value-editor';
+import { defaultFieldRendererRegistry } from '../../ui/field-renderer-registry';
 import { createRecordDetail, type RecordConflictView } from '../../ui/record-detail';
 import { renderSaveStatus } from '../../ui/save-status';
 import type { MapViewController } from './map-view-controller';
@@ -546,25 +547,32 @@ function clusterRecordLabel(
   fields: readonly Field[],
   translate: Translator,
 ): string {
-  const preview = (
+  const candidates =
     fields.length > 0
-      ? fields.map((field) => record.values[field.id])
-      : Object.values(record.values)
-  )
-    .map(clusterValuePreview)
-    .find((value): value is string => value !== null);
+      ? fields.map((field) => ({ field, value: record.values[field.id] }))
+      : Object.entries(record.values).map(([id, value], position) => ({
+          field: fallbackTextField(record.tableId, id, position),
+          value,
+        }));
+  const preview = candidates
+    .map(({ field, value }) => defaultFieldRendererRegistry.render(field, value, { translate }))
+    .find(
+      (value) => (value.state === 'value' || value.state === 'located') && value.text !== '',
+    )?.text;
   return `${translate('map.clusterRecord')}: ${record.id}${preview === null || preview === undefined ? '' : ` — ${preview}`}`;
 }
 
-function clusterValuePreview(value: unknown): string | null {
-  if (typeof value === 'string' && value.trim() !== '') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  for (const key of ['name', 'label', 'title']) {
-    const candidate = (value as Record<string, unknown>)[key];
-    if (typeof candidate === 'string' && candidate.trim() !== '') return candidate;
-  }
-  return null;
+function fallbackTextField(tableId: string, id: string, position: number): Field {
+  return {
+    id,
+    tableId,
+    name: id,
+    position,
+    schemaVersion: 1,
+    revision: 1,
+    type: 'text',
+    config: {},
+  };
 }
 
 function recordVersion(record: LoomTableRecord): string {

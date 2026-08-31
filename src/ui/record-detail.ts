@@ -5,6 +5,7 @@ import {
   normalizeLocationValue,
   type LocationEditIntent,
 } from './field-value-editor';
+import { defaultFieldRendererRegistry } from './field-renderer-registry';
 import { confirmDangerousAction as showDangerousActionConfirmation } from './dangerous-action-confirmation';
 
 const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
@@ -142,7 +143,12 @@ function renderField(
   if (field.type === 'location') {
     body.append(renderLocationValue(record, field, value, options, detailRoot));
   } else {
-    body.textContent = formatValue(value, options.translate);
+    const displayValue = defaultFieldRendererRegistry.render(field, value, {
+      translate: options.translate,
+    });
+    body.textContent = displayValue.text;
+    body.setAttribute('aria-label', field.name + ': ' + displayValue.ariaLabel);
+    body.dataset.valueState = displayValue.state;
   }
   return [label, body];
 }
@@ -166,7 +172,15 @@ function renderLocationValue(
   } else if (isLocationValue(raw)) {
     const location = raw;
     const coordinates = coordinatesFrom(location);
-    const state = locationPresentationState(coordinates);
+    const renderedLocation = defaultFieldRendererRegistry.render(field, raw, {
+      translate: options.translate,
+    });
+    const state: LocationPresentationState =
+      renderedLocation.state === 'located' ||
+      renderedLocation.state === 'unlocated' ||
+      renderedLocation.state === 'unrenderable'
+        ? renderedLocation.state
+        : locationPresentationState(coordinates);
     wrapper.dataset.locationState = state;
     const details = document.createElement('dl');
     details.className = 'loom-location-values';
@@ -185,7 +199,7 @@ function renderLocationValue(
           ? formatPrecision(item, options.translate)
           : typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean'
             ? String(item)
-            : JSON.stringify(item);
+            : options.translate('record.value.unavailable');
       details.append(createText('dt', options.translate(messageKey)), createText('dd', text));
     }
     wrapper.append(details, createLocationStatus(state, locationStatusText(state, options)));
@@ -218,7 +232,10 @@ function renderLocationValue(
       wrapper.append(copy, createPreviewTrigger(coordinates, options.translate));
     }
   } else {
-    wrapper.append(createText('span', formatValue(raw, options.translate)));
+    const displayValue = defaultFieldRendererRegistry.render(field, raw, {
+      translate: options.translate,
+    });
+    wrapper.append(createText('span', displayValue.text));
   }
 
   const edit = button(options.translate('record.location.edit'));
@@ -762,16 +779,7 @@ function formatPrecision(value: string, translate: Translator): string {
   if (value === 'exact') return translate('record.location.precision.exact');
   if (value === 'rooftop') return translate('record.location.precision.rooftop');
   if (value === 'approximate') return translate('record.location.precision.approximate');
-  return value;
-}
-
-function formatValue(value: JsonValue | undefined, translate: Translator): string {
-  if (value === undefined) return translate('record.field.unset');
-  if (value === null) return translate('record.field.cleared');
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  return JSON.stringify(value);
+  return translate('record.value.unavailable');
 }
 
 function fallbackFields(record: LoomTableRecord): readonly Field[] {
