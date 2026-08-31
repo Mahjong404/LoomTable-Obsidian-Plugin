@@ -215,9 +215,7 @@ export class LoomTableView extends ItemView {
           (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
         ),
       onAttachmentDownload: createAttachmentDownloadCallback(client),
-      onAttachmentOpen: createAttachmentOpenCallback(
-        createObsidianAttachmentOpenHost(this.app),
-      ),
+      onAttachmentOpen: createAttachmentOpenCallback(createObsidianAttachmentOpenHost(this.app)),
       onAttachmentPreview: createAttachmentPreviewCallback(client, {
         translate: this.getTranslator(),
         host: createBrowserAttachmentPreviewHost(document),
@@ -356,9 +354,7 @@ export class LoomTableView extends ItemView {
             (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
           ),
         onAttachmentDownload: createAttachmentDownloadCallback(client),
-        onAttachmentOpen: createAttachmentOpenCallback(
-          createObsidianAttachmentOpenHost(this.app),
-        ),
+        onAttachmentOpen: createAttachmentOpenCallback(createObsidianAttachmentOpenHost(this.app)),
         onAttachmentPreview: createAttachmentPreviewCallback(client, {
           translate: this.getTranslator(),
           host: createBrowserAttachmentPreviewHost(document),
@@ -446,3 +442,4 @@ function defaultProfile(settings: PluginSettings): ConnectionProfile | null {
     null
   );
 }
+
