@@ -89,6 +89,11 @@ export const englishMessages = {
   'record.details': 'Record details',
   'record.field.unset': 'Unset',
   'record.field.cleared': 'Cleared',
+  'record.value.unavailable': 'Value unavailable',
+  'record.option.deleted': 'Deleted option',
+  'record.option.unavailable': 'Option unavailable',
+  'record.attachment.type': 'Type',
+  'record.attachment.size': 'Size',
   'record.location.edit': 'Edit Location',
   'record.location.label': 'Label',
   'record.location.address': 'Address',
@@ -264,3 +269,4 @@ export const englishMessages = {
 
 export type MessageKey = keyof typeof englishMessages;
 export type MessageCatalog = { readonly [Key in MessageKey]: string };
+
