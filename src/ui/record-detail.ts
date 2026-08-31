@@ -37,7 +37,7 @@ export interface RecordDetailCallbacks {
   readonly onAttachmentDownload?: (
     recordId: string,
     fieldId: string,
-    attachmentId: string,
+    attachment: RenderedAttachment,
   ) => void | Promise<void>;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
@@ -159,12 +159,13 @@ function renderField(
       field.type === 'attachment' && options.callbacks?.onAttachmentDownload !== undefined
         ? (attachment: RenderedAttachment): void | Promise<void> => {
             if (attachment.id === undefined) return;
-            return options.callbacks?.onAttachmentDownload?.(record.id, field.id, attachment.id);
+            return options.callbacks?.onAttachmentDownload?.(record.id, field.id, attachment);
           }
         : undefined;
     body.append(
       createRenderedFieldValueElement(displayValue, {
         translate: options.translate,
+        attachmentDownloadDisabled: options.offline === true,
         ...(onAttachmentDownload === undefined ? {} : { onAttachmentDownload }),
       }),
     );
@@ -832,3 +833,4 @@ function createText<K extends keyof HTMLElementTagNameMap>(
   element.textContent = text;
   return element;
 }
+

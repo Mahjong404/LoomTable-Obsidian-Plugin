@@ -18,6 +18,7 @@ import type { LocationEditIntent } from '../../ui/field-value-editor';
 import {
   createRenderedFieldValueElement,
   defaultFieldRendererRegistry,
+  type RenderedAttachment,
 } from '../../ui/field-renderer-registry';
 import { createRecordDetail, type RecordConflictView } from '../../ui/record-detail';
 import { renderSaveStatus } from '../../ui/save-status';
@@ -56,6 +57,11 @@ export interface MapViewOptions {
     location: LocationValue,
   ) => void | Promise<void>;
   readonly canOpenLocationInMap?: (fieldId: string) => boolean;
+  readonly onAttachmentDownload?: (
+    recordId: string,
+    fieldId: string,
+    attachment: RenderedAttachment,
+  ) => void | Promise<void>;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
@@ -428,6 +434,9 @@ export class MapView {
         ...(this.options.canOpenLocationInMap === undefined
           ? {}
           : { canOpenLocationInMap: this.options.canOpenLocationInMap }),
+        ...(this.options.onAttachmentDownload === undefined
+          ? {}
+          : { onAttachmentDownload: this.options.onAttachmentDownload }),
         ...(this.options.getConflict === undefined
           ? {}
           : { getConflict: this.options.getConflict }),
@@ -804,3 +813,4 @@ function tileErrorDiagnostic(error: {
     2,
   );
 }
+

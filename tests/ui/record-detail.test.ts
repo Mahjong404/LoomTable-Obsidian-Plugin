@@ -752,7 +752,7 @@ describe('Record Detail Location seam', () => {
     expect(onAttachmentDownload).toHaveBeenCalledWith(
       'record_01',
       'field_attachment',
-      'attachment_1',
+      expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
     );
     await vi.waitFor(() =>
       expect(detail.querySelector('.loom-attachment-action-status')?.textContent).toBe(
@@ -765,6 +765,36 @@ describe('Record Detail Location seam', () => {
       translate: createTranslator('en'),
     });
     expect(withoutCallback.querySelector('.loom-attachment-action')).toBeNull();
+  });
+
+  it('disables attachment download with an accessible offline explanation', () => {
+    const attachmentField: Field = {
+      ...createField('field_attachment', 'Attachment'),
+      type: 'attachment',
+      config: { maxCount: 10 },
+    };
+    const onAttachmentDownload = vi.fn();
+    const detail = createRecordDetail(
+      createRecord({
+        field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+      }),
+      {
+        fields: [attachmentField],
+        translate: createTranslator('zh-CN'),
+        offline: true,
+        callbacks: { onAttachmentDownload },
+      },
+    );
+
+    const download = detail.querySelector<HTMLButtonElement>('.loom-attachment-action');
+    expect(download).not.toBeNull();
+    expect(download?.disabled).toBe(true);
+    expect(download?.getAttribute('aria-label')).toBe('当前离线；恢复连接后才能下载。');
+    expect(detail.querySelector('.loom-attachment-action-status')?.textContent).toBe(
+      '当前离线；恢复连接后才能下载。',
+    );
+    download?.click();
+    expect(onAttachmentDownload).not.toHaveBeenCalled();
   });
 
   it('renders Select and MultiSelect option names consistently as accessible values', () => {
@@ -821,3 +851,4 @@ function createRecord(values: Record<string, unknown>): LoomTableRecord {
     updatedAt: '',
   };
 }
+
