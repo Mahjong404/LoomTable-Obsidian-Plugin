@@ -5,7 +5,10 @@ import {
   normalizeLocationValue,
   type LocationEditIntent,
 } from './field-value-editor';
-import { defaultFieldRendererRegistry } from './field-renderer-registry';
+import {
+  createRenderedFieldValueElement,
+  defaultFieldRendererRegistry,
+} from './field-renderer-registry';
 import { confirmDangerousAction as showDangerousActionConfirmation } from './dangerous-action-confirmation';
 
 const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
@@ -146,7 +149,7 @@ function renderField(
     const displayValue = defaultFieldRendererRegistry.render(field, value, {
       translate: options.translate,
     });
-    body.textContent = displayValue.text;
+    body.append(createRenderedFieldValueElement(displayValue));
     body.setAttribute('aria-label', field.name + ': ' + displayValue.ariaLabel);
     body.dataset.valueState = displayValue.state;
   }
