@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { LoomTableRecord } from '../../src/client/loomtable-client';
+import type { Field, LoomTableRecord } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
 import type { MapViewController } from '../../src/views/map/map-view-controller';
 import { initialMapViewState } from '../../src/views/map/map-view-model';
@@ -292,6 +292,140 @@ describe('MapView', () => {
     expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain('A record');
   });
 
+  it('preserves a dirty Location draft when the Map redraws the same Record', () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const locationField = createLocationField();
+    const record: LoomTableRecord = {
+      id: 'record_01',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_location: { label: 'Server label', lat: 1, lng: 2 } },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      onLocationEdit: vi.fn(),
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      fields: [locationField],
+      selectedRecord: record,
+    });
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const label = container.querySelector<HTMLInputElement>(
+      '.loom-location-editor input[aria-label="Label"]',
+    );
+    expect(label).not.toBeNull();
+    if (label === null) return;
+    label.value = 'Unsaved draft';
+    label.dispatchEvent(new Event('input', { bubbles: true }));
+
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'loading',
+      fields: [locationField],
+      selectedRecord: record,
+    });
+
+    const redrawnLabel = container.querySelector<HTMLInputElement>(
+      '.loom-location-editor input[aria-label="Label"]',
+    );
+    expect(redrawnLabel).not.toBeNull();
+    expect(redrawnLabel?.value).toBe('Unsaved draft');
+    expect(container.querySelector('.loom-location-editor')?.getAttribute('data-dirty')).toBe(
+      'true',
+    );
+  });
+
+  it('keeps a dirty Location draft when changing Records is declined', () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const confirmDiscard = vi.fn().mockReturnValue(false);
+    const locationField = createLocationField();
+    const record = createLocationRecord('record_01', 'Server label');
+    const nextRecord = createLocationRecord('record_02', 'Next label');
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      confirmDiscard,
+      onLocationEdit: vi.fn(),
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      fields: [locationField],
+      selectedRecord: record,
+    });
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const label = container.querySelector<HTMLInputElement>(
+      '.loom-location-editor input[aria-label="Label"]',
+    );
+    expect(label).not.toBeNull();
+    if (label === null) return;
+    label.value = 'Unsaved draft';
+    label.dispatchEvent(new Event('input', { bubbles: true }));
+
+    expect(view.confirmDiscardIfNeeded()).toBe(false);
+    expect(confirmDiscard).toHaveBeenCalledWith('Discard unsaved Location changes?');
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      fields: [locationField],
+      selectedRecord: nextRecord,
+    });
+
+    expect(container.querySelector('.loom-location-editor')).not.toBeNull();
+    expect(
+      container.querySelector<HTMLInputElement>('.loom-location-editor input[aria-label="Label"]')
+        ?.value,
+    ).toBe('Unsaved draft');
+  });
+
+  it('keeps the authoritative Record returned by a Location edit callback', async () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const locationField = createLocationField();
+    const record = createLocationRecord('record_01', 'Old label');
+    const updatedRecord = {
+      ...record,
+      revision: 2,
+      values: { field_location: { label: 'Saved label', lat: 1, lng: 2 } },
+    };
+    const onLocationEdit = vi.fn().mockResolvedValue(updatedRecord);
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      onLocationEdit,
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      fields: [locationField],
+      selectedRecord: record,
+    });
+    container.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const form = container.querySelector<HTMLFormElement>('.loom-location-editor');
+    expect(form).not.toBeNull();
+    if (form === null) return;
+    form.querySelector<HTMLInputElement>('input[aria-label="Label"]')!.value = 'Draft label';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => expect(onLocationEdit).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain(
+        'Saved label',
+      ),
+    );
+    expect(controller.openRecord).toHaveBeenCalledWith('record_01');
+  });
+
   it('does not present Saved when Map camera saving failed', () => {
     const container = document.createElement('div');
     const controller = fakeController();
@@ -320,6 +454,7 @@ function fakeController(): {
   fitAll: ReturnType<typeof vi.fn>;
   saveDefaultCamera: ReturnType<typeof vi.fn>;
   loadNextClusterPage: ReturnType<typeof vi.fn>;
+  openRecord: ReturnType<typeof vi.fn>;
 } {
   const state = initialMapViewState(createMapView());
   const controller = {
@@ -334,6 +469,7 @@ function fakeController(): {
     fitAll: vi.fn(),
     saveDefaultCamera: vi.fn(),
     loadNextClusterPage: vi.fn(),
+    openRecord: vi.fn(),
     dispose: vi.fn(),
   };
   return controller;
@@ -373,3 +509,28 @@ function createMapView() {
     updatedAt: '',
   };
 }
+
+function createLocationField(): Field {
+  return {
+    id: 'field_location',
+    tableId: 'table_01',
+    name: 'Location',
+    position: 0,
+    schemaVersion: 1,
+    revision: 1,
+    type: 'location',
+    config: {},
+  };
+}
+
+function createLocationRecord(id: string, label: string): LoomTableRecord {
+  return {
+    id,
+    tableId: 'table_01',
+    revision: 1,
+    values: { field_location: { label, lat: 1, lng: 2 } },
+    createdAt: '',
+    updatedAt: '',
+  };
+}
+

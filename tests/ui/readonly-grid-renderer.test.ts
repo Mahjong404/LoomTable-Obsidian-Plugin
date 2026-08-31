@@ -96,6 +96,22 @@ describe('ReadonlyGridRenderer', () => {
     );
   });
 
+  it('moves focus to the Grid status when the focused Record disappears', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(createState(2));
+    container.querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_02"]')?.focus();
+    renderer.render(createState(0));
+
+    expect(document.activeElement).toBe(container.querySelector('.loom-grid-status'));
+  });
+
   it('commits Tab and Shift+Tab edits while keeping focus in the adjacent cell', () => {
     const container = document.createElement('div');
     document.body.append(container);
@@ -707,3 +723,4 @@ function locationState(value: JsonValue | undefined): GridState {
     ],
   };
 }
+

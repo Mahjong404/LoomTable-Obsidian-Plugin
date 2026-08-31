@@ -36,6 +36,7 @@ export interface MapViewControllerOptions {
   readonly viewport: MapViewportSource;
   readonly debounceMs?: number;
   readonly isOffline?: () => boolean;
+  readonly beforeRecordSelected?: (recordId: string) => boolean | Promise<boolean>;
   readonly onRecordSelected?: (record: LoomTableRecord) => void;
   readonly onClusterRecords?: (records: readonly LoomTableRecord[]) => void;
 }
@@ -240,6 +241,13 @@ export class MapViewController {
   async openRecord(recordId: string): Promise<void> {
     if (this.#options.isOffline?.() === true) {
       this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
+      return;
+    }
+    if (
+      this.#state.selectedRecord?.id !== recordId &&
+      this.#options.beforeRecordSelected !== undefined &&
+      !(await this.#options.beforeRecordSelected(recordId))
+    ) {
       return;
     }
     try {
@@ -566,3 +574,4 @@ function dataStatusForError(error: LoomTableClientError): MapDataStatus {
   if (error.details.code === 'VIEW_CONFIGURATION_REQUIRED') return 'configuration-required';
   return 'server-error';
 }
+
