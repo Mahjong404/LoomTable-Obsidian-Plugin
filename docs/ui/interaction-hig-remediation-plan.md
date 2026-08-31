@@ -35,7 +35,7 @@
 - Location 编辑、Map 数据刷新和部分键盘可访问性；
 - Save Status 的 WPS 风格显示；
 
-截至当前远端 Plugin main `7502990873d61eee6d26bb556393c5a2c4d381ea`，已交付切片应按以下范围解释：
+截至当前远端 Plugin main `195b7cf372a3f760f11e96162cf3e8f60f5dc41c`，已交付切片应按以下范围解释：
 
 - **S0**：PR #63–#67 的审计、构建 provenance 和只读 smoke 证据已归档；Grid/Detail/Map 的历史或 runtime-equivalent 观察有明确边界，Location 写入、故障注入、完整键盘、浅色/窄布局等仍保留 residual unverified。
 - **S1**：S1-A/B/C/D 的运行时切片由 PR #68/#70/#72/#74 交付，配套文档由 PR #69/#71/#73/#75 交付；共享文案、控件几何、危险确认、异步错误动作、Grid/Detail/Location seam 和 Map 可访问性已发布，但完整真实桌面门禁仍未闭合。
@@ -46,8 +46,8 @@
 
 - 真实 Obsidian smoke 尚未完整完成；
 - HIG Audit 文档中的当前 main 基线落后于实际 main；
-- 字段 Renderer/Editor 仍未统一；
-- Select/MultiSelect Chip、Attachment 和空值语义不完整；
+- 字段 Renderer/Editor 已通过 S3-A 建立共享基础，S3-B 已交付 Select/MultiSelect Chip/选项语义；S3-C 第一切片已交付结构化 Attachment，S3-C2 已交付 Detail Download host wiring；
+- Attachment 的 add/upload/open/preview/delete/retry 与 Record attachment-reference 生命周期仍未实现；
 - 危险操作的确认/撤销规则不一致；
 - Button 尺寸、危险层级和 Select 视觉契约不完整；
 - Grid/Detail/Map 的部分焦点、错误、空状态和重复操作行为仍需闭合；
@@ -352,15 +352,15 @@ Dashboard 不因本计划自动加入 Grid，也不在 HIG 中提前写入完整
 8. 同步统筹、Plugin 和 Server session 的当前阶段、阻塞点、合同和下一目标。
 9. 前一组未通过门禁时，不启动后一组的实现。
 
-## 6. 当前下一步（截至 Plugin main `6022a7b4b887a38251977b9fe1054b6eeea04b38`）
+## 6. 当前下一步（截至 Plugin main `195b7cf372a3f760f11e96162cf3e8f60f5dc41c`）
 
-S0、S1、S2 的已交付切片、S3-A registry 基础和 S3-B Select/MultiSelect 代码切片均有可追溯的自动化与远端 CI 证据；它们不能仅凭静态检查或 CI 被宣布为完整桌面验收完成。当前仍明确保留：
+S0、S1、S2 的已交付切片、S3-A registry 基础、S3-B Select/MultiSelect、S3-C Attachment renderer 以及 S3-C2 Download host wiring 均有可追溯的自动化与远端 CI 证据；它们不能仅凭静态检查或 CI 被宣布为完整桌面验收完成。当前仍明确保留：
 
-- current-main Obsidian 的完整 Grid、Detail、Location、Map、Settings 关键路径与错误/保存/焦点/键盘状态，及本片真实 Select/MultiSelect 编辑，仍需受控窗口复验；
+- current-main Obsidian 的完整 Grid、Detail、Location、Map、Settings 关键路径与错误/保存/焦点/键盘状态、Select/MultiSelect 编辑及本片 Attachment Download host，仍需受控窗口复验；
 - 浅色、深色、窄容器、marker/cluster 键盘激活、故障注入和保存/冲突恢复的完整桌面证据仍需受控环境；
 - 自动化 DOM/controller、构建和合同检查只能作为支持证据，不能替代真实 Obsidian smoke。
 
-因此，不宣布整个 S1/S2 或 S3 完成。S3-C 第一代码切片已由 PR #90 交付；下一项仍是安全的 host download/open/preview 与 attachment-reference 管理后续。本计划只记录其顺序，不在本片实现 add/upload/delete/retry，也不新增字段、View、CRUD、Dashboard、Server/API 或 OpenAPI 行为。
+因此，不宣布整个 S1/S2 或 S3 完成。S3-C 第一代码切片与 S3-C2 Download host wiring 已交付；下一项是 S3-C3 的安全 host open/preview、add/upload、delete、retry 与 attachment-reference 生命周期后续。本计划只记录其顺序，不在 S3-C2 实现这些动作，也不新增字段、View、CRUD、Dashboard、Server/API 或 OpenAPI 行为。
 
 本计划不修改规范性 HIG 正文；HIG 只描述稳定规则，本文件负责解决顺序、范围、门禁和实施记录。
 
@@ -391,3 +391,14 @@ S3-B 已交付，但整个 S3 未完成。下一项是 S3-C Attachment 交互/�
 本片不接入真实 LoomTableView/Obsidian host 的 download/open/preview；不实现 add/upload/delete/retry，因为这些动作需要安全的文件 picker/save/open 流程以及明确的 Record attachment-reference 更新路径。不得把 callback seam 当成真实动作完成，也不得由本片新增 API 或改变 offline、Mutation、Conflict、revision、changeCursor 合同。当前 main 的真实 Obsidian smoke 仍为 `unverified`。
 
 自动化证据：完整 `pnpm check` 通过，包含 format、lint（既有 warnings）、typecheck、39 个测试文件 / 359 个测试、OpenAPI drift 和 production build；代码 PR #90 与 main push CI 均成功。S3-C 仍未完成，后续只可在上述 host/引用合同明确后分片处理动作管理。
+
+
+## S3-C2 当前实施记录（2026-08-31）
+
+本片从 connector-核验的 Plugin main `c2937ed5370ceb983bc63eec4a927e3ca0391099` 开始，通过代码 PR #92 交付：head `d5f2f1f0412d1decfc793a2810e6e8c6fef16d17`，squash merge/main `195b7cf372a3f760f11e96162cf3e8f60f5dc41c`。PR 首轮 CI [33399275191](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33399275191) 仅因 `format:check` 失败；修正 connector 提交内容的尾换行后，最终 PR CI [33399637393](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33399637393) / job `99512497477` 与 main push CI [33399782204](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33399782204) / job `99512976540` 均成功。
+
+本片把现有 typed `onAttachmentDownload` 从 LoomTableView 的 Grid Detail 与 Map selected-record Detail 接到既有 `downloadAttachmentContent`。ready Attachment 才显示 Detail Download；Grid/Map compact 保持非交互。安全 host helper 使用 Blob/object URL、安全 basename 与 `attachment` 回退名，触发一次下载并在 `finally` 回收 URL；不自动写入 Vault，不把 response/ID/异常详情作为普通文案。offline 时显示可理解的禁用状态且不发起无缓存请求。
+
+本片保留现有 action 防重复、`aria-busy`、失败翻译、焦点与 en/zh-CN 语义测试；完整 `pnpm.cmd check` 通过（40 个测试文件 / 366 个测试、format、lint 既有 warnings、typecheck、OpenAPI drift、production build）。真实 current-main Obsidian smoke 的一次恢复捕获仍为黑屏且无 accessibility tree，故标记为 `UNVERIFIED`，不能由 jsdom/CI 替代。无 Server/API/OpenAPI/offline/Mutation/Conflict/revision/changeCursor 合同改动。
+
+S3-C3 尚未开始。后续需分别定义并安全接入 add/upload/open/preview/delete/retry 与 Record attachment-reference lifecycle；在安全文件 picker/save/open 及 published reference contract 明确前，不显示假动作或猜测新的 API。
