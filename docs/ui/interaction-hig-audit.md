@@ -1,6 +1,6 @@
 # Interaction HIG Audit Matrix
 
-> S2-B2 audit baseline is the connector-verified current Plugin main `52547a434ff74d2e37d1aeb74bb30a701bf1d02a`, following the Settings runtime delivery in [PR #83](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/83). This audit records the Settings status/persistence seam and does not announce S1 or S2 complete.
+> S2 final-gate audit checkpoint is the connector-verified current Plugin main `7502990873d61eee6d26bb556393c5a2c4d381ea`, after runtime PR #83 (`52547a434ff74d2e37d1aeb74bb30a701bf1d02a`) and docs PR #84. This audit corrects the plan checkpoint and does not announce S1 or S2 complete.
 > Current-main runtime inputs, Settings diagnostics, confirmation semantics, and CSS/accessibility contracts are reviewed below. Historical smoke rows remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 >
 
@@ -71,7 +71,9 @@ Normative sources: Interaction HIG, Design System, Grid spec, Map spec, Client C
 - Drafts are cleared only for the completed Record when its queue returns idle; a successful applied response still uses the existing authoritative full Record path. Error, conflict, terminal/idempotency, and offline states remain outside Saved; no Mutation/Conflict/revision/changeCursor contract was changed.
 - Regression coverage is in `tests/ui/grid-view-controller.test.ts` and `tests/ui/readonly-grid-renderer.test.ts`, alongside the existing Record Detail/Location tests. PR CI [33373286347](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33373286347) / job `99428997829`, and main push CI [33373376608](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33373376608) / job `99429283112` succeeded. The full remote check reported 37 test files / 322 tests; local check also passed after providing the temporary local Git index required by the repository OpenAPI drift script.
 - Current-main audit confirms the existing S1-D Detail/Location invoking-focus, dirty-draft guard, clear/unset confirmation, no-matching-Map guard, and Location error association remain unchanged and covered by prior tests; this slice did not rewrite them. No real current-main Obsidian smoke was run, so desktop Grid editing, mutation failures, exact focus return, Location mutation, and light/dark/narrow acceptance remain unverified.
-- S2-A is not fully complete: this entry is the first minimal Grid failure-recovery slice. Detail/Location end-to-end desktop acceptance and any deeper editor/CRUD/View work remain outside this delivery. This slice makes no Server, API, OpenAPI, or offline-read-only change.## S2-B2 Settings status, persistence, and HIG seam (published)
+- S2-A is not fully complete: this entry is the first minimal Grid failure-recovery slice. Detail/Location end-to-end desktop acceptance and any deeper editor/CRUD/View work remain outside this delivery. This slice makes no Server, API, OpenAPI, or offline-read-only change.
+
+## S2-B2 Settings status, persistence, and HIG seam (published)
 
 - This slice started from the connector-verified Plugin `main` `92caac86a1736997077165d601132cedcb27e5d4` after the published S2-B1 Map data/tile/Marker-Cluster slice. It does not change Server/API/OpenAPI, offline-read-only semantics, Secret Storage ownership, or any data/mutation contract.
 - Current-main audit retained the published S1-B provider error-kind mapping, bounded Details diagnostics, named Profile/Provider confirmations, alertdialog focus containment/return, Obsidian `Setting#setWarning()`, `SecretComponent`, and translator parity. Those existing seams were not rewritten.
@@ -247,3 +249,28 @@ Out of scope remains new Record creation/import, Relation/Formula/Lookup/Rollup,
 - Desktop boundary: no real current-main Obsidian smoke was run for S2-B1. Map marker/cluster desktop activation, tile/network fault injection, focus return, light/dark/narrow layout, and mutation/error transitions remain unverified; jsdom, CI, and historical runtime-equivalent smoke are not desktop acceptance evidence. No user data, credentials, settings, or Provider configuration were changed.
 - Delivery: main is now `b3fdd64d5b9c9b851935068d33207352976a1f41`; main push CI [33378089207](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33378089207) / job `99443998916` succeeded. S2-B2 Settings and later S3/S4/S5/S6 work remain out of scope.
 - Contract boundary: Server current docs/main remains `ab949d59c37680d53b4109e1502f8478b24cc655`; Server stable-support/runtime/API freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`; Plugin OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992` with checked-in blob `92b416993ce6be4664d8bee783f2dcaed36e05b5`. No Server/API/OpenAPI/generated transport/offline semantic changes were made.
+
+
+## S2 final gate and P1.5 plan checkpoint (2026-08-31)
+
+- Current Plugin main/ref is `7502990873d61eee6d26bb556393c5a2c4d381ea`, independently verified through the GitHub connector. PR #84 is docs-only: base `52547a434ff74d2e37d1aeb74bb30a701bf1d02a`, head `1fc37529bdd75cf2dbcffafa30d525f99635aabb`, merge/main `7502990873d61eee6d26bb556393c5a2c4d381ea`; changed files are only `docs/development-log.md` and `docs/ui/interaction-hig-audit.md`.
+- The runtime source for the current main is the PR #83 merge `52547a434ff74d2e37d1aeb74bb30a701bf1d02a`; PR #84 changes documentation only. The current-main-equivalent build was run from a clean staging source: `pnpm install --frozen-lockfile` and `pnpm build` succeeded. The resulting `main.js` SHA256 is `FA64A78BE2E99A6897F191F7381E8C6BD3E6ED21CC8CADA32A6CC3DAF06EA242`, size `362832 bytes`, built at `2026-08-31T10:16:32.5047976Z`. The seven PR #83 runtime/test files matched their connector-verified Git blob SHAs; this is build provenance, not a claim that a desktop smoke passed.
+- Plan correction: the old `d3469e7...` line is historical only. S0/S1/S2 delivery is now listed as S0 evidence/desktop residuals, S1-A through S1-D shared-HIG slices, and S2-A/A2/B1/B2 existing-flow slices. S3 is recorded only as follow-up; no S3 code is authorized here.
+- Computer Use was initialized, but `list_apps` and `list_windows` returned no Obsidian window. Launching the pre-installed Obsidian executable returned `accessibility window-opened handler did not become ready`; a subsequent process/window check found no Obsidian process or target window. Therefore no current-main bundle installation, reload, or current-main desktop observation was performed. No user data, notes, credentials, Provider configuration, or Settings were changed.
+
+### S2 final gate smoke matrix
+
+| Surface / condition | Status | Evidence boundary |
+|---|---|---|
+| Grid first load / selectors / rows / Save Status | UNVERIFIED | No controllable current-main Obsidian window was available in this session. |
+| Detail open / close / invoking-focus return | UNVERIFIED | No current-main desktop action; historical runtime-equivalent smoke is not current-main evidence. |
+| Location display / set-clear-unset / dirty guard | UNVERIFIED | No mutation or Location editor action was performed. |
+| Map data / summary / Provider / tiles / attribution | UNVERIFIED | No current-main desktop reload or Map observation was possible. |
+| Settings connection/save/error/focus behavior | UNVERIFIED | No current-main Settings window or fault injection was possible. |
+| Keyboard / ARIA / error / Save Status / Conflict / Offline paths | UNVERIFIED | DOM/controller/CI evidence is supporting evidence only, not desktop acceptance. |
+| Light theme | UNVERIFIED | No theme change was made. |
+| Dark theme | UNVERIFIED | Earlier dark full-window observations used runtime-equivalent historical bundles, not this current-main build. |
+| Narrow layout | UNVERIFIED | No window resize or pane configuration change was made. |
+| Build / contract / PR CI | PASS | Build provenance above; PR #83/#84 checks passed, and no Server/API/OpenAPI changes were made. |
+
+S2 final-gate verdict: **not complete**. The implementation and documentation/CI chain is published, but the current-main real Obsidian gate remains blocked by the unavailable target window/Computer Use activation. The residual rows above are intentionally not converted to PASS.

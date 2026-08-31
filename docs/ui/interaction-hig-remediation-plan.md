@@ -34,6 +34,12 @@
 - Grid Cell 编辑、Mutation Queue、冲突恢复；
 - Location 编辑、Map 数据刷新和部分键盘可访问性；
 - Save Status 的 WPS 风格显示；
+
+截至当前远端 Plugin main `7502990873d61eee6d26bb556393c5a2c4d381ea`，已交付切片应按以下范围解释：
+
+- **S0**：PR #63–#67 的审计、构建 provenance 和只读 smoke 证据已归档；Grid/Detail/Map 的历史或 runtime-equivalent 观察有明确边界，Location 写入、故障注入、完整键盘、浅色/窄布局等仍保留 residual unverified。
+- **S1**：S1-A/B/C/D 的运行时切片由 PR #68/#70/#72/#74 交付，配套文档由 PR #69/#71/#73/#75 交付；共享文案、控件几何、危险确认、异步错误动作、Grid/Detail/Location seam 和 Map 可访问性已发布，但完整真实桌面门禁仍未闭合。
+- **S2**：S2-A/A2/B1/B2 的运行时切片由 PR #77/#79/#81/#83 交付，配套文档由 PR #78/#80/#82/#84 交付；Grid/Detail/Location/Map/Settings 的自动化与契约门禁已记录，但 current-main 真实 Obsidian 最终门禁仍待受控环境验证。
 - 中英文消息目录及部分 Map 文案测试。
 
 但不能把当前状态视为“HIG 全部满足”，原因是：
@@ -346,12 +352,14 @@ Dashboard 不因本计划自动加入 Grid，也不在 HIG 中提前写入完整
 8. 同步统筹、Plugin 和 Server session 的当前阶段、阻塞点、合同和下一目标。
 9. 前一组未通过门禁时，不启动后一组的实现。
 
-## 6. 当前下一步
+## 6. 当前下一步（截至 Plugin main `7502990873d61eee6d26bb556393c5a2c4d381ea`）
 
-当前下一项是 **S0：基线、范围和验收证据**：
+S0、S1、S2 的代码/文档切片和 PR/CI 追溯已发布，但它们不能仅凭静态检查或 CI 被宣布为完整 HIG/桌面验收完成。当前仍明确保留：
 
-- 先修正 HIG Audit 的 main/CI 追踪；
-- 再完成真实 Obsidian smoke，或记录明确的环境阻塞；
-- S0 未闭合前不扩展新的字段、View 或 CRUD 代码。
+- current-main Obsidian 的 Grid、Detail、Location、Map、Settings 关键路径与错误/保存/焦点/键盘状态未能在本轮受控窗口复验；
+- 浅色、深色、窄容器、marker/cluster 键盘激活、故障注入和保存/冲突恢复的完整桌面证据仍需受控环境；
+- 自动化 DOM/controller、构建和合同检查只能作为支持证据，不能替代真实 Obsidian smoke。
+
+因此，当前计划不宣布 S1 或 S2 全部完成。下一项仅记录为 **S3 follow-up**：Field Renderer/Editor 的范围、能力矩阵和验收标准可以进入后续设计与产品排期；本次 S2 最终门禁不实现 S3，不新增字段、View、CRUD、Dashboard、Server/API 或 OpenAPI 行为。
 
 本计划不修改规范性 HIG 正文；HIG 只描述稳定规则，本文件负责解决顺序、范围、门禁和实施记录。
