@@ -891,4 +891,3 @@ function createLocationRecord(id: string, label: string): LoomTableRecord {
     updatedAt: '',
   };
 }
-

@@ -272,4 +272,3 @@ export const simplifiedChineseMessages = {
   'validation.fieldValue.locationLatitudeRange': 'Location 纬度必须介于 -90 和 90 之间。',
   'validation.fieldValue.locationLongitudeRange': 'Location 经度必须介于 -180 和 180 之间。',
 } as const satisfies MessageCatalog;
-
