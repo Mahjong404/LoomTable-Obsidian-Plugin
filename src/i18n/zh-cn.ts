@@ -82,6 +82,11 @@ export const simplifiedChineseMessages = {
   'record.details': '记录详情',
   'record.field.unset': '未设置',
   'record.field.cleared': '已清除',
+  'record.value.unavailable': '值不可用',
+  'record.option.deleted': '已删除选项',
+  'record.option.unavailable': '选项不可用',
+  'record.attachment.type': '类型',
+  'record.attachment.size': '大小',
   'record.location.edit': '编辑地点',
   'record.location.label': '标签',
   'record.location.address': '地址',
@@ -243,3 +248,4 @@ export const simplifiedChineseMessages = {
   'validation.fieldValue.locationLatitudeRange': 'Location 纬度必须介于 -90 和 90 之间。',
   'validation.fieldValue.locationLongitudeRange': 'Location 经度必须介于 -180 和 180 之间。',
 } as const satisfies MessageCatalog;
+
