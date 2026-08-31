@@ -104,6 +104,12 @@ export default class LoomTablePlugin extends Plugin {
             registry: this.tileProviders,
             credentials: this.tileCredentials,
             saveSettings: () => this.saveSettings(),
+            openSettings: () => {
+              const app = this.app as typeof this.app & {
+                setting?: { open: () => void };
+              };
+              app.setting?.open();
+            },
             createRenderer: (): MapRendererInstance => {
               const renderer = new LeafletMapRenderer(new LeafletMapAdapter());
               return {

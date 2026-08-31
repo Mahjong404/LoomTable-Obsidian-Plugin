@@ -7,6 +7,7 @@ import type {
   Workspace,
 } from '../../client/loomtable-client';
 import { createTranslator, type Translator } from '../../i18n';
+import type { MessageKey } from '../../i18n/messages';
 import type {
   TileProviderRef,
   TileProviderSummary,
@@ -55,6 +56,15 @@ export interface MapViewOptions {
   readonly providers?: readonly TileProviderSummary[];
   readonly selectedProvider?: TileProviderRef;
   readonly onProviderChange?: (provider: TileProviderRef) => void | Promise<void>;
+  readonly onOpenSettings?: () => void | Promise<void>;
+}
+
+type MapAction = 'refresh' | 'fitAll' | 'saveCamera' | 'settings';
+
+interface MapActionButtonSpec {
+  readonly action: MapAction;
+  readonly labelKey: MessageKey;
+  readonly pendingKey: MessageKey;
 }
 
 export class MapView {
@@ -66,9 +76,12 @@ export class MapView {
   #tileStatus: HTMLElement | null = null;
   #details: HTMLElement | null = null;
   #selectedRecordId: string | null = null;
-  #refreshButton: HTMLButtonElement | null = null;
-  #fitAllButton: HTMLButtonElement | null = null;
-  #saveCameraButton: HTMLButtonElement | null = null;
+  #errorActionButton: HTMLButtonElement | null = null;
+  #lastState: MapViewState | null = null;
+  #destroyed = false;
+  readonly #pendingActions = new Set<MapAction>();
+  readonly #actionButtons = new Map<HTMLButtonElement, MapActionButtonSpec>();
+  #focusedAction: MapAction | null = null;
 
   constructor(
     container: HTMLElement,
@@ -80,7 +93,7 @@ export class MapView {
   }
 
   mount(): void {
-    if (this.#unsubscribe !== null) return;
+    if (this.#unsubscribe !== null || this.#destroyed) return;
     const translate = this.options.translate ?? createTranslator('en');
     const root = document.createElement('section');
     root.className = 'loom-map-shell';
@@ -103,14 +116,17 @@ export class MapView {
             this.options.onProviderChange,
             translate,
           );
-    const refresh = button(
-      translate('map.refresh'),
-      () => void this.#controller.refreshCurrentViewport(),
+    const refresh = this.#createActionButton('refresh', 'map.refresh', 'map.refreshing', () =>
+      this.#controller.refreshCurrentViewport(),
     );
-    const fitAll = button(translate('map.fitAll'), () => void this.#controller.fitAll());
-    const saveCamera = button(
-      translate('map.saveCamera'),
-      () => void this.#controller.saveDefaultCamera(),
+    const fitAll = this.#createActionButton('fitAll', 'map.fitAll', 'map.fittingAll', () =>
+      this.#controller.fitAll(),
+    );
+    const saveCamera = this.#createActionButton(
+      'saveCamera',
+      'map.saveCamera',
+      'map.savingCamera',
+      () => this.#controller.saveDefaultCamera(),
     );
     toolbar.append(refresh, fitAll, saveCamera);
     if (provider !== null) toolbar.append(provider);
@@ -149,15 +165,13 @@ export class MapView {
     this.#saveStatus = saveStatus;
     this.#tileStatus = tileStatus;
     this.#details = details;
-    this.#refreshButton = refresh;
-    this.#fitAllButton = fitAll;
-    this.#saveCameraButton = saveCamera;
     this.#unsubscribe = this.#controller.subscribe((state) => this.renderState(state));
     this.#controller.mount(mapContainer);
     void this.#controller.load();
   }
 
   destroy(): void {
+    this.#destroyed = true;
     this.#unsubscribe?.();
     this.#unsubscribe = null;
     this.#controller.dispose();
@@ -166,27 +180,29 @@ export class MapView {
     this.#tileStatus = null;
     this.#details = null;
     this.#selectedRecordId = null;
-    this.#refreshButton = null;
-    this.#fitAllButton = null;
-    this.#saveCameraButton = null;
+    this.#errorActionButton = null;
+    this.#lastState = null;
+    this.#focusedAction = null;
+    this.#actionButtons.clear();
     this.#container.replaceChildren();
   }
 
   renderState(state: MapViewState): void {
     if (this.#status === null || this.#tileStatus === null || this.#saveStatus === null) return;
-    const offline = state.dataStatus === 'offline';
-    this.#refreshButton?.toggleAttribute('disabled', offline);
-    this.#fitAllButton?.toggleAttribute('disabled', offline);
-    this.#saveCameraButton?.toggleAttribute('disabled', offline);
+    this.#lastState = state;
     renderSaveStatus(
       this.#saveStatus,
       state.saveStatus,
       this.options.translate ?? createTranslator('en'),
     );
     const translate = this.options.translate ?? createTranslator('en');
+    if (this.#errorActionButton !== null) this.#actionButtons.delete(this.#errorActionButton);
+    this.#errorActionButton = null;
+    const dataAction = this.#renderDataAction();
     this.#status.dataset.status = state.dataStatus;
     this.#status.replaceChildren(
       document.createTextNode(describeDataState(state, translate)),
+      ...(dataAction === null ? [] : [dataAction]),
       ...(state.error === null
         ? []
         : [renderDiagnostic(translate('common.openDiagnostics'), errorDiagnostic(state.error))]),
@@ -204,6 +220,91 @@ export class MapView {
           ]),
     );
     this.#renderDetails(state, translate);
+    this.#syncActionButtons(translate);
+    this.#restoreFocusedAction();
+  }
+
+  #createActionButton(
+    action: MapAction,
+    labelKey: MessageKey,
+    pendingKey: MessageKey,
+    operation: () => void | Promise<void>,
+  ): HTMLButtonElement {
+    const translate = this.options.translate ?? createTranslator('en');
+    const element = button(translate(labelKey), () => {
+      if (element.disabled) return;
+      this.#focusedAction = action;
+      element.focus();
+      this.#runAction(action, operation);
+    });
+    element.setAttribute('aria-label', translate(labelKey));
+    this.#actionButtons.set(element, { action, labelKey, pendingKey });
+    return element;
+  }
+
+  #runAction(action: MapAction, operation: () => void | Promise<void>): void {
+    if (this.#pendingActions.has(action)) return;
+    this.#pendingActions.add(action);
+    this.#syncActionButtons(this.options.translate ?? createTranslator('en'));
+    void Promise.resolve()
+      .then(operation)
+      .catch(() => undefined)
+      .finally(() => {
+        this.#pendingActions.delete(action);
+        if (this.#destroyed) return;
+        this.#syncActionButtons(this.options.translate ?? createTranslator('en'));
+        this.#restoreFocusedAction();
+        this.#focusedAction = null;
+      });
+  }
+
+  #syncActionButtons(translate: Translator): void {
+    const offline = this.#lastState?.dataStatus === 'offline';
+    for (const [element, spec] of this.#actionButtons) {
+      const pending = this.#pendingActions.has(spec.action);
+      const label = translate(pending ? spec.pendingKey : spec.labelKey);
+      element.disabled = pending || (offline && spec.action !== 'settings');
+      element.textContent = label;
+      element.setAttribute('aria-label', label);
+      if (pending) element.setAttribute('aria-busy', 'true');
+      else element.removeAttribute('aria-busy');
+    }
+  }
+
+  #restoreFocusedAction(): void {
+    if (this.#focusedAction === null) return;
+    for (const [element, spec] of this.#actionButtons) {
+      if (spec.action === this.#focusedAction && !element.disabled) {
+        element.focus();
+        return;
+      }
+    }
+  }
+
+  #renderDataAction(): HTMLButtonElement | null {
+    if (this.#lastState === null) return null;
+    if (
+      this.#lastState.dataStatus === 'authentication' ||
+      this.#lastState.dataStatus === 'forbidden'
+    ) {
+      if (this.options.onOpenSettings === undefined) return null;
+      const action = this.#createActionButton(
+        'settings',
+        'common.openSettings',
+        'common.openingSettings',
+        this.options.onOpenSettings,
+      );
+      this.#errorActionButton = action;
+      return action;
+    }
+    if (this.#lastState.dataStatus === 'network' || this.#lastState.dataStatus === 'server-error') {
+      const action = this.#createActionButton('refresh', 'map.retry', 'map.refreshing', () =>
+        this.#controller.refreshCurrentViewport(),
+      );
+      this.#errorActionButton = action;
+      return action;
+    }
+    return null;
   }
 
   #renderDetails(state: MapViewState, translate: Translator): void {

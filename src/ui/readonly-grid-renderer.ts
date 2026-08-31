@@ -1,4 +1,5 @@
 import type { Translator } from '../i18n';
+import type { MessageKey } from '../i18n/messages';
 import type { Field, JsonValue, LoomTableRecord } from '../client/loomtable-client';
 import type { GridConflict, GridState, GridStatus } from './grid-view-controller';
 import { editorTextValue, isEditableField } from './field-value-editor';
@@ -25,6 +26,15 @@ export interface GridRendererCallbacks {
     trigger?: HTMLElement,
   ) => Promise<boolean>;
   readonly onRetryEdit?: (recordId: string) => void;
+  readonly onOpenSettings?: () => void | Promise<void>;
+}
+
+type GridAction = 'refresh' | 'settings';
+
+interface GridActionButtonSpec {
+  readonly action: GridAction;
+  readonly labelKey: MessageKey;
+  readonly pendingKey: MessageKey;
 }
 
 interface VirtualGridRefs {
@@ -48,6 +58,10 @@ export class ReadonlyGridRenderer {
   #focusedCellKey: string | null = null;
   #focusedCellPosition: { readonly rowIndex: number; readonly fieldIndex: number } | null = null;
   #lastConflictIds = new Set<string>();
+  #lastState: GridState | null = null;
+  readonly #pendingActions = new Set<GridAction>();
+  readonly #actionButtons = new Map<HTMLButtonElement, GridActionButtonSpec>();
+  #focusedAction: GridAction | null = null;
 
   constructor(container: HTMLElement, translate: Translator, callbacks: GridRendererCallbacks) {
     this.#container = container;
@@ -56,7 +70,9 @@ export class ReadonlyGridRenderer {
   }
 
   render(state: GridState): void {
+    this.#lastState = state;
     this.#virtualGrid = null;
+    this.#actionButtons.clear();
     const root = createElement('div', 'loom-grid-shell');
     root.setAttribute('role', 'region');
     root.setAttribute('aria-label', this.#translate('grid.table'));
@@ -89,8 +105,11 @@ export class ReadonlyGridRenderer {
     );
     this.#lastConflictIds = conflictIds;
     this.#container.replaceChildren(root);
+    this.#syncActionButtons();
     if (hasNewConflict) {
       this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus();
+    } else if (this.#focusedAction !== null) {
+      this.#restoreFocusedAction();
     } else {
       this.#restoreFocusedCell();
     }
@@ -111,11 +130,9 @@ export class ReadonlyGridRenderer {
         createTextElement('span', `${state.records.length} ${this.#translate('grid.rows')}`),
       );
     }
-    const refresh = createElement('button', 'loom-button');
-    refresh.type = 'button';
-    refresh.textContent = this.#translate('grid.refresh');
-    refresh.disabled = state.status === 'loading';
-    refresh.addEventListener('click', () => void this.#callbacks.onRefresh());
+    const refresh = this.#createActionButton('refresh', 'grid.refresh', 'grid.refreshing', () =>
+      this.#callbacks.onRefresh(),
+    );
     const saveStatus = createElement('span', 'loom-save-status');
     renderSaveStatus(saveStatus, state.saveStatus, this.#translate);
     toolbar.append(title, saveStatus, refresh);
@@ -675,13 +692,92 @@ export class ReadonlyGridRenderer {
     statusBox.setAttribute('aria-live', 'polite');
     statusBox.setAttribute('aria-atomic', 'true');
     const message = statusMessage(status, state, this.#translate);
-    statusBox.append(createTextElement('p', message));
+    const action = this.#renderStatusAction(status);
+    statusBox.append(createTextElement('p', message), ...(action === null ? [] : [action]));
     if (state.error !== null) {
       statusBox.append(
         renderDiagnostic(this.#translate('grid.diagnostic.error'), errorDiagnostic(state.error)),
       );
     }
     return statusBox;
+  }
+
+  #renderStatusAction(status: GridStatus): HTMLButtonElement | null {
+    if (status === 'authentication' || status === 'forbidden') {
+      if (this.#callbacks.onOpenSettings === undefined) return null;
+      return this.#createActionButton(
+        'settings',
+        'common.openSettings',
+        'common.openingSettings',
+        this.#callbacks.onOpenSettings,
+      );
+    }
+    if (status === 'network' || status === 'server-error') {
+      return this.#createActionButton('refresh', 'grid.retryRequest', 'grid.refreshing', () =>
+        this.#callbacks.onRefresh(),
+      );
+    }
+    return null;
+  }
+
+  #createActionButton(
+    action: GridAction,
+    labelKey: MessageKey,
+    pendingKey: MessageKey,
+    operation: () => void | Promise<void>,
+  ): HTMLButtonElement {
+    const element = createElement('button', 'loom-button');
+    element.type = 'button';
+    element.textContent = this.#translate(labelKey);
+    element.setAttribute('aria-label', this.#translate(labelKey));
+    element.addEventListener('click', () => {
+      if (element.disabled) return;
+      this.#focusedAction = action;
+      element.focus();
+      this.#runAction(action, operation);
+    });
+    this.#actionButtons.set(element, { action, labelKey, pendingKey });
+    return element;
+  }
+
+  #runAction(action: GridAction, operation: () => void | Promise<void>): void {
+    if (this.#pendingActions.has(action)) return;
+    this.#pendingActions.add(action);
+    this.#syncActionButtons();
+    void Promise.resolve()
+      .then(operation)
+      .catch(() => undefined)
+      .finally(() => {
+        this.#pendingActions.delete(action);
+        this.#syncActionButtons();
+        this.#restoreFocusedAction();
+        this.#focusedAction = null;
+      });
+  }
+
+  #syncActionButtons(): void {
+    const state = this.#lastState;
+    const offline = state?.status === 'offline';
+    const loading = state?.status === 'loading';
+    for (const [element, spec] of this.#actionButtons) {
+      const pending = this.#pendingActions.has(spec.action);
+      const label = this.#translate(pending ? spec.pendingKey : spec.labelKey);
+      element.disabled = pending || (spec.action === 'refresh' && (offline || loading));
+      element.textContent = label;
+      element.setAttribute('aria-label', label);
+      if (pending) element.setAttribute('aria-busy', 'true');
+      else element.removeAttribute('aria-busy');
+    }
+  }
+
+  #restoreFocusedAction(): void {
+    if (this.#focusedAction === null) return;
+    for (const [element, spec] of this.#actionButtons) {
+      if (spec.action === this.#focusedAction && !element.disabled) {
+        element.focus();
+        return;
+      }
+    }
   }
 }
 

@@ -14,6 +14,10 @@ describe('i18n', () => {
     expect(createTranslator('zh-CN')('connection.empty')).toBe('尚未配置连接档案。');
     expect(createTranslator('zh-CN')('grid.table')).toBe('数据表');
     expect(createTranslator('zh-CN')('record.details')).toBe('记录详情');
+    expect(createTranslator('en')('common.openSettings')).toBe('Open Settings');
+    expect(createTranslator('zh-CN')('common.openSettings')).toBe('打开设置');
+    expect(createTranslator('en')('map.refreshing')).toBe('Refreshing…');
+    expect(createTranslator('zh-CN')('map.refreshing')).toBe('正在刷新…');
   });
 
   it('resolves auto to the current Obsidian language on every translation call', () => {
