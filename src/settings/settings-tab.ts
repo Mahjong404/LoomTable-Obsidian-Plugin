@@ -27,10 +27,9 @@ import {
 } from '../ui/dangerous-action-confirmation';
 import { getLocaleOptions } from './locale-options';
 import {
+  ConnectionCheckController,
   connectionCheckTone,
-  connectionDiagnostics,
-  describeConnectionCheck,
-  type ConnectionCheckState,
+  renderConnectionCheckDescription,
 } from './connection-check-presentation';
 import {
   DEFAULT_SERVER_ORIGIN,
@@ -44,10 +43,11 @@ import {
   setDefaultConnectionProfile,
   type LocalePreference,
 } from './plugin-settings';
+import { SettingsSaveController } from './settings-save-controller';
 
 export class LoomTableSettingTab extends PluginSettingTab {
-  readonly #connectionChecks = new Map<ConnectionProfile['id'], ConnectionCheckState>();
-  readonly #checkSequences = new Map<ConnectionProfile['id'], number>();
+  readonly #connectionChecks = new ConnectionCheckController(() => this.display());
+  readonly #settingsSave = new SettingsSaveController();
   #customNameDraft = '';
   #customUrlDraft = '';
 
@@ -71,8 +71,16 @@ export class LoomTableSettingTab extends PluginSettingTab {
         .addOptions(getLocaleOptions(t))
         .setValue(this.loomTablePlugin.settings.locale)
         .onChange(async (locale) => {
+          const previousLocale = this.loomTablePlugin.settings.locale;
           this.loomTablePlugin.settings.locale = locale as LocalePreference;
-          await this.loomTablePlugin.saveSettings();
+          if (
+            !(await this.persistSettings(t, () => {
+              this.loomTablePlugin.settings.locale = previousLocale;
+            }))
+          ) {
+            this.display();
+            return;
+          }
           this.display();
           this.loomTablePlugin.refreshViews();
         }),
@@ -94,11 +102,21 @@ export class LoomTableSettingTab extends PluginSettingTab {
           .setButtonText(t('connection.addProfile'))
           .setCta()
           .onClick(async () => {
+            const previousProfiles = [...this.loomTablePlugin.settings.connectionProfiles];
+            const previousDefault = this.loomTablePlugin.settings.defaultConnectionProfileId;
             addConnectionProfile(this.loomTablePlugin.settings, {
               name: t('connection.newName'),
               serverOrigin: DEFAULT_SERVER_ORIGIN,
             });
-            await this.loomTablePlugin.saveSettings();
+            if (
+              !(await this.persistSettings(t, () => {
+                this.loomTablePlugin.settings.connectionProfiles = previousProfiles;
+                this.loomTablePlugin.settings.defaultConnectionProfileId = previousDefault;
+              }))
+            ) {
+              this.display();
+              return;
+            }
             this.display();
             this.loomTablePlugin.refreshViews();
           }),
@@ -115,8 +133,11 @@ export class LoomTableSettingTab extends PluginSettingTab {
 
     new Setting(section).setName(t('connection.name')).addText((text) =>
       text.setValue(profile.name).onChange(async (value) => {
+        const previousName = profile.name;
         profile.name = value.trim() || t('connection.newName');
-        await this.loomTablePlugin.saveSettings();
+        if (!(await this.persistSettings(t, () => (profile.name = previousName)))) {
+          this.display();
+        }
       }),
     );
 
@@ -171,14 +192,16 @@ export class LoomTableSettingTab extends PluginSettingTab {
               new Notice(t('connection.rememberTokenFailed'));
               return;
             }
-            try {
-              await this.loomTablePlugin.saveSettings();
+            if (
+              !(await this.persistSettings(t, () => {
+                profile.rememberToken = previous.rememberToken;
+                profile.tokenSecretId = previous.tokenSecretId;
+              }))
+            ) {
               this.display();
-            } catch {
-              profile.rememberToken = previous.rememberToken;
-              profile.tokenSecretId = previous.tokenSecretId;
-              new Notice(t('connection.rememberTokenFailed'));
+              return;
             }
+            this.display();
           }),
       );
 
@@ -207,14 +230,16 @@ export class LoomTableSettingTab extends PluginSettingTab {
               this.display();
               return;
             }
-            try {
-              await this.loomTablePlugin.saveSettings();
+            if (
+              !(await this.persistSettings(t, () => {
+                profile.rememberToken = previous.rememberToken;
+                profile.tokenSecretId = previous.tokenSecretId;
+              }))
+            ) {
               this.display();
-            } catch {
-              profile.rememberToken = previous.rememberToken;
-              profile.tokenSecretId = previous.tokenSecretId;
-              new Notice(t('connection.rememberTokenFailed'));
+              return;
             }
+            this.display();
           }),
       );
 
@@ -235,8 +260,16 @@ export class LoomTableSettingTab extends PluginSettingTab {
         .setValue(this.loomTablePlugin.settings.defaultConnectionProfileId === profile.id)
         .onChange(async (isDefault) => {
           if (!isDefault) return;
+          const previousDefault = this.loomTablePlugin.settings.defaultConnectionProfileId;
           setDefaultConnectionProfile(this.loomTablePlugin.settings, profile.id);
-          await this.loomTablePlugin.saveSettings();
+          if (
+            !(await this.persistSettings(t, () => {
+              this.loomTablePlugin.settings.defaultConnectionProfileId = previousDefault;
+            }))
+          ) {
+            this.display();
+            return;
+          }
           this.display();
         }),
     );
@@ -258,9 +291,19 @@ export class LoomTableSettingTab extends PluginSettingTab {
               ),
             async () => {
               this.invalidateConnectionCheck(profile);
-              this.credentials.delete(profile);
+              const previousProfiles = [...this.loomTablePlugin.settings.connectionProfiles];
+              const previousDefault = this.loomTablePlugin.settings.defaultConnectionProfileId;
               removeConnectionProfile(this.loomTablePlugin.settings, profile.id);
-              await this.loomTablePlugin.saveSettings();
+              if (
+                !(await this.persistSettings(t, () => {
+                  this.loomTablePlugin.settings.connectionProfiles = previousProfiles;
+                  this.loomTablePlugin.settings.defaultConnectionProfileId = previousDefault;
+                }))
+              ) {
+                this.display();
+                return;
+              }
+              this.credentials.delete(profile);
               this.display();
               this.loomTablePlugin.refreshViews();
             },
@@ -271,15 +314,20 @@ export class LoomTableSettingTab extends PluginSettingTab {
 
   private async saveServerOrigin(profile: ConnectionProfile, text: TextComponent): Promise<void> {
     const t = createTranslator(this.loomTablePlugin.settings.locale, getLanguage);
+    const previousOrigin = profile.serverOrigin;
     try {
       profile.serverOrigin = normalizeServerOrigin(text.getValue());
       this.invalidateConnectionCheck(profile);
       text.setValue(profile.serverOrigin);
-      await this.loomTablePlugin.saveSettings();
+      if (!(await this.persistSettings(t, () => (profile.serverOrigin = previousOrigin)))) {
+        text.setValue(previousOrigin);
+        return;
+      }
       window.setTimeout(() => this.display(), 0);
     } catch {
+      profile.serverOrigin = previousOrigin;
       new Notice(t('error.invalidOrigin'));
-      text.setValue(profile.serverOrigin);
+      text.setValue(previousOrigin);
     }
   }
 
@@ -300,8 +348,16 @@ export class LoomTableSettingTab extends PluginSettingTab {
         .onChange(async (value) => {
           const provider = providers.find((candidate) => providerKey(candidate.ref) === value);
           if (provider === undefined) return;
+          const previousProvider = this.loomTablePlugin.settings.mapPresentation.defaultProvider;
           this.loomTablePlugin.settings.mapPresentation.defaultProvider = provider.ref;
-          await this.loomTablePlugin.saveSettings();
+          if (
+            !(await this.persistSettings(t, () => {
+              this.loomTablePlugin.settings.mapPresentation.defaultProvider = previousProvider;
+            }))
+          ) {
+            this.display();
+            return;
+          }
           this.loomTablePlugin.refreshViews();
         });
     });
@@ -365,10 +421,22 @@ export class LoomTableSettingTab extends PluginSettingTab {
             new Notice(describeTileProviderError(error, t));
             return;
           }
+          const previousProfiles = [
+            ...this.loomTablePlugin.settings.mapPresentation.customProfiles,
+          ];
           this.loomTablePlugin.settings.mapPresentation.customProfiles.push(profile);
           this.#customNameDraft = '';
           this.#customUrlDraft = '';
-          await this.loomTablePlugin.saveSettings();
+          if (
+            !(await this.persistSettings(t, () => {
+              this.loomTablePlugin.settings.mapPresentation.customProfiles = previousProfiles;
+              this.#customNameDraft = name;
+              this.#customUrlDraft = urlTemplate;
+            }))
+          ) {
+            this.display();
+            return;
+          }
           this.display();
         }),
     );
@@ -393,11 +461,21 @@ export class LoomTableSettingTab extends PluginSettingTab {
                   button.buttonEl,
                 ),
               async () => {
+                const previousProfiles = [
+                  ...this.loomTablePlugin.settings.mapPresentation.customProfiles,
+                ];
                 this.loomTablePlugin.settings.mapPresentation.customProfiles =
                   this.loomTablePlugin.settings.mapPresentation.customProfiles.filter(
                     (candidate) => candidate.id !== profile.id,
                   );
-                await this.loomTablePlugin.saveSettings();
+                if (
+                  !(await this.persistSettings(t, () => {
+                    this.loomTablePlugin.settings.mapPresentation.customProfiles = previousProfiles;
+                  }))
+                ) {
+                  this.display();
+                  return;
+                }
                 this.display();
               },
             );
@@ -431,9 +509,23 @@ export class LoomTableSettingTab extends PluginSettingTab {
         new SecretComponent(this.app, container)
           .setValue(settings.credentialBindings[bindingKey] ?? '')
           .onChange(async (secretId) => {
+            const hadPreviousBinding = Object.prototype.hasOwnProperty.call(
+              settings.credentialBindings,
+              bindingKey,
+            );
+            const previousBinding = settings.credentialBindings[bindingKey];
             if (secretId.trim() === '') delete settings.credentialBindings[bindingKey];
             else settings.credentialBindings[bindingKey] = secretId.trim();
-            await this.loomTablePlugin.saveSettings();
+            if (
+              !(await this.persistSettings(t, () => {
+                if (hadPreviousBinding && previousBinding !== undefined) {
+                  settings.credentialBindings[bindingKey] = previousBinding;
+                } else delete settings.credentialBindings[bindingKey];
+              }))
+            ) {
+              this.display();
+              return;
+            }
             this.display();
           }),
       );
@@ -449,8 +541,8 @@ export class LoomTableSettingTab extends PluginSettingTab {
     let refresh = (): void => undefined;
     status.addButton((button) => {
       refresh = (): void => {
-        const state = this.#connectionChecks.get(profile.id) ?? { kind: 'idle' };
-        status.setDesc(renderConnectionDescription(state, t));
+        const state = this.#connectionChecks.stateFor(profile.id);
+        status.setDesc(renderConnectionCheckDescription(state, t));
         status.settingEl.removeClass(
           'is-idle',
           'is-pending',
@@ -462,59 +554,48 @@ export class LoomTableSettingTab extends PluginSettingTab {
         button
           .setButtonText(state.kind === 'checking' ? t('connection.testing') : t('connection.test'))
           .setDisabled(state.kind === 'checking');
+        button.buttonEl.setAttribute('aria-busy', String(state.kind === 'checking'));
       };
-      button.onClick(() => this.testConnection(profile));
+      button.onClick(() => void this.testConnection(profile));
     });
     refresh();
     return refresh;
   }
 
   private async testConnection(profile: ConnectionProfile): Promise<void> {
-    const sequence = (this.#checkSequences.get(profile.id) ?? 0) + 1;
-    this.#checkSequences.set(profile.id, sequence);
-    this.#connectionChecks.set(profile.id, { kind: 'checking' });
-    this.display();
-
-    const result = await this.loomTablePlugin.checkConnection(profile);
-    if (
-      this.#checkSequences.get(profile.id) !== sequence ||
-      !this.loomTablePlugin.settings.connectionProfiles.some(
-        (candidate) => candidate.id === profile.id,
-      )
-    ) {
-      return;
-    }
-    this.#connectionChecks.set(profile.id, { kind: 'complete', result });
-    this.display();
+    await this.#connectionChecks.run(
+      profile.id,
+      () => this.loomTablePlugin.checkConnection(profile),
+      () =>
+        this.loomTablePlugin.settings.connectionProfiles.some(
+          (candidate) => candidate.id === profile.id,
+        ),
+    );
   }
 
   private invalidateConnectionCheck(profile: ConnectionProfile): void {
-    this.#checkSequences.set(profile.id, (this.#checkSequences.get(profile.id) ?? 0) + 1);
-    this.#connectionChecks.delete(profile.id);
+    this.#connectionChecks.invalidate(profile.id);
   }
-}
-function renderConnectionDescription(
-  state: ConnectionCheckState,
-  t: ReturnType<typeof createTranslator>,
-): DocumentFragment {
-  const description = document.createDocumentFragment();
-  const summary = document.createElement('span');
-  summary.textContent = describeConnectionCheck(state, t);
-  description.append(summary);
-  const diagnostics = connectionDiagnostics(state);
-  if (diagnostics !== null) {
-    const details = document.createElement('details');
-    details.className = 'loom-diagnostic';
-    const disclosure = document.createElement('summary');
-    disclosure.textContent = t('common.openDiagnostics');
-    const pre = document.createElement('pre');
-    pre.textContent = diagnostics;
-    details.append(disclosure, pre);
-    description.append(document.createTextNode(' '), details);
-  }
-  return description;
-}
 
+  private async persistSettings(
+    t: ReturnType<typeof createTranslator>,
+    rollback: () => void,
+  ): Promise<boolean> {
+    const result = await this.#settingsSave.run(
+      () => this.loomTablePlugin.saveSettings(),
+      rollback,
+    );
+    if (result === 'busy') {
+      new Notice(t('settings.saveInProgress'));
+      return false;
+    }
+    if (result === 'failed') {
+      new Notice(t('settings.saveFailed'));
+      return false;
+    }
+    return true;
+  }
+}
 function providerKey(ref: TileProviderRef): string {
   return ref.kind === 'built-in' ? `built-in:${ref.id}` : `custom:${ref.profileId}`;
 }
