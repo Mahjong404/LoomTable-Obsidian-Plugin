@@ -363,3 +363,10 @@ S0、S1、S2 的代码/文档切片和 PR/CI 追溯已发布，但它们不能�
 因此，当前计划不宣布 S1 或 S2 全部完成。下一项仅记录为 **S3 follow-up**：Field Renderer/Editor 的范围、能力矩阵和验收标准可以进入后续设计与产品排期；本次 S2 最终门禁不实现 S3，不新增字段、View、CRUD、Dashboard、Server/API 或 OpenAPI 行为。
 
 本计划不修改规范性 HIG 正文；HIG 只描述稳定规则，本文件负责解决顺序、范围、门禁和实施记录。
+
+
+## S3-A 当前实施记录（2026-08-31）
+
+S3-A 以 Plugin main `3006c6217ef7e764ccc6c54b2a1c4d826b0a7eaf` 为基线，经 PR #86（head `400cff073958bc51c61ec34b0a320c6a1d5adb8a`）合并至 `81f616a43784b55643a413a02d7da70def225aac`。本片建立 `src/ui/field-renderer-registry.ts` 共享 Registry/Capability seam，并让 Grid、Record Detail、Map cluster 使用同一套翻译渲染语义，覆盖既有字段类型与 undefined/null/自然空值、Location 状态、结构化 Attachment 展示。MultiSelect 的 Chip/选项交互不在本片，S3-B 尚未开始。
+
+自动化证据为 clean staging 的 `pnpm install --frozen-lockfile` 与 `pnpm check`：39 个测试文件、348 个测试通过，OpenAPI drift 与 production build 通过；lint 无 error，仅保留既有 warning。当前 main 构建对应的真实 Obsidian smoke 未在本片执行，继续标记为 UNVERIFIED；不得用 jsdom/CI 替代。Server/API/OpenAPI、offline 只读语义和 mutation/Conflict/revision/changeCursor 合同未修改。
