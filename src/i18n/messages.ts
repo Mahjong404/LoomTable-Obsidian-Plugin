@@ -157,6 +157,8 @@ export const englishMessages = {
   'map.settings': 'Map and tile providers',
   'map.tiandituToken': 'TianDiTu Token',
   'settings.connections': 'Connection profiles',
+  'settings.saveFailed': 'Settings could not be saved. Review the values and try again.',
+  'settings.saveInProgress': 'Another settings change is being saved. Try again in a moment.',
   'settings.title': 'LoomTable',
   'view.configure': 'Configure a connection profile in LoomTable settings to get started.',
   'view.ready': 'LoomTable is ready for Plugin development.',
