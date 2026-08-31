@@ -224,6 +224,52 @@
   cursor: text;
 }
 
+.loom-field-value {
+  min-width: 0;
+}
+
+.loom-field-value-chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--loom-space-1);
+  max-width: 100%;
+  white-space: normal;
+}
+
+.loom-field-value-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0 var(--loom-space-1);
+  border: 1px solid var(--loom-border);
+  border-radius: var(--loom-radius-sm);
+  background: var(--loom-bg-secondary-alt);
+  color: var(--loom-text-normal);
+  overflow-wrap: anywhere;
+}
+
+.loom-field-value-chip[data-chip-state='deleted'] {
+  border-style: dashed;
+  font-weight: var(--loom-font-semibold);
+}
+
+.loom-field-value-chip-status {
+  color: var(--loom-text-muted);
+}
+
+.loom-grid-cell .loom-field-value {
+  min-width: 0;
+}
+
+.loom-map-cluster-record-label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--loom-space-1);
+  min-width: 0;
+}
+
 .loom-grid-cell[data-edit-state='queued'],
 .loom-grid-cell[data-edit-state='saving'] {
   background: var(--loom-bg-form);

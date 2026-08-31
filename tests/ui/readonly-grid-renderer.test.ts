@@ -605,6 +605,76 @@ describe('ReadonlyGridRenderer', () => {
     expect(cell?.getAttribute('aria-label')).toBe('Name: Empty');
     expect(cell?.dataset.valueState).toBe('empty');
   });
+
+  it('renders MultiSelect chips and opens its native multiple editor', () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    const state = createState(1);
+    const view = state.views[0];
+    const record = state.records[0];
+    if (view?.type !== 'grid' || record === undefined) throw new Error('Grid fixture is missing.');
+    const field: Field = {
+      id: 'field_multi',
+      tableId: 'table_01',
+      name: 'Tags',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'multiSelect',
+      config: {
+        options: [{ id: 'option_1', name: 'One', color: '#000000' }],
+        deletedOptions: [
+          { id: 'option_old', name: 'Old', color: '#000000', deletedAt: '2026-01-01' },
+        ],
+      },
+    };
+    const multiState: GridState = {
+      ...state,
+      fields: [field],
+      views: [
+        {
+          ...view,
+          config: { ...view.config, projection: ['field_multi'], columnOrder: ['field_multi'] },
+        },
+      ],
+      records: [{ ...record, values: { field_multi: ['option_old', 'option_1'] } }],
+    };
+
+    renderer.render(multiState);
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_multi"]',
+    );
+    expect(cell?.querySelector('.loom-field-value-chips')).not.toBeNull();
+    expect(
+      [...(cell?.querySelectorAll<HTMLElement>('[role="listitem"]') ?? [])].map(
+        (chip) => chip.textContent,
+      ),
+    ).toEqual(['Old (Deleted option)', 'One']);
+    expect(cell?.textContent).not.toContain('option_old');
+
+    cell?.click();
+    const editor = container.querySelector<HTMLSelectElement>('.loom-grid-editor');
+    expect(editor?.multiple).toBe(true);
+    expect([...(editor?.selectedOptions ?? [])].map((option) => option.value)).toEqual([
+      'option_1',
+      'option_old',
+    ]);
+
+    if (editor === null) {
+      throw new Error('MultiSelect editor is missing.');
+    }
+    const activeOption = editor.querySelector<HTMLOptionElement>('option[value="option_1"]');
+    const deletedOption = editor.querySelector<HTMLOptionElement>('option[value="option_old"]');
+    if (activeOption === null || deletedOption === null) {
+      throw new Error('MultiSelect editor options are missing.');
+    }
+    activeOption.selected = true;
+    deletedOption.selected = false;
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_multi', ['option_1']);
+  });
 });
 
 describe('getVirtualRowRange', () => {

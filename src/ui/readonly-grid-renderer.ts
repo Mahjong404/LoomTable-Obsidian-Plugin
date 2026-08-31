@@ -2,8 +2,11 @@ import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import type { Field, JsonValue, LoomTableRecord } from '../client/loomtable-client';
 import type { GridConflict, GridState, GridStatus } from './grid-view-controller';
-import { editorTextValue, isEditableField } from './field-value-editor';
-import { defaultFieldRendererRegistry } from './field-renderer-registry';
+import { isEditableField } from './field-value-editor';
+import {
+  createRenderedFieldValueElement,
+  defaultFieldRendererRegistry,
+} from './field-renderer-registry';
 import { renderSaveStatus } from './save-status';
 import { confirmDangerousAction } from './dangerous-action-confirmation';
 
@@ -430,7 +433,8 @@ export class ReadonlyGridRenderer {
       const displayValue = defaultFieldRendererRegistry.render(field, record.values[field.id], {
         translate: this.#translate,
       });
-      const cell = createGridCell(displayValue.text, 'loom-grid-cell');
+      const cell = createGridCell('', 'loom-grid-cell');
+      cell.append(createRenderedFieldValueElement(displayValue));
       cell.setAttribute('role', 'gridcell');
       cell.setAttribute('aria-colindex', String(fieldIndex + 2));
       cell.tabIndex = 0;
@@ -524,7 +528,11 @@ export class ReadonlyGridRenderer {
 
     this.#dismissedEditDraftKey = null;
     this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
-    const editor = createEditor(field, initialValue, this.#translate);
+    const editor = defaultFieldRendererRegistry.createEditor(
+      field,
+      initialValue as JsonValue | undefined,
+      { translate: this.#translate },
+    );
     editor.classList.add('loom-grid-editor');
     editor.setAttribute('aria-label', field.name);
     cell.replaceChildren(editor);
@@ -541,7 +549,9 @@ export class ReadonlyGridRenderer {
       const value =
         editor instanceof HTMLInputElement && editor.type === 'checkbox'
           ? editor.checked
-          : editor.value;
+          : editor instanceof HTMLSelectElement && editor.multiple
+            ? [...editor.selectedOptions].map((option) => option.value)
+            : editor.value;
       const result = this.#callbacks.onCellEdit?.(record.id, field.id, value);
       if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
       if (moveOffset !== 0) {
@@ -930,45 +940,6 @@ function createGridCell(text: string, className: string): HTMLElement {
   const cell = createElement('div', className);
   cell.textContent = text;
   return cell;
-}
-
-function createEditor(
-  field: Field,
-  value: unknown,
-  translate: Translator,
-): HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement {
-  const editorKind = defaultFieldRendererRegistry.capability(field).editor.kind;
-  if (editorKind === 'longText') {
-    const editor = document.createElement('textarea');
-    editor.value = editorTextValue(value as JsonValue | undefined, field);
-    return editor;
-  }
-  if (editorKind === 'select' && field.type === 'select') {
-    const editor = document.createElement('select');
-    const empty = document.createElement('option');
-    empty.value = '';
-    empty.textContent = translate('common.emptyValue');
-    editor.append(empty);
-    for (const option of field.config.options) {
-      const item = document.createElement('option');
-      item.value = option.id;
-      item.textContent = option.name;
-      editor.append(item);
-    }
-    editor.value = typeof value === 'string' ? value : '';
-    return editor;
-  }
-  if (editorKind === 'checkbox') {
-    const editor = document.createElement('input');
-    editor.type = 'checkbox';
-    editor.checked = value === true;
-    return editor;
-  }
-  const editor = document.createElement('input');
-  editor.type =
-    editorKind === 'number' || editorKind === 'date' || editorKind === 'url' ? editorKind : 'text';
-  editor.value = editorTextValue(value as JsonValue | undefined, field);
-  return editor;
 }
 
 function editDraftKey(recordId: string, fieldId: string): string {

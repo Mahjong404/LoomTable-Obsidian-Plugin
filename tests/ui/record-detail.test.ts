@@ -720,6 +720,36 @@ describe('Record Detail Location seam', () => {
     expect(attachment?.textContent).toBe('notes.md · Type: text/markdown · Size: 2 KB');
     expect(attachment?.textContent).not.toContain('{');
   });
+
+  it('renders Select and MultiSelect option names consistently as accessible values', () => {
+    const container = document.createElement('div');
+    const multiSelectField: Field = {
+      ...createField('field_multi', 'Tags'),
+      type: 'multiSelect',
+      config: {
+        options: [{ id: 'option_1', name: 'One', color: '#000000' }],
+        deletedOptions: [
+          { id: 'option_old', name: 'Old', color: '#000000', deletedAt: '2026-01-01' },
+        ],
+      },
+    };
+    container.append(
+      createRecordDetail(createRecord({ field_multi: ['option_old', 'option_1'] }), {
+        fields: [multiSelectField],
+        translate: createTranslator('en'),
+      }),
+    );
+
+    const value = container.querySelector<HTMLElement>('dd[data-field-id="field_multi"]');
+    expect(value?.querySelector('.loom-field-value-chips')).not.toBeNull();
+    expect(
+      [...(value?.querySelectorAll<HTMLElement>('[role="listitem"]') ?? [])].map(
+        (chip) => chip.textContent,
+      ),
+    ).toEqual(['Old (Deleted option)', 'One']);
+    expect(value?.getAttribute('aria-label')).toBe('Tags: Old (Deleted option), One');
+    expect(value?.textContent).not.toContain('option_old');
+  });
 });
 
 function createField(id: string, name: string): Field {
