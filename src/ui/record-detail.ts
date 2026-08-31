@@ -11,6 +11,7 @@ import {
   type RenderedAttachment,
 } from './field-renderer-registry';
 import { confirmDangerousAction as showDangerousActionConfirmation } from './dangerous-action-confirmation';
+import { isSafeAttachmentVaultPath } from './attachment-host';
 import {
   describeAttachmentUploadError,
   readAttachmentReferences,
@@ -215,6 +216,15 @@ function renderField(
         translate: options.translate,
         attachmentDownloadDisabled: options.offline === true,
         attachmentOpenPreviewDisabled: options.offline === true,
+        ...(field.type === 'attachment'
+          ? {
+              canAttachmentOpen: (attachment: RenderedAttachment) =>
+                attachment.source === 'vault' &&
+                isSafeAttachmentVaultPath(attachment.vaultPath),
+              canAttachmentPreview: (attachment: RenderedAttachment) =>
+                attachment.source === 'managed',
+            }
+          : {}),
         ...(onAttachmentDownload === undefined ? {} : { onAttachmentDownload }),
         ...(onAttachmentOpen === undefined ? {} : { onAttachmentOpen }),
         ...(onAttachmentPreview === undefined ? {} : { onAttachmentPreview }),
