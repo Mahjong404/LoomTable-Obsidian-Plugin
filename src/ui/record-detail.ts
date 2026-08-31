@@ -811,4 +811,3 @@ function createText<K extends keyof HTMLElementTagNameMap>(
   element.textContent = text;
   return element;
 }
-
