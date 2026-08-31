@@ -22,10 +22,14 @@ describe('Attachment open and preview host seams', () => {
     const host = { openVaultFile } satisfies AttachmentOpenHost;
     const callback = createAttachmentOpenCallback(host);
 
-    await callback('record_01', 'field_attachment', attachment({
-      source: 'vault',
-      vaultPath: 'attachments/report.pdf',
-    }));
+    await callback(
+      'record_01',
+      'field_attachment',
+      attachment({
+        source: 'vault',
+        vaultPath: 'attachments/report.pdf',
+      }),
+    );
 
     expect(openVaultFile).toHaveBeenCalledWith('attachments/report.pdf');
   });
@@ -34,10 +38,14 @@ describe('Attachment open and preview host seams', () => {
     const openVaultFile = vi.fn();
     const callback = createAttachmentOpenCallback({ openVaultFile });
 
-    await callback('record_01', 'field_attachment', attachment({
-      source: 'vault',
-      vaultPath: '../private/report.pdf',
-    }));
+    await callback(
+      'record_01',
+      'field_attachment',
+      attachment({
+        source: 'vault',
+        vaultPath: '../private/report.pdf',
+      }),
+    );
     await callback('record_01', 'field_attachment', attachment({ source: 'managed' }));
 
     expect(openVaultFile).not.toHaveBeenCalled();
@@ -64,10 +72,14 @@ describe('Attachment open and preview host seams', () => {
       translate: createTranslator('en'),
     });
 
-    await callback('record_grid', 'field_attachment', attachment({
-      filename: 'report.pdf',
-      mimeType: 'application/octet-stream',
-    }));
+    await callback(
+      'record_grid',
+      'field_attachment',
+      attachment({
+        filename: 'report.pdf',
+        mimeType: 'application/octet-stream',
+      }),
+    );
 
     expect(client.downloadAttachmentContent).toHaveBeenCalledWith('attachment_1');
     expect(host.createObjectUrl).toHaveBeenCalledTimes(1);
@@ -174,3 +186,4 @@ function attachment(overrides: Partial<RenderedAttachment> = {}): RenderedAttach
     ...overrides,
   };
 }
+
