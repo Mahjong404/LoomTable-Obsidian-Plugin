@@ -574,4 +574,3 @@ function dataStatusForError(error: LoomTableClientError): MapDataStatus {
   if (error.details.code === 'VIEW_CONFIGURATION_REQUIRED') return 'configuration-required';
   return 'server-error';
 }
-

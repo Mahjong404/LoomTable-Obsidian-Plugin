@@ -1233,4 +1233,3 @@ function deferred<T>(): {
   });
   return { promise, resolve: resolvePromise };
 }
-
