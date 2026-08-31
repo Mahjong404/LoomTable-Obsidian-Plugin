@@ -425,6 +425,10 @@
   gap: var(--loom-space-2);
 }
 
+.loom-location-status {
+  font-weight: var(--loom-font-semibold);
+}
+
 .loom-location-open-map {
   justify-self: start;
 }

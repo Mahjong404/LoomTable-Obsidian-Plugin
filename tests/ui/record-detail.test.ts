@@ -29,6 +29,54 @@ describe('Record Detail Location seam', () => {
     expect(values[1]).toContain('Cleared');
   });
 
+  it('distinguishes located, unlocated, unrenderable, cleared, and unset Location states', () => {
+    const container = document.createElement('div');
+    container.append(
+      createRecordDetail(
+        createRecord({
+          field_located: { lat: 31.2304, lng: 121.4737 },
+          field_unlocated: { label: 'No coordinates' },
+          field_unrenderable: { lat: 90, lng: 0 },
+          field_cleared: null,
+          field_unset: undefined,
+        }),
+        {
+          fields: [
+            createField('field_located', 'Located'),
+            createField('field_unlocated', 'Unlocated'),
+            createField('field_unrenderable', 'Unrenderable'),
+            createField('field_cleared', 'Cleared'),
+            createField('field_unset', 'Unset'),
+          ],
+          translate: createTranslator('en'),
+          callbacks: {
+            canOpenLocationInMap: () => true,
+            onOpenLocationInMap: vi.fn(),
+          },
+        },
+      ),
+    );
+
+    const fields = [...container.querySelectorAll<HTMLElement>('.loom-location-field')];
+    expect(fields.map((field) => field.dataset.locationState)).toEqual([
+      'located',
+      'unlocated',
+      'unrenderable',
+      'cleared',
+      'unset',
+    ]);
+    expect(fields[0]?.querySelector('.loom-location-status')?.textContent).toBe('Located');
+    expect(fields[1]?.querySelector('.loom-location-status')?.textContent).toBe('Unlocated');
+    expect(fields[2]?.querySelector('.loom-location-status')?.textContent).toBe(
+      'Not renderable at this Map scale',
+    );
+    expect(fields[3]?.textContent).toContain('Cleared');
+    expect(fields[4]?.textContent).toContain('Unset');
+    expect(fields[0]?.querySelector('.loom-location-open-map')).not.toBeNull();
+    expect(fields[1]?.querySelector('.loom-location-open-map')).toBeNull();
+    expect(fields[2]?.querySelector('.loom-location-open-map')).toBeNull();
+  });
+
   it('allows legal decimal WGS84 coordinates in the Location editor', () => {
     const container = document.createElement('div');
     container.append(
@@ -270,6 +318,11 @@ describe('Record Detail Location seam', () => {
       'raw network detail',
     );
     expect(document.activeElement).toBe(error);
+    expect(
+      [...form.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select')].every(
+        (control) => control.getAttribute('aria-invalid') === 'false',
+      ),
+    ).toBe(true);
     container.remove();
   });
 
@@ -567,6 +620,53 @@ describe('Record Detail Location seam', () => {
 
     buttons[2]?.click();
     expect(onConflictAction).toHaveBeenNthCalledWith(3, 'record_01', 'discard-all');
+  });
+
+  it('returns focus to the Detail region after a Location conflict action', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onLocationEdit = vi
+      .fn()
+      .mockRejectedValue(new LoomTableClientError('conflict', { message: 'Revision conflict.' }));
+    const onConflictAction = vi.fn().mockResolvedValue(undefined);
+    const conflict = {
+      clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+      failedCommandIndex: 0,
+      expectedRevision: 1,
+      currentRevision: 2,
+      currentValues: { field_location: { label: 'Server' } },
+      submittedSet: { field_location: { label: 'Local' } },
+      submittedUnsetFieldIds: [],
+      message: 'Revision conflict.',
+    };
+    const detail = createRecordDetail(createRecord({ field_location: { label: 'Local' } }), {
+      fields: [createField('field_location', 'Location')],
+      translate: createTranslator('en'),
+      callbacks: {
+        onLocationEdit,
+        getConflict: () => conflict,
+        onConflictAction,
+      },
+    });
+    container.append(detail);
+
+    detail.querySelector<HTMLButtonElement>('.loom-location-edit')?.click();
+    const form = detail.querySelector<HTMLFormElement>('.loom-location-editor');
+    expect(form).not.toBeNull();
+    if (form === null) return;
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(detail.querySelector('.loom-record-conflict')).not.toBeNull());
+    const useServer = detail.querySelector<HTMLButtonElement>(
+      '.loom-record-conflict button:first-child',
+    );
+    useServer?.click();
+
+    await vi.waitFor(() =>
+      expect(onConflictAction).toHaveBeenCalledWith('record_01', 'use-server'),
+    );
+    await vi.waitFor(() => expect(document.activeElement).toBe(detail));
+    expect(detail.querySelector('.loom-record-conflict')?.parentElement).toBe(detail);
+    container.remove();
   });
 });
 

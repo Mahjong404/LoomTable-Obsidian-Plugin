@@ -104,6 +104,7 @@ export const simplifiedChineseMessages = {
   'record.location.previewHint': 'Ctrl/Cmd 悬停预览',
   'record.location.preview': '地图预览',
   'record.location.attribution': '仅预览位置；未修改数据',
+  'record.location.located': '已定位',
   'record.location.unlocated': '未定位',
   'record.location.unrenderable': '当前地图比例不可渲染',
   'map.summary.matched': '匹配',
