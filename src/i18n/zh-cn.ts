@@ -103,6 +103,7 @@ export const simplifiedChineseMessages = {
   'record.attachment.action.download': '下载',
   'record.attachment.action.downloading': '下载中…',
   'record.attachment.action.downloadFailed': '下载失败；请检查附件后重试。',
+  'record.attachment.action.offline': '当前离线；恢复连接后才能下载。',
   'record.location.edit': '编辑地点',
   'record.location.label': '标签',
   'record.location.address': '地址',

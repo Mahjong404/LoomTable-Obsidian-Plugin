@@ -292,6 +292,53 @@ describe('MapView', () => {
     expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain('A record');
   });
 
+  it('passes selected-record Attachment downloads through the Detail callback', async () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const attachmentField: Field = {
+      id: 'field_attachment',
+      tableId: 'table_01',
+      name: 'Attachments',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'attachment',
+      config: { maxCount: 10 },
+    };
+    const record: LoomTableRecord = {
+      id: 'record_map',
+      tableId: 'table_01',
+      revision: 1,
+      values: {
+        field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+      },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const onAttachmentDownload = vi.fn();
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      onAttachmentDownload,
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      fields: [attachmentField],
+      selectedRecord: record,
+    });
+
+    const download = container.querySelector<HTMLButtonElement>('.loom-attachment-action');
+    download?.click();
+    await vi.waitFor(() => expect(onAttachmentDownload).toHaveBeenCalledTimes(1));
+    expect(onAttachmentDownload).toHaveBeenCalledWith(
+      'record_map',
+      'field_attachment',
+      expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
+    );
+  });
+
   it.each([
     [
       'configuration-required',

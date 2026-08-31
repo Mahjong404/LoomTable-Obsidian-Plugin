@@ -91,6 +91,7 @@ export type FieldEditorElement = HTMLInputElement | HTMLTextAreaElement | HTMLSe
 export interface RenderedFieldValueElementOptions {
   readonly compactAttachments?: boolean;
   readonly translate?: Translator;
+  readonly attachmentDownloadDisabled?: boolean;
   readonly onAttachmentDownload?: (attachment: RenderedAttachment) => void | Promise<void>;
 }
 
@@ -438,44 +439,51 @@ function createAttachmentElement(
     card.append(document.createTextNode(' — '), hint);
   }
 
-  if (
+  const offline = options.attachmentDownloadDisabled === true;
+  const canRenderDownload =
     attachment.state === 'ready' &&
     attachment.id !== undefined &&
     options.translate !== undefined &&
-    options.onAttachmentDownload !== undefined
-  ) {
+    (options.onAttachmentDownload !== undefined || offline);
+  if (canRenderDownload) {
     const action = document.createElement('button');
     action.type = 'button';
     action.className = 'loom-button loom-attachment-action';
     action.textContent = options.translate('record.attachment.action.download');
     action.setAttribute(
       'aria-label',
-      `${options.translate('record.attachment.action.download')} ${attachment.filename ?? attachment.statusText}`,
+      offline
+        ? options.translate('record.attachment.action.offline')
+        : `${options.translate('record.attachment.action.download')} ${attachment.filename ?? attachment.statusText}`,
     );
+    action.disabled = offline || options.onAttachmentDownload === undefined;
     const actionStatus = document.createElement('span');
     actionStatus.className = 'loom-attachment-action-status';
     actionStatus.setAttribute('aria-live', 'polite');
+    if (offline) actionStatus.textContent = options.translate('record.attachment.action.offline');
     let busy = false;
-    action.addEventListener('click', () => {
-      if (busy) return;
-      busy = true;
-      action.disabled = true;
-      action.setAttribute('aria-busy', 'true');
-      action.textContent = options.translate?.('record.attachment.action.downloading') ?? '';
-      void (async () => {
-        try {
-          await options.onAttachmentDownload?.(attachment);
-        } catch {
-          actionStatus.textContent =
-            options.translate?.('record.attachment.action.downloadFailed') ?? '';
-        } finally {
-          busy = false;
-          action.disabled = false;
-          action.removeAttribute('aria-busy');
-          action.textContent = options.translate?.('record.attachment.action.download') ?? '';
-        }
-      })();
-    });
+    if (!action.disabled) {
+      action.addEventListener('click', () => {
+        if (busy) return;
+        busy = true;
+        action.disabled = true;
+        action.setAttribute('aria-busy', 'true');
+        action.textContent = options.translate?.('record.attachment.action.downloading') ?? '';
+        void (async () => {
+          try {
+            await options.onAttachmentDownload?.(attachment);
+          } catch {
+            actionStatus.textContent =
+              options.translate?.('record.attachment.action.downloadFailed') ?? '';
+          } finally {
+            busy = false;
+            action.disabled = false;
+            action.removeAttribute('aria-busy');
+            action.textContent = options.translate?.('record.attachment.action.download') ?? '';
+          }
+        })();
+      });
+    }
     card.append(document.createTextNode(' '), action, document.createTextNode(' '), actionStatus);
   }
   return card;

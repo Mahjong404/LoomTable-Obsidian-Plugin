@@ -110,6 +110,7 @@ export const englishMessages = {
   'record.attachment.action.download': 'Download',
   'record.attachment.action.downloading': 'Downloading…',
   'record.attachment.action.downloadFailed': 'Download failed. Check the attachment and try again.',
+  'record.attachment.action.offline': 'Offline. Reconnect to download.',
   'record.location.edit': 'Edit Location',
   'record.location.label': 'Label',
   'record.location.address': 'Address',

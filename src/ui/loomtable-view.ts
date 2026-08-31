@@ -16,6 +16,7 @@ import { GridViewController, type GridState } from './grid-view-controller';
 import { ReadonlyGridRenderer } from './readonly-grid-renderer';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
 import { MapView, type MapViewNavigation } from '../views/map/map-view';
+import { createAttachmentDownloadCallback } from './attachment-download';
 import { createRecordDetail } from './record-detail';
 
 export const LOOMTABLE_VIEW_TYPE = 'loomtable-main';
@@ -42,6 +43,7 @@ export class LoomTableView extends ItemView {
   #mapView: MapView | null = null;
   #gridHost: HTMLElement | null = null;
   #detailHost: HTMLElement | null = null;
+  #gridClient: LoomTableClient | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -91,9 +93,11 @@ export class LoomTableView extends ItemView {
     }
 
     this.disposeAll();
+    const client = this.createClient(profile);
+    this.#gridClient = client;
     this.renderGrid(
       profile,
-      new GridViewController(this.createClient(profile), {
+      new GridViewController(client, {
         translate: this.getTranslator(),
         ...(this.mutationQueue === null ? {} : { mutationQueue: this.mutationQueue }),
         onNonGridViewSelected: (view, state) => this.showMap(profile, view, state),
@@ -203,6 +207,7 @@ export class LoomTableView extends ItemView {
         navigationState.views.some(
           (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
         ),
+      onAttachmentDownload: createAttachmentDownloadCallback(client),
       providers: this.mapContext.registry.list(),
       selectedProvider: provider,
       onProviderChange: async (nextProvider) => {
@@ -295,7 +300,8 @@ export class LoomTableView extends ItemView {
         : null;
     const detailRecord = await controller.getRecordForDetail(record);
     const detailHost = this.#detailHost;
-    if (detailHost === null || !detailHost.isConnected) return;
+    const client = this.#gridClient;
+    if (detailHost === null || !detailHost.isConnected || client === null) return;
     let detail: HTMLElement;
     detail = createRecordDetail(detailRecord, {
       translate: this.getTranslator(),
@@ -316,6 +322,7 @@ export class LoomTableView extends ItemView {
           controller.state.views.some(
             (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
           ),
+        onAttachmentDownload: createAttachmentDownloadCallback(client),
       },
     });
     detailHost.append(detail);
@@ -366,6 +373,7 @@ export class LoomTableView extends ItemView {
     this.#invalidationUnsubscribe = null;
     this.#gridController?.dispose();
     this.#gridController = null;
+    this.#gridClient = null;
     this.#gridHost = null;
     this.#detailHost = null;
   }
