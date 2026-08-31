@@ -390,6 +390,57 @@ describe('MapView', () => {
     expect(cluster?.querySelector<HTMLButtonElement>('.loom-map-cluster-next')).not.toBeNull();
   });
 
+  it('renders MultiSelect Cluster values as shared semantic chips', () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const field: Field = {
+      id: 'field_multi',
+      tableId: 'table_01',
+      name: 'Tags',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'multiSelect',
+      config: {
+        options: [{ id: 'option_1', name: 'One', color: '#000000' }],
+        deletedOptions: [
+          { id: 'option_old', name: 'Old', color: '#000000', deletedAt: '2026-01-01' },
+        ],
+      },
+    };
+    const record: LoomTableRecord = {
+      id: 'record_01',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_multi: ['option_old', 'option_1'] },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      clusterStatus: 'ready',
+      fields: [field],
+      clusterRecords: [record],
+      clusterToken: 'cluster-token',
+      clusterCursor: null,
+    } as unknown as ReturnType<typeof initialMapViewState>);
+
+    const cluster = container.querySelector<HTMLElement>('.loom-map-cluster-records');
+    const button = cluster?.querySelector<HTMLButtonElement>('.loom-map-cluster-record');
+    expect(button?.querySelector('.loom-field-value-chips')).not.toBeNull();
+    expect(
+      [...(button?.querySelectorAll<HTMLElement>('[role="listitem"]') ?? [])].map(
+        (chip) => chip.textContent,
+      ),
+    ).toEqual(['Old (Deleted option)', 'One']);
+    expect(button?.textContent).not.toContain('option_old');
+  });
+
   it('exposes Cluster loading, empty, error, retry, and close states', async () => {
     const container = document.createElement('div');
     const controller = fakeController();
