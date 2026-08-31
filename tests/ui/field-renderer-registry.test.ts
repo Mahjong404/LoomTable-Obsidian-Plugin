@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { Field } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
-import { createFieldRendererRegistry } from '../../src/ui/field-renderer-registry';
+import {
+  createFieldEditor,
+  createFieldRendererRegistry,
+  createRenderedFieldValueElement,
+} from '../../src/ui/field-renderer-registry';
 
 const registry = createFieldRendererRegistry();
 
@@ -110,7 +114,102 @@ describe('Field renderer registry', () => {
     expect(renderedAttachment.text).not.toContain('{');
   });
 
-  it('publishes editing capability without pretending MultiSelect chips are implemented', () => {
+  it('publishes MultiSelect values as semantic chips instead of a comma string', () => {
+    const translate = createTranslator('en');
+    const field = createField('multiSelect', {
+      options: [{ id: 'option_1', name: 'One', color: '#000000' }],
+      deletedOptions: [
+        { id: 'option_old', name: 'Old', color: '#000000', deletedAt: '2026-01-01' },
+      ],
+    });
+
+    expect(registry.render(field, ['option_old', 'option_1'], { translate })).toMatchObject({
+      state: 'value',
+      chips: [
+        { state: 'deleted', text: 'Old', ariaLabel: 'Old (Deleted option)' },
+        { state: 'value', text: 'One', ariaLabel: 'One' },
+      ],
+    });
+
+    expect(registry.render(field, ['unknown-option'], { translate })).toMatchObject({
+      state: 'unavailable',
+      text: 'Option unavailable',
+      ariaLabel: 'Option unavailable',
+    });
+    expect(registry.render(field, ['unknown-option'], { translate }).chips).toBeUndefined();
+  });
+
+  it('renders chip state, deleted status, and accessible labels in structured DOM', () => {
+    const translate = createTranslator('en');
+    const field = createField('multiSelect', {
+      options: [{ id: 'option_1', name: 'One', color: '#000000' }],
+      deletedOptions: [
+        { id: 'option_old', name: 'Old', color: '#000000', deletedAt: '2026-01-01' },
+      ],
+    });
+    const element = createRenderedFieldValueElement(
+      registry.render(field, ['option_old', 'option_1'], { translate }),
+    );
+
+    expect(element.dataset.valueState).toBe('value');
+    expect(element.querySelector('[role="list"]')?.getAttribute('aria-label')).toBe(
+      'Old (Deleted option), One',
+    );
+    expect(
+      [...element.querySelectorAll<HTMLElement>('[role="listitem"]')].map((chip) => ({
+        text: chip.textContent,
+        state: chip.dataset.chipState,
+        ariaLabel: chip.getAttribute('aria-label'),
+      })),
+    ).toEqual([
+      { text: 'Old (Deleted option)', state: 'deleted', ariaLabel: 'Old (Deleted option)' },
+      { text: 'One', state: 'value', ariaLabel: 'One' },
+    ]);
+  });
+
+  it('creates native Select and MultiSelect editors with retained deleted and safe unknown options', () => {
+    const translate = createTranslator('en');
+    const select = createField('select', {
+      options: [{ id: 'option_1', name: 'One', color: '#000000' }],
+      deletedOptions: [
+        { id: 'option_old', name: 'Old', color: '#000000', deletedAt: '2026-01-01' },
+      ],
+    });
+    const selectEditor = createFieldEditor(select, 'option_old', { translate });
+
+    expect(selectEditor.tagName).toBe('SELECT');
+    expect((selectEditor as HTMLSelectElement).multiple).toBe(false);
+    expect(
+      [...selectEditor.querySelectorAll('option')].map((option) => option.textContent),
+    ).toEqual(['Empty', 'One', 'Old (Deleted option)']);
+    expect((selectEditor as HTMLSelectElement).value).toBe('option_old');
+    expect(
+      selectEditor.querySelector<HTMLOptionElement>('option[data-option-state="deleted"]')
+        ?.disabled,
+    ).toBe(false);
+
+    const multiSelect = createField('multiSelect', select.config);
+    const multiEditor = createFieldEditor(multiSelect, ['option_old', 'option_1'], { translate });
+    const selectedValues = [...(multiEditor as HTMLSelectElement).selectedOptions].map(
+      (option) => option.value,
+    );
+
+    expect(multiEditor.tagName).toBe('SELECT');
+    expect((multiEditor as HTMLSelectElement).multiple).toBe(true);
+    expect(multiEditor.getAttribute('aria-multiselectable')).toBe('true');
+    expect(selectedValues).toEqual(['option_1', 'option_old']);
+    expect(multiEditor.querySelectorAll('input')).toHaveLength(0);
+
+    const unknownEditor = createFieldEditor(multiSelect, ['missing'], { translate });
+    const unknownOption = unknownEditor.querySelector<HTMLOptionElement>(
+      'option[data-option-state="unavailable"]',
+    );
+    expect(unknownOption?.textContent).toBe('Option unavailable');
+    expect(unknownOption?.selected).toBe(true);
+    expect(unknownOption?.textContent).not.toContain('missing');
+  });
+
+  it('publishes editing capability for the implemented Select and MultiSelect seam', () => {
     for (const type of [
       'text',
       'longText',
@@ -135,7 +234,7 @@ describe('Field renderer registry', () => {
     });
     expect(registry.capability(createField('multiSelect')).editor).toEqual({
       kind: 'multiSelect',
-      status: 'deferred',
+      status: 'available',
     });
     expect(registry.capability(createField('location')).editor).toEqual({
       kind: 'none',
