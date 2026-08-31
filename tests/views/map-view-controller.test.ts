@@ -539,6 +539,31 @@ describe('MapViewController', () => {
     expect(onClusterRecords).toHaveBeenCalledWith([createRecord('record_new')]);
   });
 
+  it('keeps a Cluster error separate from the current Map data state', async () => {
+    const queryMapClusterRecords = vi.fn().mockRejectedValue(
+      new LoomTableClientError('network', {
+        code: 'NETWORK_ERROR',
+        message: 'Cluster transport detail.',
+      }),
+    );
+    const controller = createController(
+      createClient({ queryMapClusterRecords }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+
+    await controller.refreshCurrentViewport();
+    await controller.openCluster('cluster_01');
+
+    expect(controller.state.dataStatus).toBe('ready');
+    expect(controller.state.error).toBeNull();
+    expect(controller.state.clusterStatus).toBe('error');
+    expect(controller.state.clusterError).toMatchObject({
+      code: 'NETWORK_ERROR',
+      message: 'Cluster transport detail.',
+    });
+  });
+
   it('never regresses an opaque Cluster cursor when page responses finish out of order', async () => {
     const first = deferred<QueryResult>();
     const second = deferred<QueryResult>();
@@ -606,6 +631,40 @@ describe('MapViewController', () => {
     expect(controller.state.clusterRecords).toEqual([]);
     expect(controller.state.clusterCursor).toBeNull();
     expect(onClusterRecords).not.toHaveBeenCalled();
+  });
+
+  it('ignores late Record responses after dispose and out-of-order selection', async () => {
+    const first = deferred<LoomTableRecord>();
+    const second = deferred<LoomTableRecord>();
+    const getRecord = vi
+      .fn()
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    const onRecordSelected = vi.fn();
+    const controller = createController(
+      createClient({ getRecord }),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { onRecordSelected },
+    );
+
+    const firstRequest = controller.openRecord('record_01');
+    const secondRequest = controller.openRecord('record_02');
+    second.resolve(createRecord('record_02'));
+    first.resolve(createRecord('record_01'));
+    await Promise.all([firstRequest, secondRequest]);
+
+    expect(controller.state.selectedRecord?.id).toBe('record_02');
+    expect(onRecordSelected).toHaveBeenCalledTimes(1);
+    expect(onRecordSelected).toHaveBeenCalledWith(createRecord('record_02'));
+
+    const late = deferred<LoomTableRecord>();
+    getRecord.mockReturnValue(late.promise);
+    const lateRequest = controller.openRecord('record_03');
+    controller.dispose();
+    late.resolve(createRecord('record_03'));
+    await lateRequest;
+    expect(onRecordSelected).toHaveBeenCalledTimes(1);
   });
 
   it('stores the latest Map cursor and revalidates before an explicit refresh', async () => {
