@@ -190,6 +190,8 @@ export class LoomTableView extends ItemView {
       translate: this.getTranslator(),
       navigation,
       onClusterNextPage: () => controller.loadNextClusterPage(),
+      onClusterRetry: () => controller.retryCluster(),
+      onTileRetry: () => controller.retryTiles(),
       onLocationEdit: (recordId, fieldId, intent, record) =>
         this.#gridController?.editLocation(recordId, fieldId, intent, record),
       getConflict: (recordId) => this.#gridController?.getConflict(recordId),
