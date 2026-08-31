@@ -146,6 +146,8 @@ export const simplifiedChineseMessages = {
   'map.settings': '地图与瓦片提供方',
   'map.tiandituToken': '天地图 Token',
   'settings.connections': '连接档案',
+  'settings.saveFailed': '设置保存失败；请检查输入后重试。',
+  'settings.saveInProgress': '正在保存其他设置更改；请稍后重试。',
   'settings.title': 'LoomTable',
   'view.configure': '请先在 LoomTable 设置中配置连接档案。',
   'view.ready': 'LoomTable 已准备好开始 Plugin 开发。',
