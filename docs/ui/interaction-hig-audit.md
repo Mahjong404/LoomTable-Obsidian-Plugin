@@ -1,6 +1,6 @@
 # Interaction HIG Audit Matrix
 
-> Current audit checkpoint is the connector-verified Plugin main `195b7cf372a3f760f11e96162cf3e8f60f5dc41c`, after S3-C2 runtime PR #92 (head `d5f2f1f0412d1decfc793a2810e6e8c6fef16d17`) was squash-merged. This audit records the published Attachment Download host wiring and does not announce S1, S2, or the whole S3 complete.
+> Current audit checkpoint is the connector-verified Plugin main `9b7d3e574f347a77cee73182e6bf8659d4eb39c8`, after S3-C3-A code PR #94 (head `ff08a264499679b165c4ee7c522c252091f4ec41`) was squash-merged. This audit records the published Attachment Open/Preview callback seam only; it does not claim real host Open/Preview wiring or announce S1, S2, or the whole S3 complete.
 > Current-main runtime inputs, Settings diagnostics, confirmation semantics, and CSS/accessibility contracts are reviewed below. Historical smoke rows remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 >
 
@@ -319,3 +319,12 @@ S2 final-gate verdict: **not complete**. The implementation and documentation/CI
 - Desktop boundary: current-main Obsidian Attachment Download smoke is `UNVERIFIED`; the one recovery attempt produced a black window with no accessibility tree. jsdom/controller/host tests and CI are supporting evidence only.
 - Residual boundary: no automatic Vault write, add/upload, open/preview, delete, retry, or Record attachment-reference update was added. These remain S3-C3 follow-up work and need a safe host file picker/save/open contract plus a published reference lifecycle.
 - Server dependency: Server runtime/API stable-support freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992` with checked-in blob `92b416993ce6be4664d8bee783f2dcaed36e05b5`; Server docs/main remains `ab949d59c37680d53b4109e1502f8478b24cc655`. No Server/API/OpenAPI/offline/Mutation/Conflict/revision/changeCursor contract changed.
+
+
+## S3-C3-A Attachment Open/Preview callback seam (published; 2026-08-31)
+
+- Delivery evidence: PR [#94](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/94) head `ff08a264499679b165c4ee7c522c252091f4ec41` was squash-merged as current Plugin main `9b7d3e574f347a77cee73182e6bf8659d4eb39c8`; PR CI run `33404480220` / job `99528524231` and main push CI run `33404672931` / job `99529167457` completed successfully.
+- Detail-only seam: Grid-opened Detail and Map selected-record Detail expose typed `onAttachmentOpen` and `onAttachmentPreview` callbacks. Ready Attachments with required identity render the corresponding action only when the callback is present; pending, stale, invalid, unknown, and absent-callback cases render no fake action. Grid and Map compact Attachment summaries remain non-interactive.
+- HIG/i18n behavior: offline actions are disabled with a translated explanation; visible labels, `aria-label`/live status, duplicate-activation guard, translated failure state, and stable focus restoration are covered by en/zh-CN DOM/controller tests. Attachment status remains text/structure based and does not rely on color; existing `--loom-*`, CSS namespace, theme, narrow-layout, and reduced-motion boundaries are unchanged.
+- Host/lifecycle boundary: this is a typed read-only callback seam, not actual LoomTableView/Obsidian host Open/Preview wiring. There is no Vault write, path guessing, implicit overwrite, new API, or attachment-reference mutation. Add/Upload, Delete, Retry, resource lifecycle, and real host Open/Preview remain unimplemented; S3-C and P1.5 are not complete.
+- Desktop boundary: current-main Obsidian smoke remains `UNVERIFIED`; the published DOM/controller/CI evidence does not substitute for a real host smoke.

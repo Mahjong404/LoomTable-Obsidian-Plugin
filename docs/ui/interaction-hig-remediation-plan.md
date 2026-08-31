@@ -2,7 +2,7 @@
 
 > 本文档是实施与验收计划，不是规范性 HIG。规范要求见 [Interaction HIG](./interaction-hig.md)；现有阶段和范围背景见 [HIG 落地计划](./interaction-hig-rollout.md)。
 >
-> 本计划基于 Plugin 远端 main \`d3469e7e133ad4a1854833be4912de93953e8e2e\` 制定。Server main 保持 \`e02f055fecddc0852085dc5a71b4eb136860774a\`，Plugin 使用的 OpenAPI source 保持 \`ef0c6bd751642f4a604fe1bf88980f64e39dd992\`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
+> 本计划的当前记录以 Plugin 远端 main `9b7d3e574f347a77cee73182e6bf8659d4eb39c8` 为准；历史制定基线 `d3469e7e133ad4a1854833be4912de93953e8e2e` 仅保留在交付记录中。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
 
 ## 1. 目的与边界
 
@@ -35,7 +35,7 @@
 - Location 编辑、Map 数据刷新和部分键盘可访问性；
 - Save Status 的 WPS 风格显示；
 
-截至当前远端 Plugin main `195b7cf372a3f760f11e96162cf3e8f60f5dc41c`，已交付切片应按以下范围解释：
+截至当前远端 Plugin main `9b7d3e574f347a77cee73182e6bf8659d4eb39c8`，已交付切片应按以下范围解释：
 
 - **S0**：PR #63–#67 的审计、构建 provenance 和只读 smoke 证据已归档；Grid/Detail/Map 的历史或 runtime-equivalent 观察有明确边界，Location 写入、故障注入、完整键盘、浅色/窄布局等仍保留 residual unverified。
 - **S1**：S1-A/B/C/D 的运行时切片由 PR #68/#70/#72/#74 交付，配套文档由 PR #69/#71/#73/#75 交付；共享文案、控件几何、危险确认、异步错误动作、Grid/Detail/Location seam 和 Map 可访问性已发布，但完整真实桌面门禁仍未闭合。
@@ -352,7 +352,7 @@ Dashboard 不因本计划自动加入 Grid，也不在 HIG 中提前写入完整
 8. 同步统筹、Plugin 和 Server session 的当前阶段、阻塞点、合同和下一目标。
 9. 前一组未通过门禁时，不启动后一组的实现。
 
-## 6. 当前下一步（截至 Plugin main `195b7cf372a3f760f11e96162cf3e8f60f5dc41c`）
+## 6. 当前下一步（截至 Plugin main `9b7d3e574f347a77cee73182e6bf8659d4eb39c8`）
 
 S0、S1、S2 的已交付切片、S3-A registry 基础、S3-B Select/MultiSelect、S3-C Attachment renderer 以及 S3-C2 Download host wiring 均有可追溯的自动化与远端 CI 证据；它们不能仅凭静态检查或 CI 被宣布为完整桌面验收完成。当前仍明确保留：
 
@@ -402,3 +402,16 @@ S3-B 已交付，但整个 S3 未完成。下一项是 S3-C Attachment 交互/�
 本片保留现有 action 防重复、`aria-busy`、失败翻译、焦点与 en/zh-CN 语义测试；完整 `pnpm.cmd check` 通过（40 个测试文件 / 366 个测试、format、lint 既有 warnings、typecheck、OpenAPI drift、production build）。真实 current-main Obsidian smoke 的一次恢复捕获仍为黑屏且无 accessibility tree，故标记为 `UNVERIFIED`，不能由 jsdom/CI 替代。无 Server/API/OpenAPI/offline/Mutation/Conflict/revision/changeCursor 合同改动。
 
 S3-C3 尚未开始。后续需分别定义并安全接入 add/upload/open/preview/delete/retry 与 Record attachment-reference lifecycle；在安全文件 picker/save/open 及 published reference contract 明确前，不显示假动作或猜测新的 API。
+
+
+## S3-C3-A 当前实施记录（2026-08-31）
+
+本片从 connector-核验的 Plugin main `0e32a65e41175afda1f5799752e157fa92e94b6b` 开始，通过代码 PR #94 交付：head `ff08a264499679b165c4ee7c522c252091f4ec41`，squash merge/main `9b7d3e574f347a77cee73182e6bf8659d4eb39c8`。PR CI run `33404480220` / job `99528524231` 与 main push CI run `33404672931` / job `99529167457` 均成功。
+
+本片只在 Record Detail（Grid 打开的 Detail 与 Map selected-record Detail）建立 typed `onAttachmentOpen` / `onAttachmentPreview` 只读 callback seam：ready 且具备必需身份、对应 host callback 存在时才显示 action；pending、stale、invalid、unknown 以及缺少 callback 时不显示假 action。Grid/Map compact Attachment 摘要保持 non-interactive；offline 状态显示可理解的禁用说明，并保留 ARIA/live、焦点、重复触发保护、失败状态与 en/zh-CN 回归。
+
+本片是 seam only，不是实际 LoomTableView/Obsidian host Open/Preview wiring；不添加 `window.open`、路径猜测、Vault 自动写入、隐式覆盖、资源回收或新的 API。Add/Upload、Record attachment-reference lifecycle、Delete、Retry 以及真实 host Open/Preview 尚未实现，S3-C3-B 与 S3-C3-C 均尚未开始，不能据此宣称整个 S3 或 P1.5 完成。
+
+自动化证据：PR #94 与 main push CI 均运行并通过完整 `pnpm check`；DOM/controller/i18n/ARIA 测试提供 seam 证据。current-main 真实 Obsidian smoke 仍为 `UNVERIFIED`，不能由 jsdom/CI 替代；没有用户数据、凭据、Provider/Settings、Server/API/OpenAPI 或 offline/mutation/Conflict/revision/changeCursor 语义变更。
+
+S3-C3-B 尚未开始：Add/Upload 与 Record attachment-reference lifecycle；S3-C3-C 尚未开始：Delete、Retry 与 resource lifecycle。后续必须先明确安全的 host file picker/save/open 与 published reference contract，再分别实现，不显示假动作或猜测新的 API。
