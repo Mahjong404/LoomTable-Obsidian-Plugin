@@ -668,6 +668,58 @@ describe('Record Detail Location seam', () => {
     expect(detail.querySelector('.loom-record-conflict')?.parentElement).toBe(detail);
     container.remove();
   });
+
+  it('uses the shared renderer for Detail values and accessible natural-empty semantics', () => {
+    const container = document.createElement('div');
+    const textField = { ...createField('field_text', 'Text'), type: 'text' } as Field;
+    const checkboxField = {
+      ...createField('field_checkbox', 'Checkbox'),
+      type: 'checkbox',
+    } as Field;
+    const attachmentField: Field = {
+      ...createField('field_attachment', 'Attachment'),
+      type: 'attachment',
+      config: { maxCount: 10 },
+    };
+
+    container.append(
+      createRecordDetail(
+        createRecord({
+          field_text: '',
+          field_checkbox: true,
+          field_attachment: [
+            {
+              id: 'attachment_1',
+              source: 'vault',
+              filename: 'notes.md',
+              mimeType: 'text/markdown',
+              size: 2048,
+            },
+          ],
+        }),
+        {
+          fields: [textField, checkboxField, attachmentField],
+          translate: createTranslator('en'),
+        },
+      ),
+    );
+
+    const text = container.querySelector<HTMLElement>(
+      '.loom-record-fields dd[data-field-id="field_text"]',
+    );
+    const checkbox = container.querySelector<HTMLElement>(
+      '.loom-record-fields dd[data-field-id="field_checkbox"]',
+    );
+    const attachment = container.querySelector<HTMLElement>(
+      '.loom-record-fields dd[data-field-id="field_attachment"]',
+    );
+    expect(text?.textContent).toBe('Empty');
+    expect(text?.dataset.valueState).toBe('empty');
+    expect(text?.getAttribute('aria-label')).toBe('Text: Empty');
+    expect(checkbox?.textContent).toBe('Checked');
+    expect(attachment?.textContent).toBe('notes.md · Type: text/markdown · Size: 2 KB');
+    expect(attachment?.textContent).not.toContain('{');
+  });
 });
 
 function createField(id: string, name: string): Field {
@@ -693,3 +745,4 @@ function createRecord(values: Record<string, unknown>): LoomTableRecord {
     updatedAt: '',
   };
 }
+
