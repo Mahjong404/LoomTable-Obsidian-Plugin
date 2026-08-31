@@ -252,4 +252,3 @@ export const englishMessages = {
 
 export type MessageKey = keyof typeof englishMessages;
 export type MessageCatalog = { readonly [Key in MessageKey]: string };
-
