@@ -17,7 +17,10 @@ import { ReadonlyGridRenderer } from './readonly-grid-renderer';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
 import { MapView, type MapViewNavigation } from '../views/map/map-view';
 import { createAttachmentDownloadCallback } from './attachment-download';
-import { createAttachmentAddCallback } from './attachment-upload';
+import {
+  createAttachmentAddCallback,
+  createAttachmentDetachCallback,
+} from './attachment-upload';
 import {
   createAttachmentOpenCallback,
   createAttachmentPreviewCallback,
@@ -197,6 +200,63 @@ export class LoomTableView extends ItemView {
     });
     const navigation = this.mapNavigation(profile, navigationState, view);
     const provider = providerForView(this.getSettings(), view.id);
+    const attachmentAdd =
+      this.#gridController === null
+        ? undefined
+        : createAttachmentAddCallback(client, {
+            getAttachment: client.getAttachment.bind(client),
+            getRecord: client.getRecord.bind(client),
+            isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+            updateRecord: async (
+              recordId,
+              fieldId,
+              references,
+              sourceRecord,
+              mutation,
+            ) => {
+              await this.#gridController!.editCell(
+                recordId,
+                fieldId,
+                references,
+                {
+                  attachmentReferences: references,
+                  clientMutationId: mutation.clientMutationId,
+                },
+                sourceRecord,
+              );
+              return this.#gridController!.state.records.find(
+                (candidate) => candidate.id === recordId,
+              );
+            },
+          });
+    const attachmentDetach =
+      this.#gridController === null
+        ? undefined
+        : createAttachmentDetachCallback({
+            idFactory: undefined,
+            isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+            updateRecord: async (
+              recordId,
+              fieldId,
+              references,
+              sourceRecord,
+              mutation,
+            ) => {
+              await this.#gridController!.editCell(
+                recordId,
+                fieldId,
+                references,
+                {
+                  attachmentReferences: references,
+                  clientMutationId: mutation.clientMutationId,
+                },
+                sourceRecord,
+              );
+              return this.#gridController!.state.records.find(
+                (candidate) => candidate.id === recordId,
+              );
+            },
+          });
     mapView = new MapView(this.contentEl, controller, {
       translate: this.getTranslator(),
       navigation,
@@ -220,25 +280,15 @@ export class LoomTableView extends ItemView {
         translate: this.getTranslator(),
         host: createBrowserAttachmentPreviewHost(document),
       }),
-      ...(this.#gridController === null
+      ...(attachmentAdd === undefined
         ? {}
         : {
-            onAttachmentAdd: createAttachmentAddCallback(client, {
-              isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
-              updateRecord: async (recordId, fieldId, references, sourceRecord) => {
-                await this.#gridController!.editCell(
-                  recordId,
-                  fieldId,
-                  references,
-                  { attachmentReferences: references },
-                  sourceRecord,
-                );
-                return this.#gridController!.state.records.find(
-                  (candidate) => candidate.id === recordId,
-                );
-              },
-            }),
+            onAttachmentAdd: attachmentAdd,
+            ...(attachmentAdd.retry === undefined
+              ? {}
+              : { onAttachmentAddRetry: attachmentAdd.retry }),
           }),
+      ...(attachmentDetach === undefined ? {} : { onAttachmentDetach: attachmentDetach }),
       providers: this.mapContext.registry.list(),
       selectedProvider: provider,
       onProviderChange: async (nextProvider) => {
@@ -333,6 +383,52 @@ export class LoomTableView extends ItemView {
     const detailHost = this.#detailHost;
     const client = this.#gridClient;
     if (detailHost === null || !detailHost.isConnected || client === null) return;
+    const attachmentAdd = createAttachmentAddCallback(client, {
+      getAttachment: client.getAttachment.bind(client),
+      getRecord: client.getRecord.bind(client),
+      isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+      updateRecord: async (
+        recordId,
+        fieldId,
+        references,
+        sourceRecord,
+        mutation,
+      ) => {
+        await controller.editCell(
+          recordId,
+          fieldId,
+          references,
+          {
+            attachmentReferences: references,
+            clientMutationId: mutation.clientMutationId,
+          },
+          sourceRecord,
+        );
+        return controller.state.records.find((candidate) => candidate.id === recordId);
+      },
+    });
+    const attachmentDetach = createAttachmentDetachCallback({
+      isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+      updateRecord: async (
+        recordId,
+        fieldId,
+        references,
+        sourceRecord,
+        mutation,
+      ) => {
+        await controller.editCell(
+          recordId,
+          fieldId,
+          references,
+          {
+            attachmentReferences: references,
+            clientMutationId: mutation.clientMutationId,
+          },
+          sourceRecord,
+        );
+        return controller.state.records.find((candidate) => candidate.id === recordId);
+      },
+    });
     let detail: HTMLElement;
     detail = createRecordDetail(detailRecord, {
       translate: this.getTranslator(),
@@ -359,19 +455,11 @@ export class LoomTableView extends ItemView {
           translate: this.getTranslator(),
           host: createBrowserAttachmentPreviewHost(document),
         }),
-        onAttachmentAdd: createAttachmentAddCallback(client, {
-          isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
-          updateRecord: async (recordId, fieldId, references, sourceRecord) => {
-            await controller.editCell(
-              recordId,
-              fieldId,
-              references,
-              { attachmentReferences: references },
-              sourceRecord,
-            );
-            return controller.state.records.find((candidate) => candidate.id === recordId);
-          },
-        }),
+        onAttachmentAdd: attachmentAdd,
+        ...(attachmentAdd.retry === undefined
+          ? {}
+          : { onAttachmentAddRetry: attachmentAdd.retry }),
+        onAttachmentDetach: attachmentDetach,
       },
     });
     detailHost.append(detail);
