@@ -5,9 +5,9 @@ import {
   type InitializeAttachmentRequest,
   type LoomTableClient,
   type LoomTableRecord,
-} from "../client/loomtable-client";
-import type { Translator } from "../i18n";
-import { createMutationId } from "./mutation-queue";
+} from '../client/loomtable-client';
+import type { Translator } from '../i18n';
+import { createMutationId } from './mutation-queue';
 
 export interface AttachmentUploadFile {
   readonly name: string;
@@ -73,9 +73,7 @@ export class AttachmentRetryableError extends LoomTableClientError {
   }
 }
 
-export function isAttachmentRetryable(
-  error: unknown,
-): error is AttachmentRetryableError {
+export function isAttachmentRetryable(error: unknown): error is AttachmentRetryableError {
   return error instanceof AttachmentRetryableError;
 }
 
@@ -91,15 +89,12 @@ interface AttachmentAddAttempt {
   readonly bytes: ArrayBuffer;
   readonly contentType?: string;
   attachment: Attachment | undefined;
-  stage: "initialize" | "upload" | "reference";
+  stage: 'initialize' | 'upload' | 'reference';
 }
 
 export function createAttachmentAddCallback(
-  client: Pick<
-    LoomTableClient,
-    "initializeAttachment" | "uploadAttachmentContent"
-  > &
-    Partial<Pick<LoomTableClient, "getAttachment">>,
+  client: Pick<LoomTableClient, 'initializeAttachment' | 'uploadAttachmentContent'> &
+    Partial<Pick<LoomTableClient, 'getAttachment'>>,
   options: AttachmentAddCallbackOptions,
 ): AttachmentAddHandler {
   const picker = options.picker ?? createBrowserAttachmentFilePicker();
@@ -108,22 +103,12 @@ export function createAttachmentAddCallback(
   const mutationIdFactory = options.mutationIdFactory ?? createMutationId;
   const attempts = new Map<string, AttachmentAddAttempt>();
 
-  const start: AttachmentAddHandler = async (
-    recordId,
-    fieldId,
-    sourceRecord,
-    maxCount,
-  ) => {
-    if (isOffline()) throw attachmentError("ATTACHMENT_OFFLINE");
+  const start: AttachmentAddHandler = async (recordId, fieldId, sourceRecord, maxCount) => {
+    if (isOffline()) throw attachmentError('ATTACHMENT_OFFLINE');
     const current = readAttachmentReferences(sourceRecord.values[fieldId]);
-    if (current === null)
-      throw attachmentError("ATTACHMENT_REFERENCES_INVALID");
-    if (
-      !Number.isInteger(maxCount) ||
-      maxCount < 1 ||
-      current.length >= maxCount
-    ) {
-      throw attachmentError("ATTACHMENT_LIMIT_REACHED");
+    if (current === null) throw attachmentError('ATTACHMENT_REFERENCES_INVALID');
+    if (!Number.isInteger(maxCount) || maxCount < 1 || current.length >= maxCount) {
+      throw attachmentError('ATTACHMENT_LIMIT_REACHED');
     }
 
     const file = await picker.pick();
@@ -132,12 +117,10 @@ export function createAttachmentAddCallback(
     const bytes = await file.arrayBuffer();
     const contentType = file.type.trim();
     const request: InitializeAttachmentRequest = {
-      source: "managed",
+      source: 'managed',
       filename: sanitizeAttachmentFilename(file.name),
-      ...(contentType === "" ? {} : { mimeType: contentType }),
-      ...(Number.isFinite(file.size) && file.size >= 0
-        ? { size: file.size }
-        : {}),
+      ...(contentType === '' ? {} : { mimeType: contentType }),
+      ...(Number.isFinite(file.size) && file.size >= 0 ? { size: file.size } : {}),
     };
     const attempt: AttachmentAddAttempt = {
       key: attemptKey(recordId, fieldId),
@@ -149,33 +132,28 @@ export function createAttachmentAddCallback(
       idempotencyKey: idFactory(),
       clientMutationId: mutationIdFactory(),
       bytes,
-      ...(contentType === "" ? {} : { contentType }),
+      ...(contentType === '' ? {} : { contentType }),
       attachment: undefined,
-      stage: "initialize",
+      stage: 'initialize',
     };
     attempts.set(attempt.key, attempt);
     return executeWithRetryState(attempt);
   };
 
-  const retry: AttachmentAddHandler = async (
-    recordId,
-    fieldId,
-    sourceRecord,
-    maxCount,
-  ) => {
-    if (isOffline()) throw attachmentError("ATTACHMENT_OFFLINE");
+  const retry: AttachmentAddHandler = async (recordId, fieldId, sourceRecord, maxCount) => {
+    if (isOffline()) throw attachmentError('ATTACHMENT_OFFLINE');
     const key = attemptKey(recordId, fieldId);
     const attempt = attempts.get(key);
     if (attempt === undefined || attempt.maxCount !== maxCount) {
-      throw attachmentError("ATTACHMENT_RETRY_UNAVAILABLE");
+      throw attachmentError('ATTACHMENT_RETRY_UNAVAILABLE');
     }
     attempt.sourceRecord = sourceRecord;
 
-    if (attempt.stage === "upload") {
+    if (attempt.stage === 'upload') {
       const attachment = attempt.attachment;
       if (attachment === undefined || client.getAttachment === undefined) {
         attempts.delete(key);
-        throw attachmentError("ATTACHMENT_RETRY_UNAVAILABLE");
+        throw attachmentError('ATTACHMENT_RETRY_UNAVAILABLE');
       }
       let current: Attachment;
       try {
@@ -184,16 +162,16 @@ export function createAttachmentAddCallback(
         attempts.delete(key);
         throw asClientError(error);
       }
-      if (current.source !== "managed" || current.id.trim() === "") {
+      if (current.source !== 'managed' || current.id.trim() === '') {
         attempts.delete(key);
-        throw attachmentError("ATTACHMENT_STATUS_INVALID");
+        throw attachmentError('ATTACHMENT_STATUS_INVALID');
       }
-      if (current.status === "ready") {
+      if (current.status === 'ready') {
         attempt.attachment = current;
-        attempt.stage = "reference";
-      } else if (current.status !== "pending") {
+        attempt.stage = 'reference';
+      } else if (current.status !== 'pending') {
         attempts.delete(key);
-        throw attachmentError("ATTACHMENT_STATUS_INVALID");
+        throw attachmentError('ATTACHMENT_STATUS_INVALID');
       }
     }
 
@@ -221,51 +199,48 @@ export function createAttachmentAddCallback(
   async function executeAttempt(
     attempt: AttachmentAddAttempt,
   ): Promise<LoomTableRecord | null | undefined> {
-    if (attempt.stage === "initialize") {
+    if (attempt.stage === 'initialize') {
       const initialized = await client.initializeAttachment(
         attempt.request,
         attempt.idempotencyKey,
       );
       if (
-        initialized.source !== "managed" ||
-        initialized.status !== "pending" ||
-        initialized.id.trim() === "" ||
-        initialized.filename.trim() === ""
+        initialized.source !== 'managed' ||
+        initialized.status !== 'pending' ||
+        initialized.id.trim() === '' ||
+        initialized.filename.trim() === ''
       ) {
-        throw attachmentError("ATTACHMENT_INIT_RESPONSE_INVALID");
+        throw attachmentError('ATTACHMENT_INIT_RESPONSE_INVALID');
       }
       attempt.attachment = initialized;
-      attempt.stage = "upload";
+      attempt.stage = 'upload';
     }
 
-    if (attempt.stage === "upload") {
+    if (attempt.stage === 'upload') {
       const initialized = attempt.attachment;
-      if (initialized === undefined)
-        throw attachmentError("ATTACHMENT_STATUS_INVALID");
+      if (initialized === undefined) throw attachmentError('ATTACHMENT_STATUS_INVALID');
       const uploaded = await client.uploadAttachmentContent(
         initialized.id,
         attempt.bytes,
         attempt.contentType,
       );
       if (
-        uploaded.source !== "managed" ||
-        uploaded.status !== "ready" ||
-        uploaded.id.trim() === "" ||
-        uploaded.filename.trim() === ""
+        uploaded.source !== 'managed' ||
+        uploaded.status !== 'ready' ||
+        uploaded.id.trim() === '' ||
+        uploaded.filename.trim() === ''
       ) {
-        throw attachmentError("ATTACHMENT_UPLOAD_RESPONSE_INVALID");
+        throw attachmentError('ATTACHMENT_UPLOAD_RESPONSE_INVALID');
       }
       attempt.attachment = uploaded;
-      attempt.stage = "reference";
+      attempt.stage = 'reference';
     }
 
-    if (attempt.stage !== "reference" || attempt.attachment === undefined) {
-      throw attachmentError("ATTACHMENT_STATUS_INVALID");
+    if (attempt.stage !== 'reference' || attempt.attachment === undefined) {
+      throw attachmentError('ATTACHMENT_STATUS_INVALID');
     }
     const references = [
-      ...(readAttachmentReferences(
-        attempt.sourceRecord.values[attempt.fieldId],
-      ) ?? []),
+      ...(readAttachmentReferences(attempt.sourceRecord.values[attempt.fieldId]) ?? []),
       attachmentReference(attempt.attachment),
     ];
     return updateReference(attempt, references);
@@ -299,17 +274,11 @@ export function createAttachmentAddCallback(
       } catch {
         throw clientError;
       }
-      const currentReferences = readAttachmentReferences(
-        current.values[attempt.fieldId],
-      );
+      const currentReferences = readAttachmentReferences(current.values[attempt.fieldId]);
       if (currentReferences === null) {
-        throw attachmentError("ATTACHMENT_REFERENCE_READBACK_INVALID");
+        throw attachmentError('ATTACHMENT_REFERENCE_READBACK_INVALID');
       }
-      if (
-        currentReferences.some(
-          (reference) => reference.id === attempt.attachment?.id,
-        )
-      ) {
+      if (currentReferences.some((reference) => reference.id === attempt.attachment?.id)) {
         return current;
       }
       if (current.revision !== attempt.sourceRecord.revision) {
@@ -335,15 +304,12 @@ export function createAttachmentDetachCallback(
   const idFactory = options.idFactory ?? createMutationId;
 
   return async (recordId, fieldId, attachmentId, sourceRecord) => {
-    if (isOffline()) throw attachmentError("ATTACHMENT_OFFLINE");
+    if (isOffline()) throw attachmentError('ATTACHMENT_OFFLINE');
     const current = readAttachmentReferences(sourceRecord.values[fieldId]);
-    if (current === null)
-      throw attachmentError("ATTACHMENT_REFERENCES_INVALID");
-    const references = current.filter(
-      (reference) => reference.id !== attachmentId,
-    );
+    if (current === null) throw attachmentError('ATTACHMENT_REFERENCES_INVALID');
+    const references = current.filter((reference) => reference.id !== attachmentId);
     if (references.length === current.length) {
-      throw attachmentError("ATTACHMENT_REFERENCE_NOT_FOUND");
+      throw attachmentError('ATTACHMENT_REFERENCE_NOT_FOUND');
     }
     return options.updateRecord(recordId, fieldId, references, sourceRecord, {
       clientMutationId: idFactory(),
@@ -352,38 +318,33 @@ export function createAttachmentDetachCallback(
   };
 }
 
-export function describeAttachmentUploadError(
-  error: unknown,
-  translate: Translator,
-): string {
+export function describeAttachmentUploadError(error: unknown, translate: Translator): string {
   const clientError = error instanceof LoomTableClientError ? error : null;
   const status = clientError?.details.httpStatus;
-  if (status === 401 || clientError?.kind === "authentication") {
-    return translate("record.attachment.addAuth");
+  if (status === 401 || clientError?.kind === 'authentication') {
+    return translate('record.attachment.addAuth');
   }
-  if (status === 403 || clientError?.kind === "forbidden") {
-    return translate("record.attachment.addForbidden");
+  if (status === 403 || clientError?.kind === 'forbidden') {
+    return translate('record.attachment.addForbidden');
   }
-  if (status === 413) return translate("record.attachment.addTooLarge");
-  if (status === 415) return translate("record.attachment.addUnsupported");
-  if (status === 422 || clientError?.kind === "validation") {
-    return translate("record.attachment.addInvalid");
+  if (status === 413) return translate('record.attachment.addTooLarge');
+  if (status === 415) return translate('record.attachment.addUnsupported');
+  if (status === 422 || clientError?.kind === 'validation') {
+    return translate('record.attachment.addInvalid');
   }
-  if (clientError?.kind === "conflict") {
-    return translate("record.attachment.addConflict");
+  if (clientError?.kind === 'conflict') {
+    return translate('record.attachment.addConflict');
   }
-  if (clientError?.kind === "capability") {
-    return translate("record.attachment.addCapability");
+  if (clientError?.kind === 'capability') {
+    return translate('record.attachment.addCapability');
   }
-  if (clientError?.kind === "network" || clientError?.kind === "timeout") {
-    return translate("record.attachment.addNetwork");
+  if (clientError?.kind === 'network' || clientError?.kind === 'timeout') {
+    return translate('record.attachment.addNetwork');
   }
-  return translate("record.attachment.addServer");
+  return translate('record.attachment.addServer');
 }
 
-export function readAttachmentReferences(
-  value: unknown,
-): readonly AttachmentRef[] | null {
+export function readAttachmentReferences(value: unknown): readonly AttachmentRef[] | null {
   if (value === undefined || value === null) return [];
   if (!Array.isArray(value)) return null;
   const references: AttachmentRef[] = [];
@@ -394,31 +355,25 @@ export function readAttachmentReferences(
   return references;
 }
 
-function isAttachmentRefObject(
-  value: unknown,
-): value is Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value))
-    return false;
+function isAttachmentRefObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const candidate = value as Record<string, unknown>;
   if (
-    typeof candidate.id !== "string" ||
-    candidate.id.trim() === "" ||
-    (candidate.source !== "managed" && candidate.source !== "vault") ||
-    typeof candidate.filename !== "string" ||
-    candidate.filename.trim() === ""
+    typeof candidate.id !== 'string' ||
+    candidate.id.trim() === '' ||
+    (candidate.source !== 'managed' && candidate.source !== 'vault') ||
+    typeof candidate.filename !== 'string' ||
+    candidate.filename.trim() === ''
   ) {
     return false;
   }
-  for (const key of ["mimeType", "storageKey", "vaultPath", "hash"] as const) {
-    if (candidate[key] !== undefined && typeof candidate[key] !== "string")
-      return false;
+  for (const key of ['mimeType', 'storageKey', 'vaultPath', 'hash'] as const) {
+    if (candidate[key] !== undefined && typeof candidate[key] !== 'string') return false;
   }
-  for (const key of ["size", "width", "height"] as const) {
+  for (const key of ['size', 'width', 'height'] as const) {
     if (
       candidate[key] !== undefined &&
-      (typeof candidate[key] !== "number" ||
-        !Number.isFinite(candidate[key]) ||
-        candidate[key] < 0)
+      (typeof candidate[key] !== 'number' || !Number.isFinite(candidate[key]) || candidate[key] < 0)
     ) {
       return false;
     }
@@ -429,18 +384,12 @@ function isAttachmentRefObject(
 function toAttachmentReference(value: Record<string, unknown>): AttachmentRef {
   return {
     id: value.id as string,
-    source: value.source as "managed" | "vault",
+    source: value.source as 'managed' | 'vault',
     filename: value.filename as string,
-    ...(value.mimeType === undefined
-      ? {}
-      : { mimeType: value.mimeType as string }),
+    ...(value.mimeType === undefined ? {} : { mimeType: value.mimeType as string }),
     ...(value.size === undefined ? {} : { size: value.size as number }),
-    ...(value.storageKey === undefined
-      ? {}
-      : { storageKey: value.storageKey as string }),
-    ...(value.vaultPath === undefined
-      ? {}
-      : { vaultPath: value.vaultPath as string }),
+    ...(value.storageKey === undefined ? {} : { storageKey: value.storageKey as string }),
+    ...(value.vaultPath === undefined ? {} : { vaultPath: value.vaultPath as string }),
     ...(value.hash === undefined ? {} : { hash: value.hash as string }),
     ...(value.width === undefined ? {} : { width: value.width as number }),
     ...(value.height === undefined ? {} : { height: value.height as number }),
@@ -452,9 +401,7 @@ function attachmentReference(attachment: Attachment): AttachmentRef {
     id: attachment.id,
     source: attachment.source,
     filename: attachment.filename,
-    ...(attachment.mimeType === undefined
-      ? {}
-      : { mimeType: attachment.mimeType }),
+    ...(attachment.mimeType === undefined ? {} : { mimeType: attachment.mimeType }),
     ...(attachment.size === undefined ? {} : { size: attachment.size }),
     ...(attachment.width === undefined ? {} : { width: attachment.width }),
     ...(attachment.height === undefined ? {} : { height: attachment.height }),
@@ -467,10 +414,10 @@ function attachmentReferenceConflict(
   references: readonly AttachmentRef[],
 ): LoomTableClientError {
   return new LoomTableClientError(
-    "conflict",
+    'conflict',
     {
-      code: "CONFLICT",
-      message: "The Record changed while adding this attachment.",
+      code: 'CONFLICT',
+      message: 'The Record changed while adding this attachment.',
     },
     undefined,
     {
@@ -489,52 +436,46 @@ function attachmentReferenceConflict(
   );
 }
 
-function isRetryableStage(
-  attempt: AttachmentAddAttempt,
-  error: LoomTableClientError,
-): boolean {
-  if (attempt.stage === "initialize" || attempt.stage === "reference") {
+function isRetryableStage(attempt: AttachmentAddAttempt, error: LoomTableClientError): boolean {
+  if (attempt.stage === 'initialize' || attempt.stage === 'reference') {
     return isTransient(error);
   }
-  return (
-    isTransient(error) ||
-    error.details.code === "ATTACHMENT_UPLOAD_RESPONSE_INVALID"
-  );
+  return isTransient(error) || error.details.code === 'ATTACHMENT_UPLOAD_RESPONSE_INVALID';
 }
 
 function isTransient(error: LoomTableClientError): boolean {
-  return error.kind === "network" || error.kind === "timeout";
+  return error.kind === 'network' || error.kind === 'timeout';
 }
 
 function asClientError(error: unknown): LoomTableClientError {
   return error instanceof LoomTableClientError
     ? error
-    : new LoomTableClientError("server", {
-        message: "The attachment operation failed.",
+    : new LoomTableClientError('server', {
+        message: 'The attachment operation failed.',
       });
 }
 
 function attachmentError(code: string): LoomTableClientError {
-  return new LoomTableClientError("validation", { code, message: code });
+  return new LoomTableClientError('validation', { code, message: code });
 }
 
 function attemptKey(recordId: string, fieldId: string): string {
-  return recordId + "\u0000" + fieldId;
+  return recordId + '\u0000' + fieldId;
 }
 
 export function createBrowserAttachmentFilePicker(): AttachmentFilePicker {
   return {
     pick: () =>
       new Promise((resolve) => {
-        const input = document.createElement("input");
-        input.type = "file";
+        const input = document.createElement('input');
+        input.type = 'file';
         input.hidden = true;
         let settled = false;
         const finish = (file: File | null): void => {
           if (settled) return;
           settled = true;
-          input.removeEventListener("change", onChange);
-          input.removeEventListener("cancel", onCancel);
+          input.removeEventListener('change', onChange);
+          input.removeEventListener('cancel', onCancel);
           input.remove();
           resolve(file);
         };
@@ -544,8 +485,8 @@ export function createBrowserAttachmentFilePicker(): AttachmentFilePicker {
         const onCancel = (): void => {
           finish(null);
         };
-        input.addEventListener("change", onChange);
-        input.addEventListener("cancel", onCancel);
+        input.addEventListener('change', onChange);
+        input.addEventListener('cancel', onCancel);
         document.body?.append(input);
         try {
           input.click();
@@ -558,18 +499,17 @@ export function createBrowserAttachmentFilePicker(): AttachmentFilePicker {
 
 function sanitizeAttachmentFilename(filename: string): string {
   const safeFilename = Array.from(filename)
-    .map((character) =>
-      character === "/" || character === "\\" ? "_" : character,
-    )
+    .map((character) => (character === '/' || character === '\\' ? '_' : character))
     .filter((character) => {
       const code = character.charCodeAt(0);
       return !(code <= 0x1f || (code >= 0x7f && code <= 0x9f));
     })
-    .join("")
+    .join('')
     .trim();
-  return safeFilename === "" ? "attachment" : safeFilename;
+  return safeFilename === '' ? 'attachment' : safeFilename;
 }
 
 function defaultIsOffline(): boolean {
-  return typeof navigator !== "undefined" && navigator.onLine === false;
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
+
