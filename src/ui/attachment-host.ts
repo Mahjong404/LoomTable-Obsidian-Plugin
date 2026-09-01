@@ -240,4 +240,3 @@ function defaultIsOffline(): boolean {
 }
 
 let previewId = 0;
-
