@@ -303,4 +303,3 @@ function createRecord(values: Record<string, unknown> = {}, revision = 1): LoomT
     updatedAt: '',
   };
 }
-
