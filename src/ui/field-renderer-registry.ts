@@ -463,7 +463,9 @@ function createAttachmentElement(
       failedKey: 'record.attachment.action.openFailed',
       offlineKey: 'record.attachment.action.offlineOpenPreview',
       callback: options.onAttachmentOpen,
-      available: options.canAttachmentOpen,
+      ...(options.canAttachmentOpen === undefined
+        ? {}
+        : { available: options.canAttachmentOpen }),
       disabled: options.attachmentOpenPreviewDisabled === true,
     }),
     createAttachmentAction(attachment, options, {
@@ -473,7 +475,9 @@ function createAttachmentElement(
       failedKey: 'record.attachment.action.previewFailed',
       offlineKey: 'record.attachment.action.offlineOpenPreview',
       callback: options.onAttachmentPreview,
-      available: options.canAttachmentPreview,
+      ...(options.canAttachmentPreview === undefined
+        ? {}
+        : { available: options.canAttachmentPreview }),
       disabled: options.attachmentOpenPreviewDisabled === true,
     }),
   ].filter((action): action is HTMLElement => action !== null);
