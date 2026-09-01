@@ -259,11 +259,14 @@ export class GridViewController {
     rawValue: unknown,
     options: GridEditOptions = {},
     sourceRecord?: LoomTableRecord,
-  ): Promise<void> {
+  ): Promise<LoomTableRecord> {
     const field = this.#state.fields.find((candidate) => candidate.id === fieldId);
+    const stateRecord = this.#state.records.find((candidate) => candidate.id === recordId);
     const record =
-      this.#state.records.find((candidate) => candidate.id === recordId) ??
-      (sourceRecord?.id === recordId ? sourceRecord : undefined);
+      sourceRecord?.id === recordId &&
+      (stateRecord === undefined || sourceRecord.revision >= stateRecord.revision)
+        ? sourceRecord
+        : stateRecord;
     const tableId = this.#state.selectedTableId;
     if (field === undefined || record === undefined || tableId === null) {
       throw this.#publishEditFailure('The selected Grid Cell is no longer available.');
@@ -303,7 +306,11 @@ export class GridViewController {
     }
 
     const value = normalized.value;
-    const authoritative = this.#authoritativeRecords.get(recordId) ?? record;
+    const cachedAuthoritative = this.#authoritativeRecords.get(recordId);
+    const authoritative =
+      cachedAuthoritative === undefined || record.revision >= cachedAuthoritative.revision
+        ? record
+        : cachedAuthoritative;
     const durablePendingBefore = this.#durableQueue?.getRecordSnapshot(recordId).pending ?? 0;
     const preEditDisplay = record;
     const editStatuses = { ...this.#state.editStatuses };
@@ -346,15 +353,23 @@ export class GridViewController {
             },
     };
     try {
+      let result: MutationResult;
       if (this.#durableQueue !== null) {
         const request: MutationRequest = {
           clientMutationId: options.clientMutationId ?? this.#mutationIdFactory(),
           commands: [job.buildCommand(authoritative.revision)],
         };
-        await this.#durableQueue.enqueue(tableId, request);
+        result = await this.#durableQueue.enqueue(tableId, request);
       } else {
-        await this.#queue!.enqueue(job);
+        result = await this.#queue!.enqueue(job);
       }
+      const updated = result.results.find((item) => item.index === 0)?.record;
+      if (updated === undefined) {
+        throw new LoomTableClientError('invalid-response', {
+          message: 'The mutation response did not include the updated Record.',
+        });
+      }
+      return updated;
     } catch (error) {
       const durablePendingAfter = this.#durableQueue?.getRecordSnapshot(recordId).pending ?? 0;
       const isConflict = error instanceof LoomTableClientError && error.kind === 'conflict';

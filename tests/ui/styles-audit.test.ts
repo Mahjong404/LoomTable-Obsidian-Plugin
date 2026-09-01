@@ -65,6 +65,9 @@ describe('LoomTable CSS contract', () => {
     expect(styles).toContain('.loom-root input:focus-visible');
     expect(styles).toContain('.loom-root select:focus-visible');
     expect(styles).toContain('.loom-root textarea:focus-visible');
+    expect(styles).toContain('.loom-record-field-editor');
+    expect(styles).toContain('.loom-record-field-actions');
+    expect(styles).toContain('.loom-record-field-error');
     expect(styles).not.toMatch(/^\s*(?:button|input|textarea|select)\b/m);
   });
 

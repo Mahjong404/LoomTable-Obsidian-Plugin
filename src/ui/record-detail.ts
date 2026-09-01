@@ -1,7 +1,14 @@
-import type { Field, JsonValue, LocationValue, LoomTableRecord } from '../client/loomtable-client';
+import {
+  LoomTableClientError,
+  type Field,
+  type JsonValue,
+  type LocationValue,
+  type LoomTableRecord,
+} from '../client/loomtable-client';
 import type { Translator } from '../i18n';
 import {
   describeFieldValueError,
+  normalizeCellValue,
   normalizeLocationValue,
   type LocationEditIntent,
 } from './field-value-editor';
@@ -25,6 +32,12 @@ type LocationPresentationState = 'located' | 'unlocated' | 'unrenderable';
 
 export interface RecordDetailCallbacks {
   readonly onClose?: () => void;
+  readonly onFieldEdit?: (
+    recordId: string,
+    fieldId: string,
+    value: JsonValue,
+    record: LoomTableRecord,
+  ) => LoomTableRecord | Promise<LoomTableRecord>;
   readonly onLocationEdit?: (
     recordId: string,
     fieldId: string,
@@ -113,12 +126,21 @@ export function createRecordDetail(
         : null;
 
   const closeDetail = (): void => {
-    const draft = root.querySelector<HTMLElement>('.loom-location-editor[data-dirty="true"]');
     if (
-      draft !== null &&
-      !confirmDiscard(options, options.translate('record.location.discardConfirm'))
+      root.querySelector<HTMLElement>(
+        '.loom-location-editor[data-saving="true"], .loom-record-field-editor[data-saving="true"]',
+      ) !== null
     ) {
       return;
+    }
+    const draft = root.querySelector<HTMLElement>(
+      '.loom-location-editor[data-dirty="true"], .loom-record-field-editor[data-dirty="true"]',
+    );
+    if (draft !== null) {
+      const message = draft.classList.contains('loom-record-field-editor')
+        ? options.translate('record.field.discardConfirm')
+        : options.translate('record.location.discardConfirm');
+      if (!confirmDiscard(options, message)) return;
     }
     options.callbacks?.onClose?.();
     if (returnFocus?.isConnected) returnFocus.focus();
@@ -276,8 +298,256 @@ function renderField(
     ) {
       body.append(createAttachmentAddAction(record, field, options, onRecordUpdated, announce));
     }
+    const onFieldEdit = options.callbacks?.onFieldEdit;
+    if (onFieldEdit !== undefined && isDetailScalarField(field)) {
+      body.append(
+        createScalarFieldEditAction(
+          record,
+          field,
+          options,
+          detailRoot,
+          body,
+          onFieldEdit,
+          onRecordUpdated,
+          announce,
+        ),
+      );
+    }
   }
   return [label, body];
+}
+
+function createScalarFieldEditAction(
+  record: LoomTableRecord,
+  field: Field,
+  options: RecordDetailOptions,
+  detailRoot: HTMLElement,
+  body: HTMLElement,
+  onFieldEdit: NonNullable<RecordDetailCallbacks['onFieldEdit']>,
+  onRecordUpdated: (record: LoomTableRecord) => void,
+  announce: (message: string) => void,
+): HTMLButtonElement {
+  const edit = button(options.translate('record.field.edit'));
+  edit.classList.add('loom-record-field-edit');
+  edit.dataset.fieldId = field.id;
+  const offline = options.offline === true;
+  edit.disabled = offline;
+  edit.setAttribute(
+    'aria-label',
+    offline
+      ? options.translate('record.field.offline')
+      : options.translate('record.field.edit') + ': ' + field.name,
+  );
+  edit.addEventListener('click', () => {
+    if (offline || edit.disabled) return;
+    const form = createScalarFieldEditor(
+      record,
+      field,
+      options,
+      detailRoot,
+      onFieldEdit,
+      onRecordUpdated,
+      announce,
+    );
+    body.replaceChildren(form);
+    focusScalarEditor(form);
+  });
+  return edit;
+}
+
+function createScalarFieldEditor(
+  record: LoomTableRecord,
+  field: Field,
+  options: RecordDetailOptions,
+  detailRoot: HTMLElement,
+  onFieldEdit: NonNullable<RecordDetailCallbacks['onFieldEdit']>,
+  onRecordUpdated: (record: LoomTableRecord) => void,
+  announce: (message: string) => void,
+): HTMLFormElement {
+  const form = document.createElement('form');
+  form.className = 'loom-record-field-editor';
+  form.dataset.fieldId = field.id;
+  form.dataset.dirty = 'false';
+  form.setAttribute('aria-label', options.translate('record.field.editing') + ': ' + field.name);
+
+  const editor = defaultFieldRendererRegistry.createEditor(field, record.values[field.id], {
+    translate: options.translate,
+  });
+  editor.classList.add('loom-record-field-input');
+  const error = document.createElement('div');
+  error.className = 'loom-record-field-error';
+  error.id = nextRecordFieldEditorErrorId();
+  error.setAttribute('role', 'alert');
+  error.setAttribute('aria-live', 'assertive');
+  error.tabIndex = -1;
+  error.hidden = true;
+  editor.setAttribute('aria-describedby', error.id);
+  editor.setAttribute('aria-invalid', 'false');
+
+  const actions = document.createElement('div');
+  actions.className = 'loom-record-field-actions';
+  const save = button(options.translate('common.save'));
+  save.type = 'submit';
+  const cancel = button(options.translate('common.cancel'));
+  actions.append(save, cancel);
+  form.append(editor, error, actions);
+
+  let saving = false;
+  const setSaving = (value: boolean): void => {
+    saving = value;
+    form.dataset.saving = String(value);
+    form.setAttribute('aria-busy', String(value));
+    editor.disabled = value;
+    save.disabled = value;
+    cancel.disabled = value;
+  };
+
+  const restoreDisplay = (): void => {
+    onRecordUpdated(record);
+    focusFieldEdit(detailRoot, field.id);
+  };
+
+  const cancelEdit = (): void => {
+    if (saving) return;
+    if (
+      form.dataset.dirty === 'true' &&
+      !confirmDiscard(options, options.translate('record.field.discardConfirm'))
+    ) {
+      focusScalarEditor(form);
+      return;
+    }
+    restoreDisplay();
+  };
+
+  const submit = async (): Promise<void> => {
+    if (saving) return;
+    const rawValue =
+      editor instanceof HTMLInputElement && editor.type === 'checkbox'
+        ? editor.checked
+        : editor.value;
+    const normalized = normalizeCellValue(field, rawValue);
+    if (!normalized.ok) {
+      showScalarFieldError(
+        error,
+        editor,
+        describeFieldValueError(normalized.code, options.translate),
+        normalized.code,
+      );
+      focusScalarEditor(form);
+      return;
+    }
+
+    setSaving(true);
+    announce(options.translate('record.field.saving'));
+    try {
+      const updated = await onFieldEdit(record.id, field.id, normalized.value, record);
+      onRecordUpdated(updated);
+      announce(options.translate('record.field.saved'));
+      focusFieldEdit(detailRoot, field.id);
+    } catch (cause) {
+      announce(options.translate('record.field.saveError'));
+      const conflict = options.callbacks?.getConflict?.(record.id);
+      if (conflict !== undefined) {
+        detailRoot.querySelector('.loom-record-conflict')?.remove();
+        const conflictBox = renderConflict(record.id, conflict, options, detailRoot);
+        detailRoot.append(conflictBox);
+        conflictBox.focus();
+      } else {
+        showScalarFieldError(error, editor, describeScalarFieldEditError(cause, options.translate));
+        focusScalarEditor(form);
+      }
+    } finally {
+      if (form.isConnected) setSaving(false);
+    }
+  };
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void submit();
+  });
+  form.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelEdit();
+      return;
+    }
+    if (event.key === 'Enter' && !(editor instanceof HTMLTextAreaElement && event.shiftKey)) {
+      event.preventDefault();
+      void submit();
+    }
+  });
+  form.addEventListener('input', () => {
+    form.dataset.dirty = 'true';
+    clearScalarFieldError(error, editor);
+  });
+  form.addEventListener('change', () => {
+    form.dataset.dirty = 'true';
+    clearScalarFieldError(error, editor);
+  });
+  cancel.addEventListener('click', (event) => {
+    event.preventDefault();
+    cancelEdit();
+  });
+
+  return form;
+}
+
+function focusScalarEditor(form: HTMLFormElement): void {
+  form.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea')?.focus();
+}
+
+function focusFieldEdit(detailRoot: HTMLElement, fieldId: string): void {
+  const edit = [...detailRoot.querySelectorAll<HTMLButtonElement>('.loom-record-field-edit')].find(
+    (candidate) => candidate.dataset.fieldId === fieldId,
+  );
+  edit?.focus();
+}
+
+function showScalarFieldError(
+  error: HTMLElement,
+  editor: HTMLElement,
+  message: string,
+  code?: string,
+): void {
+  error.hidden = false;
+  error.textContent = message;
+  if (code === undefined) delete error.dataset.errorCode;
+  else error.dataset.errorCode = code;
+  editor.setAttribute('aria-invalid', 'true');
+}
+
+function clearScalarFieldError(error: HTMLElement, editor: HTMLElement): void {
+  error.hidden = true;
+  error.replaceChildren();
+  delete error.dataset.errorCode;
+  editor.setAttribute('aria-invalid', 'false');
+}
+
+function describeScalarFieldEditError(error: unknown, translate: Translator): string {
+  if (error instanceof LoomTableClientError) {
+    if (error.kind === 'authentication') return translate('record.field.saveAuthentication');
+    if (error.kind === 'forbidden') return translate('record.field.saveForbidden');
+    if (error.kind === 'network' || error.kind === 'timeout') {
+      return translate('record.field.saveNetwork');
+    }
+    if (error.kind === 'server' || error.kind === 'invalid-response') {
+      return translate('record.field.saveServer');
+    }
+  }
+  return translate('record.field.saveError');
+}
+
+function isDetailScalarField(
+  field: Field,
+): field is Field & { readonly type: 'text' | 'longText' | 'number' | 'checkbox' | 'date' } {
+  return (
+    field.type === 'text' ||
+    field.type === 'longText' ||
+    field.type === 'number' ||
+    field.type === 'checkbox' ||
+    field.type === 'date'
+  );
 }
 
 function renderLocationValue(
@@ -753,6 +1023,7 @@ function createPreviewTrigger(
 
 let recordDetailId = 0;
 let locationEditorErrorId = 0;
+let recordFieldEditorErrorId = 0;
 
 function nextRecordDetailId(): string {
   recordDetailId += 1;
@@ -762,6 +1033,11 @@ function nextRecordDetailId(): string {
 function nextLocationEditorErrorId(): string {
   locationEditorErrorId += 1;
   return 'loom-location-editor-error-' + String(locationEditorErrorId);
+}
+
+function nextRecordFieldEditorErrorId(): string {
+  recordFieldEditorErrorId += 1;
+  return 'loom-record-field-editor-error-' + String(recordFieldEditorErrorId);
 }
 
 function requestDangerousConfirmation(
