@@ -15,6 +15,7 @@ import {
 import {
   createRenderedFieldValueElement,
   defaultFieldRendererRegistry,
+  type FieldEditorElement,
   type RenderedAttachment,
 } from './field-renderer-registry';
 import { confirmDangerousAction as showDangerousActionConfirmation } from './dangerous-action-confirmation';
@@ -424,7 +425,9 @@ function createScalarFieldEditor(
     const rawValue =
       editor instanceof HTMLInputElement && editor.type === 'checkbox'
         ? editor.checked
-        : editor.value;
+        : editor instanceof HTMLSelectElement && editor.multiple
+          ? [...editor.selectedOptions].map((option) => option.value)
+          : editor.value;
     const normalized = normalizeCellValue(field, rawValue);
     if (!normalized.ok) {
       showScalarFieldError(
@@ -494,7 +497,7 @@ function createScalarFieldEditor(
 }
 
 function focusScalarEditor(form: HTMLFormElement): void {
-  form.querySelector<HTMLInputElement | HTMLTextAreaElement>('input, textarea')?.focus();
+  form.querySelector<FieldEditorElement>('input, textarea, select')?.focus();
 }
 
 function focusFieldEdit(detailRoot: HTMLElement, fieldId: string): void {
@@ -538,15 +541,19 @@ function describeScalarFieldEditError(error: unknown, translate: Translator): st
   return translate('record.field.saveError');
 }
 
-function isDetailScalarField(
-  field: Field,
-): field is Field & { readonly type: 'text' | 'longText' | 'number' | 'checkbox' | 'date' } {
+function isDetailScalarField(field: Field): field is Field & {
+  readonly type:
+    'text' | 'longText' | 'number' | 'checkbox' | 'date' | 'url' | 'select' | 'multiSelect';
+} {
   return (
     field.type === 'text' ||
     field.type === 'longText' ||
     field.type === 'number' ||
     field.type === 'checkbox' ||
-    field.type === 'date'
+    field.type === 'date' ||
+    field.type === 'url' ||
+    field.type === 'select' ||
+    field.type === 'multiSelect'
   );
 }
 
