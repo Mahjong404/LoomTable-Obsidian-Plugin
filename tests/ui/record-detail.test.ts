@@ -731,7 +731,15 @@ describe('Record Detail Location seam', () => {
       config: { maxCount: 10 },
     };
     const record = createRecord({
-      field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+      field_attachment: [
+        {
+          id: 'attachment_vault',
+          source: 'vault',
+          filename: 'notes.md',
+          vaultPath: 'attachments/notes.md',
+        },
+        { id: 'attachment_managed', source: 'managed', filename: 'preview.pdf' },
+      ],
     });
     const onAttachmentDownload = vi.fn().mockRejectedValue(new Error('secret path'));
 
@@ -784,19 +792,32 @@ describe('Record Detail Location seam', () => {
       callbacks: { onAttachmentOpen, onAttachmentPreview },
     });
 
-    detail.querySelector<HTMLButtonElement>('.loom-attachment-open-action')?.click();
-    detail.querySelector<HTMLButtonElement>('.loom-attachment-preview-action')?.click();
+    const open = detail.querySelector<HTMLButtonElement>('.loom-attachment-open-action');
+    const preview = detail.querySelector<HTMLButtonElement>('.loom-attachment-preview-action');
+    expect(open).not.toBeNull();
+    expect(preview).not.toBeNull();
+    open?.click();
+    preview?.click();
     await vi.waitFor(() => expect(onAttachmentOpen).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(onAttachmentPreview).toHaveBeenCalledTimes(1));
     expect(onAttachmentOpen).toHaveBeenCalledWith(
       'record_01',
       'field_attachment',
-      expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
+      expect.objectContaining({
+        id: 'attachment_vault',
+        filename: 'notes.md',
+        source: 'vault',
+        vaultPath: 'attachments/notes.md',
+      }),
     );
     expect(onAttachmentPreview).toHaveBeenCalledWith(
       'record_01',
       'field_attachment',
-      expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
+      expect.objectContaining({
+        id: 'attachment_managed',
+        filename: 'preview.pdf',
+        source: 'managed',
+      }),
     );
   });
 
