@@ -310,15 +310,7 @@ describe('MapView', () => {
       tableId: 'table_01',
       revision: 1,
       values: {
-        field_attachment: [
-          {
-            id: 'attachment_vault',
-            source: 'vault',
-            filename: 'notes.md',
-            vaultPath: 'attachments/notes.md',
-          },
-          { id: 'attachment_managed', source: 'managed', filename: 'preview.pdf' },
-        ],
+        field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
       },
       createdAt: '',
       updatedAt: '',
@@ -365,7 +357,15 @@ describe('MapView', () => {
       tableId: 'table_01',
       revision: 1,
       values: {
-        field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+        field_attachment: [
+          {
+            id: 'attachment_vault',
+            source: 'vault',
+            filename: 'notes.md',
+            vaultPath: 'attachments/notes.md',
+          },
+          { id: 'attachment_managed', source: 'managed', filename: 'preview.pdf' },
+        ],
       },
       createdAt: '',
       updatedAt: '',
