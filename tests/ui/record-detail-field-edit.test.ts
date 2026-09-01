@@ -327,4 +327,3 @@ function createRecord(values: Record<string, unknown>): LoomTableRecord {
     updatedAt: '',
   };
 }
-

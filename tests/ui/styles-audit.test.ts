@@ -97,4 +97,3 @@ describe('LoomTable CSS contract', () => {
     expect(styles).toContain('.loom-field-value-link:focus-visible');
   });
 });
-
