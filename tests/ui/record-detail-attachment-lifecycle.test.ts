@@ -112,7 +112,7 @@ describe('Record Detail attachment lifecycle actions', () => {
       translate: createTranslator('en'),
       callbacks: {
         onAttachmentAdd: add,
-        onAttachmentAddRetry: add.retry,
+        ...(add.retry === undefined ? {} : { onAttachmentAddRetry: add.retry }),
       },
     });
 
