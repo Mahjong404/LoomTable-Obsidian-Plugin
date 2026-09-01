@@ -94,8 +94,9 @@ describe('Attachment Add/Upload seam', () => {
       updateRecord,
       idFactory: () => 'mut_init',
     });
+    const source = createRecord();
 
-    await expect(add('record_01', 'field_attachment', createRecord(), 10)).resolves.toBe(
+    await expect(add('record_01', 'field_attachment', source, 10)).resolves.toBe(
       authoritative,
     );
 
@@ -125,7 +126,7 @@ describe('Attachment Add/Upload seam', () => {
           size: 4,
         },
       ],
-      expect.objectContaining({ id: 'record_01' }),
+      source,
       expect.objectContaining({
         clientMutationId: /.+/,
         expectedRevision: 1,
