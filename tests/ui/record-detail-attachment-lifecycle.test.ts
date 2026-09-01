@@ -93,7 +93,7 @@ describe('Record Detail attachment lifecycle actions', () => {
       name: 'report.pdf',
       type: 'application/pdf',
       size: 1,
-      arrayBuffer: async () => new Uint8Array([1]).buffer,
+      arrayBuffer: async () => new ArrayBuffer(1),
     } satisfies AttachmentUploadFile;
     const add = createAttachmentAddCallback(
       {
