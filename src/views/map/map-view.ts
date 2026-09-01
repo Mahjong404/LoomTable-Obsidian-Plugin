@@ -15,7 +15,7 @@ import type {
   TileProviderSummary,
 } from '../../maps/providers/tile-provider-schema';
 import type { LocationEditIntent } from '../../ui/field-value-editor';
-import type { AttachmentAddHandler } from '../../ui/attachment-upload';
+import type { AttachmentAddHandler, AttachmentDetachHandler } from '../../ui/attachment-upload';
 import {
   createRenderedFieldValueElement,
   defaultFieldRendererRegistry,
@@ -74,6 +74,8 @@ export interface MapViewOptions {
     attachment: RenderedAttachment,
   ) => void | Promise<void>;
   readonly onAttachmentAdd?: AttachmentAddHandler;
+  readonly onAttachmentAddRetry?: AttachmentAddHandler;
+  readonly onAttachmentDetach?: AttachmentDetachHandler;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
@@ -471,6 +473,44 @@ export class MapView {
                   maxCount,
                 );
                 if (updated !== null) await this.#controller.openRecord(recordId);
+                return updated;
+              },
+            }),
+        ...(this.options.onAttachmentAddRetry === undefined
+          ? {}
+          : {
+              onAttachmentAddRetry: async (
+                recordId: string,
+                fieldId: string,
+                recordValue: LoomTableRecord,
+                maxCount: number,
+              ) => {
+                const updated = await this.options.onAttachmentAddRetry?.(
+                  recordId,
+                  fieldId,
+                  recordValue,
+                  maxCount,
+                );
+                if (updated !== null) await this.#controller.openRecord(recordId);
+                return updated;
+              },
+            }),
+        ...(this.options.onAttachmentDetach === undefined
+          ? {}
+          : {
+              onAttachmentDetach: async (
+                recordId: string,
+                fieldId: string,
+                attachmentId: string,
+                recordValue: LoomTableRecord,
+              ) => {
+                const updated = await this.options.onAttachmentDetach?.(
+                  recordId,
+                  fieldId,
+                  attachmentId,
+                  recordValue,
+                );
+                if (updated !== undefined) await this.#controller.openRecord(recordId);
                 return updated;
               },
             }),

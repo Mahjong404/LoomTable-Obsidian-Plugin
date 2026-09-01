@@ -14,8 +14,10 @@ import { confirmDangerousAction as showDangerousActionConfirmation } from './dan
 import { isSafeAttachmentVaultPath } from './attachment-host';
 import {
   describeAttachmentUploadError,
+  isAttachmentRetryable,
   readAttachmentReferences,
   type AttachmentAddHandler,
+  type AttachmentDetachHandler,
 } from './attachment-upload';
 
 const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
@@ -56,6 +58,8 @@ export interface RecordDetailCallbacks {
     attachment: RenderedAttachment,
   ) => void | Promise<void>;
   readonly onAttachmentAdd?: AttachmentAddHandler;
+  readonly onAttachmentAddRetry?: AttachmentAddHandler;
+  readonly onAttachmentDetach?: AttachmentDetachHandler;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
@@ -211,11 +215,39 @@ function renderField(
             return options.callbacks?.onAttachmentPreview?.(record.id, field.id, attachment);
           }
         : undefined;
+    const onAttachmentDetach =
+      field.type === 'attachment' && options.callbacks?.onAttachmentDetach !== undefined
+        ? async (attachment: RenderedAttachment): Promise<void> => {
+            if (attachment.id === undefined) return;
+            const trigger =
+              typeof document !== 'undefined' && document.activeElement instanceof HTMLElement
+                ? document.activeElement
+                : undefined;
+            const confirmed = await requestDangerousConfirmation(
+              options,
+              detailRoot,
+              options.translate('record.attachment.action.detachConfirm') +
+                ' ' +
+                (attachment.filename ?? attachment.statusText),
+              trigger,
+            );
+            if (!confirmed) return;
+            const updated = await options.callbacks?.onAttachmentDetach?.(
+              record.id,
+              field.id,
+              attachment.id,
+              record,
+            );
+            if (updated !== undefined) onRecordUpdated(updated);
+            announce(options.translate('record.attachment.action.detached'));
+          }
+        : undefined;
     body.append(
       createRenderedFieldValueElement(displayValue, {
         translate: options.translate,
         attachmentDownloadDisabled: options.offline === true,
         attachmentOpenPreviewDisabled: options.offline === true,
+        attachmentDetachDisabled: options.offline === true,
         ...(field.type === 'attachment'
           ? {
               canAttachmentOpen: (attachment: RenderedAttachment) =>
@@ -227,6 +259,7 @@ function renderField(
         ...(onAttachmentDownload === undefined ? {} : { onAttachmentDownload }),
         ...(onAttachmentOpen === undefined ? {} : { onAttachmentOpen }),
         ...(onAttachmentPreview === undefined ? {} : { onAttachmentPreview }),
+        ...(onAttachmentDetach === undefined ? {} : { onAttachmentDetach }),
       }),
     );
     body.setAttribute('aria-label', field.name + ': ' + displayValue.ariaLabel);
@@ -926,6 +959,83 @@ function createAttachmentAddAction(
   action.setAttribute('aria-describedby', statusId);
 
   const offline = options.offline === true;
+  let retryAction: HTMLButtonElement | null = null;
+  let busy = false;
+
+  const setIdle = (): void => {
+    action.disabled = offline;
+    action.removeAttribute('aria-busy');
+    action.textContent = options.translate('record.attachment.action.add');
+    action.setAttribute(
+      'aria-label',
+      offline
+        ? options.translate('record.attachment.action.offlineAdd')
+        : options.translate('record.attachment.action.add'),
+    );
+    if (retryAction !== null) {
+      retryAction.disabled = offline;
+      retryAction.removeAttribute('aria-busy');
+      retryAction.textContent = options.translate('record.attachment.action.retry');
+      retryAction.setAttribute('aria-label', options.translate('record.attachment.action.retry'));
+    }
+  };
+
+  const removeRetryAction = (): void => {
+    retryAction?.remove();
+    retryAction = null;
+  };
+
+  const ensureRetryAction = (): void => {
+    if (retryAction !== null || options.callbacks?.onAttachmentAddRetry === undefined) return;
+    retryAction = button(options.translate('record.attachment.action.retry'));
+    retryAction.classList.add('loom-attachment-add-retry-action');
+    retryAction.setAttribute('aria-describedby', statusId);
+    retryAction.addEventListener('click', () => {
+      void run(true);
+    });
+    group.append(document.createTextNode(' '), retryAction);
+  };
+
+  const run = async (retry: boolean): Promise<void> => {
+    const handler = retry
+      ? options.callbacks?.onAttachmentAddRetry
+      : options.callbacks?.onAttachmentAdd;
+    const trigger = retry ? retryAction : action;
+    if (busy || offline || handler === undefined || trigger === null || trigger.disabled) {
+      return;
+    }
+    busy = true;
+    action.disabled = true;
+    retryAction?.setAttribute('aria-busy', 'true');
+    trigger.disabled = true;
+    trigger.setAttribute('aria-busy', 'true');
+    const pendingLabel = options.translate(
+      retry ? 'record.attachment.action.retrying' : 'record.attachment.action.adding',
+    );
+    trigger.textContent = pendingLabel;
+    trigger.setAttribute('aria-label', pendingLabel);
+    status.textContent = pendingLabel;
+    try {
+      const updated = await handler(record.id, field.id, record, field.config.maxCount);
+      if (updated === null) {
+        status.textContent = options.translate('record.attachment.action.addCancelled');
+        return;
+      }
+      if (updated !== undefined) onRecordUpdated(updated);
+      removeRetryAction();
+      announce(options.translate('record.attachment.action.added'));
+    } catch (error) {
+      status.textContent = describeAttachmentUploadError(error, options.translate);
+      if (isAttachmentRetryable(error)) ensureRetryAction();
+      else removeRetryAction();
+    } finally {
+      busy = false;
+      setIdle();
+      if (trigger.isConnected && !trigger.disabled) trigger.focus();
+      else if (action.isConnected && !action.disabled) action.focus();
+    }
+  };
+
   action.disabled = offline;
   action.setAttribute(
     'aria-label',
@@ -934,49 +1044,12 @@ function createAttachmentAddAction(
       : options.translate('record.attachment.action.add'),
   );
   if (offline) status.textContent = options.translate('record.attachment.action.offlineAdd');
-
-  let busy = false;
   action.addEventListener('click', () => {
-    if (busy || action.disabled || options.callbacks?.onAttachmentAdd === undefined) return;
-    busy = true;
-    action.disabled = true;
-    action.setAttribute('aria-busy', 'true');
-    const pendingLabel = options.translate('record.attachment.action.adding');
-    action.textContent = pendingLabel;
-    action.setAttribute('aria-label', pendingLabel);
-    status.textContent = pendingLabel;
-    void (async () => {
-      try {
-        const updated = await options.callbacks?.onAttachmentAdd?.(
-          record.id,
-          field.id,
-          record,
-          field.config.maxCount,
-        );
-        if (updated === null) {
-          status.textContent = options.translate('record.attachment.action.addCancelled');
-          return;
-        }
-        if (updated !== undefined) onRecordUpdated(updated);
-        announce(options.translate('record.attachment.action.added'));
-      } catch (error) {
-        status.textContent = describeAttachmentUploadError(error, options.translate);
-      } finally {
-        busy = false;
-        if (action.isConnected) {
-          action.disabled = false;
-          action.removeAttribute('aria-busy');
-          action.textContent = options.translate('record.attachment.action.add');
-          action.setAttribute('aria-label', options.translate('record.attachment.action.add'));
-          action.focus();
-        }
-      }
-    })();
+    void run(false);
   });
   group.append(action, document.createTextNode(' '), status);
   return group;
 }
-
 let attachmentAddStatusId = 0;
 
 function nextAttachmentAddStatusId(): string {

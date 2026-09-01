@@ -118,6 +118,21 @@ export const englishMessages = {
   'record.attachment.action.previewing': 'Previewing…',
   'record.attachment.action.previewFailed': 'Preview failed. Check the attachment and try again.',
   'record.attachment.action.offlineOpenPreview': 'Offline. Reconnect to open or preview.',
+  'record.attachment.action.detach': 'Remove from Record',
+  'record.attachment.action.detaching': 'Removing from Record…',
+  'record.attachment.action.detachFailed':
+    'The attachment could not be removed from this Record. Try again.',
+  'record.attachment.action.offlineDetach':
+    'Offline. Reconnect to remove the attachment from this Record.',
+  'record.attachment.action.detachConfirm':
+    'Remove this attachment from the Record? The attachment resource will be kept.',
+  'record.attachment.action.detached': 'Attachment removed from this Record.',
+  'record.attachment.action.retry': 'Retry upload',
+  'record.attachment.action.retrying': 'Retrying upload…',
+  'record.attachment.action.retryFailed':
+    'Retry failed. Start Add again if the attachment is unavailable.',
+  'record.attachment.action.retryUnavailable':
+    'This attachment cannot be retried. Start Add again.',
   'record.attachment.preview.title': 'Read-only attachment preview',
   'record.attachment.preview.description': 'Read-only preview. No Vault file is written.',
   'record.attachment.preview.close': 'Close preview',

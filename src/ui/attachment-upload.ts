@@ -2,6 +2,8 @@ import {
   LoomTableClientError,
   type Attachment,
   type AttachmentRef,
+  type InitializeAttachmentRequest,
+  type JsonValue,
   type LoomTableClient,
   type LoomTableRecord,
 } from '../client/loomtable-client';
@@ -19,43 +21,95 @@ export interface AttachmentFilePicker {
   pick(): Promise<AttachmentUploadFile | null>;
 }
 
+export interface AttachmentReferenceMutationContext {
+  readonly clientMutationId: string;
+  readonly expectedRevision: number;
+}
+
 export type AttachmentReferenceUpdater = (
   recordId: string,
   fieldId: string,
   references: readonly AttachmentRef[],
   sourceRecord: LoomTableRecord,
+  mutation: AttachmentReferenceMutationContext,
 ) => Promise<LoomTableRecord | undefined>;
 
-export type AttachmentAddHandler = (
+export interface AttachmentAddHandler {
+  (
+    recordId: string,
+    fieldId: string,
+    sourceRecord: LoomTableRecord,
+    maxCount: number,
+  ): Promise<LoomTableRecord | null | undefined>;
+  readonly retry?: AttachmentAddHandler;
+}
+
+export type AttachmentDetachHandler = (
   recordId: string,
   fieldId: string,
+  attachmentId: string,
   sourceRecord: LoomTableRecord,
-  maxCount: number,
-) => Promise<LoomTableRecord | null | undefined>;
+) => Promise<LoomTableRecord | undefined>;
 
 export interface AttachmentAddCallbackOptions {
   readonly updateRecord: AttachmentReferenceUpdater;
+  readonly getAttachment?: (attachmentId: string) => Promise<Attachment>;
+  readonly getRecord?: (recordId: string) => Promise<LoomTableRecord>;
   readonly picker?: AttachmentFilePicker;
+  readonly isOffline?: () => boolean;
+  readonly idFactory?: () => string;
+  readonly mutationIdFactory?: () => string;
+}
+
+export interface AttachmentDetachCallbackOptions {
+  readonly updateRecord: AttachmentReferenceUpdater;
   readonly isOffline?: () => boolean;
   readonly idFactory?: () => string;
 }
 
+export class AttachmentRetryableError extends LoomTableClientError {
+  readonly retryable = true;
+
+  constructor(error: LoomTableClientError) {
+    super(error.kind, error.details, { cause: error }, error.conflict);
+  }
+}
+
+export function isAttachmentRetryable(error: unknown): error is AttachmentRetryableError {
+  return error instanceof AttachmentRetryableError;
+}
+
+interface AttachmentAddAttempt {
+  readonly key: string;
+  readonly recordId: string;
+  readonly fieldId: string;
+  readonly maxCount: number;
+  sourceRecord: LoomTableRecord;
+  readonly request: InitializeAttachmentRequest;
+  readonly idempotencyKey: string;
+  readonly clientMutationId: string;
+  readonly bytes: ArrayBuffer;
+  readonly contentType?: string;
+  attachment: Attachment | undefined;
+  stage: 'initialize' | 'upload' | 'reference';
+}
+
 export function createAttachmentAddCallback(
-  client: Pick<LoomTableClient, 'initializeAttachment' | 'uploadAttachmentContent'>,
+  client: Pick<LoomTableClient, 'initializeAttachment' | 'uploadAttachmentContent'> &
+    Partial<Pick<LoomTableClient, 'getAttachment'>>,
   options: AttachmentAddCallbackOptions,
 ): AttachmentAddHandler {
   const picker = options.picker ?? createBrowserAttachmentFilePicker();
   const isOffline = options.isOffline ?? defaultIsOffline;
   const idFactory = options.idFactory ?? createMutationId;
+  const mutationIdFactory = options.mutationIdFactory ?? createMutationId;
+  const getAttachment = options.getAttachment ?? client.getAttachment;
+  const attempts = new Map<string, AttachmentAddAttempt>();
 
-  return async (recordId, fieldId, sourceRecord, maxCount) => {
-    if (isOffline()) {
-      throw attachmentError('ATTACHMENT_OFFLINE');
-    }
+  const start: AttachmentAddHandler = async (recordId, fieldId, sourceRecord, maxCount) => {
+    if (isOffline()) throw attachmentError('ATTACHMENT_OFFLINE');
     const current = readAttachmentReferences(sourceRecord.values[fieldId]);
-    if (current === null) {
-      throw attachmentError('ATTACHMENT_REFERENCES_INVALID');
-    }
+    if (current === null) throw attachmentError('ATTACHMENT_REFERENCES_INVALID');
     if (!Number.isInteger(maxCount) || maxCount < 1 || current.length >= maxCount) {
       throw attachmentError('ATTACHMENT_LIMIT_REACHED');
     }
@@ -63,42 +117,207 @@ export function createAttachmentAddCallback(
     const file = await picker.pick();
     if (file === null) return null;
 
-    const mimeType = file.type.trim();
-    const initialized = await client.initializeAttachment(
-      {
-        source: 'managed',
-        filename: sanitizeAttachmentFilename(file.name),
-        ...(mimeType === '' ? {} : { mimeType }),
-        ...(Number.isFinite(file.size) && file.size >= 0 ? { size: file.size } : {}),
-      },
-      idFactory(),
-    );
-    if (
-      initialized.source !== 'managed' ||
-      initialized.status !== 'pending' ||
-      initialized.id.trim() === '' ||
-      initialized.filename.trim() === ''
-    ) {
-      throw attachmentError('ATTACHMENT_INIT_RESPONSE_INVALID');
-    }
-
     const bytes = await file.arrayBuffer();
-    const uploaded = await client.uploadAttachmentContent(
-      initialized.id,
+    const contentType = file.type.trim();
+    const request: InitializeAttachmentRequest = {
+      source: 'managed',
+      filename: sanitizeAttachmentFilename(file.name),
+      ...(contentType === '' ? {} : { mimeType: contentType }),
+      ...(Number.isFinite(file.size) && file.size >= 0 ? { size: file.size } : {}),
+    };
+    const attempt: AttachmentAddAttempt = {
+      key: attemptKey(recordId, fieldId),
+      recordId,
+      fieldId,
+      maxCount,
+      sourceRecord,
+      request,
+      idempotencyKey: idFactory(),
+      clientMutationId: mutationIdFactory(),
       bytes,
-      mimeType === '' ? undefined : mimeType,
-    );
-    if (
-      uploaded.source !== 'managed' ||
-      uploaded.status !== 'ready' ||
-      uploaded.id.trim() === '' ||
-      uploaded.filename.trim() === ''
-    ) {
-      throw attachmentError('ATTACHMENT_UPLOAD_RESPONSE_INVALID');
+      ...(contentType === '' ? {} : { contentType }),
+      attachment: undefined,
+      stage: 'initialize',
+    };
+    attempts.set(attempt.key, attempt);
+    return executeWithRetryState(attempt);
+  };
+
+  const retry: AttachmentAddHandler = async (recordId, fieldId, sourceRecord, maxCount) => {
+    if (isOffline()) throw attachmentError('ATTACHMENT_OFFLINE');
+    const key = attemptKey(recordId, fieldId);
+    const attempt = attempts.get(key);
+    if (attempt === undefined || attempt.maxCount !== maxCount) {
+      throw attachmentError('ATTACHMENT_RETRY_UNAVAILABLE');
+    }
+    attempt.sourceRecord = sourceRecord;
+
+    if (attempt.stage === 'upload') {
+      const attachment = attempt.attachment;
+      if (attachment === undefined || getAttachment === undefined) {
+        attempts.delete(key);
+        throw attachmentError('ATTACHMENT_RETRY_UNAVAILABLE');
+      }
+      let current: Attachment;
+      try {
+        current = await getAttachment(attachment.id);
+      } catch (error) {
+        attempts.delete(key);
+        throw asClientError(error);
+      }
+      if (current.source !== 'managed' || current.id.trim() === '') {
+        attempts.delete(key);
+        throw attachmentError('ATTACHMENT_STATUS_INVALID');
+      }
+      if (current.status === 'ready') {
+        attempt.attachment = current;
+        attempt.stage = 'reference';
+      } else if (current.status !== 'pending') {
+        attempts.delete(key);
+        throw attachmentError('ATTACHMENT_STATUS_INVALID');
+      }
     }
 
-    const references = [...current, attachmentReference(uploaded)];
-    return options.updateRecord(recordId, fieldId, references, sourceRecord);
+    return executeWithRetryState(attempt);
+  };
+
+  async function executeWithRetryState(
+    attempt: AttachmentAddAttempt,
+  ): Promise<LoomTableRecord | null | undefined> {
+    try {
+      const result = await executeAttempt(attempt);
+      attempts.delete(attempt.key);
+      return result;
+    } catch (error) {
+      const clientError = asClientError(error);
+      if (isRetryableStage(attempt, clientError)) {
+        attempts.set(attempt.key, attempt);
+        throw new AttachmentRetryableError(clientError);
+      }
+      attempts.delete(attempt.key);
+      throw clientError;
+    }
+  }
+
+  async function executeAttempt(
+    attempt: AttachmentAddAttempt,
+  ): Promise<LoomTableRecord | null | undefined> {
+    if (attempt.stage === 'initialize') {
+      const initialized = await client.initializeAttachment(
+        attempt.request,
+        attempt.idempotencyKey,
+      );
+      if (
+        initialized.source !== 'managed' ||
+        initialized.status !== 'pending' ||
+        initialized.id.trim() === '' ||
+        initialized.filename.trim() === ''
+      ) {
+        throw attachmentError('ATTACHMENT_INIT_RESPONSE_INVALID');
+      }
+      attempt.attachment = initialized;
+      attempt.stage = 'upload';
+    }
+
+    if (attempt.stage === 'upload') {
+      const initialized = attempt.attachment;
+      if (initialized === undefined) throw attachmentError('ATTACHMENT_STATUS_INVALID');
+      const uploaded = await client.uploadAttachmentContent(
+        initialized.id,
+        attempt.bytes,
+        attempt.contentType,
+      );
+      if (
+        uploaded.source !== 'managed' ||
+        uploaded.status !== 'ready' ||
+        uploaded.id.trim() === '' ||
+        uploaded.filename.trim() === ''
+      ) {
+        throw attachmentError('ATTACHMENT_UPLOAD_RESPONSE_INVALID');
+      }
+      attempt.attachment = uploaded;
+      attempt.stage = 'reference';
+    }
+
+    if (attempt.stage !== 'reference' || attempt.attachment === undefined) {
+      throw attachmentError('ATTACHMENT_STATUS_INVALID');
+    }
+    const references = [
+      ...(readAttachmentReferences(attempt.sourceRecord.values[attempt.fieldId]) ?? []),
+      attachmentReference(attempt.attachment),
+    ];
+    return updateReference(attempt, references);
+  }
+
+  async function updateReference(
+    attempt: AttachmentAddAttempt,
+    references: readonly AttachmentRef[],
+  ): Promise<LoomTableRecord | undefined> {
+    const mutation: AttachmentReferenceMutationContext = {
+      clientMutationId: attempt.clientMutationId,
+      expectedRevision: attempt.sourceRecord.revision,
+    };
+    try {
+      return await options.updateRecord(
+        attempt.recordId,
+        attempt.fieldId,
+        references,
+        attempt.sourceRecord,
+        mutation,
+      );
+    } catch (error) {
+      const clientError = asClientError(error);
+      if (!isTransient(clientError) || options.getRecord === undefined) {
+        throw clientError;
+      }
+
+      let current: LoomTableRecord;
+      try {
+        current = await options.getRecord(attempt.recordId);
+      } catch {
+        throw clientError;
+      }
+      const currentReferences = readAttachmentReferences(current.values[attempt.fieldId]);
+      if (currentReferences === null) {
+        throw attachmentError('ATTACHMENT_REFERENCE_READBACK_INVALID');
+      }
+      if (currentReferences.some((reference) => reference.id === attempt.attachment?.id)) {
+        return current;
+      }
+      if (current.revision !== attempt.sourceRecord.revision) {
+        throw attachmentReferenceConflict(attempt, current, references);
+      }
+      return options.updateRecord(
+        attempt.recordId,
+        attempt.fieldId,
+        references,
+        attempt.sourceRecord,
+        mutation,
+      );
+    }
+  }
+
+  return Object.assign(start, { retry });
+}
+
+export function createAttachmentDetachCallback(
+  options: AttachmentDetachCallbackOptions,
+): AttachmentDetachHandler {
+  const isOffline = options.isOffline ?? defaultIsOffline;
+  const idFactory = options.idFactory ?? createMutationId;
+
+  return async (recordId, fieldId, attachmentId, sourceRecord) => {
+    if (isOffline()) throw attachmentError('ATTACHMENT_OFFLINE');
+    const current = readAttachmentReferences(sourceRecord.values[fieldId]);
+    if (current === null) throw attachmentError('ATTACHMENT_REFERENCES_INVALID');
+    const references = current.filter((reference) => reference.id !== attachmentId);
+    if (references.length === current.length) {
+      throw attachmentError('ATTACHMENT_REFERENCE_NOT_FOUND');
+    }
+    return options.updateRecord(recordId, fieldId, references, sourceRecord, {
+      clientMutationId: idFactory(),
+      expectedRevision: sourceRecord.revision,
+    });
   };
 }
 
@@ -192,8 +411,77 @@ function attachmentReference(attachment: Attachment): AttachmentRef {
   };
 }
 
+function attachmentReferencesValue(references: readonly AttachmentRef[]): JsonValue {
+  return references.map((reference) => {
+    const value: Record<string, JsonValue> = {
+      id: reference.id,
+      source: reference.source,
+      filename: reference.filename,
+    };
+    if (reference.mimeType !== undefined) value.mimeType = reference.mimeType;
+    if (reference.size !== undefined) value.size = reference.size;
+    if (reference.storageKey !== undefined) value.storageKey = reference.storageKey;
+    if (reference.vaultPath !== undefined) value.vaultPath = reference.vaultPath;
+    if (reference.hash !== undefined) value.hash = reference.hash;
+    if (reference.width !== undefined) value.width = reference.width;
+    if (reference.height !== undefined) value.height = reference.height;
+    return value;
+  });
+}
+
+function attachmentReferenceConflict(
+  attempt: AttachmentAddAttempt,
+  current: LoomTableRecord,
+  references: readonly AttachmentRef[],
+): LoomTableClientError {
+  return new LoomTableClientError(
+    'conflict',
+    {
+      code: 'CONFLICT',
+      message: 'The Record changed while adding this attachment.',
+    },
+    undefined,
+    {
+      clientMutationId: attempt.clientMutationId,
+      failedCommandIndex: 0,
+      conflicts: [
+        {
+          recordId: attempt.recordId,
+          expectedRevision: attempt.sourceRecord.revision,
+          currentRevision: current.revision,
+          currentValues: current.values,
+          submittedSet: { [attempt.fieldId]: attachmentReferencesValue(references) },
+        },
+      ],
+    },
+  );
+}
+
+function isRetryableStage(attempt: AttachmentAddAttempt, error: LoomTableClientError): boolean {
+  if (attempt.stage === 'initialize' || attempt.stage === 'reference') {
+    return isTransient(error);
+  }
+  return isTransient(error) || error.details.code === 'ATTACHMENT_UPLOAD_RESPONSE_INVALID';
+}
+
+function isTransient(error: LoomTableClientError): boolean {
+  return error.kind === 'network' || error.kind === 'timeout';
+}
+
+function asClientError(error: unknown): LoomTableClientError {
+  return error instanceof LoomTableClientError
+    ? error
+    : new LoomTableClientError('server', {
+        message: 'The attachment operation failed.',
+      });
+}
+
 function attachmentError(code: string): LoomTableClientError {
   return new LoomTableClientError('validation', { code, message: code });
+}
+
+function attemptKey(recordId: string, fieldId: string): string {
+  return recordId + '\u0000' + fieldId;
 }
 
 export function createBrowserAttachmentFilePicker(): AttachmentFilePicker {

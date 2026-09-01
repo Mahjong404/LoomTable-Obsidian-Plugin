@@ -93,11 +93,11 @@ describe('Attachment Add/Upload seam', () => {
       picker,
       updateRecord,
       idFactory: () => 'mut_init',
+      mutationIdFactory: () => 'mut_record',
     });
+    const source = createRecord();
 
-    await expect(add('record_01', 'field_attachment', createRecord(), 10)).resolves.toBe(
-      authoritative,
-    );
+    await expect(add('record_01', 'field_attachment', source, 10)).resolves.toBe(authoritative);
 
     expect(client.initializeAttachment).toHaveBeenCalledWith(
       {
@@ -125,7 +125,11 @@ describe('Attachment Add/Upload seam', () => {
           size: 4,
         },
       ],
-      expect.objectContaining({ id: 'record_01' }),
+      source,
+      expect.objectContaining({
+        clientMutationId: 'mut_record',
+        expectedRevision: 1,
+      }),
     );
     expect(updateRecord.mock.calls[0]?.[2]).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ status: 'ready', revision: 2 })]),

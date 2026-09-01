@@ -100,6 +100,8 @@ export interface RenderedFieldValueElementOptions {
   readonly canAttachmentOpen?: (attachment: RenderedAttachment) => boolean;
   readonly onAttachmentPreview?: (attachment: RenderedAttachment) => void | Promise<void>;
   readonly canAttachmentPreview?: (attachment: RenderedAttachment) => boolean;
+  readonly attachmentDetachDisabled?: boolean;
+  readonly onAttachmentDetach?: (attachment: RenderedAttachment) => void | Promise<unknown>;
 }
 
 export interface FieldRendererRegistry {
@@ -478,12 +480,21 @@ function createAttachmentElement(
         : { available: options.canAttachmentPreview }),
       disabled: options.attachmentOpenPreviewDisabled === true,
     }),
+    createAttachmentAction(attachment, options, {
+      kind: 'detach',
+      labelKey: 'record.attachment.action.detach',
+      pendingKey: 'record.attachment.action.detaching',
+      failedKey: 'record.attachment.action.detachFailed',
+      offlineKey: 'record.attachment.action.offlineDetach',
+      callback: options.onAttachmentDetach,
+      disabled: options.attachmentDetachDisabled === true,
+    }),
   ].filter((action): action is HTMLElement => action !== null);
   if (actions.length > 0) card.append(document.createTextNode(' '), ...interleaveSpaces(actions));
   return card;
 }
 
-type AttachmentActionKind = 'download' | 'open' | 'preview';
+type AttachmentActionKind = 'download' | 'open' | 'preview' | 'detach';
 
 interface AttachmentActionSpec {
   readonly kind: AttachmentActionKind;
@@ -491,7 +502,7 @@ interface AttachmentActionSpec {
   readonly pendingKey: MessageKey;
   readonly failedKey: MessageKey;
   readonly offlineKey: MessageKey;
-  readonly callback: ((attachment: RenderedAttachment) => void | Promise<void>) | undefined;
+  readonly callback: ((attachment: RenderedAttachment) => void | Promise<unknown>) | undefined;
   readonly available?: (attachment: RenderedAttachment) => boolean;
   readonly disabled: boolean;
 }
@@ -526,6 +537,10 @@ function createAttachmentAction(
   actionStatus.id = nextAttachmentActionStatusId();
   action.setAttribute('aria-describedby', actionStatus.id);
   action.textContent = label;
+  if (spec.kind === 'detach') {
+    action.classList.add('loom-button-danger');
+    action.dataset.variant = 'danger';
+  }
   action.setAttribute(
     'aria-label',
     offline
