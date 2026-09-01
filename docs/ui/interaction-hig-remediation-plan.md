@@ -2,7 +2,7 @@
 
 > 本文档是实施与验收计划，不是规范性 HIG。规范要求见 [Interaction HIG](./interaction-hig.md)；现有阶段和范围背景见 [HIG 落地计划](./interaction-hig-rollout.md)。
 >
-> 本计划的当前记录以 GitHub connector 核验的 Plugin 远端 main `c40c8f6d812ba04752c4f67bb0ba621862a3e253` 为准；此前 `622aae40af1f64331cc34e0d308f47c1422e0fc9` 仅保留为历史交付记录。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
+> 本计划的当前记录以 GitHub connector 核验的 Plugin 远端 main `3ae40775e7ede39096b410ce5dc2fda73f2c7289` 为准；该提交仅包含文档收口变化，运行时内容与父提交 `c40c8f6d812ba04752c4f67bb0ba621862a3e253` 等价。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
 
 ## 1. 目的与边界
 
@@ -487,3 +487,11 @@ Retry 只允许用户明确触发当前失败的 Add/Upload/关联状态：同�
 
 完整 `pnpm check` 与 PR/main CI 通过。当前十类批准字段在已发布范围内没有发现另一个可直接实现且不需要新 Server/API 合同的 scalar renderer/editor gap；真实 current-main Obsidian smoke 仍为 `UNVERIFIED`。Attachment 资源级 Delete/Restore/GC 因未发布的引用影响、所有权/共享关系、恢复和清理合同继续 deferred；S3 未收口，S4/S5/S6 尚未开始。
 
+
+## S3 current-main read-only desktop smoke closeout（2026-09-02）
+
+本次以 connector 核验的 Plugin main `3ae40775e7ede39096b410ce5dc2fda73f2c7289` 为准。干净 staging 已完成 `pnpm install --frozen-lockfile` 与 `pnpm build`；由于该 main 是运行时父提交 `c40c8f6d812ba04752c4f67bb0ba621862a3e253` 之上的 docs-only 提交，bundle provenance 明确为当前 main 的 runtime-equivalent。安装并校验的 `main.js` SHA256 为 `A7F87002F4870A7D0D7240AF0C0FF0BFB6AC6E4C8AB63B346C658908AD005879`，大小 411117 bytes，manifest 为 `loomtable/LoomTable/0.1.3`；替换前已保留可恢复 backup。
+
+只读 smoke 直接观察到：Grid 加载 3 条记录（Shanghai Office、Beijing Office、Unlocated Note）；两条记录可从 Grid 打开 Detail，Name 编辑器可打开并以 Escape 取消且值未变；Location 编辑器显示标签/地址/提供方/纬度/经度/精度及保存、清除、取消设置字段、取消控件，取消后回到未设置且无变更；Map 切换成功，中文 Refresh/fit/save-camera/provider chrome 可见，summary 为“3 匹配 · 1 可渲染 · 2 未定位 · 0 不可渲染”，瓦片 ready、地图和标记可见，点击 Refresh 后仍稳定。
+
+本次没有保存、上传、下载、删除、重试或其他数据变更；没有取得 HTTP status/requestId，因此不把任何现象归因 Server。Attachment 资源级 Delete/Restore/GC 仍因已发布合同缺少引用影响、所有权/共享、恢复与清理语义而 deferred；Attachment action fixture、Settings、完整错误/离线/键盘焦点/主题布局等桌面行仍按 residual `UNVERIFIED` 记录。当前 smoke 子集通过，但不能据此宣布整个 S3 完成；S4/S5/S6 尚未开始。
