@@ -3,6 +3,7 @@ import {
   type Attachment,
   type AttachmentRef,
   type InitializeAttachmentRequest,
+  type JsonValue,
   type LoomTableClient,
   type LoomTableRecord,
 } from '../client/loomtable-client';
@@ -408,6 +409,24 @@ function attachmentReference(attachment: Attachment): AttachmentRef {
   };
 }
 
+function attachmentReferencesValue(references: readonly AttachmentRef[]): JsonValue {
+  return references.map((reference) => {
+    const value: Record<string, JsonValue> = {
+      id: reference.id,
+      source: reference.source,
+      filename: reference.filename,
+    };
+    if (reference.mimeType !== undefined) value.mimeType = reference.mimeType;
+    if (reference.size !== undefined) value.size = reference.size;
+    if (reference.storageKey !== undefined) value.storageKey = reference.storageKey;
+    if (reference.vaultPath !== undefined) value.vaultPath = reference.vaultPath;
+    if (reference.hash !== undefined) value.hash = reference.hash;
+    if (reference.width !== undefined) value.width = reference.width;
+    if (reference.height !== undefined) value.height = reference.height;
+    return value;
+  });
+}
+
 function attachmentReferenceConflict(
   attempt: AttachmentAddAttempt,
   current: LoomTableRecord,
@@ -429,7 +448,7 @@ function attachmentReferenceConflict(
           expectedRevision: attempt.sourceRecord.revision,
           currentRevision: current.revision,
           currentValues: current.values,
-          submittedSet: { [attempt.fieldId]: references },
+          submittedSet: { [attempt.fieldId]: attachmentReferencesValue(references) },
         },
       ],
     },
