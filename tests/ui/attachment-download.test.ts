@@ -5,7 +5,9 @@ import {
   createAttachmentDownloadCallback,
   createBrowserAttachmentDownloadHost,
   downloadAttachment,
+  isAttachmentDownloadable,
   type AttachmentDownloadHost,
+  type AttachmentVaultDownloadHost,
 } from '../../src/ui/attachment-download';
 import type { RenderedAttachment } from '../../src/ui/field-renderer-registry';
 
@@ -68,6 +70,76 @@ describe('Attachment download host seam', () => {
     expect(host.triggerDownload).not.toHaveBeenCalled();
   });
 
+  it('routes Managed through the Server client and Vault through the host, including offline Vault', async () => {
+    const client = {
+      downloadAttachmentContent: vi.fn().mockResolvedValue({ bytes: new ArrayBuffer(0) }),
+    } as Pick<LoomTableClient, 'downloadAttachmentContent'>;
+    const webHost = fakeHost();
+    const vaultHost = {
+      downloadVaultFile: vi.fn(),
+    } satisfies AttachmentVaultDownloadHost;
+    const callback = createAttachmentDownloadCallback(client, {
+      host: webHost,
+      vaultHost,
+      isOffline: () => true,
+    });
+
+    await callback('record_grid', 'field_attachment', renderedAttachment({ source: 'managed' }));
+    await callback(
+      'record_map',
+      'field_attachment',
+      renderedAttachment({
+        source: 'vault',
+        vaultPath: 'attachments/report.pdf',
+      }),
+    );
+
+    expect(client.downloadAttachmentContent).not.toHaveBeenCalled();
+    expect(vaultHost.downloadVaultFile).toHaveBeenCalledWith(
+      'attachments/report.pdf',
+      'notes.md',
+      'text/markdown',
+    );
+  });
+
+  it('keeps unsafe, unknown, and identity-less attachment downloads actionless', async () => {
+    const client = {
+      downloadAttachmentContent: vi.fn(),
+    } as Pick<LoomTableClient, 'downloadAttachmentContent'>;
+    const vaultHost = {
+      downloadVaultFile: vi.fn(),
+    } satisfies AttachmentVaultDownloadHost;
+    const callback = createAttachmentDownloadCallback(client, {
+      vaultHost,
+      isOffline: () => false,
+    });
+
+    await callback(
+      'record_01',
+      'field_attachment',
+      renderedAttachment({ source: 'vault', vaultPath: '../private/report.pdf' }),
+    );
+    const { source: omittedSource, ...unknownSource } = renderedAttachment();
+    const { id: omittedId, ...identityLess } = renderedAttachment();
+    void omittedSource;
+    void omittedId;
+    await callback('record_01', 'field_attachment', unknownSource);
+    await callback('record_01', 'field_attachment', identityLess);
+
+    expect(client.downloadAttachmentContent).not.toHaveBeenCalled();
+    expect(vaultHost.downloadVaultFile).not.toHaveBeenCalled();
+    expect(
+      isAttachmentDownloadable(
+        renderedAttachment({ source: 'vault', vaultPath: '../private/report.pdf' }),
+      ),
+    ).toBe(false);
+    expect(
+      isAttachmentDownloadable(
+        renderedAttachment({ source: 'vault', vaultPath: 'attachments/report.pdf' }),
+      ),
+    ).toBe(true);
+  });
+
   it('provides the same typed callback adapter for Grid and Map Detail hosts', async () => {
     const client = {
       downloadAttachmentContent: vi.fn().mockResolvedValue({ bytes: new ArrayBuffer(0) }),
@@ -124,6 +196,7 @@ function renderedAttachment(overrides: Partial<RenderedAttachment> = {}): Render
     state: 'ready',
     id: 'attachment_1',
     filename: 'notes.md',
+    source: 'managed',
     mimeType: 'text/markdown',
     statusText: 'Ready',
     metadataText: 'Type: text/markdown',

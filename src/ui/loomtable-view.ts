@@ -16,12 +16,17 @@ import { GridViewController, type GridState } from './grid-view-controller';
 import { ReadonlyGridRenderer } from './readonly-grid-renderer';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
 import { MapView, type MapViewNavigation } from '../views/map/map-view';
-import { createAttachmentDownloadCallback } from './attachment-download';
+import {
+  createAttachmentDownloadCallback,
+  createBrowserAttachmentDownloadHost,
+  isAttachmentDownloadable,
+} from './attachment-download';
 import { createAttachmentAddCallback, createAttachmentDetachCallback } from './attachment-upload';
 import {
   createAttachmentOpenCallback,
   createAttachmentPreviewCallback,
   createBrowserAttachmentPreviewHost,
+  createObsidianAttachmentDownloadHost,
   createObsidianAttachmentOpenHost,
 } from './attachment-host';
 import { createRecordDetail } from './record-detail';
@@ -243,6 +248,7 @@ export class LoomTableView extends ItemView {
               );
             },
           });
+    const attachmentDownload = this.createAttachmentDownloadHandler(client);
     mapView = new MapView(this.contentEl, controller, {
       translate: this.getTranslator(),
       navigation,
@@ -260,7 +266,8 @@ export class LoomTableView extends ItemView {
         navigationState.views.some(
           (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
         ),
-      onAttachmentDownload: createAttachmentDownloadCallback(client),
+      onAttachmentDownload: attachmentDownload,
+      canAttachmentDownload: isAttachmentDownloadable,
       onAttachmentOpen: createAttachmentOpenCallback(createObsidianAttachmentOpenHost(this.app)),
       onAttachmentPreview: createAttachmentPreviewCallback(client, {
         translate: this.getTranslator(),
@@ -403,6 +410,7 @@ export class LoomTableView extends ItemView {
         return controller.state.records.find((candidate) => candidate.id === recordId);
       },
     });
+    const attachmentDownload = this.createAttachmentDownloadHandler(client);
     let detail: HTMLElement;
     detail = createRecordDetail(detailRecord, {
       translate: this.getTranslator(),
@@ -423,7 +431,8 @@ export class LoomTableView extends ItemView {
           controller.state.views.some(
             (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
           ),
-        onAttachmentDownload: createAttachmentDownloadCallback(client),
+        onAttachmentDownload: attachmentDownload,
+        canAttachmentDownload: isAttachmentDownloadable,
         onAttachmentOpen: createAttachmentOpenCallback(createObsidianAttachmentOpenHost(this.app)),
         onAttachmentPreview: createAttachmentPreviewCallback(client, {
           translate: this.getTranslator(),
@@ -436,6 +445,15 @@ export class LoomTableView extends ItemView {
     });
     detailHost.append(detail);
     detail.focus();
+  }
+
+  private createAttachmentDownloadHandler(client: LoomTableClient) {
+    const host = createBrowserAttachmentDownloadHost(document);
+    return createAttachmentDownloadCallback(client, {
+      host,
+      vaultHost: createObsidianAttachmentDownloadHost(this.app, host),
+      isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+    });
   }
 
   private prepareForNavigation(): boolean {

@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { Field, LoomTableRecord } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
+import {
+  createAttachmentDownloadCallback,
+  type AttachmentVaultDownloadHost,
+} from '../../src/ui/attachment-download';
 import type { MapViewController } from '../../src/views/map/map-view-controller';
 import { initialMapViewState } from '../../src/views/map/map-view-model';
 import { MapView } from '../../src/views/map/map-view';
@@ -310,7 +314,7 @@ describe('MapView', () => {
       tableId: 'table_01',
       revision: 1,
       values: {
-        field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+        field_attachment: [{ id: 'attachment_1', source: 'managed', filename: 'notes.md' }],
       },
       createdAt: '',
       updatedAt: '',
@@ -337,6 +341,66 @@ describe('MapView', () => {
       'field_attachment',
       expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
     );
+  });
+
+  it('routes a selected-record Vault download to the host while offline', async () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const client = {
+      downloadAttachmentContent: vi.fn(),
+    };
+    const vaultHost = {
+      downloadVaultFile: vi.fn(),
+    } satisfies AttachmentVaultDownloadHost;
+    const onAttachmentDownload = createAttachmentDownloadCallback(client, {
+      vaultHost,
+      isOffline: () => true,
+    });
+    const attachmentField: Field = {
+      id: 'field_attachment',
+      tableId: 'table_01',
+      name: 'Attachments',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'attachment',
+      config: { maxCount: 10 },
+    };
+    const record: LoomTableRecord = {
+      id: 'record_map_vault',
+      tableId: 'table_01',
+      revision: 1,
+      values: {
+        field_attachment: [
+          {
+            id: 'attachment_vault',
+            source: 'vault',
+            filename: 'notes.md',
+            vaultPath: 'attachments/notes.md',
+          },
+        ],
+      },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      onAttachmentDownload,
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'offline',
+      fields: [attachmentField],
+      selectedRecord: record,
+    });
+
+    const download = container.querySelector<HTMLButtonElement>('.loom-attachment-action');
+    expect(download?.disabled).toBe(false);
+    download?.click();
+    await vi.waitFor(() => expect(vaultHost.downloadVaultFile).toHaveBeenCalledTimes(1));
+    expect(client.downloadAttachmentContent).not.toHaveBeenCalled();
   });
 
   it('passes selected-record Attachment Open and Preview through the Detail callbacks', async () => {

@@ -47,6 +47,7 @@ export interface RecordDetailCallbacks {
     fieldId: string,
     attachment: RenderedAttachment,
   ) => void | Promise<void>;
+  readonly canAttachmentDownload?: (attachment: RenderedAttachment) => boolean;
   readonly onAttachmentOpen?: (
     recordId: string,
     fieldId: string,
@@ -245,7 +246,8 @@ function renderField(
     body.append(
       createRenderedFieldValueElement(displayValue, {
         translate: options.translate,
-        attachmentDownloadDisabled: options.offline === true,
+        attachmentDownloadDisabled:
+          options.offline === true ? (attachment) => attachment.source !== 'vault' : false,
         attachmentOpenPreviewDisabled: options.offline === true,
         attachmentDetachDisabled: options.offline === true,
         ...(field.type === 'attachment'
@@ -255,6 +257,9 @@ function renderField(
               canAttachmentPreview: (attachment: RenderedAttachment) =>
                 attachment.source === 'managed',
             }
+          : {}),
+        ...(field.type === 'attachment' && options.callbacks?.canAttachmentDownload !== undefined
+          ? { canAttachmentDownload: options.callbacks.canAttachmentDownload }
           : {}),
         ...(onAttachmentDownload === undefined ? {} : { onAttachmentDownload }),
         ...(onAttachmentOpen === undefined ? {} : { onAttachmentOpen }),
