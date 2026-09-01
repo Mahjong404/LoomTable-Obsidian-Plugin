@@ -69,7 +69,7 @@ export function createAttachmentDownloadCallback(
     downloadAttachment(client, attachment, host, isOffline);
 }
 
-function sanitizeAttachmentFilename(filename: string | undefined): string {
+export function sanitizeAttachmentFilename(filename: string | undefined): string {
   const safeFilename = Array.from(filename ?? '')
     .map((character) => (character === '/' || character === '\\' ? '_' : character))
     .filter((character) => {

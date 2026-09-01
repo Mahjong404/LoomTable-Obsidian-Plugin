@@ -357,7 +357,15 @@ describe('MapView', () => {
       tableId: 'table_01',
       revision: 1,
       values: {
-        field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+        field_attachment: [
+          {
+            id: 'attachment_vault',
+            source: 'vault',
+            filename: 'notes.md',
+            vaultPath: 'attachments/notes.md',
+          },
+          { id: 'attachment_managed', source: 'managed', filename: 'preview.pdf' },
+        ],
       },
       createdAt: '',
       updatedAt: '',
@@ -378,19 +386,32 @@ describe('MapView', () => {
       selectedRecord: record,
     });
 
-    container.querySelector<HTMLButtonElement>('.loom-attachment-open-action')?.click();
-    container.querySelector<HTMLButtonElement>('.loom-attachment-preview-action')?.click();
+    const open = container.querySelector<HTMLButtonElement>('.loom-attachment-open-action');
+    const preview = container.querySelector<HTMLButtonElement>('.loom-attachment-preview-action');
+    expect(open).not.toBeNull();
+    expect(preview).not.toBeNull();
+    open?.click();
+    preview?.click();
     await vi.waitFor(() => expect(onAttachmentOpen).toHaveBeenCalledTimes(1));
     await vi.waitFor(() => expect(onAttachmentPreview).toHaveBeenCalledTimes(1));
     expect(onAttachmentOpen).toHaveBeenCalledWith(
       'record_map',
       'field_attachment',
-      expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
+      expect.objectContaining({
+        id: 'attachment_vault',
+        filename: 'notes.md',
+        source: 'vault',
+        vaultPath: 'attachments/notes.md',
+      }),
     );
     expect(onAttachmentPreview).toHaveBeenCalledWith(
       'record_map',
       'field_attachment',
-      expect.objectContaining({ id: 'attachment_1', filename: 'notes.md' }),
+      expect.objectContaining({
+        id: 'attachment_managed',
+        filename: 'preview.pdf',
+        source: 'managed',
+      }),
     );
   });
 
