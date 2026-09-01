@@ -236,7 +236,13 @@ describe('Field renderer registry', () => {
     const rendered = registry.render(
       field,
       [
-        { id: 'attachment_1', source: 'vault', filename: 'notes.md', size: 2048 },
+        {
+          id: 'attachment_1',
+          source: 'vault',
+          filename: 'notes.md',
+          vaultPath: 'attachments/notes.md',
+          size: 2048,
+        },
         { id: 'attachment_2', source: 'managed', filename: 'image.png', status: 'pending' },
       ],
       { translate },
@@ -348,6 +354,23 @@ describe('Field renderer registry', () => {
     });
     expect(unavailable.querySelector('.loom-attachment-open-action')).toBeNull();
     expect(unavailable.querySelector('.loom-attachment-preview-action')).toBeNull();
+  });
+
+  it('does not expose a download action for an unsafe Vault path', () => {
+    const translate = createTranslator('en');
+    const field = createField('attachment', { maxCount: 10 });
+    const rendered = registry.render(
+      field,
+      [{ id: 'attachment_1', source: 'vault', filename: 'notes.md', vaultPath: '../notes.md' }],
+      { translate },
+    );
+
+    const element = createRenderedFieldValueElement(rendered, {
+      translate,
+      onAttachmentDownload: vi.fn(),
+    });
+
+    expect(element.querySelector('.loom-attachment-action')).toBeNull();
   });
 
   it('disables Open and Preview offline with a translated accessible explanation', () => {
