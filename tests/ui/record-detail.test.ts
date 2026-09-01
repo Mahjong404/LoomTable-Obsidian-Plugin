@@ -731,15 +731,7 @@ describe('Record Detail Location seam', () => {
       config: { maxCount: 10 },
     };
     const record = createRecord({
-      field_attachment: [
-        {
-          id: 'attachment_vault',
-          source: 'vault',
-          filename: 'notes.md',
-          vaultPath: 'attachments/notes.md',
-        },
-        { id: 'attachment_managed', source: 'managed', filename: 'preview.pdf' },
-      ],
+      field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
     });
     const onAttachmentDownload = vi.fn().mockRejectedValue(new Error('secret path'));
 
@@ -782,7 +774,15 @@ describe('Record Detail Location seam', () => {
       config: { maxCount: 10 },
     };
     const record = createRecord({
-      field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+      field_attachment: [
+        {
+          id: 'attachment_vault',
+          source: 'vault',
+          filename: 'notes.md',
+          vaultPath: 'attachments/notes.md',
+        },
+        { id: 'attachment_managed', source: 'managed', filename: 'preview.pdf' },
+      ],
     });
     const onAttachmentOpen = vi.fn();
     const onAttachmentPreview = vi.fn();
