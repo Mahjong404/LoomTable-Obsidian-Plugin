@@ -86,4 +86,11 @@ describe('LoomTable CSS contract', () => {
     expect(styles).toContain('var(--loom-radius-sm)');
     expect(styles).toContain('.loom-map-cluster-record-label');
   });
+
+  it('keeps URL links namespaced, readable, and keyboard-visible', () => {
+    expect(styles).toContain('.loom-field-value-link');
+    expect(styles).toContain('color: var(--loom-text-accent)');
+    expect(styles).toContain('text-decoration: underline');
+    expect(styles).toContain('.loom-field-value-link:focus-visible');
+  });
 });

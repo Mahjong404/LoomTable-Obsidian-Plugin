@@ -82,6 +82,7 @@ export const simplifiedChineseMessages = {
   'record.details': '记录详情',
   'record.field.unset': '未设置',
   'record.field.cleared': '已清除',
+  'record.url.open': '打开 URL：',
   'record.value.unavailable': '值不可用',
   'record.option.deleted': '已删除选项',
   'record.option.unavailable': '选项不可用',

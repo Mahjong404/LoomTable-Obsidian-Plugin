@@ -89,6 +89,7 @@ export const englishMessages = {
   'record.details': 'Record details',
   'record.field.unset': 'Unset',
   'record.field.cleared': 'Cleared',
+  'record.url.open': 'Open URL:',
   'record.value.unavailable': 'Value unavailable',
   'record.option.deleted': 'Deleted option',
   'record.option.unavailable': 'Option unavailable',

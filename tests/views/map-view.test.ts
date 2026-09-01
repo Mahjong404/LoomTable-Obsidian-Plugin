@@ -819,6 +819,47 @@ describe('MapView', () => {
     expect(cluster?.querySelector('.loom-attachment-list')).toBeNull();
     expect(cluster?.querySelector('.loom-attachment-action')).toBeNull();
   });
+
+  it('renders a safe URL in a Cluster preview without nesting a link in the record button', () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const urlField: Field = {
+      id: 'field_url',
+      tableId: 'table_01',
+      name: 'Website',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'url',
+      config: {},
+    };
+    const record: LoomTableRecord = {
+      id: 'record_01',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_url: 'https://example.com/docs' },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      clusterStatus: 'ready',
+      fields: [urlField],
+      clusterRecords: [record],
+      clusterToken: 'cluster-token',
+      clusterCursor: null,
+    } as unknown as ReturnType<typeof initialMapViewState>);
+
+    const cluster = container.querySelector<HTMLElement>('.loom-map-cluster-records');
+    const link = cluster?.querySelector<HTMLAnchorElement>('.loom-field-value-link');
+    expect(link?.getAttribute('href')).toBe('https://example.com/docs');
+    expect(cluster?.querySelector('.loom-map-cluster-record a')).toBeNull();
+  });
 });
 
 function fakeController(): {

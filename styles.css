@@ -228,6 +228,17 @@
   min-width: 0;
 }
 
+.loom-field-value-link {
+  color: var(--loom-text-accent);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+}
+
+.loom-field-value-link:focus-visible {
+  outline: 2px solid var(--loom-focus);
+  outline-offset: 2px;
+}
+
 .loom-field-value-chips {
   display: inline-flex;
   flex-wrap: wrap;

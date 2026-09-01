@@ -880,6 +880,32 @@ describe('Record Detail Location seam', () => {
     expect(value?.getAttribute('aria-label')).toBe('Tags: Old (Deleted option), One');
     expect(value?.textContent).not.toContain('option_old');
   });
+
+  it('renders a safe URL as a link and keeps an unsafe URL unavailable', () => {
+    const container = document.createElement('div');
+    const urlField: Field = { ...createField('field_url', 'Website'), type: 'url', config: {} };
+    container.append(
+      createRecordDetail(
+        createRecord({
+          field_url: 'https://example.com/docs',
+          field_unsafe: 'javascript:alert(1)',
+        }),
+        {
+          fields: [urlField, { ...urlField, id: 'field_unsafe', name: 'Unsafe' }],
+          translate: createTranslator('en'),
+        },
+      ),
+    );
+
+    const safe = container.querySelector<HTMLElement>('dd[data-field-id="field_url"]');
+    const unsafe = container.querySelector<HTMLElement>('dd[data-field-id="field_unsafe"]');
+    expect(safe?.querySelector<HTMLAnchorElement>('.loom-field-value-link')?.href).toBe(
+      'https://example.com/docs',
+    );
+    expect(unsafe?.querySelector('.loom-field-value-link')).toBeNull();
+    expect(unsafe?.textContent).toContain('Value unavailable');
+    expect(unsafe?.textContent).not.toContain('javascript:alert(1)');
+  });
 });
 
 function createField(id: string, name: string): Field {
