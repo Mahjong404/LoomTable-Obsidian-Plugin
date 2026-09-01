@@ -427,3 +427,13 @@ S3-C3-B 从 connector-核验的 Plugin main `e2beb521225d046386b30a89a4c06132c8f
 边界：本片不实现 S3-C3-C 的 Delete、Retry 与 resource lifecycle，不新增 Open/Preview 行为，不改变 Attachment wire、Mutation/Conflict/revision/changeCursor、Server/API/OpenAPI 合同；当前 main 的真实 Obsidian desktop smoke 未执行，继续标记 `UNVERIFIED`。
 
 S3-C3-B 已交付，整个 S3-C3/S3 仍未完成。下一项 S3-C3-C 为 Delete/Retry/resource lifecycle 及其安全引用生命周期；开始前仍需保持现有 published contract、HIG、离线只读和数据/凭据边界。
+
+## S3-C3-C1 实施记录：Attachment host Open/Preview（2026-09-01）
+
+本片从 connector 核验的 Plugin main `9cfadd2e8ea90a1ede24421bb445bf70588e35ca` 开始，通过代码 PR #98 交付：最终 head `20f458f773dd4409db83f1dbcc233a8d563b355c`，squash merge/main `7b3b7af2835d9f0b6ec628c6238b40b98f1ce7ca`；PR CI run `33489587486` / job `99796851570` 与 main push CI run `33489723935` / job `99798092025` 均成功，并运行完整 `pnpm check`。
+
+本片接入真实 typed host 行为：managed ready attachment 通过既有 content GET 下载 bytes，并在 Plugin-owned sandboxed read-only preview surface 中预览；Vault ready attachment 只有明确、安全相对 `vaultPath` 才通过 Obsidian vault/workspace API Open。来源、ready、identity、callback 不满足时保持 actionless；offline disabled 且不发请求；Grid/Map compact 保持 non-interactive。没有路径猜测、`window.open`、Vault 写入、token/ID/raw response 泄露或新的 API/OpenAPI 行为。
+
+本片自动化覆盖 object URL cleanup、preview dialog 的 ARIA/键盘/焦点、失败/离线/无 callback/无效来源、重复触发及 Grid/Map compact 边界；但 current-main 真实 Obsidian smoke 仍为 `UNVERIFIED`，窗口黑屏且 accessibility tree 为空，不能以 DOM/CI 替代桌面验收。
+
+S3-C3-C1 不包含 Add/Upload、Record attachment-reference mutation、Delete、Retry 或 resource lifecycle；前序 Add/Upload 交付保持不变。后续 S3-C3-C2（Delete、Retry、resource lifecycle 与安全引用生命周期）尚未开始；不得据此宣称整个 S3 或 P1.5 完成。Server runtime/API stable contract `e02f055fecddc0852085dc5a71b4eb136860774a`、OpenAPI source `ef0c6bd751642f4a604fe1bf88980f64e39dd992` 冻结不变。

@@ -338,3 +338,13 @@ S2 final-gate verdict: **not complete**. The implementation and documentation/CI
 - Existing semantics preserved: expectedRevision, typed clientMutationId, Mutation Queue, Conflict, complete Record writeback, invalidation, revision/changeCursor, Location/Select/MultiSelect, and Attachment wire semantics are unchanged. No automatic Vault write, implicit overwrite, or provider/settings change occurs.
 - Verification status: the published code CI/full check passed, but no current-main Obsidian desktop smoke was run for this slice. Real file picker, upload, and host activation therefore remain `UNVERIFIED`; DOM/controller/host tests and CI are supporting evidence only.
 - Residual boundary: S3-C3-C has not started. Attachment Delete, Retry, resource lifecycle, and any further reference lifecycle work remain separate follow-up scope. S3-C and P1.5 are not marked complete.
+
+## S3-C3-C1 Attachment host Open/Preview（published; 2026-09-01）
+
+- **Record Detail Open（自动化证据：已覆盖；桌面：UNVERIFIED）**：Grid-opened Detail 与 Map selected-record Detail 只对 `source=vault`、ready、具备 identity 且 `vaultPath` 为安全相对路径的 attachment 提供 Open；通过 Obsidian vault/workspace API 打开精确路径。缺失或不安全路径、其他来源、offline、pending/stale/invalid/unknown 或缺少 callback 均不产生 action/request。
+- **Record Detail Preview（自动化证据：已覆盖；桌面：UNVERIFIED）**：`source=managed` 且 ready/identity/callback 条件满足时，通过已发布 content GET 的 bytes 创建 Blob/object URL，在 Plugin-owned sandboxed read-only preview surface 展示；完成或失败均清理 object URL。Open 与 Preview 有区分的标题、说明和关闭路径。
+- **Offline/error/safety（自动化证据：已覆盖）**：offline 时 Open/Preview disabled 且有翻译后的说明，不发起未缓存网络请求；invalid/stale/pending/unknown/unsupported 保持 actionless。普通 UI 不显示 raw response、storage key、attachment ID、路径、凭据或异常详情。
+- **跨 View 与非交互边界（自动化证据：已覆盖）**：Grid/Map compact Attachment 仍为紧凑非交互摘要，不嵌套 button/link；真实 action 只在 Detail，Grid Detail 与 Map selected Detail 使用同一 typed host wiring。
+- **HIG/可访问性（自动化证据：已覆盖）**：action 使用可见文本、翻译后的 aria label、`aria-live=polite`、`aria-busy`、重复触发保护和稳定焦点；preview surface 使用语义 dialog、键盘 Escape/Tab 关闭与焦点返回；保留主题 token、CSS namespace、reduced-motion 与窄布局约束。
+- **桌面验收边界：`UNVERIFIED`**。本片没有可用的 current-main Obsidian smoke；窗口黑屏且 accessibility tree 为空。上述 DOM/host/CI 证据不能改写为真实桌面通过。
+- **剩余范围**：Attachment Add/Upload 已在前序 C3-B 记录；后续 S3-C3-C2（Delete、Retry、resource lifecycle 与安全引用生命周期）尚未开始。整个 S3/P1.5 不因本片宣布完成。
