@@ -18,6 +18,7 @@ export interface MutationQueueJob {
   readonly tableId: string;
   readonly recordId: string;
   readonly initialRevision: number;
+  readonly clientMutationId?: string;
   readonly buildCommand: (expectedRevision: number) => UpdateRecordCommand;
 }
 
@@ -172,7 +173,7 @@ export class MutationQueue {
 
     queue.processing = true;
     queue.error = undefined;
-    const clientMutationId = this.#idFactory();
+    const clientMutationId = pending.job.clientMutationId ?? this.#idFactory();
     queue.mutationId = clientMutationId;
     const command = pending.job.buildCommand(queue.revision);
     const request = { clientMutationId, commands: [command] as const };
