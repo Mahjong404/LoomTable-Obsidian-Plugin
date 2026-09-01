@@ -28,6 +28,21 @@ describe('MutationQueue', () => {
     expect(calls[0]?.id).not.toBe(calls[1]?.id);
   });
 
+  it('uses a supplied typed mutation ID for an attachment reference request', async () => {
+    const client = {
+      mutate: vi.fn(async (_tableId: string, request: MutationRequestLike) =>
+        result(request.clientMutationId, 2),
+      ),
+    };
+    const queue = new MutationQueue(client);
+    await queue.enqueue({
+      ...job('record_01', 'field_attachment', 'refs'),
+      clientMutationId: 'mut_attachment_01',
+    });
+
+    expect(client.mutate.mock.calls[0]?.[1].clientMutationId).toBe('mut_attachment_01');
+  });
+
   it('generates a Server-compatible typed mutation ID by default', async () => {
     const client = {
       mutate: vi.fn(async (_tableId: string, request: MutationRequestLike) =>
