@@ -463,9 +463,7 @@ function createAttachmentElement(
       failedKey: 'record.attachment.action.openFailed',
       offlineKey: 'record.attachment.action.offlineOpenPreview',
       callback: options.onAttachmentOpen,
-      ...(options.canAttachmentOpen === undefined
-        ? {}
-        : { available: options.canAttachmentOpen }),
+      ...(options.canAttachmentOpen === undefined ? {} : { available: options.canAttachmentOpen }),
       disabled: options.attachmentOpenPreviewDisabled === true,
     }),
     createAttachmentAction(attachment, options, {
