@@ -267,3 +267,17 @@ S0 approved read-only smoke may be announced complete with the residual rows abo
 - 未纳入：不实现 Add/Upload、Record attachment-reference mutation、Delete、Retry、resource lifecycle；不自动写 Vault，不使用 `window.open`，不改变 Mutation/Conflict/revision/changeCursor、offline、Attachment wire 或 Server/API/OpenAPI。
 - 验证边界：代码/DOM/host 测试与 CI 通过；current-main 真实 Obsidian smoke 仍为 `UNVERIFIED`（窗口黑屏且 accessibility tree 为空），不能以 jsdom/CI 代替，不声称桌面 Open/Preview 已验收。
 - Server 依赖：Server runtime/API stable contract 仍为 `e02f055fecddc0852085dc5a71b4eb136860774a`，OpenAPI source 仍为 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`；本片无 Server/API/OpenAPI 改动。
+
+## 2026-09-01 S3-C3-C2 Attachment Detach/Retry/resource lifecycle safety
+
+This code slice started from connector-verified Plugin main `815c4b0e8c15ba7a87b94a39570b2fb993534205` and was delivered by [PR #100](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/100): final head `634862e8e1aa7149cf508a27ab05976e7c7f799d`, squash merge/main `748775a31e431f8e1a04e6aebf7921a41d147b98`.
+
+PR CI run [33496456430](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33496456430) / job `99819670992` completed successfully after the format, typecheck, lint, and regression-test corrections made during the PR. Main push CI run [33496634082](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/actions/runs/33496634082) / job `99820234025` completed successfully. The published workflow ran the repository `pnpm check`.
+
+The Detail-only Attachment lifecycle now supports confirmed Detach of one current Record AttachmentRef. It preserves other references and sends `set: []` for the last reference; it does not call `deleteAttachment`, delete a Managed resource, delete a Vault file, or promise cleanup, Undo, or Restore. Grid and Map compact Attachment summaries remain non-interactive.
+
+The bounded Retry path reuses the same initialize idempotency key and metadata body for one Add intent. Upload PUT is never automatically retried. An explicit retry first reads the Attachment: `ready` skips PUT, `pending` reuses the same Attachment ID and bytes, and not-found, terminal, or unknown state does not blindly upload or create a replacement. An uncertain Record reference mutation is read back through `getRecord`; an already-present target is treated as applied, a suitable unchanged revision reuses the original typed request, and a changed revision remains in the existing Conflict path.
+
+Offline remains read-only: Detach, Add, Upload, Record Save, and Retry make no request and create no offline Mutation. Detail actions retain translated status/error text, confirmation, duplicate guards, `aria-live`, focus behavior, and en/zh-CN coverage. Attachment resource-level delete, cleanup, orphan recovery, Undo/Restore, and any broader resource lifecycle remain unimplemented because the published contract has no reference-count, reverse-reference, cleanup, or restore operation.
+
+Regression coverage includes `tests/ui/attachment-lifecycle.test.ts`, `tests/ui/record-detail-attachment-lifecycle.test.ts`, `tests/ui/attachment-upload.test.ts`, `tests/ui/mutation-queue.test.ts`, and the existing Detail/Map Attachment suites. No Server/API/OpenAPI or offline/mutation/Conflict/revision/changeCursor contract was changed. Current-main desktop smoke remains `UNVERIFIED`; automated tests and CI are not Obsidian acceptance.
