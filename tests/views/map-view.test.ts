@@ -361,6 +361,79 @@ describe('MapView', () => {
     expect(controller.openRecord).toHaveBeenCalledWith('record_map');
   });
 
+  it('forwards selected-record MultiSelect Detail edits through the typed callback', async () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const field: Field = {
+      id: 'field_tags',
+      tableId: 'table_01',
+      name: 'Tags',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'multiSelect',
+      config: {
+        options: [
+          { id: 'tag_one', name: 'One', color: '#00aaff' },
+          { id: 'tag_two', name: 'Two', color: '#ffaa00' },
+        ],
+        deletedOptions: [],
+      },
+    };
+    const record: LoomTableRecord = {
+      id: 'record_map',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_tags: ['tag_one'] },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const returnedRecord: LoomTableRecord = {
+      ...record,
+      revision: 2,
+      values: { field_tags: ['tag_two'] },
+    };
+    const onFieldEdit = vi.fn(
+      async (
+        _recordId: string,
+        _fieldId: string,
+        _value: JsonValue,
+        _sourceRecord: LoomTableRecord,
+      ): Promise<LoomTableRecord> => returnedRecord,
+    );
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      onFieldEdit,
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      fields: [field],
+      selectedRecord: record,
+    });
+
+    container.querySelector<HTMLButtonElement>('.loom-record-field-edit')?.click();
+    const editor = container.querySelector<HTMLSelectElement>(
+      '.loom-record-field-editor select[multiple]',
+    );
+    const form = container.querySelector<HTMLFormElement>('.loom-record-field-editor');
+    expect(editor).not.toBeNull();
+    expect(form).not.toBeNull();
+    if (editor === null || form === null) return;
+    for (const option of editor.options) option.selected = option.value === 'tag_two';
+    editor.dispatchEvent(new Event('change', { bubbles: true }));
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(1));
+    expect(onFieldEdit).toHaveBeenCalledWith('record_map', 'field_tags', ['tag_two'], record);
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain('Two'),
+    );
+    expect(controller.openRecord).toHaveBeenCalledWith('record_map');
+  });
+
   it('passes selected-record Attachment downloads through the Detail callback', async () => {
     const container = document.createElement('div');
     const controller = fakeController();
