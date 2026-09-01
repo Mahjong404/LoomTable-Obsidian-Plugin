@@ -93,7 +93,7 @@ describe('Record Detail attachment lifecycle actions', () => {
       name: 'report.pdf',
       type: 'application/pdf',
       size: 1,
-      arrayBuffer: vi.fn().mockResolvedValue(new Uint8Array([1]).buffer),
+      arrayBuffer: async () => new Uint8Array([1]).buffer,
     } satisfies AttachmentUploadFile;
     const add = createAttachmentAddCallback(
       {
