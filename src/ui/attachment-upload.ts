@@ -53,6 +53,7 @@ export type AttachmentDetachHandler = (
 
 export interface AttachmentAddCallbackOptions {
   readonly updateRecord: AttachmentReferenceUpdater;
+  readonly getAttachment?: (attachmentId: string) => Promise<Attachment>;
   readonly getRecord?: (recordId: string) => Promise<LoomTableRecord>;
   readonly picker?: AttachmentFilePicker;
   readonly isOffline?: () => boolean;
@@ -102,6 +103,7 @@ export function createAttachmentAddCallback(
   const isOffline = options.isOffline ?? defaultIsOffline;
   const idFactory = options.idFactory ?? createMutationId;
   const mutationIdFactory = options.mutationIdFactory ?? createMutationId;
+  const getAttachment = options.getAttachment ?? client.getAttachment;
   const attempts = new Map<string, AttachmentAddAttempt>();
 
   const start: AttachmentAddHandler = async (recordId, fieldId, sourceRecord, maxCount) => {
@@ -152,13 +154,13 @@ export function createAttachmentAddCallback(
 
     if (attempt.stage === 'upload') {
       const attachment = attempt.attachment;
-      if (attachment === undefined || client.getAttachment === undefined) {
+      if (attachment === undefined || getAttachment === undefined) {
         attempts.delete(key);
         throw attachmentError('ATTACHMENT_RETRY_UNAVAILABLE');
       }
       let current: Attachment;
       try {
-        current = await client.getAttachment(attachment.id);
+        current = await getAttachment(attachment.id);
       } catch (error) {
         attempts.delete(key);
         throw asClientError(error);
