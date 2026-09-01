@@ -62,8 +62,9 @@ describe('Attachment open and preview host seams', () => {
         contentType: 'application/pdf',
       }),
     } as Pick<LoomTableClient, 'downloadAttachmentContent'>;
+    const createObjectUrl = vi.fn<(blob: Blob) => string>(() => 'blob:preview');
     const host = {
-      createObjectUrl: vi.fn().mockReturnValue('blob:preview'),
+      createObjectUrl,
       revokeObjectUrl: vi.fn(),
       showPreview: vi.fn().mockResolvedValue(undefined),
     } satisfies AttachmentPreviewHost;
@@ -82,9 +83,10 @@ describe('Attachment open and preview host seams', () => {
     );
 
     expect(client.downloadAttachmentContent).toHaveBeenCalledWith('attachment_1');
-    expect(host.createObjectUrl).toHaveBeenCalledTimes(1);
-    expect(host.createObjectUrl.mock.calls[0]?.[0]).toBeInstanceOf(Blob);
-    expect(host.createObjectUrl.mock.calls[0]?.[0].type).toBe('application/pdf');
+    expect(createObjectUrl).toHaveBeenCalledTimes(1);
+    const createdBlob = createObjectUrl.mock.calls[0]?.[0];
+    expect(createdBlob).toBeInstanceOf(Blob);
+    expect(createdBlob?.type).toBe('application/pdf');
     expect(host.showPreview).toHaveBeenCalledWith(
       'blob:preview',
       'report.pdf',
