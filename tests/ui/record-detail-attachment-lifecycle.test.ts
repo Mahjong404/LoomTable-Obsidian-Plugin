@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Field, JsonValue, LoomTableRecord } from '../../src/client/loomtable-client';
+import {
+  LoomTableClientError,
+  type AttachmentUploadFile,
+  type Field,
+  type JsonValue,
+  type LoomTableRecord,
+} from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
 import { createAttachmentAddCallback } from '../../src/ui/attachment-upload';
 import { createRecordDetail } from '../../src/ui/record-detail';
