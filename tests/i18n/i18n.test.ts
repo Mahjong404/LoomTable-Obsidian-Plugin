@@ -20,6 +20,8 @@ describe('i18n', () => {
     expect(createTranslator('zh-CN')('map.refreshing')).toBe('正在刷新…');
     expect(createTranslator('en')('record.value.unavailable')).toBe('Value unavailable');
     expect(createTranslator('zh-CN')('record.value.unavailable')).toBe('值不可用');
+    expect(createTranslator('en')('record.url.open')).toBe('Open URL:');
+    expect(createTranslator('zh-CN')('record.url.open')).toBe('打开 URL：');
     expect(createTranslator('en')('record.attachment.type')).toBe('Type');
     expect(createTranslator('zh-CN')('record.attachment.type')).toBe('类型');
   });

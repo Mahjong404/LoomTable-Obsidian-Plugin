@@ -78,6 +78,24 @@ describe('ReadonlyGridRenderer', () => {
     );
   });
 
+  it('renders a safe URL as a link in a Grid cell without exposing unsafe values', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(urlState('https://example.com/docs'));
+
+    const link = container.querySelector<HTMLAnchorElement>('.loom-field-value-link');
+    expect(link?.getAttribute('href')).toBe('https://example.com/docs');
+    expect(link?.getAttribute('aria-label')).toBe('Open URL: https://example.com/docs');
+    expect(container.querySelector('.loom-grid-cell')?.getAttribute('aria-label')).toBe(
+      'Website: Open URL: https://example.com/docs',
+    );
+  });
+
   it('restores the focused business cell or clamps to the nearest row after redraw', () => {
     const container = document.createElement('div');
     document.body.append(container);
@@ -939,6 +957,44 @@ function locationState(value: JsonValue | undefined): GridState {
       {
         ...record,
         values: value === undefined ? {} : { field_location: value },
+      },
+    ],
+  };
+}
+
+function urlState(value: JsonValue | undefined): GridState {
+  const state = createState(1);
+  const view = state.views[0];
+  if (view?.type !== 'grid') throw new Error('Grid fixture is missing.');
+  const field: Field = {
+    id: 'field_url',
+    tableId: 'table_01',
+    name: 'Website',
+    position: 0,
+    schemaVersion: 1,
+    revision: 1,
+    type: 'url',
+    config: {},
+  };
+  const record = state.records[0];
+  if (record === undefined) throw new Error('Record fixture is missing.');
+  return {
+    ...state,
+    fields: [field],
+    views: [
+      {
+        ...view,
+        config: {
+          ...view.config,
+          projection: ['field_url'],
+          columnOrder: ['field_url'],
+        },
+      },
+    ],
+    records: [
+      {
+        ...record,
+        values: value === undefined ? {} : { field_url: value },
       },
     ],
   };

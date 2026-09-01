@@ -20,6 +20,7 @@ import {
   createRenderedFieldValueElement,
   defaultFieldRendererRegistry,
   type RenderedAttachment,
+  type RenderedFieldValue,
 } from '../../ui/field-renderer-registry';
 import { createRecordDetail, type RecordConflictView } from '../../ui/record-detail';
 import { renderSaveStatus } from '../../ui/save-status';
@@ -595,6 +596,7 @@ export class MapView {
       for (const record of state.clusterRecords) {
         const item = document.createElement('li');
         item.setAttribute('role', 'listitem');
+        const preview = clusterRecordPreview(record, state.fields, translate);
         const open = button(
           clusterRecordLabel(record, state.fields, translate),
           () => {
@@ -604,6 +606,11 @@ export class MapView {
         );
         open.classList.add('loom-map-cluster-record');
         item.append(open);
+        if (preview?.link !== undefined) {
+          const link = createRenderedFieldValueElement(preview);
+          link.classList.add('loom-map-cluster-record-url');
+          item.append(document.createTextNode(' — '), link);
+        }
         records.append(item);
       }
       cluster.append(records);
@@ -636,6 +643,24 @@ function clusterRecordLabel(
   fields: readonly Field[],
   translate: Translator,
 ): HTMLElement {
+  const preview = clusterRecordPreview(record, fields, translate);
+  const label = document.createElement('span');
+  label.className = 'loom-map-cluster-record-label';
+  label.append(document.createTextNode(`${translate('map.clusterRecord')}: ${record.id}`));
+  if (preview !== undefined && preview.link === undefined) {
+    label.append(
+      document.createTextNode(' — '),
+      createRenderedFieldValueElement(preview, { compactAttachments: true }),
+    );
+  }
+  return label;
+}
+
+function clusterRecordPreview(
+  record: LoomTableRecord,
+  fields: readonly Field[],
+  translate: Translator,
+): RenderedFieldValue | undefined {
   const candidates =
     fields.length > 0
       ? fields.map((field) => ({ field, value: record.values[field.id] }))
@@ -650,16 +675,7 @@ function clusterRecordLabel(
         (value.state === 'value' || value.state === 'located') &&
         (value.chips === undefined ? value.text !== '' : value.chips.length > 0),
     );
-  const label = document.createElement('span');
-  label.className = 'loom-map-cluster-record-label';
-  label.append(document.createTextNode(`${translate('map.clusterRecord')}: ${record.id}`));
-  if (preview !== undefined) {
-    label.append(
-      document.createTextNode(' — '),
-      createRenderedFieldValueElement(preview, { compactAttachments: true }),
-    );
-  }
-  return label;
+  return preview;
 }
 
 function fallbackTextField(tableId: string, id: string, position: number): Field {

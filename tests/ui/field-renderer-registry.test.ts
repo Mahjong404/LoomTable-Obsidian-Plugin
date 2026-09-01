@@ -81,6 +81,32 @@ describe('Field renderer registry', () => {
     });
   });
 
+  it('renders only absolute HTTP(S) URLs as accessible links', () => {
+    const translate = createTranslator('zh-CN');
+    const field = createField('url');
+    const rendered = registry.render(field, ' https://example.com/docs?q=1 ', { translate });
+    const element = createRenderedFieldValueElement(rendered);
+    const link = element.querySelector<HTMLAnchorElement>('.loom-field-value-link');
+
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe('https://example.com/docs?q=1');
+    expect(link?.textContent).toBe('https://example.com/docs?q=1');
+    expect(link?.getAttribute('aria-label')).toBe('打开 URL： https://example.com/docs?q=1');
+    expect(link?.target).toBe('_blank');
+    expect(link?.rel).toContain('noopener');
+
+    const httpRendered = registry.render(field, 'http://example.com/docs', { translate });
+    expect(httpRendered.link?.href).toBe('http://example.com/docs');
+
+    for (const value of ['ftp://example.com/file', 'javascript:alert(1)', '/relative/path']) {
+      const unsafe = createRenderedFieldValueElement(registry.render(field, value, { translate }));
+      expect(unsafe.querySelector('.loom-field-value-link')).toBeNull();
+      expect(unsafe.dataset.valueState).toBe('unavailable');
+      expect(unsafe.textContent).toBe('值不可用');
+      expect(unsafe.textContent).not.toContain(value);
+    }
+  });
+
   it('renders option names and structured attachment metadata without raw IDs or JSON', () => {
     const translate = createTranslator('en');
     const select = createField('select', {

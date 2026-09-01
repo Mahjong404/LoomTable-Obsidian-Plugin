@@ -58,6 +58,11 @@ export interface RenderedFieldChip {
   readonly statusText?: string;
 }
 
+export interface RenderedFieldLink {
+  readonly href: string;
+  readonly ariaLabel: string;
+}
+
 export type AttachmentDisplayState = 'ready' | 'pending' | 'stale' | 'invalid' | 'unknown';
 
 export interface RenderedAttachment {
@@ -80,6 +85,7 @@ export interface RenderedFieldValue {
   readonly state: FieldDisplayState;
   readonly text: string;
   readonly ariaLabel: string;
+  readonly link?: RenderedFieldLink;
   readonly chips?: readonly RenderedFieldChip[];
   readonly attachments?: readonly RenderedAttachment[];
 }
@@ -326,9 +332,7 @@ export function renderFieldValue(
         ? renderedValue(value)
         : unavailable(translate);
     case 'url':
-      return typeof value === 'string' && value !== ''
-        ? renderedValue(value)
-        : unavailable(translate);
+      return renderUrlValue(value, translate);
     case 'select':
       return renderSelectValue(field as SelectField, value, translate);
     case 'multiSelect':
@@ -344,6 +348,32 @@ function renderText(value: JsonValue, translate: Translator): RenderedFieldValue
   return typeof value === 'string'
     ? renderedNaturalString(value, translate)
     : unavailable(translate);
+}
+
+function renderUrlValue(value: JsonValue, translate: Translator): RenderedFieldValue {
+  if (typeof value !== 'string') return unavailable(translate);
+  const displayValue = value.trim();
+  if (displayValue === '') return unavailable(translate);
+  const href = safeHttpUrl(displayValue);
+  if (href === null) return unavailable(translate);
+  const ariaLabel = `${translate('record.url.open')} ${displayValue}`;
+  return {
+    state: 'value',
+    text: displayValue,
+    ariaLabel,
+    link: { href, ariaLabel },
+  };
+}
+
+function safeHttpUrl(value: string): string | null {
+  if (!/^https?:\/\//iu.test(value)) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
 }
 
 function renderSelectValue(
@@ -366,6 +396,19 @@ export function createRenderedFieldValueElement(
   const root = document.createElement('span');
   root.className = 'loom-field-value';
   root.dataset.valueState = rendered.state;
+  if (rendered.link !== undefined) {
+    const link = document.createElement('a');
+    link.className = 'loom-field-value-link';
+    link.href = rendered.link.href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.textContent = rendered.text;
+    link.setAttribute('aria-label', rendered.link.ariaLabel);
+    link.addEventListener('click', (event) => event.stopPropagation());
+    link.addEventListener('keydown', (event) => event.stopPropagation());
+    root.append(link);
+    return root;
+  }
   if (rendered.attachments !== undefined && rendered.attachments.length > 0) {
     root.setAttribute('aria-label', rendered.ariaLabel);
     if (options.compactAttachments === true) {
