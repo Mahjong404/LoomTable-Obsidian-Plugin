@@ -352,13 +352,13 @@ Dashboard 不因本计划自动加入 Grid，也不在 HIG 中提前写入完整
 8. 同步统筹、Plugin 和 Server session 的当前阶段、阻塞点、合同和下一目标。
 9. 前一组未通过门禁时，不启动后一组的实现。
 
-## 6. 当前下一步（截至 Plugin main `748775a31e431f8e1a04e6aebf7921a41d147b98`）
+## 6. 当前下一步（截至 Plugin main `4d6f79781ad0da5a679c8e76a737f74724302f8a`）
 
-S0、S1、S2、S3-A、S3-B、S3-C 第一代码切片、S3-C2 Download host wiring 以及 S3-C3-A/B/C1/C2 的已交付代码切片均有可追溯的自动化和远端 CI 证据；它们不能仅凭静态检查或 CI 被宣布为完整桌面验收完成。当前 Server docs/main 仍为 `ab949d59c37680d53b4109e1502f8478b24cc655`，Server runtime/API stable-support freeze 为 `e02f055fecddc0852085dc5a71b4eb136860774a`，OpenAPI source 为 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。
+S0、S1、S2、S3-A、S3-B、S3-C 第一代码切片、S3-C2 Download host wiring 以及 S3-C3-A/B/C1/C2 的已交付切片均有可追溯的自动化和远端 CI 证据；这些证据不能替代完整 current-main Obsidian 桌面验收。Server docs/main 仍为 `ab949d59c37680d53b4109e1502f8478b24cc655`，runtime/API stable-support freeze 为 `e02f055fecddc0852085dc5a71b4eb136860774a`，OpenAPI source 为 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。
 
-S3-C3-C2 已交付 Detail-only Attachment Detach 与受限 Retry：Detach 仅移除当前 Record 的一个引用，保留其他引用，最后一个引用使用 `set: []`；不调用资源级 `deleteAttachment`，不删除 Managed 资源或 Vault 文件，也不承诺 cleanup、Undo 或 Restore。Retry 遵守 initialize 幂等键/相同 metadata、upload PUT 不自动重试、先读取 Attachment 状态和不确定 Record mutation readback 的边界。离线仍只读，Grid/Map compact 仍非交互。
+S3-C3-C3 已完成设计收口但未实现资源级功能：Attachment Resource、AttachmentRef、Detach、Resource Delete、Restore、GC 的术语与安全边界已记录；当前只支持 Record Detach 和受限 Retry，不调用资源级 `deleteAttachment`。在引用影响/所有权/共享关系、生命周期与 expectedRevision、幂等审计、保留期/备份和清理失败重试合同发布前，不启动资源级实现。
 
-当前仍需受控 current-main Obsidian smoke 复验 Grid、Detail、Location、Map、Settings、焦点/键盘、主题/窄布局及 Attachment 生命周期；自动化 DOM/controller、构建和合同检查只能作为支持证据。下一项只记录为 S3-C3-C3 的资源级生命周期/清理设计与后续切片；本计划不在本回合启动它，也不宣称整个 S3 或 P1.5 完成。
+当前仍需受控 current-main Obsidian smoke 复验 Grid、Detail、Location、Map、Settings、焦点/键盘、主题/窄布局及 Attachment 生命周期；自动化 DOM/controller、构建和合同检查只能作为支持证据。下一阶段只可在上述合同明确后继续 Attachment 资源生命周期评估；S4/S5/S6、新字段、View、CRUD、Filter/Sort、Dashboard 均未开始。本计划不宣称整个 S3 或 P1.5 完成。
 ## S3-A 当前实施记录（2026-08-31）
 
 S3-A 以 Plugin main `3006c6217ef7e764ccc6c54b2a1c4d826b0a7eaf` 为基线，经 PR #86（head `400cff073958bc51c61ec34b0a320c6a1d5adb8a`）合并至 `81f616a43784b55643a413a02d7da70def225aac`。本片建立 `src/ui/field-renderer-registry.ts` 共享 Registry/Capability seam，并让 Grid、Record Detail、Map cluster 使用同一套翻译渲染语义，覆盖既有字段类型与 undefined/null/自然空值、Location 状态、结构化 Attachment 展示。MultiSelect 的 Chip/选项交互不在本片，S3-B 已在后续代码切片交付；S3-C 尚未开始。
@@ -444,3 +444,13 @@ Retry 只允许用户明确触发当前失败的 Add/Upload/关联状态：同�
 离线保持只读，Detach/Add/Upload/Record Save/Retry 不发请求、不创建离线 Mutation。确认、取消、错误摘要、aria-live、焦点和 i18n 回归保持；失败、取消、Detail 销毁或迟到响应不写入 pending 引用，也不承诺资源清理。
 
 本片不实现资源级 delete/cleanup、反向引用/孤儿处理、Undo/Restore；当前 published contract 没有支持这些操作的计数、查询、清理或恢复接口。真实 current-main Obsidian smoke 仍标记 `UNVERIFIED`，不得以 jsdom/CI 替代。S3-C3-C3 尚未开始，整个 S3/P1.5 不能据此宣布完成。
+
+## S3-C3-C3 实施记录：Attachment resource lifecycle decision（2026-09-01）
+
+本片为 docs-only 设计收口，基于 Plugin main `4d6f79781ad0da5a679c8e76a737f74724302f8a`。正式决策记录见 [Attachment resource lifecycle decision](../design/attachment-resource-lifecycle-decision.md)。
+
+术语与边界已固定：Attachment Resource 是资源对象；AttachmentRef 是 Record Attachment Field 中的引用；Detach 只通过 `records/mutate` 移除当前 Record 的引用，最后一项使用 `set: []`；Resource Delete 是独立的资源软删除；Restore 与 GC/物理清理没有当前已发布合同。当前 Plugin 不调用资源级 Delete，不实现 Restore、Undo、孤儿恢复/清理或 GC。
+
+未来最小合同必须覆盖引用影响/反向引用或原子前置条件、所有权/共享关系、软删/恢复状态与 expectedRevision、幂等与审计、保留期/备份安全、清理作业状态及失败重试；批量操作、影响预览和 UI Undo 为可选扩展。未来 Plugin 顺序为 Detach → 引用影响查询 → 明确确认/可选 Undo → Resource soft-delete → Restore/GC。
+
+本片不修改 Server/API/OpenAPI、Attachment wire types、offline 只读、Mutation/Conflict/revision/changeCursor；current-main 真实 Obsidian smoke 仍为 `UNVERIFIED`。S3-C3-C3 资源级实现、S4、S5、S6 均未开始。
