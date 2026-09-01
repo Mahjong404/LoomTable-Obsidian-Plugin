@@ -126,6 +126,10 @@ describe('Attachment Add/Upload seam', () => {
         },
       ],
       expect.objectContaining({ id: 'record_01' }),
+      expect.objectContaining({
+        clientMutationId: expect.any(String),
+        expectedRevision: 1,
+      }),
     );
     expect(updateRecord.mock.calls[0]?.[2]).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ status: 'ready', revision: 2 })]),
