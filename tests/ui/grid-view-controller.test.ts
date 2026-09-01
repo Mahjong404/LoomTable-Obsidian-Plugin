@@ -609,9 +609,13 @@ describe('GridViewController', () => {
     const controller = new GridViewController(client);
     await controller.load();
 
-    await expect(
-      controller.editCell('record_01', 'field_name', 'Record 1'),
-    ).resolves.toBeUndefined();
+    await expect(controller.editCell('record_01', 'field_name', 'Record 1')).resolves.toMatchObject(
+      {
+        id: 'record_01',
+        revision: 1,
+        values: { field_name: 'Record 1' },
+      },
+    );
 
     expect(client.mutationRequests).toHaveLength(1);
     expect(client.mutationRequests[0]?.request.commands[0]).toMatchObject({
@@ -947,7 +951,7 @@ it('uses the durable queue seam instead of the client mutation bypass and applie
     mutationIdFactory: () => 'mut_0123456789ABCDEFGHJKMNPQRS',
   });
   await controller.load();
-  await controller.editCell('record_01', 'field_name', 'Local intent');
+  const detailResult = await controller.editCell('record_01', 'field_name', 'Local intent');
 
   expect(client.mutationRequests).toHaveLength(0);
   expect(transport.mutate).toHaveBeenCalledWith(
@@ -964,6 +968,7 @@ it('uses the durable queue seam instead of the client mutation bypass and applie
       ],
     }),
   );
+  expect(detailResult).toEqual(returnedRecord);
   expect(controller.state.records[0]).toEqual(returnedRecord);
   expect(controller.state.saveStatus).toBe('saved');
   expect(
@@ -1316,3 +1321,4 @@ class FakeDurableQueue implements DurableMutationQueuePort {
     });
   }
 }
+

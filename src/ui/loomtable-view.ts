@@ -1,6 +1,6 @@
 import { ItemView, type WorkspaceLeaf } from 'obsidian';
 
-import type { LoomTableClient, LoomTableRecord, View } from '../client/loomtable-client';
+import type { JsonValue, LoomTableClient, LoomTableRecord, View } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
 import type { TileCredentialReader } from '../maps/providers/tile-provider-schema';
 import type { TileProviderRegistry } from '../maps/providers/tile-provider-registry';
@@ -157,7 +157,9 @@ export class LoomTableView extends ItemView {
       },
       onLoadMore: () => controller.loadNextPage(),
       onRecordOpen: (record) => void this.showRecordDetail(record, profile, controller),
-      onCellEdit: (recordId, fieldId, value) => controller.editCell(recordId, fieldId, value),
+      onCellEdit: (recordId, fieldId, value) => {
+        void controller.editCell(recordId, fieldId, value);
+      },
       onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
       confirmDiscardAll: () => window.confirm(this.getTranslator()('grid.discardAllConfirm')),
       onRetryEdit: (recordId) => controller.retryEdit(recordId),
@@ -257,6 +259,16 @@ export class LoomTableView extends ItemView {
       onTileRetry: () => controller.retryTiles(),
       onLocationEdit: (recordId, fieldId, intent, record) =>
         this.#gridController?.editLocation(recordId, fieldId, intent, record),
+      ...(this.#gridController === null
+        ? {}
+        : {
+            onFieldEdit: async (
+              recordId: string,
+              fieldId: string,
+              value: JsonValue,
+              record: LoomTableRecord,
+            ) => this.#gridController!.editCell(recordId, fieldId, value, {}, record),
+          }),
       getConflict: (recordId) => this.#gridController?.getConflict(recordId),
       onConflictAction: (recordId, action) =>
         this.#gridController?.resolveConflict(recordId, action),
@@ -421,6 +433,8 @@ export class LoomTableView extends ItemView {
       confirmDiscard: (message) => window.confirm(message),
       callbacks: {
         onClose: () => detail.remove(),
+        onFieldEdit: async (recordId, fieldId, value, sourceRecord) =>
+          controller.editCell(recordId, fieldId, value, {}, sourceRecord),
         onLocationEdit: (recordId, fieldId, intent, recordValue) =>
           controller.editLocation(recordId, fieldId, intent, recordValue),
         getConflict: (recordId) => controller.getConflict(recordId),
@@ -463,11 +477,17 @@ export class LoomTableView extends ItemView {
   }
 
   private confirmDiscardOpenDetail(): boolean {
-    const draft = this.#detailHost?.querySelector('.loom-location-editor[data-dirty="true"]');
+    const draft = this.#detailHost?.querySelector<HTMLElement>(
+      '.loom-location-editor[data-dirty="true"], .loom-record-field-editor[data-dirty="true"]',
+    );
     if (draft === null || draft === undefined) {
       return true;
     }
-    const message = this.getTranslator()('record.location.discardConfirm');
+    const message = this.getTranslator()(
+      draft.classList.contains('loom-record-field-editor')
+        ? 'record.field.discardConfirm'
+        : 'record.location.discardConfirm',
+    );
     try {
       return typeof window !== 'undefined' && typeof window.confirm === 'function'
         ? window.confirm(message)
@@ -520,3 +540,4 @@ function defaultProfile(settings: PluginSettings): ConnectionProfile | null {
     null
   );
 }
+

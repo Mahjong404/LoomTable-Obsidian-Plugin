@@ -80,6 +80,17 @@ export const simplifiedChineseMessages = {
   'grid.view': '视图',
   'grid.workspace': '工作区',
   'record.details': '记录详情',
+  'record.field.edit': '编辑字段',
+  'record.field.editing': '正在编辑字段',
+  'record.field.saving': '正在保存字段…',
+  'record.field.saved': '字段已保存。',
+  'record.field.saveError': '字段保存失败；请检查错误后重试。',
+  'record.field.saveAuthentication': '保存此字段需要认证；请检查连接设置。',
+  'record.field.saveForbidden': '你没有保存此字段的权限。',
+  'record.field.saveNetwork': '字段保存失败；请恢复连接后重试。',
+  'record.field.saveServer': '字段保存失败；Server 返回了错误。',
+  'record.field.offline': '当前离线；恢复连接后才能编辑此字段。',
+  'record.field.discardConfirm': '放弃此字段尚未保存的修改？',
   'record.field.unset': '未设置',
   'record.field.cleared': '已清除',
   'record.url.open': '打开 URL：',
@@ -301,3 +312,4 @@ export const simplifiedChineseMessages = {
   'validation.fieldValue.locationLatitudeRange': 'Location 纬度必须介于 -90 和 90 之间。',
   'validation.fieldValue.locationLongitudeRange': 'Location 经度必须介于 -180 和 180 之间。',
 } as const satisfies MessageCatalog;
+

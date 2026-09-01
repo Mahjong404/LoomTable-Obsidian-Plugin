@@ -582,6 +582,32 @@
   gap: var(--loom-space-1);
 }
 
+.loom-record-field-editor {
+  display: grid;
+  gap: var(--loom-space-2);
+  max-width: 34rem;
+}
+
+.loom-record-field-input {
+  width: 100%;
+  min-width: 0;
+}
+
+.loom-record-field-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--loom-space-1);
+}
+
+.loom-record-field-error {
+  margin: 0;
+  color: var(--loom-text-error);
+}
+
+.loom-record-field-edit {
+  justify-self: start;
+}
+
 .loom-record-conflict {
   display: grid;
   gap: var(--loom-space-2);
@@ -1078,3 +1104,4 @@
     transition-iteration-count: 1;
   }
 }
+

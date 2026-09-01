@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Field, LoomTableRecord } from '../../src/client/loomtable-client';
+import type { Field, JsonValue, LoomTableRecord } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
 import {
   createAttachmentDownloadCallback,
@@ -294,6 +294,71 @@ describe('MapView', () => {
     expect(container.querySelector('.loom-map-tile-status .loom-diagnostic')).not.toBeNull();
     expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain('record_01');
     expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain('A record');
+  });
+
+  it('forwards selected-record scalar Detail edits through the typed callback', async () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const field: Field = {
+      id: 'field_name',
+      tableId: 'table_01',
+      name: 'Name',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'text',
+      config: {},
+    };
+    const record: LoomTableRecord = {
+      id: 'record_map',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_name: 'Before' },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const returnedRecord: LoomTableRecord = {
+      ...record,
+      revision: 2,
+      values: { field_name: 'After' },
+    };
+    const onFieldEdit = vi.fn(
+      async (
+        _recordId: string,
+        _fieldId: string,
+        _value: JsonValue,
+        _sourceRecord: LoomTableRecord,
+      ): Promise<LoomTableRecord> => returnedRecord,
+    );
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      onFieldEdit,
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      fields: [field],
+      selectedRecord: record,
+    });
+
+    const edit = container.querySelector<HTMLButtonElement>('.loom-record-field-edit');
+    edit?.click();
+    const editor = container.querySelector<HTMLInputElement>('.loom-record-field-editor input');
+    const form = container.querySelector<HTMLFormElement>('.loom-record-field-editor');
+    expect(editor).not.toBeNull();
+    expect(form).not.toBeNull();
+    if (editor === null || form === null) return;
+    editor.value = 'After';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(1));
+    expect(onFieldEdit).toHaveBeenCalledWith('record_map', 'field_name', 'After', record);
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-map-record-detail')?.textContent).toContain('After'),
+    );
+    expect(controller.openRecord).toHaveBeenCalledWith('record_map');
   });
 
   it('passes selected-record Attachment downloads through the Detail callback', async () => {
@@ -1017,3 +1082,4 @@ function createLocationRecord(id: string, label: string): LoomTableRecord {
     updatedAt: '',
   };
 }
+
