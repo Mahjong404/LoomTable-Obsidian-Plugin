@@ -88,7 +88,7 @@ describe('Record Detail Attachment Add', () => {
       {
         fields: [attachmentField()],
         translate: createTranslator('en'),
-        callbacks: { onAttachmentAdd: vi.fn() },
+        callbacks: { onAttachmentAdd: async () => undefined },
       },
     );
     expect(atLimit.querySelector('.loom-attachment-add-action')).toBeNull();
