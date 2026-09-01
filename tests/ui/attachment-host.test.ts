@@ -1,15 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { LoomTableClient } from '../../src/client/loomtable-client';
+import type { App } from 'obsidian';
 import { createTranslator } from '../../src/i18n';
 import {
   createAttachmentOpenCallback,
   createAttachmentPreviewCallback,
   createBrowserAttachmentPreviewHost,
+  createObsidianAttachmentDownloadHost,
   isSafeAttachmentVaultPath,
   type AttachmentOpenHost,
   type AttachmentPreviewHost,
 } from '../../src/ui/attachment-host';
+import type { AttachmentDownloadHost } from '../../src/ui/attachment-download';
 import type { RenderedAttachment } from '../../src/ui/field-renderer-registry';
 
 describe('Attachment open and preview host seams', () => {
@@ -53,6 +56,61 @@ describe('Attachment open and preview host seams', () => {
     expect(isSafeAttachmentVaultPath('../private/report.pdf')).toBe(false);
     expect(isSafeAttachmentVaultPath('C:/private/report.pdf')).toBe(false);
     expect(isSafeAttachmentVaultPath('/private/report.pdf')).toBe(false);
+  });
+
+  it('reads an exact Vault TFile and triggers a safe download without using the Server client', async () => {
+    const file = {
+      path: 'attachments/report.pdf',
+      extension: 'pdf',
+      stat: { ctime: 0, mtime: 0, size: 3 },
+    };
+    const getAbstractFileByPath = vi.fn().mockReturnValue(file);
+    const readBinary = vi.fn().mockResolvedValue(new Uint8Array([1, 2, 3]).buffer);
+    const app = {
+      vault: {
+        getAbstractFileByPath,
+        readBinary,
+      },
+    } as unknown as Pick<App, 'vault'>;
+    const host = {
+      createObjectUrl: vi.fn().mockReturnValue('blob:vault'),
+      revokeObjectUrl: vi.fn(),
+      triggerDownload: vi.fn(),
+    } satisfies AttachmentDownloadHost;
+    const vaultHost = createObsidianAttachmentDownloadHost(app, host);
+
+    await vaultHost.downloadVaultFile('attachments/report.pdf', '../report.pdf', 'application/pdf');
+
+    expect(getAbstractFileByPath).toHaveBeenCalledWith('attachments/report.pdf');
+    expect(readBinary).toHaveBeenCalledWith(file);
+    expect(host.triggerDownload).toHaveBeenCalledWith('blob:vault', '.._report.pdf');
+    expect(host.createObjectUrl).toHaveBeenCalledTimes(1);
+    expect(host.revokeObjectUrl).toHaveBeenCalledWith('blob:vault');
+  });
+
+  it('does not read or download unsafe paths or non-file Vault entries', async () => {
+    const getAbstractFileByPath = vi.fn((path: string) =>
+      path === 'attachments/folder' ? { path, children: [] } : null,
+    );
+    const readBinary = vi.fn();
+    const app = {
+      vault: { getAbstractFileByPath, readBinary },
+    } as unknown as Pick<App, 'vault'>;
+    const host = {
+      createObjectUrl: vi.fn(),
+      revokeObjectUrl: vi.fn(),
+      triggerDownload: vi.fn(),
+    } satisfies AttachmentDownloadHost;
+    const vaultHost = createObsidianAttachmentDownloadHost(app, host);
+
+    await vaultHost.downloadVaultFile('../private/report.pdf', 'report.pdf');
+    await expect(vaultHost.downloadVaultFile('attachments/folder', 'report.pdf')).rejects.toThrow(
+      'Vault attachment is unavailable',
+    );
+
+    expect(getAbstractFileByPath).toHaveBeenCalledTimes(1);
+    expect(readBinary).not.toHaveBeenCalled();
+    expect(host.triggerDownload).not.toHaveBeenCalled();
   });
 
   it('previews managed content with the response type and always revokes its URL', async () => {

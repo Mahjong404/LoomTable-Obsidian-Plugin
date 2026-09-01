@@ -7,6 +7,7 @@ import type {
 } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
+import { isAttachmentDownloadable } from './attachment-download';
 import { editorTextValue } from './field-value-editor';
 
 type SelectField = FieldBase & { readonly type: 'select'; readonly config: SelectFieldConfig };
@@ -99,7 +100,8 @@ export type FieldEditorElement = HTMLInputElement | HTMLTextAreaElement | HTMLSe
 export interface RenderedFieldValueElementOptions {
   readonly compactAttachments?: boolean;
   readonly translate?: Translator;
-  readonly attachmentDownloadDisabled?: boolean;
+  readonly attachmentDownloadDisabled?: boolean | ((attachment: RenderedAttachment) => boolean);
+  readonly canAttachmentDownload?: (attachment: RenderedAttachment) => boolean;
   readonly onAttachmentDownload?: (attachment: RenderedAttachment) => void | Promise<void>;
   readonly attachmentOpenPreviewDisabled?: boolean;
   readonly onAttachmentOpen?: (attachment: RenderedAttachment) => void | Promise<void>;
@@ -499,7 +501,10 @@ function createAttachmentElement(
       failedKey: 'record.attachment.action.downloadFailed',
       offlineKey: 'record.attachment.action.offline',
       callback: options.onAttachmentDownload,
-      disabled: options.attachmentDownloadDisabled === true,
+      ...(options.canAttachmentDownload === undefined
+        ? {}
+        : { available: options.canAttachmentDownload }),
+      disabled: options.attachmentDownloadDisabled ?? false,
     }),
     createAttachmentAction(attachment, options, {
       kind: 'open',
@@ -547,7 +552,7 @@ interface AttachmentActionSpec {
   readonly offlineKey: MessageKey;
   readonly callback: ((attachment: RenderedAttachment) => void | Promise<unknown>) | undefined;
   readonly available?: (attachment: RenderedAttachment) => boolean;
-  readonly disabled: boolean;
+  readonly disabled: boolean | ((attachment: RenderedAttachment) => boolean);
 }
 
 function createAttachmentAction(
@@ -556,12 +561,13 @@ function createAttachmentAction(
   spec: AttachmentActionSpec,
 ): HTMLElement | null {
   const translate = options.translate;
-  const offline = spec.disabled;
+  const offline = typeof spec.disabled === 'function' ? spec.disabled(attachment) : spec.disabled;
   if (
     attachment.state !== 'ready' ||
     attachment.id === undefined ||
     translate === undefined ||
     (spec.callback === undefined && !(spec.kind === 'download' && offline)) ||
+    (spec.kind === 'download' && !isAttachmentDownloadable(attachment)) ||
     (spec.available !== undefined && !spec.available(attachment))
   ) {
     return null;

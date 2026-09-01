@@ -731,7 +731,7 @@ describe('Record Detail Location seam', () => {
       config: { maxCount: 10 },
     };
     const record = createRecord({
-      field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+      field_attachment: [{ id: 'attachment_1', source: 'managed', filename: 'notes.md' }],
     });
     const onAttachmentDownload = vi.fn().mockRejectedValue(new Error('secret path'));
 
@@ -830,7 +830,7 @@ describe('Record Detail Location seam', () => {
     const onAttachmentDownload = vi.fn();
     const detail = createRecordDetail(
       createRecord({
-        field_attachment: [{ id: 'attachment_1', source: 'vault', filename: 'notes.md' }],
+        field_attachment: [{ id: 'attachment_1', source: 'managed', filename: 'notes.md' }],
       }),
       {
         fields: [attachmentField],
@@ -849,6 +849,38 @@ describe('Record Detail Location seam', () => {
     );
     download?.click();
     expect(onAttachmentDownload).not.toHaveBeenCalled();
+  });
+
+  it('keeps an explicit Vault download available while offline', () => {
+    const attachmentField: Field = {
+      ...createField('field_attachment', 'Attachment'),
+      type: 'attachment',
+      config: { maxCount: 10 },
+    };
+    const onAttachmentDownload = vi.fn();
+    const detail = createRecordDetail(
+      createRecord({
+        field_attachment: [
+          {
+            id: 'attachment_1',
+            source: 'vault',
+            filename: 'notes.md',
+            vaultPath: 'attachments/notes.md',
+          },
+        ],
+      }),
+      {
+        fields: [attachmentField],
+        translate: createTranslator('en'),
+        offline: true,
+        callbacks: { onAttachmentDownload },
+      },
+    );
+
+    const download = detail.querySelector<HTMLButtonElement>('.loom-attachment-action');
+    expect(download?.disabled).toBe(false);
+    download?.click();
+    expect(onAttachmentDownload).toHaveBeenCalledTimes(1);
   });
 
   it('renders Select and MultiSelect option names consistently as accessible values', () => {

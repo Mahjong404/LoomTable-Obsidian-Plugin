@@ -2,8 +2,16 @@ import type { App, TFile } from 'obsidian';
 
 import type { LoomTableClient } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
-import { sanitizeAttachmentFilename } from './attachment-download';
+import {
+  createBrowserAttachmentDownloadHost,
+  isSafeAttachmentVaultPath,
+  sanitizeAttachmentFilename,
+  type AttachmentDownloadHost,
+  type AttachmentVaultDownloadHost,
+} from './attachment-download';
 import type { RenderedAttachment } from './field-renderer-registry';
+
+export { isSafeAttachmentVaultPath } from './attachment-download';
 
 export interface AttachmentOpenHost {
   openVaultFile(vaultPath: string): void | Promise<void>;
@@ -117,27 +125,45 @@ export function createObsidianAttachmentOpenHost(
   };
 }
 
-export function isSafeAttachmentVaultPath(vaultPath: string | undefined): vaultPath is string {
-  if (
-    vaultPath === undefined ||
-    vaultPath.trim() === '' ||
-    vaultPath.startsWith('/') ||
-    vaultPath.includes('\\') ||
-    /^[A-Za-z]:/.test(vaultPath)
-  ) {
-    return false;
-  }
-  const segments = vaultPath.split('/');
-  return (
-    segments.every((segment) => segment !== '' && segment !== '.' && segment !== '..') &&
-    !containsControlCharacter(vaultPath)
-  );
+export function createObsidianAttachmentDownloadHost(
+  app: Pick<App, 'vault'>,
+  downloadHost: AttachmentDownloadHost = createBrowserAttachmentDownloadHost(),
+): AttachmentVaultDownloadHost {
+  return {
+    downloadVaultFile: async (vaultPath, filename, mimeType) => {
+      if (!isSafeAttachmentVaultPath(vaultPath)) return;
+      const file = app.vault.getAbstractFileByPath(vaultPath);
+      if (!isVaultFile(file, vaultPath)) {
+        throw new Error('The requested Vault attachment is unavailable.');
+      }
+      const bytes = await app.vault.readBinary(file);
+      let objectUrl: string | null = null;
+      try {
+        const blob = new Blob([bytes], {
+          type: mimeType ?? 'application/octet-stream',
+        });
+        objectUrl = downloadHost.createObjectUrl(blob);
+        downloadHost.triggerDownload(objectUrl, sanitizeAttachmentFilename(filename));
+      } finally {
+        if (objectUrl !== null) downloadHost.revokeObjectUrl(objectUrl);
+      }
+    },
+  };
 }
 
 function isVaultFile(value: unknown, vaultPath: string): value is TFile {
   if (typeof value !== 'object' || value === null) return false;
-  const candidate = value as { readonly path?: unknown; readonly extension?: unknown };
-  return candidate.path === vaultPath && typeof candidate.extension === 'string';
+  const candidate = value as {
+    readonly path?: unknown;
+    readonly extension?: unknown;
+    readonly stat?: unknown;
+  };
+  return (
+    candidate.path === vaultPath &&
+    typeof candidate.extension === 'string' &&
+    typeof candidate.stat === 'object' &&
+    candidate.stat !== null
+  );
 }
 
 function showBrowserAttachmentPreview(
@@ -226,13 +252,6 @@ function showBrowserAttachmentPreview(
 function nextPreviewId(suffix: string): string {
   previewId += 1;
   return `loom-attachment-preview-${suffix}-${previewId}`;
-}
-
-function containsControlCharacter(value: string): boolean {
-  return Array.from(value).some((character) => {
-    const code = character.charCodeAt(0);
-    return code <= 0x1f || (code >= 0x7f && code <= 0x9f);
-  });
 }
 
 function defaultIsOffline(): boolean {

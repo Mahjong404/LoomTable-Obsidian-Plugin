@@ -64,6 +64,7 @@ export interface MapViewOptions {
     fieldId: string,
     attachment: RenderedAttachment,
   ) => void | Promise<void>;
+  readonly canAttachmentDownload?: (attachment: RenderedAttachment) => boolean;
   readonly onAttachmentOpen?: (
     recordId: string,
     fieldId: string,
@@ -452,6 +453,9 @@ export class MapView {
         ...(this.options.onAttachmentDownload === undefined
           ? {}
           : { onAttachmentDownload: this.options.onAttachmentDownload }),
+        ...(this.options.canAttachmentDownload === undefined
+          ? {}
+          : { canAttachmentDownload: this.options.canAttachmentDownload }),
         ...(this.options.onAttachmentOpen === undefined
           ? {}
           : { onAttachmentOpen: this.options.onAttachmentOpen }),

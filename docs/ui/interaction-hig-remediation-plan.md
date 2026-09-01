@@ -454,3 +454,13 @@ Retry 只允许用户明确触发当前失败的 Add/Upload/关联状态：同�
 未来最小合同必须覆盖引用影响/反向引用或原子前置条件、所有权/共享关系、软删/恢复状态与 expectedRevision、幂等与审计、保留期/备份安全、清理作业状态及失败重试；批量操作、影响预览和 UI Undo 为可选扩展。未来 Plugin 顺序为 Detach → 引用影响查询 → 明确确认/可选 Undo → Resource soft-delete → Restore/GC。
 
 本片不修改 Server/API/OpenAPI、Attachment wire types、offline 只读、Mutation/Conflict/revision/changeCursor；current-main 真实 Obsidian smoke 仍为 `UNVERIFIED`。S3-C3-C3 资源级实现、S4、S5、S6 均未开始。
+
+## S3-C3-C4 实施记录：Attachment Download source-aware routing（2026-09-01）
+
+本片从 connector 核验的 Plugin main `9aad88eed8b64d17449dbdc7bd7da58369ce8d31` 开始，修正 Attachment Download 在 Detail 的来源路由，并补齐 Grid-opened Detail 与 Map selected-record Detail 的实际 host wiring。Grid/Map compact 摘要仍保持 non-interactive。
+
+本片保持已发布合同：`source=managed` 的 ready Attachment 通过现有 `downloadAttachmentContent` content GET 获取 bytes，复用 Blob/object URL、安全 basename 与 `finally` revoke；Managed offline 显示翻译后的 disabled 说明且不发起请求。`source=vault` 仅在 ready、具备 identity 且 `vaultPath` 为明确安全相对路径时，通过 Obsidian Vault API 精确解析 `TFile` 并 `readBinary` 后触发下载；Vault 本地下载允许 offline，且不调用 Server content endpoint、不写入或删除 Vault、不猜路径。unknown/缺失 identity/不安全或缺失路径/非 ready（pending/stale/invalid/unknown）保持 actionless。
+
+自动化回归覆盖 Managed 与 Vault 分流、Vault exact-path/TFile 校验、offline no-request、unsafe/unknown/missing identity、文件名与 MIME、object URL cleanup、Grid Detail/Map Detail wiring、重复/无效 action 以及 ARIA/i18n。当前 clean staging 的完整 `pnpm check` 已通过：format、lint（既有 warnings，无 error）、typecheck、46 个测试文件 / 415 个测试、OpenAPI drift 与 production build。
+
+本片不改变 Attachment wire types、Mutation/Conflict/revision/changeCursor、offline 只读语义或 Server/API/OpenAPI；不实现 Vault 写入/删除、Open/Preview、Add/Upload、Detach/Retry 或资源生命周期。current-main 真实 Obsidian smoke 仍为 `UNVERIFIED`，不能以 DOM/CI 替代桌面验收；S4/S5/S6 不在本片。
