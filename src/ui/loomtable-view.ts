@@ -203,7 +203,6 @@ export class LoomTableView extends ItemView {
       this.#gridController === null
         ? undefined
         : createAttachmentAddCallback(client, {
-            getAttachment: client.getAttachment.bind(client),
             getRecord: client.getRecord.bind(client),
             isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
             updateRecord: async (recordId, fieldId, references, sourceRecord, mutation) => {
@@ -370,7 +369,6 @@ export class LoomTableView extends ItemView {
     const client = this.#gridClient;
     if (detailHost === null || !detailHost.isConnected || client === null) return;
     const attachmentAdd = createAttachmentAddCallback(client, {
-      getAttachment: client.getAttachment.bind(client),
       getRecord: client.getRecord.bind(client),
       isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
       updateRecord: async (recordId, fieldId, references, sourceRecord, mutation) => {
