@@ -1,6 +1,7 @@
 import type {
   Base,
   Field,
+  JsonValue,
   LocationValue,
   LoomTableRecord,
   Table,
@@ -59,6 +60,12 @@ export interface MapViewOptions {
     location: LocationValue,
   ) => void | Promise<void>;
   readonly canOpenLocationInMap?: (fieldId: string) => boolean;
+  readonly onFieldEdit?: (
+    recordId: string,
+    fieldId: string,
+    value: JsonValue,
+    record: LoomTableRecord,
+  ) => LoomTableRecord | Promise<LoomTableRecord>;
   readonly onAttachmentDownload?: (
     recordId: string,
     fieldId: string,
@@ -268,11 +275,16 @@ export class MapView {
   }
 
   confirmDiscardIfNeeded(): boolean {
-    if (this.#details?.querySelector('.loom-location-editor[data-dirty="true"]') === null) {
+    const draft = this.#details?.querySelector<HTMLElement>(
+      '.loom-location-editor[data-dirty="true"], .loom-record-field-editor[data-dirty="true"]',
+    );
+    if (draft === null || draft === undefined) {
       return true;
     }
     const message = (this.options.translate ?? createTranslator('en'))(
-      'record.location.discardConfirm',
+      draft.classList.contains('loom-record-field-editor')
+        ? 'record.field.discardConfirm'
+        : 'record.location.discardConfirm',
     );
     if (this.options.confirmDiscard !== undefined) return this.options.confirmDiscard(message);
     if (typeof window === 'undefined' || typeof window.confirm !== 'function') return false;
@@ -399,7 +411,7 @@ export class MapView {
     const selectedRecordChanged = this.#selectedRecordId !== state.selectedRecord?.id;
     const existingRecord = this.#details.querySelector<HTMLElement>('.loom-map-record-detail');
     const existingDraft = existingRecord?.querySelector<HTMLElement>(
-      '.loom-location-editor[data-dirty="true"]',
+      '.loom-location-editor[data-dirty="true"], .loom-record-field-editor[data-dirty="true"]',
     );
     if (
       existingDraft !== null &&
@@ -424,6 +436,7 @@ export class MapView {
       const record = document.createElement('section');
       record.className = 'loom-map-record-detail';
       record.dataset.recordVersion = nextRecordVersion ?? '';
+      const onFieldEdit = this.options.onFieldEdit;
       const callbacks = {
         ...(this.options.onLocationEdit === undefined
           ? {}
@@ -450,6 +463,20 @@ export class MapView {
         ...(this.options.canOpenLocationInMap === undefined
           ? {}
           : { canOpenLocationInMap: this.options.canOpenLocationInMap }),
+        ...(onFieldEdit === undefined
+          ? {}
+          : {
+              onFieldEdit: async (
+                recordId: string,
+                fieldId: string,
+                value: JsonValue,
+                recordValue: LoomTableRecord,
+              ) => {
+                const updated = await onFieldEdit(recordId, fieldId, value, recordValue);
+                await this.#controller.openRecord(recordId);
+                return updated;
+              },
+            }),
         ...(this.options.onAttachmentDownload === undefined
           ? {}
           : { onAttachmentDownload: this.options.onAttachmentDownload }),
