@@ -144,4 +144,3 @@ function createRecord(value: JsonValue): LoomTableRecord {
     values: { field_attachment: value },
   };
 }
-
