@@ -2,7 +2,7 @@
 
 > 本文档是实施与验收计划，不是规范性 HIG。规范要求见 [Interaction HIG](./interaction-hig.md)；现有阶段和范围背景见 [HIG 落地计划](./interaction-hig-rollout.md)。
 >
-> 本计划的当前记录以 Plugin 远端 main `9b7d3e574f347a77cee73182e6bf8659d4eb39c8` 为准；历史制定基线 `d3469e7e133ad4a1854833be4912de93953e8e2e` 仅保留在交付记录中。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
+> 本计划的当前记录以 Plugin 远端 main `622aae40af1f64331cc34e0d308f47c1422e0fc9` 为准；历史制定基线 `d3469e7e133ad4a1854833be4912de93953e8e2e` 仅保留在交付记录中。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
 
 ## 1. 目的与边界
 
@@ -35,7 +35,7 @@
 - Location 编辑、Map 数据刷新和部分键盘可访问性；
 - Save Status 的 WPS 风格显示；
 
-截至当前远端 Plugin main `9b7d3e574f347a77cee73182e6bf8659d4eb39c8`，已交付切片应按以下范围解释：
+截至当前远端 Plugin main `622aae40af1f64331cc34e0d308f47c1422e0fc9`，已交付切片应按以下范围解释：
 
 - **S0**：PR #63–#67 的审计、构建 provenance 和只读 smoke 证据已归档；Grid/Detail/Map 的历史或 runtime-equivalent 观察有明确边界，Location 写入、故障注入、完整键盘、浅色/窄布局等仍保留 residual unverified。
 - **S1**：S1-A/B/C/D 的运行时切片由 PR #68/#70/#72/#74 交付，配套文档由 PR #69/#71/#73/#75 交付；共享文案、控件几何、危险确认、异步错误动作、Grid/Detail/Location seam 和 Map 可访问性已发布，但完整真实桌面门禁仍未闭合。
@@ -352,13 +352,13 @@ Dashboard 不因本计划自动加入 Grid，也不在 HIG 中提前写入完整
 8. 同步统筹、Plugin 和 Server session 的当前阶段、阻塞点、合同和下一目标。
 9. 前一组未通过门禁时，不启动后一组的实现。
 
-## 6. 当前下一步（截至 Plugin main `4d6f79781ad0da5a679c8e76a737f74724302f8a`）
+## 6. 当前下一步（截至 Plugin main `622aae40af1f64331cc34e0d308f47c1422e0fc9`）
 
-S0、S1、S2、S3-A、S3-B、S3-C 第一代码切片、S3-C2 Download host wiring 以及 S3-C3-A/B/C1/C2 的已交付切片均有可追溯的自动化和远端 CI 证据；这些证据不能替代完整 current-main Obsidian 桌面验收。Server docs/main 仍为 `ab949d59c37680d53b4109e1502f8478b24cc655`，runtime/API stable-support freeze 为 `e02f055fecddc0852085dc5a71b4eb136860774a`，OpenAPI source 为 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。
+S0、S1、S2、S3-A、S3-B、S3-C 第一代码切片、S3-C2 Download host wiring、S3-C3-A/B/C1/C2/C3/C4 以及 S3-D Date renderer parity 均有可追溯的自动化和远端 CI 证据；这些证据不能替代完整 current-main Obsidian 桌面验收。Server docs/main 仍为 `ab949d59c37680d53b4109e1502f8478b24cc655`，runtime/API stable-support freeze 为 `e02f055fecddc0852085dc5a71b4eb136860774a`，OpenAPI source 为 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。
 
 S3-C3-C3 已完成设计收口但未实现资源级功能：Attachment Resource、AttachmentRef、Detach、Resource Delete、Restore、GC 的术语与安全边界已记录；当前只支持 Record Detach 和受限 Retry，不调用资源级 `deleteAttachment`。在引用影响/所有权/共享关系、生命周期与 expectedRevision、幂等审计、保留期/备份和清理失败重试合同发布前，不启动资源级实现。
 
-当前仍需受控 current-main Obsidian smoke 复验 Grid、Detail、Location、Map、Settings、焦点/键盘、主题/窄布局及 Attachment 生命周期；自动化 DOM/controller、构建和合同检查只能作为支持证据。下一阶段只可在上述合同明确后继续 Attachment 资源生命周期评估；S4/S5/S6、新字段、View、CRUD、Filter/Sort、Dashboard 均未开始。本计划不宣称整个 S3 或 P1.5 完成。
+当前仍需受控 current-main Obsidian smoke 复验 Grid、Detail、Location、Map、Settings、焦点/键盘、主题/窄布局及 Attachment 生命周期；自动化 DOM/controller、构建和合同检查只能作为支持证据。当前十种已批准字段的 renderer/editor capability audit 没有发现另一个可直接实现的 scalar gap；Date renderer 已通过 S3-D 与既有 editor/Server Gregorian 校验对齐。下一阶段只可在上述合同明确后继续 Attachment 资源生命周期评估；S4/S5/S6、新字段、View、CRUD、Filter/Sort、Dashboard 均未开始。本计划不宣称整个 S3 或 P1.5 完成。
 ## S3-A 当前实施记录（2026-08-31）
 
 S3-A 以 Plugin main `3006c6217ef7e764ccc6c54b2a1c4d826b0a7eaf` 为基线，经 PR #86（head `400cff073958bc51c61ec34b0a320c6a1d5adb8a`）合并至 `81f616a43784b55643a413a02d7da70def225aac`。本片建立 `src/ui/field-renderer-registry.ts` 共享 Registry/Capability seam，并让 Grid、Record Detail、Map cluster 使用同一套翻译渲染语义，覆盖既有字段类型与 undefined/null/自然空值、Location 状态、结构化 Attachment 展示。MultiSelect 的 Chip/选项交互不在本片，S3-B 已在后续代码切片交付；S3-C 尚未开始。
@@ -464,3 +464,13 @@ Retry 只允许用户明确触发当前失败的 Add/Upload/关联状态：同�
 自动化回归覆盖 Managed 与 Vault 分流、Vault exact-path/TFile 校验、offline no-request、unsafe/unknown/missing identity、文件名与 MIME、object URL cleanup、Grid Detail/Map Detail wiring、重复/无效 action 以及 ARIA/i18n。当前 clean staging 的完整 `pnpm check` 已通过：format、lint（既有 warnings，无 error）、typecheck、46 个测试文件 / 415 个测试、OpenAPI drift 与 production build。
 
 本片不改变 Attachment wire types、Mutation/Conflict/revision/changeCursor、offline 只读语义或 Server/API/OpenAPI；不实现 Vault 写入/删除、Open/Preview、Add/Upload、Detach/Retry 或资源生命周期。current-main 真实 Obsidian smoke 仍为 `UNVERIFIED`，不能以 DOM/CI 替代桌面验收；S4/S5/S6 不在本片。
+
+## S3-D 字段能力审计与 Date Renderer parity（2026-09-01）
+
+本片从 connector 核验的 Plugin main `1a47b21d86dbda1a42fb276193ab839163927ca7` 开始，交付后当前 main 为 `622aae40af1f64331cc34e0d308f47c1422e0fc9`。代码 PR [#105](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/105) head `5f6b0c82f2eec90903b2a7f6c2c34ffce53affa3`，PR CI `33512486961` / job `99871329184` 和 main push CI `33512658719` / job `99871896971` 均成功。
+
+实施前的 current-main 审计按十种批准字段核对了 `field-renderer-registry.ts`、`field-value-editor.ts`、Grid/Detail/Map 调用方及公开测试：Text、LongText、Number、Checkbox、URL、Select、MultiSelect、Location、Attachment 的既有共享显示/编辑或专用流程已满足当前发布范围；唯一可复现的 scalar parity gap 是 Date renderer 接受任意非空字符串，而既有 editor/Server 合同只接受有效 Gregorian `YYYY-MM-DD`。
+
+最小修复让 Date renderer 复用既有 `normalizeCellValue`：无效日期显示翻译后的 unavailable，不把服务端异常值作为普通文案；合法带空格日期沿用现有规范化结果。回归测试覆盖无效日期和合法规范化显示；没有改变 Date editor、set/unset、Mutation Queue、Conflict、expectedRevision、clientMutationId、changeCursor 或 Attachment/Location 语义。完整 `pnpm check` 已通过（46 个测试文件 / 416 tests、format、lint 既有 warnings、typecheck、OpenAPI drift、production build）。
+
+本片不把真实 Obsidian smoke 当作代码缺口：current-main 桌面 smoke 仍为 `UNVERIFIED`，DOM/CI 不能替代窗口验收。没有新增 Server/API/OpenAPI 合同，不改变 offline 只读边界。S3 的 Attachment 资源级 Delete/Restore/GC 仍因未发布的引用影响/所有权/恢复/清理合同而 deferred；Map preview、S4、S5、S6、新字段、View、CRUD、Filter/Sort、Dashboard 均未开始。

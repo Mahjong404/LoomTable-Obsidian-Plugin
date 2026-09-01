@@ -1,6 +1,6 @@
 # Interaction HIG Audit Matrix
 
-> Current audit checkpoint is the connector-verified Plugin main `9b7d3e574f347a77cee73182e6bf8659d4eb39c8`, after S3-C3-A code PR #94 (head `ff08a264499679b165c4ee7c522c252091f4ec41`) was squash-merged. This audit records the published Attachment Open/Preview callback seam only; it does not claim real host Open/Preview wiring or announce S1, S2, or the whole S3 complete.
+> Current audit checkpoint for the S3 capability review is the connector-verified Plugin main `622aae40af1f64331cc34e0d308f47c1422e0fc9`, after S3-D Date renderer parity PR #105 was squash-merged. Earlier checkpoints remain historical delivery evidence; this audit does not claim real current-main Obsidian smoke or announce the whole S3 complete.
 > Current-main runtime inputs, Settings diagnostics, confirmation semantics, and CSS/accessibility contracts are reviewed below. Historical smoke rows remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 >
 
@@ -377,3 +377,31 @@ S2 final-gate verdict: **not complete**. The implementation and documentation/CI
 - **Desktop boundary**: current-main Obsidian smoke remains `UNVERIFIED`; no installation/reload or real Vault/Managed download was performed in this slice. DOM/controller/host tests and CI are supporting evidence only.
 - **Residual scope**: Attachment Open/Preview, Add/Upload, Record attachment-reference lifecycle, Detach/Retry/resource lifecycle remain governed by their separately recorded slices. Resource-level delete/cleanup, Vault write/delete, and any new Server/API/OpenAPI behavior are not part of C3-C4. S4/S5/S6 remain unstarted.
 - **Server dependency**: Server runtime/API stable-support freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992` with checked-in blob `92b416993ce6be4664d8bee783f2dcaed36e05b5`; no Server/API/OpenAPI contract changed.
+
+## S3 capability gap audit and S3-D Date renderer parity (published; 2026-09-01)
+
+- **Audit provenance**: the review started from connector-verified Plugin main `1a47b21d86dbda1a42fb276193ab839163927ca7` and the delivered Date fix is in current main `622aae40af1f64331cc34e0d308f47c1422e0fc9` via [PR #105](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/105). The audit covered the current remediation plan, Interaction HIG/design-system/spec/contract documents, `field-renderer-registry`, `field-value-editor`, Grid/Detail/Map consumers, and their public DOM/controller tests.
+- **Method boundary**: the matrix below is a source/test capability audit, not a desktop acceptance claim. The prior black-window/no-accessibility-tree smoke limitation remains `UNVERIFIED` and is not treated as a code gap.
+
+### Ten approved field capability matrix
+
+| Field | Current renderer/editor status | Evidence and real residual |
+| --- | --- | --- |
+| Text | **Pass** | Registry display/editor and Unset/Cleared/natural-empty semantics; `field-renderer-registry` and `field-value-editor` tests. |
+| Long Text | **Pass** | Shared translated display and native textarea editor; control/length validation remains in the existing normalizer and tests. |
+| Number | **Pass** | Finite-number display, native number editor, and existing numeric normalization/error tests. |
+| Checkbox | **Pass** | Translated checked/unchecked display, native checkbox editor, and non-color status semantics. |
+| Date | **Pass after S3-D** | Registry now reuses existing `normalizeCellValue` Gregorian validation; invalid wire values are translated `unavailable`, while valid whitespace-padded values use the normalized date. Regression covers both cases. |
+| URL | **Pass** | Absolute HTTP/HTTPS-only link renderer/editor with safe unavailable fallback and accessible link semantics. |
+| Select | **Pass** | Shared option-name display/editor, retained deleted options, and safe unavailable unknown-option state. |
+| MultiSelect | **Pass** | Shared structured Chips, empty-array semantics, native multiple-select editor, and deleted/unknown option handling. |
+| Location | **Pass for published scope** | Shared located/unlocated/unrenderable/Unset/Cleared rendering plus the existing Detail-only editor/guard; no new Map or CRUD behavior is implied. |
+| Attachment | **Pass for published scope** | Structured Grid/Detail/Map summary and source-aware Download/host seams are delivered; resource-level Delete/Restore/GC remains deferred by the published contract. |
+
+### S3-D implementation evidence and disposition
+
+- Before this slice, Date editing already rejected invalid Gregorian values in `field-value-editor.ts`, but the shared renderer treated every non-empty string as an ordinary Date. The minimal fix imports the existing normalizer and makes the renderer reject the same invalid values without changing the editor, mutation, queue, revision, or wire contract.
+- Public regression in `tests/ui/field-renderer-registry.test.ts` asserts translated unavailable output for `2026-02-31` and normalized display for ` 2026-02-28 `. PR #105 head `5f6b0c82f2eec90903b2a7f6c2c34ffce53affa3` passed PR CI run `33512486961` / job `99871329184`; squash merge/main is `622aae40af1f64331cc34e0d308f47c1422e0fc9`; main push CI run `33512658719` / job `99871896971` passed.
+- No additional approved scalar renderer/editor gap was found in this audit. The remaining items are boundaries rather than this slice's code gap: current-main Obsidian smoke, full desktop theme/layout acceptance, and any Attachment resource lifecycle that requires new Server/OpenAPI reference/ownership/restore/GC contracts. S4/S5/S6, Map preview, and CRUD remain unstarted.
+- The complete automated gate passed: format, lint with existing warnings only, typecheck, 46 test files / 416 tests, OpenAPI drift, and production build. Automated evidence does not replace real Obsidian acceptance.
+- **Contract boundary**: no Server/API/OpenAPI, generated transport, offline read-only, Mutation/Conflict/revision/changeCursor, or user-data behavior changed. Server runtime/API stable-support freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
