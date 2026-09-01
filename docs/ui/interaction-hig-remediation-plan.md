@@ -2,7 +2,7 @@
 
 > 本文档是实施与验收计划，不是规范性 HIG。规范要求见 [Interaction HIG](./interaction-hig.md)；现有阶段和范围背景见 [HIG 落地计划](./interaction-hig-rollout.md)。
 >
-> 本计划的当前记录以 Plugin 远端 main `622aae40af1f64331cc34e0d308f47c1422e0fc9` 为准；历史制定基线 `d3469e7e133ad4a1854833be4912de93953e8e2e` 仅保留在交付记录中。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
+> 本计划的当前记录以 GitHub connector 核验的 Plugin 远端 main `c40c8f6d812ba04752c4f67bb0ba621862a3e253` 为准；此前 `622aae40af1f64331cc34e0d308f47c1422e0fc9` 仅保留为历史交付记录。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
 
 ## 1. 目的与边界
 
@@ -35,24 +35,20 @@
 - Location 编辑、Map 数据刷新和部分键盘可访问性；
 - Save Status 的 WPS 风格显示；
 
-截至当前远端 Plugin main `622aae40af1f64331cc34e0d308f47c1422e0fc9`，已交付切片应按以下范围解释：
+截至当前远端 Plugin main `c40c8f6d812ba04752c4f67bb0ba621862a3e253`，已交付切片应按以下范围解释：
 
 - **S0**：PR #63–#67 的审计、构建 provenance 和只读 smoke 证据已归档；Grid/Detail/Map 的历史或 runtime-equivalent 观察有明确边界，Location 写入、故障注入、完整键盘、浅色/窄布局等仍保留 residual unverified。
 - **S1**：S1-A/B/C/D 的运行时切片由 PR #68/#70/#72/#74 交付，配套文档由 PR #69/#71/#73/#75 交付；共享文案、控件几何、危险确认、异步错误动作、Grid/Detail/Location seam 和 Map 可访问性已发布，但完整真实桌面门禁仍未闭合。
 - **S2**：S2-A/A2/B1/B2 的运行时切片由 PR #77/#79/#81/#83 交付，配套文档由 PR #78/#80/#82/#84 交付；Grid/Detail/Location/Map/Settings 的自动化与契约门禁已记录，但 current-main 真实 Obsidian 最终门禁仍待受控环境验证。
+- **S3**：S3-A/B、S3-C 结构化 Attachment、C2 Download、C3-A/B/C1/C2/C3/C4 Attachment 子片、S3-D Date parity、S3-E1 标量 Detail 编辑和 S3-E2 URL/Select/MultiSelect Detail 编辑均已有代码与远端 CI 证据。十类批准字段在当前已发布范围内已有共享 Registry/专用流程；Attachment 资源级 Delete/Restore/GC 仍因合同缺口 deferred。
 - 中英文消息目录及部分 Map 文案测试。
 
 但不能把当前状态视为“HIG 全部满足”，原因是：
 
 - 真实 Obsidian smoke 尚未完整完成；
-- HIG Audit 文档中的当前 main 基线落后于实际 main；
-- 字段 Renderer/Editor 已通过 S3-A 建立共享基础，S3-B 已交付 Select/MultiSelect Chip/选项语义；S3-C 第一切片已交付结构化 Attachment，S3-C2 已交付 Detail Download host wiring；
-- Attachment 的 add/upload/open/preview/delete/retry 与 Record attachment-reference 生命周期仍未实现；
-- 危险操作的确认/撤销规则不一致；
-- Button 尺寸、危险层级和 Select 视觉契约不完整；
-- Grid/Detail/Map 的部分焦点、错误、空状态和重复操作行为仍需闭合；
-- 当前没有 Record Create/Delete/Restore UI；
-- rollout 中的 Table Shell、View Tabs、Filter、Sort 和 Grid 显示控制尚未成为可操作 UI。
+- Attachment 的资源级 Delete/Restore/GC、引用影响查询、所有权/共享关系和清理合同尚未发布，因此保持 actionless/deferred；这不等同于 Record Detach 未实现。
+- 当前十类批准字段没有发现另一个可直接实现且不需要新 Server/API 合同的 scalar renderer/editor gap；桌面验收仍是独立门禁。
+- Record Create/Delete/Restore、Table Shell、View Tabs、Filter、Sort、Grid 显示控制和 Dashboard 不属于本阶段已交付范围。
 
 ## 3. 优先级和阶段分组
 
@@ -352,13 +348,13 @@ Dashboard 不因本计划自动加入 Grid，也不在 HIG 中提前写入完整
 8. 同步统筹、Plugin 和 Server session 的当前阶段、阻塞点、合同和下一目标。
 9. 前一组未通过门禁时，不启动后一组的实现。
 
-## 6. 当前下一步（截至 Plugin main `622aae40af1f64331cc34e0d308f47c1422e0fc9`）
+## 6. 当前下一步（截至 Plugin main `c40c8f6d812ba04752c4f67bb0ba621862a3e253`）
 
-S0、S1、S2、S3-A、S3-B、S3-C 第一代码切片、S3-C2 Download host wiring、S3-C3-A/B/C1/C2/C3/C4 以及 S3-D Date renderer parity 均有可追溯的自动化和远端 CI 证据；这些证据不能替代完整 current-main Obsidian 桌面验收。Server docs/main 仍为 `ab949d59c37680d53b4109e1502f8478b24cc655`，runtime/API stable-support freeze 为 `e02f055fecddc0852085dc5a71b4eb136860774a`，OpenAPI source 为 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。
+S0、S1、S2、S3-A、S3-B、S3-C Attachment 子片、S3-D Date renderer parity、S3-E1 和 S3-E2 均有可追溯的自动化与远端 CI 证据；这些证据不能替代完整 current-main Obsidian 桌面验收。Server docs/main 仍为 `ab949d59c37680d53b4109e1502f8478b24cc655`，runtime/API stable-support freeze 为 `e02f055fecddc0852085dc5a71b4eb136860774a`，OpenAPI source 为 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。
 
 S3-C3-C3 已完成设计收口但未实现资源级功能：Attachment Resource、AttachmentRef、Detach、Resource Delete、Restore、GC 的术语与安全边界已记录；当前只支持 Record Detach 和受限 Retry，不调用资源级 `deleteAttachment`。在引用影响/所有权/共享关系、生命周期与 expectedRevision、幂等审计、保留期/备份和清理失败重试合同发布前，不启动资源级实现。
 
-当前仍需受控 current-main Obsidian smoke 复验 Grid、Detail、Location、Map、Settings、焦点/键盘、主题/窄布局及 Attachment 生命周期；自动化 DOM/controller、构建和合同检查只能作为支持证据。当前十种已批准字段的 renderer/editor capability audit 没有发现另一个可直接实现的 scalar gap；Date renderer 已通过 S3-D 与既有 editor/Server Gregorian 校验对齐。下一阶段只可在上述合同明确后继续 Attachment 资源生命周期评估；S4/S5/S6、新字段、View、CRUD、Filter/Sort、Dashboard 均未开始。本计划不宣称整个 S3 或 P1.5 完成。
+当前仍需受控 current-main Obsidian smoke 复验 Grid、Detail、Location、Map、Settings、焦点/键盘、主题/窄布局及 Attachment 生命周期；自动化 DOM/controller、构建和合同检查只能作为支持证据。当前十种已批准字段的 renderer/editor capability audit 没有发现另一个可直接实现的 scalar gap；S3-E1 的标量 Detail 编辑和 S3-E2 的 URL/Select/MultiSelect Detail 编辑均复用既有 normalizer、controller、Mutation Queue、revision/Conflict 语义。下一阶段只可在上述合同明确后继续 Attachment 资源生命周期评估；S4/S5/S6、新字段、View、CRUD、Filter/Sort、Dashboard 均未开始。本计划不宣称整个 S3 或 P1.5 完成。
 ## S3-A 当前实施记录（2026-08-31）
 
 S3-A 以 Plugin main `3006c6217ef7e764ccc6c54b2a1c4d826b0a7eaf` 为基线，经 PR #86（head `400cff073958bc51c61ec34b0a320c6a1d5adb8a`）合并至 `81f616a43784b55643a413a02d7da70def225aac`。本片建立 `src/ui/field-renderer-registry.ts` 共享 Registry/Capability seam，并让 Grid、Record Detail、Map cluster 使用同一套翻译渲染语义，覆盖既有字段类型与 undefined/null/自然空值、Location 状态、结构化 Attachment 展示。MultiSelect 的 Chip/选项交互不在本片，S3-B 已在后续代码切片交付；S3-C 尚未开始。
@@ -474,3 +470,20 @@ Retry 只允许用户明确触发当前失败的 Add/Upload/关联状态：同�
 最小修复让 Date renderer 复用既有 `normalizeCellValue`：无效日期显示翻译后的 unavailable，不把服务端异常值作为普通文案；合法带空格日期沿用现有规范化结果。回归测试覆盖无效日期和合法规范化显示；没有改变 Date editor、set/unset、Mutation Queue、Conflict、expectedRevision、clientMutationId、changeCursor 或 Attachment/Location 语义。完整 `pnpm check` 已通过（46 个测试文件 / 416 tests、format、lint 既有 warnings、typecheck、OpenAPI drift、production build）。
 
 本片不把真实 Obsidian smoke 当作代码缺口：current-main 桌面 smoke 仍为 `UNVERIFIED`，DOM/CI 不能替代窗口验收。没有新增 Server/API/OpenAPI 合同，不改变 offline 只读边界。S3 的 Attachment 资源级 Delete/Restore/GC 仍因未发布的引用影响/所有权/恢复/清理合同而 deferred；Map preview、S4、S5、S6、新字段、View、CRUD、Filter/Sort、Dashboard 均未开始。
+
+## S3-E1 当前实施记录：Record Detail 标量编辑（2026-09-01）
+
+本片从 connector 核验的 Plugin main `701de4a106dc07a8dffa0df309753e80f6f45aa2` 开始，通过代码 PR #107 交付：最终 head `86f81fa376bf20df9c3e1798374a53292d5bf9f6`，squash merge/main `4b366bae14c37729eb1d976464db9e4834517f27`。PR CI run `33518581611` / job `99891767386` 与 main push CI run `33518736398` / job `99892288103` 均成功。
+
+本片将既有 Field Renderer/Editor registry 接入 Record Detail，覆盖 Text、Long Text、Number、Checkbox、Date 五种标量字段；沿用现有 normalizer、Grid controller/Mutation Queue、完整 returned Record、revision/Conflict/error/focus 与 offline read-only 语义。Map selected-record Detail 复用同一 typed field-edit seam；Location、Attachment、URL、Select、MultiSelect 不在本片改变。
+
+回归与完整门禁覆盖保存/取消/Escape/Enter、重复提交保护、校验/错误/冲突焦点、服务端完整 Record 回写、离线不发请求及 i18n/ARIA/CSS seam。当前 main 的真实 Obsidian smoke 仍为 `UNVERIFIED`，自动化测试和 CI 不替代桌面验收。
+
+## S3-E2 当前实施记录：URL/Select/MultiSelect Detail 编辑（2026-09-01）
+
+本片从 E1 merge/main `4b366bae14c37729eb1d976464db9e4834517f27` 开始，通过代码 PR #108 交付：head `1376b7dc03f945860238a1608ddc3db8a14b4eb7`，squash merge/main `c40c8f6d812ba04752c4f67bb0ba621862a3e253`。PR CI run `33521501483` / job `99901636089` 与 main push CI run `33521663336` / job `99902183777` 均成功。
+
+本片在既有 Registry/Detail seam 上接入 URL、Select、MultiSelect 编辑：URL 继续只接受安全绝对 `http`/`https`；Select 使用原生可访问控件和 option name，保留合法 deleted option；MultiSelect 使用原生 multiple select 并提交选中值数组；unknown/unavailable option 保持安全不可用并由现有 normalizer 拒绝。Grid/Map Cluster 的共享显示语义、Map selected-record Detail 的 typed callback、Unset/Cleared/自然空值、Mutation Queue、revision/Conflict、offline read-only、Attachment/Location 行为均未改变。
+
+完整 `pnpm check` 与 PR/main CI 通过。当前十类批准字段在已发布范围内没有发现另一个可直接实现且不需要新 Server/API 合同的 scalar renderer/editor gap；真实 current-main Obsidian smoke 仍为 `UNVERIFIED`。Attachment 资源级 Delete/Restore/GC 因未发布的引用影响、所有权/共享关系、恢复和清理合同继续 deferred；S3 未收口，S4/S5/S6 尚未开始。
+

@@ -1,6 +1,6 @@
 # Interaction HIG Audit Matrix
 
-> Current audit checkpoint for the S3 capability review is the connector-verified Plugin main `622aae40af1f64331cc34e0d308f47c1422e0fc9`, after S3-D Date renderer parity PR #105 was squash-merged. Earlier checkpoints remain historical delivery evidence; this audit does not claim real current-main Obsidian smoke or announce the whole S3 complete.
+> Current audit checkpoint for the S3 capability review is the connector-verified Plugin main `c40c8f6d812ba04752c4f67bb0ba621862a3e253`, after S3-E2 URL/Select/MultiSelect Detail editing PR #108 was squash-merged. Earlier checkpoints remain historical delivery evidence; this audit does not claim real current-main Obsidian smoke or announce the whole S3 complete.
 > Current-main runtime inputs, Settings diagnostics, confirmation semantics, and CSS/accessibility contracts are reviewed below. Historical smoke rows remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 >
 
@@ -405,3 +405,27 @@ S2 final-gate verdict: **not complete**. The implementation and documentation/CI
 - No additional approved scalar renderer/editor gap was found in this audit. The remaining items are boundaries rather than this slice's code gap: current-main Obsidian smoke, full desktop theme/layout acceptance, and any Attachment resource lifecycle that requires new Server/OpenAPI reference/ownership/restore/GC contracts. S4/S5/S6, Map preview, and CRUD remain unstarted.
 - The complete automated gate passed: format, lint with existing warnings only, typecheck, 46 test files / 416 tests, OpenAPI drift, and production build. Automated evidence does not replace real Obsidian acceptance.
 - **Contract boundary**: no Server/API/OpenAPI, generated transport, offline read-only, Mutation/Conflict/revision/changeCursor, or user-data behavior changed. Server runtime/API stable-support freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
+
+## Current-main S3 capability audit after S3-E2 (2026-09-01)
+
+- **Audit provenance**: GitHub connector independently verified Plugin main `c40c8f6d812ba04752c4f67bb0ba621862a3e253`. The review covered the current `field-renderer-registry.ts`, `field-value-editor.ts`, Record Detail, LoomTableView Grid Detail wiring, Map selected-record Detail/cluster consumers, Attachment/Location paths, the relevant public DOM/controller tests, and the S3 plan/HIG/design-system documents. No new runtime gap was found that can be safely implemented without changing an existing published contract; this is a docs-only evidence correction.
+
+### Ten approved fields
+
+| Field | Current-main verdict | Evidence and boundary |
+| --- | --- | --- |
+| Text | **Pass（published scope）** | Registry renderer, natural empty/Unset/Cleared distinction, native editor, and E1 Detail edit path; Grid/Detail/Map cluster use the shared display seam. |
+| Long Text | **Pass（published scope）** | Shared translated renderer and native textarea editor with existing validation; Detail editing is covered by E1. |
+| Number | **Pass（published scope）** | Finite-number renderer, native number editor, validation and Detail save/error path are shared with the existing controller seam. |
+| Checkbox | **Pass（published scope）** | Translated checked/unchecked renderer and native checkbox editor; Detail editing is covered by E1. |
+| Date | **Pass（published scope）** | Renderer and editor use the existing Gregorian `YYYY-MM-DD` normalizer after S3-D; invalid values remain translated unavailable. |
+| URL | **Pass（published scope）** | Absolute HTTP/HTTPS-only accessible link renderer and E2 Detail editor; unsafe values remain unavailable and non-clickable. |
+| Select | **Pass（published scope）** | Shared option-name display, native editor, retained deleted options, and safe unavailable handling for unknown options; E2 wires Detail. |
+| MultiSelect | **Pass（published scope）** | Shared structured Chip display and native multiple-select editor, including empty array, deleted, and unknown semantics; E2 wires Detail. |
+| Location | **Pass（published scope）** | Specialized Detail/Map path distinguishes located, unlocated, unrenderable, Unset, and Cleared; no new View or CRUD behavior is implied. |
+| Attachment | **Pass（published scope）** | Structured renderer plus Detail-only Add/Download/Open/Preview/Detach/Retry safety sub-slices and source-aware host seams; resource lifecycle remains deferred. |
+
+- **Shared semantics**: `undefined` remains Unset, explicit `null` remains Cleared, and valid natural empty values such as Text `""` and MultiSelect `[]` remain distinct. User-facing values, status, errors, accessible names, and option/Attachment states use the translator; raw JSON, identifiers, credentials, paths, and transport diagnostics are not ordinary UI.
+- **Cross-view evidence**: Grid and Map cluster remain read-only/compact where required; Grid-opened Detail and Map selected-record Detail use the shared typed edit/action seams. E1 is tracked by PR #107 (head `86f81fa376bf20df9c3e1798374a53292d5bf9f6`, merge/main `4b366bae14c37729eb1d976464db9e4834517f27`, PR CI `33518581611` / job `99891767386`, main push CI `33518736398` / job `99892288103`). E2 is tracked by PR #108 (head `1376b7dc03f945860238a1608ddc3db8a14b4eb7`, merge/main `c40c8f6d812ba04752c4f67bb0ba621862a3e253`, PR CI `33521501483` / job `99901636089`, main push CI `33521663336` / job `99902183777`). All cited checks completed successfully.
+- **S3 disposition**: no additional direct scalar renderer/editor implementation slice is justified by this current-main audit. Current-main Obsidian smoke remains `UNVERIFIED` because the previously observed desktop capture had a black window and no accessibility tree; automated DOM/controller tests, CI, and historical bundles are not desktop acceptance. Attachment resource-level Delete/Restore/GC remains deferred until the published Server/OpenAPI contract defines reference impact, ownership/sharing, restore, retention, and cleanup semantics. S3 is not closed; S4/S5/S6, new fields/Views, CRUD, Filter/Sort, and Dashboard remain unstarted.
+
