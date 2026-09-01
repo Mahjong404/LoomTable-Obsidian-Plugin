@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 import {
   LoomTableClientError,
-  type AttachmentUploadFile,
   type Field,
   type JsonValue,
   type LoomTableRecord,
@@ -93,8 +92,8 @@ describe('Record Detail attachment lifecycle actions', () => {
       name: 'report.pdf',
       type: 'application/pdf',
       size: 1,
-      arrayBuffer: async () => new ArrayBuffer(1),
-    } satisfies AttachmentUploadFile;
+      arrayBuffer: async (): Promise<ArrayBuffer> => new ArrayBuffer(1),
+    };
     const add = createAttachmentAddCallback(
       {
         initializeAttachment: vi
