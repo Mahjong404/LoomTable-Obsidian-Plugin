@@ -186,4 +186,3 @@ function attachment(overrides: Partial<RenderedAttachment> = {}): RenderedAttach
     ...overrides,
   };
 }
-
