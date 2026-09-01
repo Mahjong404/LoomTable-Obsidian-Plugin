@@ -25,6 +25,7 @@ describe('Attachment Add/Upload seam', () => {
       picker,
       updateRecord,
       idFactory: () => 'mut_init',
+      mutationIdFactory: () => 'mut_record',
     });
 
     await expect(add('record_01', 'field_attachment', createRecord(), 10)).resolves.toBeNull();
@@ -126,7 +127,7 @@ describe('Attachment Add/Upload seam', () => {
       ],
       source,
       expect.objectContaining({
-        clientMutationId: /.+/,
+        clientMutationId: 'mut_record',
         expectedRevision: 1,
       }),
     );
