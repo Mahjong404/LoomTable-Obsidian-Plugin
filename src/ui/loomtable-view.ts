@@ -233,7 +233,6 @@ export class LoomTableView extends ItemView {
       this.#gridController === null
         ? undefined
         : createAttachmentDetachCallback({
-            idFactory: undefined,
             isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
             updateRecord: async (
               recordId,
