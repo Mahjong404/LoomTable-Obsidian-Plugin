@@ -1,6 +1,6 @@
 # Interaction HIG Audit Matrix
 
-> Current audit checkpoint for the S3 capability review is the connector-verified Plugin main `c40c8f6d812ba04752c4f67bb0ba621862a3e253`, after S3-E2 URL/Select/MultiSelect Detail editing PR #108 was squash-merged. Earlier checkpoints remain historical delivery evidence; this audit does not claim real current-main Obsidian smoke or announce the whole S3 complete.
+> Current audit checkpoint for the S3 closeout is the connector-verified Plugin main `3ae40775e7ede39096b410ce5dc2fda73f2c7289`. The exact current-main bundle and the directly observed read-only desktop subset are recorded below; this audit does not declare the whole S3 complete.
 > Current-main runtime inputs, Settings diagnostics, confirmation semantics, and CSS/accessibility contracts are reviewed below. Historical smoke rows remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 >
 
@@ -429,3 +429,19 @@ S2 final-gate verdict: **not complete**. The implementation and documentation/CI
 - **Cross-view evidence**: Grid and Map cluster remain read-only/compact where required; Grid-opened Detail and Map selected-record Detail use the shared typed edit/action seams. E1 is tracked by PR #107 (head `86f81fa376bf20df9c3e1798374a53292d5bf9f6`, merge/main `4b366bae14c37729eb1d976464db9e4834517f27`, PR CI `33518581611` / job `99891767386`, main push CI `33518736398` / job `99892288103`). E2 is tracked by PR #108 (head `1376b7dc03f945860238a1608ddc3db8a14b4eb7`, merge/main `c40c8f6d812ba04752c4f67bb0ba621862a3e253`, PR CI `33521501483` / job `99901636089`, main push CI `33521663336` / job `99902183777`). All cited checks completed successfully.
 - **S3 disposition**: no additional direct scalar renderer/editor implementation slice is justified by this current-main audit. Current-main Obsidian smoke remains `UNVERIFIED` because the previously observed desktop capture had a black window and no accessibility tree; automated DOM/controller tests, CI, and historical bundles are not desktop acceptance. Attachment resource-level Delete/Restore/GC remains deferred until the published Server/OpenAPI contract defines reference impact, ownership/sharing, restore, retention, and cleanup semantics. S3 is not closed; S4/S5/S6, new fields/Views, CRUD, Filter/Sort, and Dashboard remain unstarted.
 
+
+## Current-main S3 read-only desktop smoke closeout (2026-09-02)
+
+- **Provenance**: exact remote Plugin main `3ae40775e7ede39096b410ce5dc2fda73f2c7289` was independently verified. The clean current-main-equivalent build completed with `pnpm install --frozen-lockfile` and `pnpm build`; the installed/build `main.js` is SHA256 `A7F87002F4870A7D0D7240AF0C0FF0BFB6AC6E4C8AB63B346C658908AD005879`, 411117 bytes, with manifest `loomtable/LoomTable/0.1.3`. The commit is docs-only on runtime parent `c40c8f6d812ba04752c4f67bb0ba621862a3e253`, so this is not historical d346 output.
+
+| Smoke area | Status | Direct observation |
+| --- | --- | --- |
+| Grid | **PASS** | View/resource controls loaded and 3 configured rows were visible: Shanghai Office, Beijing Office, and Unlocated Note. |
+| Detail | **PASS** | Two records opened from Grid; Name editor opened, Escape restored read-only with unchanged value. |
+| Location | **PASS** | Location editor exposed translated labels and Save/Clear/Unset/Cancel controls; Cancel returned to Unset without a mutation. |
+| Map | **PASS** | Map switched and loaded Chinese toolbar/status, summary `3 匹配 · 1 可渲染 · 2 未定位 · 0 不可渲染`, ready tiles, map, and markers; Refresh remained stable. |
+| Attachment action fixture | **UNVERIFIED** | No Attachment action was exercised in this read-only demo path; resource-level Delete/Restore/GC remains contract-deferred. |
+| Settings, full error/offline/focus/theme/layout matrix | **UNVERIFIED** | Not part of the directly observed subset; no jsdom/CI result is promoted to desktop evidence. |
+
+- **Safety and contract boundary**: the bundle replacement was recoverable and no data-changing action was executed. No HTTP status/requestId was captured, so this evidence makes no Server attribution. Server runtime/API remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
+- **Gate verdict**: the current-main read-only Grid/Detail/Location/Map subset passes. The whole S3 remains open because residual desktop rows and the Attachment resource lifecycle are not closed; S4/S5/S6 remain unstarted.
