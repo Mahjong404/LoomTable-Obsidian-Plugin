@@ -352,18 +352,13 @@ Dashboard 不因本计划自动加入 Grid，也不在 HIG 中提前写入完整
 8. 同步统筹、Plugin 和 Server session 的当前阶段、阻塞点、合同和下一目标。
 9. 前一组未通过门禁时，不启动后一组的实现。
 
-## 6. 当前下一步（截至 Plugin main `9b7d3e574f347a77cee73182e6bf8659d4eb39c8`）
+## 6. 当前下一步（截至 Plugin main `748775a31e431f8e1a04e6aebf7921a41d147b98`）
 
-S0、S1、S2 的已交付切片、S3-A registry 基础、S3-B Select/MultiSelect、S3-C Attachment renderer 以及 S3-C2 Download host wiring 均有可追溯的自动化与远端 CI 证据；它们不能仅凭静态检查或 CI 被宣布为完整桌面验收完成。当前仍明确保留：
+S0、S1、S2、S3-A、S3-B、S3-C 第一代码切片、S3-C2 Download host wiring 以及 S3-C3-A/B/C1/C2 的已交付代码切片均有可追溯的自动化和远端 CI 证据；它们不能仅凭静态检查或 CI 被宣布为完整桌面验收完成。当前 Server docs/main 仍为 `ab949d59c37680d53b4109e1502f8478b24cc655`，Server runtime/API stable-support freeze 为 `e02f055fecddc0852085dc5a71b4eb136860774a`，OpenAPI source 为 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。
 
-- current-main Obsidian 的完整 Grid、Detail、Location、Map、Settings 关键路径与错误/保存/焦点/键盘状态、Select/MultiSelect 编辑及本片 Attachment Download host，仍需受控窗口复验；
-- 浅色、深色、窄容器、marker/cluster 键盘激活、故障注入和保存/冲突恢复的完整桌面证据仍需受控环境；
-- 自动化 DOM/controller、构建和合同检查只能作为支持证据，不能替代真实 Obsidian smoke。
+S3-C3-C2 已交付 Detail-only Attachment Detach 与受限 Retry：Detach 仅移除当前 Record 的一个引用，保留其他引用，最后一个引用使用 `set: []`；不调用资源级 `deleteAttachment`，不删除 Managed 资源或 Vault 文件，也不承诺 cleanup、Undo 或 Restore。Retry 遵守 initialize 幂等键/相同 metadata、upload PUT 不自动重试、先读取 Attachment 状态和不确定 Record mutation readback 的边界。离线仍只读，Grid/Map compact 仍非交互。
 
-因此，不宣布整个 S1/S2 或 S3 完成。S3-C 第一代码切片与 S3-C2 Download host wiring 已交付；下一项是 S3-C3 的安全 host open/preview、add/upload、delete、retry 与 attachment-reference 生命周期后续。本计划只记录其顺序，不在 S3-C2 实现这些动作，也不新增字段、View、CRUD、Dashboard、Server/API 或 OpenAPI 行为。
-
-本计划不修改规范性 HIG 正文；HIG 只描述稳定规则，本文件负责解决顺序、范围、门禁和实施记录。
-
+当前仍需受控 current-main Obsidian smoke 复验 Grid、Detail、Location、Map、Settings、焦点/键盘、主题/窄布局及 Attachment 生命周期；自动化 DOM/controller、构建和合同检查只能作为支持证据。下一项只记录为 S3-C3-C3 的资源级生命周期/清理设计与后续切片；本计划不在本回合启动它，也不宣称整个 S3 或 P1.5 完成。
 ## S3-A 当前实施记录（2026-08-31）
 
 S3-A 以 Plugin main `3006c6217ef7e764ccc6c54b2a1c4d826b0a7eaf` 为基线，经 PR #86（head `400cff073958bc51c61ec34b0a320c6a1d5adb8a`）合并至 `81f616a43784b55643a413a02d7da70def225aac`。本片建立 `src/ui/field-renderer-registry.ts` 共享 Registry/Capability seam，并让 Grid、Record Detail、Map cluster 使用同一套翻译渲染语义，覆盖既有字段类型与 undefined/null/自然空值、Location 状态、结构化 Attachment 展示。MultiSelect 的 Chip/选项交互不在本片，S3-B 已在后续代码切片交付；S3-C 尚未开始。
@@ -437,3 +432,15 @@ S3-C3-B 已交付，整个 S3-C3/S3 仍未完成。下一项 S3-C3-C 为 Delete/
 本片自动化覆盖 object URL cleanup、preview dialog 的 ARIA/键盘/焦点、失败/离线/无 callback/无效来源、重复触发及 Grid/Map compact 边界；但 current-main 真实 Obsidian smoke 仍为 `UNVERIFIED`，窗口黑屏且 accessibility tree 为空，不能以 DOM/CI 替代桌面验收。
 
 S3-C3-C1 不包含 Add/Upload、Record attachment-reference mutation、Delete、Retry 或 resource lifecycle；前序 Add/Upload 交付保持不变。后续 S3-C3-C2（Delete、Retry、resource lifecycle 与安全引用生命周期）尚未开始；不得据此宣称整个 S3 或 P1.5 完成。Server runtime/API stable contract `e02f055fecddc0852085dc5a71b4eb136860774a`、OpenAPI source `ef0c6bd751642f4a604fe1bf88980f64e39dd992` 冻结不变。
+
+## S3-C3-C2 实施记录：Attachment Detach/Retry/resource lifecycle safety（2026-09-01）
+
+本片从 connector-核验的 Plugin main `815c4b0e8c15ba7a87b94a39570b2fb993534205` 开始，通过代码 PR #100 交付：最终 head `634862e8e1aa7149cf508a27ab05976e7c7f799d`，squash merge/main `748775a31e431f8e1a04e6aebf7921a41d147b98`。PR CI run `33496456430` / job `99819670992` 与 main push CI run `33496634082` / job `99820234025` 均成功，完整 `pnpm check` 通过。
+
+本片只在 Record Detail 提供已确认的 Detach：从当前 Record 的 Attachment Field 移除一个 AttachmentRef，保留同数组其他引用；移除最后一个引用时使用 `set: []`。Detach 不等于资源级 Delete，不调用 `deleteAttachment`，不删除 Managed 资源或 Vault 原文件，不提供物理清理、Undo 或 Restore。Grid/Map compact 摘要保持非交互。
+
+Retry 只允许用户明确触发当前失败的 Add/Upload/关联状态：同一 Add 意图复用 initialize 的幂等键和相同 metadata body；upload PUT 不自动重试；重试前先读取 Attachment，ready 跳过 PUT，pending 复用同一 ID 和 bytes，404/终态/未知状态不盲传、不创建替代资源。Record reference mutation 结果不确定时先 getRecord readback，避免重复引用，并在 revision 改变时进入现有 Conflict。
+
+离线保持只读，Detach/Add/Upload/Record Save/Retry 不发请求、不创建离线 Mutation。确认、取消、错误摘要、aria-live、焦点和 i18n 回归保持；失败、取消、Detail 销毁或迟到响应不写入 pending 引用，也不承诺资源清理。
+
+本片不实现资源级 delete/cleanup、反向引用/孤儿处理、Undo/Restore；当前 published contract 没有支持这些操作的计数、查询、清理或恢复接口。真实 current-main Obsidian smoke 仍标记 `UNVERIFIED`，不得以 jsdom/CI 替代。S3-C3-C3 尚未开始，整个 S3/P1.5 不能据此宣布完成。
