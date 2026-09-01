@@ -5,6 +5,7 @@ import {
   type Field,
   type JsonValue,
   type LoomTableRecord,
+  type SelectFieldConfig,
 } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
 import { createRecordDetail } from '../../src/ui/record-detail';
@@ -93,6 +94,146 @@ describe('Record Detail scalar field editing', () => {
       '2026-02-03',
     ]);
     expect(detail.textContent).toContain('2026-02-03');
+  });
+
+  it('edits URL, Select, and MultiSelect through the shared Detail editor seam', async () => {
+    const container = document.createElement('div');
+    const fields = [
+      createField('field_url', 'URL', 'url'),
+      createSelectField('field_select', 'Select', 'select'),
+      createSelectField('field_multi', 'MultiSelect', 'multiSelect'),
+    ];
+    const initial = createRecord({
+      field_url: 'https://example.com/old',
+      field_select: 'option_deleted',
+      field_multi: ['option_active', 'option_deleted'],
+    });
+    const onFieldEdit = vi.fn(
+      async (
+        _recordId: string,
+        fieldId: string,
+        value: JsonValue,
+        sourceRecord: LoomTableRecord,
+      ): Promise<LoomTableRecord> => ({
+        ...sourceRecord,
+        revision: sourceRecord.revision + 1,
+        values: { ...sourceRecord.values, [fieldId]: value },
+      }),
+    );
+    const detail = createRecordDetail(initial, {
+      fields,
+      translate: createTranslator('en'),
+      callbacks: { onFieldEdit },
+    });
+    container.append(detail);
+    document.body.append(container);
+
+    detail
+      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_url"]')
+      ?.click();
+    const urlEditor = detail.querySelector<HTMLInputElement>(
+      '.loom-record-field-editor[data-field-id="field_url"] input[type="url"]',
+    );
+    const urlForm = detail.querySelector<HTMLFormElement>(
+      '.loom-record-field-editor[data-field-id="field_url"]',
+    );
+    expect(urlEditor).not.toBeNull();
+    expect(urlForm).not.toBeNull();
+    if (urlEditor === null || urlForm === null) return;
+    urlEditor.value = 'javascript:alert(1)';
+    urlForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(onFieldEdit).not.toHaveBeenCalled();
+    expect(urlEditor.getAttribute('aria-invalid')).toBe('true');
+
+    urlEditor.value = 'https://example.com/new';
+    urlEditor.dispatchEvent(new Event('input', { bubbles: true }));
+    urlForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(1));
+    expect(onFieldEdit.mock.calls[0]?.[2]).toBe('https://example.com/new');
+
+    detail
+      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_select"]')
+      ?.click();
+    const selectEditor = detail.querySelector<HTMLSelectElement>(
+      '.loom-record-field-editor[data-field-id="field_select"] select:not([multiple])',
+    );
+    const selectForm = detail.querySelector<HTMLFormElement>(
+      '.loom-record-field-editor[data-field-id="field_select"]',
+    );
+    expect(selectEditor).not.toBeNull();
+    expect(selectForm).not.toBeNull();
+    if (selectEditor === null || selectForm === null) return;
+    expect(selectEditor.value).toBe('option_deleted');
+    expect(selectEditor.textContent).toContain('Deleted option');
+    selectEditor.value = 'option_active';
+    selectEditor.dispatchEvent(new Event('change', { bubbles: true }));
+    selectForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(2));
+    expect(onFieldEdit.mock.calls[1]?.[2]).toBe('option_active');
+
+    detail
+      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_multi"]')
+      ?.click();
+    const multiEditor = detail.querySelector<HTMLSelectElement>(
+      '.loom-record-field-editor[data-field-id="field_multi"] select[multiple]',
+    );
+    const multiForm = detail.querySelector<HTMLFormElement>(
+      '.loom-record-field-editor[data-field-id="field_multi"]',
+    );
+    expect(multiEditor).not.toBeNull();
+    expect(multiForm).not.toBeNull();
+    if (multiEditor === null || multiForm === null) return;
+    expect([...multiEditor.selectedOptions].map((option) => option.value)).toEqual([
+      'option_active',
+      'option_deleted',
+    ]);
+    for (const option of multiEditor.options) option.selected = option.value === 'option_active';
+    multiEditor.dispatchEvent(new Event('change', { bubbles: true }));
+    multiForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(3));
+    expect(onFieldEdit.mock.calls[2]?.[2]).toEqual(['option_active']);
+  });
+
+  it('keeps unavailable Select and MultiSelect options safe in Detail editing', () => {
+    const container = document.createElement('div');
+    const onFieldEdit = vi.fn();
+    const detail = createRecordDetail(
+      createRecord({ field_select: 'foreign_option', field_multi: ['foreign_option'] }),
+      {
+        fields: [
+          createSelectField('field_select', 'Select', 'select'),
+          createSelectField('field_multi', 'MultiSelect', 'multiSelect'),
+        ],
+        translate: createTranslator('en'),
+        callbacks: { onFieldEdit },
+      },
+    );
+    container.append(detail);
+    document.body.append(container);
+
+    detail
+      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_select"]')
+      ?.click();
+    const selectEditor = detail.querySelector<HTMLSelectElement>(
+      '.loom-record-field-editor[data-field-id="field_select"] select',
+    );
+    expect(selectEditor?.selectedOptions[0]?.dataset.optionState).toBe('unavailable');
+    expect(selectEditor?.selectedOptions[0]?.textContent).not.toContain('foreign_option');
+    const selectForm = detail.querySelector<HTMLFormElement>(
+      '.loom-record-field-editor[data-field-id="field_select"]',
+    );
+    selectForm?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    expect(onFieldEdit).not.toHaveBeenCalled();
+    expect(selectEditor?.getAttribute('aria-invalid')).toBe('true');
+
+    detail
+      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_multi"]')
+      ?.click();
+    const multiEditor = detail.querySelector<HTMLSelectElement>(
+      '.loom-record-field-editor[data-field-id="field_multi"] select[multiple]',
+    );
+    expect(multiEditor?.selectedOptions[0]?.dataset.optionState).toBe('unavailable');
+    expect(multiEditor?.selectedOptions[0]?.textContent).not.toContain('foreign_option');
   });
 
   it('keeps a scalar draft on validation failure and restores the editor focus', () => {
@@ -303,7 +444,7 @@ describe('Record Detail scalar field editing', () => {
 function createField(
   id: string,
   name: string,
-  type: 'text' | 'longText' | 'number' | 'checkbox' | 'date',
+  type: 'text' | 'longText' | 'number' | 'checkbox' | 'date' | 'url',
 ): Field {
   return {
     id,
@@ -314,6 +455,30 @@ function createField(
     revision: 1,
     type,
     config: {},
+  };
+}
+
+function createSelectField(id: string, name: string, type: 'select' | 'multiSelect'): Field {
+  const config: SelectFieldConfig = {
+    options: [{ id: 'option_active', name: 'Active option', color: '#00aaff' }],
+    deletedOptions: [
+      {
+        id: 'option_deleted',
+        name: 'Deleted option',
+        color: '#888888',
+        deletedAt: '2026-01-01T00:00:00.000Z',
+      },
+    ],
+  };
+  return {
+    id,
+    tableId: 'table_01',
+    name,
+    position: 0,
+    schemaVersion: 1,
+    revision: 1,
+    type,
+    config,
   };
 }
 
