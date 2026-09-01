@@ -96,9 +96,7 @@ describe('Attachment Add/Upload seam', () => {
     });
     const source = createRecord();
 
-    await expect(add('record_01', 'field_attachment', source, 10)).resolves.toBe(
-      authoritative,
-    );
+    await expect(add('record_01', 'field_attachment', source, 10)).resolves.toBe(authoritative);
 
     expect(client.initializeAttachment).toHaveBeenCalledWith(
       {
