@@ -512,4 +512,3 @@ function sanitizeAttachmentFilename(filename: string): string {
 function defaultIsOffline(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
-
