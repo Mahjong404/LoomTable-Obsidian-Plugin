@@ -5,6 +5,7 @@
 - [v0.1.1 发布说明](./releases/v0.1.1.md)
 - [Plugin 概要设计](./design/overview.md)
 - [Plugin 详细设计](./design/detailed.md)
+- [Attachment resource lifecycle decision](./design/attachment-resource-lifecycle-decision.md)
 - [产品范围](./product/scope.md)
 - [LoomTable Interaction HIG](./ui/interaction-hig.md)
 - [HIG 落地计划](./ui/interaction-hig-rollout.md)
