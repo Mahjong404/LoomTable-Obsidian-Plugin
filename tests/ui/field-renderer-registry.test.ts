@@ -81,6 +81,22 @@ describe('Field renderer registry', () => {
     });
   });
 
+  it('does not present invalid Date wire values as ordinary values', () => {
+    const translate = createTranslator('zh-CN');
+    const field = createField('date');
+
+    expect(registry.render(field, '2026-02-31', { translate })).toMatchObject({
+      state: 'unavailable',
+      text: '值不可用',
+      ariaLabel: '值不可用',
+    });
+    expect(registry.render(field, ' 2026-02-28 ', { translate })).toMatchObject({
+      state: 'value',
+      text: '2026-02-28',
+      ariaLabel: '2026-02-28',
+    });
+  });
+
   it('renders only absolute HTTP(S) URLs as accessible links', () => {
     const translate = createTranslator('zh-CN');
     const field = createField('url');
