@@ -983,4 +983,3 @@ function nextAttachmentAddStatusId(): string {
   attachmentAddStatusId += 1;
   return 'loom-attachment-add-status-' + String(attachmentAddStatusId);
 }
-
