@@ -507,7 +507,6 @@ export function createBrowserAttachmentFilePicker(): AttachmentFilePicker {
         };
         input.addEventListener('change', onChange);
         input.addEventListener('cancel', onCancel);
-        input.remove();
         document.body?.append(input);
         try {
           input.click();
