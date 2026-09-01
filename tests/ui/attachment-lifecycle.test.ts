@@ -145,8 +145,8 @@ describe('Attachment lifecycle seam', () => {
       },
     );
 
-    await expect(add('record_01', 'field_attachment', createRecord(), 10)).rejects.toSatisfy(
-      (error: unknown) => isAttachmentRetryable(error),
+    await expectRetryable(
+      add('record_01', 'field_attachment', createRecord(), 10),
     );
     await add.retry?.('record_01', 'field_attachment', createRecord(), 10);
 
@@ -176,8 +176,8 @@ describe('Attachment lifecycle seam', () => {
       },
     );
 
-    await expect(add('record_01', 'field_attachment', createRecord(), 10)).rejects.toSatisfy(
-      (error: unknown) => isAttachmentRetryable(error),
+    await expectRetryable(
+      add('record_01', 'field_attachment', createRecord(), 10),
     );
     await add.retry?.('record_01', 'field_attachment', createRecord(), 10);
 
@@ -202,8 +202,8 @@ describe('Attachment lifecycle seam', () => {
       { picker, updateRecord: vi.fn(), idFactory: () => 'idem_attachment_04' },
     );
 
-    await expect(add('record_01', 'field_attachment', createRecord(), 10)).rejects.toSatisfy(
-      (error: unknown) => isAttachmentRetryable(error),
+    await expectRetryable(
+      add('record_01', 'field_attachment', createRecord(), 10),
     );
     await expect(add.retry?.('record_01', 'field_attachment', createRecord(), 10)).rejects.toMatchObject({
       kind: 'not-found',
@@ -243,6 +243,16 @@ describe('Attachment lifecycle seam', () => {
     expect(updateRecord.mock.calls[0]?.[4]).toEqual(updateRecord.mock.calls[1]?.[4]);
   });
 });
+
+async function expectRetryable(promise: Promise<unknown>): Promise<void> {
+  let error: unknown;
+  try {
+    await promise;
+  } catch (caught) {
+    error = caught;
+  }
+  expect(isAttachmentRetryable(error)).toBe(true);
+}
 
 function uploadFile(): AttachmentUploadFile {
   const bytes = new Uint8Array([1, 2, 3]).buffer;
