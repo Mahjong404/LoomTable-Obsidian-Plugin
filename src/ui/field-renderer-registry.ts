@@ -8,7 +8,7 @@ import type {
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import { isAttachmentDownloadable } from './attachment-download';
-import { editorTextValue } from './field-value-editor';
+import { editorTextValue, normalizeCellValue } from './field-value-editor';
 
 type SelectField = FieldBase & { readonly type: 'select'; readonly config: SelectFieldConfig };
 type MultiSelectField = FieldBase & {
@@ -329,10 +329,12 @@ export function renderFieldValue(
       return renderedValue(
         value ? translate('grid.cell.checked') : translate('grid.cell.unchecked'),
       );
-    case 'date':
-      return typeof value === 'string' && value !== ''
-        ? renderedValue(value)
+    case 'date': {
+      const normalized = normalizeCellValue(field, value);
+      return normalized.ok && typeof normalized.value === 'string' && normalized.value !== ''
+        ? renderedValue(normalized.value)
         : unavailable(translate);
+    }
     case 'url':
       return renderUrlValue(value, translate);
     case 'select':
@@ -891,3 +893,4 @@ function isJsonObject(value: JsonValue): value is Readonly<Record<string, JsonVa
 function isJsonArray(value: JsonValue): value is readonly JsonValue[] {
   return Array.isArray(value);
 }
+
