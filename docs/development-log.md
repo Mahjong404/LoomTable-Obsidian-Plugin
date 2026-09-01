@@ -257,3 +257,13 @@ S0 approved read-only smoke may be announced complete with the residual rows abo
 - Explicit non-scope: this slice does not implement Delete or Retry/resource lifecycle (S3-C3-C), and it does not add new Open/Preview behavior beyond the earlier typed seam. It does not add automatic Vault writes, implicit overwrite, or new host/API behavior. S3-C3 and S3 as a whole remain incomplete.
 - Verification boundary: no current-main Obsidian desktop smoke was run for this code slice; real file selection/upload and host behavior remain `UNVERIFIED`. No user data, credentials, Provider configuration, Settings, Server/API/OpenAPI, offline semantics, or existing Mutation/Conflict/revision/changeCursor contracts were changed.
 - Server dependency: Server docs/main remains `ab949d59c37680d53b4109e1502f8478b24cc655`; runtime/API stable-support freeze remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992` (checked-in blob `92b416993ce6be4664d8bee783f2dcaed36e05b5`).
+
+## S3-C3-C1 Attachment host Open/Preview（2026-09-01）
+
+- 代码交付证据：从 Plugin main `9cfadd2e8ea90a1ede24421bb445bf70588e35ca` 开始，PR #98 的最终 head 为 `20f458f773dd4409db83f1dbcc233a8d563b355c`，squash merge/main 为 `7b3b7af2835d9f0b6ec628c6238b40b98f1ce7ca`。最终 PR CI run `33489587486` / job `99796851570` success；main push CI run `33489723935` / job `99798092025` success，均运行仓库 `pnpm check`。
+- 已发布合同与宿主语义：managed Attachment Preview 通过既有 `downloadAttachmentContent` 与已发布 content GET 获取 bytes，在 Plugin-owned、只读、sandboxed preview surface 中使用 Blob/object URL 展示，并在结束或失败时回收 object URL。没有新增 endpoint、payload、OpenAPI 字段或服务端行为。
+- Vault Attachment Open 只有在返回的 `vaultPath` 是明确存在的安全相对路径时才显示，并通过 Obsidian vault/workspace API 打开对应文件；不把 managed `storageKey` 当本地路径，不猜路径，不写入 Vault。未满足来源、ready、identity 或 callback 条件时不显示假 action；managed 仅提供 Preview，Vault 仅提供符合条件的 Open。
+- 作用域与 HIG：Open/Preview 只在 Record Detail（Grid 打开的 Detail 与 Map selected-record Detail）提供；Grid/Map compact 摘要保持 non-interactive。ready/来源资格、offline disabled/no-request、重复触发保护、`aria-live=polite`、`aria-busy`、focus/Escape、可见文案与 en/zh-CN 测试已覆盖。普通错误为翻译后的安全摘要，不暴露 token、原始响应、ID、路径或异常栈。
+- 未纳入：不实现 Add/Upload、Record attachment-reference mutation、Delete、Retry、resource lifecycle；不自动写 Vault，不使用 `window.open`，不改变 Mutation/Conflict/revision/changeCursor、offline、Attachment wire 或 Server/API/OpenAPI。
+- 验证边界：代码/DOM/host 测试与 CI 通过；current-main 真实 Obsidian smoke 仍为 `UNVERIFIED`（窗口黑屏且 accessibility tree 为空），不能以 jsdom/CI 代替，不声称桌面 Open/Preview 已验收。
+- Server 依赖：Server runtime/API stable contract 仍为 `e02f055fecddc0852085dc5a71b4eb136860774a`，OpenAPI source 仍为 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`；本片无 Server/API/OpenAPI 改动。
