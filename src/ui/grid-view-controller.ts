@@ -110,6 +110,7 @@ export interface GridViewControllerOptions {
 export interface GridEditOptions {
   readonly unset?: boolean;
   readonly attachmentReferences?: readonly AttachmentRef[];
+  readonly clientMutationId?: string;
 }
 
 export type GridStateListener = (state: GridState) => void;
@@ -326,6 +327,9 @@ export class GridViewController {
       tableId,
       recordId,
       initialRevision: authoritative.revision,
+      ...(options.clientMutationId === undefined
+        ? {}
+        : { clientMutationId: options.clientMutationId }),
       buildCommand: (expectedRevision: number): UpdateRecordCommand =>
         options.unset
           ? {
@@ -344,7 +348,7 @@ export class GridViewController {
     try {
       if (this.#durableQueue !== null) {
         const request: MutationRequest = {
-          clientMutationId: this.#mutationIdFactory(),
+          clientMutationId: options.clientMutationId ?? this.#mutationIdFactory(),
           commands: [job.buildCommand(authoritative.revision)],
         };
         await this.#durableQueue.enqueue(tableId, request);
