@@ -1,6 +1,6 @@
 # Interaction HIG Audit Matrix
 
-> Current audit checkpoint for the S3 residual audit is the connector-verified Plugin main `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04`. The prior current-main smoke closeout and its bundle provenance remain recorded below; this audit does not declare the whole S3 complete.
+> Current audit checkpoint for the S3 Settings desktop smoke follow-up is the connector-verified Plugin main `7ef8c985b0f019db33dd6e346f058b0ac56b2b2e`. This section records a limited controlled Settings observation and does not declare the whole S3 complete.
 > Current-main runtime inputs, Settings diagnostics, confirmation semantics, and CSS/accessibility contracts are reviewed below. Historical smoke rows remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 >
 
@@ -459,3 +459,18 @@ S2 final-gate verdict: **not complete**. The implementation and documentation/CI
 
 - **Gate**: the directly observed current-main Grid/Detail/Location/Map read-only subset remains PASS. The residual rows above do not justify a new implementation slice, and the whole S3 remains not complete; S4/S5/S6 remain unstarted. Server runtime/API freeze is `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source is `ef0c6bd751642f4a604fe1bf88980f64e39dd992`; no cross-repository contract changed.
 - **Traceability**: PR #110 head `df5556fde065bc5b56256abe3bfca1125ced31ca`, PR CI `33535623051` / job `99949103128`, merge/main `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04`, and main push CI `33535786624` / job `99949636046` all succeeded.
+## S3 Settings desktop smoke closeout (2026-09-02)
+
+- **Baseline**: current Plugin main `7ef8c985b0f019db33dd6e346f058b0ac56b2b2e` was independently verified. This is a documentation-only follow-up after PR #111; runtime remains equivalent to the previously recorded `c40c8f6d812ba04752c4f67bb0ba621862a3e253` line.
+
+| Settings smoke row | Status | Direct observation and boundary |
+| --- | --- | --- |
+| LoomTable Settings page and primary controls | **PASS (limited)** | Language selector, connection profile, masked token/Secret Storage guidance, auth Token toggle, session disconnect, Default, profile Delete, Add profile, map default provider, masked tile token, and Custom XYZ guidance were visible. |
+| Test connection result | **PASS (limited)** | Existing read-only Test connection displayed `已连接并通过认证: Server v0.1.0 · API v1`; Settings was then closed. No HTTP status/requestId was captured. |
+| Configuration/credential safety | **PASS** | No configuration, credential, Provider, `data.json`, note, or user-record change was made; secret values and Server address were not recorded. |
+| Attachment action fixture | **UNVERIFIED** | The controlled Settings observation did not provide or exercise an Attachment fixture. |
+| Full error/offline/focus/theme/narrow-layout desktop matrix | **UNVERIFIED** | This observation covers only the listed Settings path; static/DOM/CI evidence is not promoted to full desktop acceptance. |
+| Attachment Resource Delete/Restore/GC | **DEFERRED** | The published Server/OpenAPI contract does not define the reference-impact, ownership/sharing, restore, retention, or cleanup semantics required for a safe client implementation. |
+
+- **Gate**: the Settings desktop path is now PASS only for the controlled observation above. S3 overall remains incomplete because the residual rows and contract-deferred resource lifecycle remain open; S4/S5/S6 remain unstarted.
+- **Dependencies**: Server docs/main `ab949d59c37680d53b4109e1502f8478b24cc655`, runtime/API freeze `e02f055fecddc0852085dc5a71b4eb136860774a`, and OpenAPI source `ef0c6bd751642f4a604fe1bf88980f64e39dd992` are unchanged.
