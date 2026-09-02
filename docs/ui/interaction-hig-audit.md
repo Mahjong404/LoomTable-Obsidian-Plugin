@@ -1,6 +1,6 @@
 # Interaction HIG Audit Matrix
 
-> Current audit checkpoint for the S3 closeout is the connector-verified Plugin main `3ae40775e7ede39096b410ce5dc2fda73f2c7289`. The exact current-main bundle and the directly observed read-only desktop subset are recorded below; this audit does not declare the whole S3 complete.
+> Current audit checkpoint for the S3 residual audit is the connector-verified Plugin main `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04`. The prior current-main smoke closeout and its bundle provenance remain recorded below; this audit does not declare the whole S3 complete.
 > Current-main runtime inputs, Settings diagnostics, confirmation semantics, and CSS/accessibility contracts are reviewed below. Historical smoke rows remain explicitly scoped to their recorded bundle; the local dirty checkout is not release evidence.
 >
 
@@ -445,3 +445,17 @@ S2 final-gate verdict: **not complete**. The implementation and documentation/CI
 
 - **Safety and contract boundary**: the bundle replacement was recoverable and no data-changing action was executed. No HTTP status/requestId was captured, so this evidence makes no Server attribution. Server runtime/API remains `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source remains `ef0c6bd751642f4a604fe1bf88980f64e39dd992`.
 - **Gate verdict**: the current-main read-only Grid/Detail/Location/Map subset passes. The whole S3 remains open because residual desktop rows and the Attachment resource lifecycle are not closed; S4/S5/S6 remain unstarted.
+## S3 residual audit after current-main smoke closeout (2026-09-02)
+
+- **Published baseline**: current Plugin main `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04` is the docs-only squash merge after `3ae40775e7ede39096b410ce5dc2fda73f2c7289`; runtime remains equivalent to `c40c8f6d812ba04752c4f67bb0ba621862a3e253`. The preceding direct smoke subset is documented with bundle SHA256 `A7F87002F4870A7D0D7240AF0C0FF0BFB6AC6E4C8AB63B346C658908AD005879` and 411117 bytes. This section does not repeat that observation as a new desktop run.
+- **Current-main audit**: Attachment open/preview/download/detach/retry eligibility and host seams, Settings connection/provider diagnostics and confirmations, and the relevant public DOM/controller tests were reviewed. Existing translated, non-sensitive error summaries, confirmation/focus behavior, offline guards, and action gating are supported by code and tests. No reproducible, contract-safe Plugin code gap was found; no runtime change is made.
+
+| Residual row | Verdict | Boundary |
+| --- | --- | --- |
+| Attachment action fixture | **UNVERIFIED** | The supplied P0 demo smoke path does not provide a safe Attachment fixture for exercising actions; no user data is changed to create one. |
+| Settings desktop path | **UNVERIFIED** | No complete controlled Settings window observation is available; existing static/DOM/CI evidence is not promoted to desktop acceptance. |
+| Full error/offline/focus/theme/narrow-layout desktop matrix | **UNVERIFIED** | These rows require controlled desktop conditions or fault injection not available in this audit. |
+| Attachment Resource Delete/Restore/GC | **DEFERRED** | Published Server/OpenAPI lacks reference impact, ownership/sharing, restore, retention, and cleanup semantics; no client-side implementation is safe. |
+
+- **Gate**: the directly observed current-main Grid/Detail/Location/Map read-only subset remains PASS. The residual rows above do not justify a new implementation slice, and the whole S3 remains not complete; S4/S5/S6 remain unstarted. Server runtime/API freeze is `e02f055fecddc0852085dc5a71b4eb136860774a`; OpenAPI source is `ef0c6bd751642f4a604fe1bf88980f64e39dd992`; no cross-repository contract changed.
+- **Traceability**: PR #110 head `df5556fde065bc5b56256abe3bfca1125ced31ca`, PR CI `33535623051` / job `99949103128`, merge/main `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04`, and main push CI `33535786624` / job `99949636046` all succeeded.

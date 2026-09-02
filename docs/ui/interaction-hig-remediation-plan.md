@@ -2,7 +2,7 @@
 
 > 本文档是实施与验收计划，不是规范性 HIG。规范要求见 [Interaction HIG](./interaction-hig.md)；现有阶段和范围背景见 [HIG 落地计划](./interaction-hig-rollout.md)。
 >
-> 本计划的当前记录以 GitHub connector 核验的 Plugin 远端 main `3ae40775e7ede39096b410ce5dc2fda73f2c7289` 为准；该提交仅包含文档收口变化，运行时内容与父提交 `c40c8f6d812ba04752c4f67bb0ba621862a3e253` 等价。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
+> 本计划的当前记录以 GitHub connector 核验的 Plugin 远端 main `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04` 为准；该提交是对 `3ae40775e7ede39096b410ce5dc2fda73f2c7289` 的 docs-only 收口，运行时内容与父提交 `c40c8f6d812ba04752c4f67bb0ba621862a3e253` 等价。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
 
 ## 1. 目的与边界
 
@@ -495,3 +495,10 @@ Retry 只允许用户明确触发当前失败的 Add/Upload/关联状态：同�
 只读 smoke 直接观察到：Grid 加载 3 条记录（Shanghai Office、Beijing Office、Unlocated Note）；两条记录可从 Grid 打开 Detail，Name 编辑器可打开并以 Escape 取消且值未变；Location 编辑器显示标签/地址/提供方/纬度/经度/精度及保存、清除、取消设置字段、取消控件，取消后回到未设置且无变更；Map 切换成功，中文 Refresh/fit/save-camera/provider chrome 可见，summary 为“3 匹配 · 1 可渲染 · 2 未定位 · 0 不可渲染”，瓦片 ready、地图和标记可见，点击 Refresh 后仍稳定。
 
 本次没有保存、上传、下载、删除、重试或其他数据变更；没有取得 HTTP status/requestId，因此不把任何现象归因 Server。Attachment 资源级 Delete/Restore/GC 仍因已发布合同缺少引用影响、所有权/共享、恢复与清理语义而 deferred；Attachment action fixture、Settings、完整错误/离线/键盘焦点/主题布局等桌面行仍按 residual `UNVERIFIED` 记录。当前 smoke 子集通过，但不能据此宣布整个 S3 完成；S4/S5/S6 尚未开始。
+## S3 残余审计与可安全落地切片（2026-09-02）
+
+本次以当前 Plugin main `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04` 为基线，复核了 S3 计划、HIG/audit、development log、Attachment host/download/Detail 与 Settings 的实现和公开测试。Attachment action eligibility、Settings 翻译诊断/确认、离线与重复动作保护已有可追溯实现/测试；没有发现不需要新产品或已发布 Server/API 合同即可安全修复的 Plugin runtime gap，因此本次不改 runtime。
+
+当前仍保留的门禁是证据边界：Attachment action fixture、Settings 桌面路径、完整 error/offline/focus/theme/narrow-layout 矩阵为 `UNVERIFIED`；历史/静态/CI 证据不替代真实桌面验收。Attachment Resource Delete/Restore/GC 及引用影响、所有权/共享、恢复和清理语义继续 deferred，不能把资源级 `deleteAttachment` 误写成 Record Detach。
+
+当前 main 的直接 smoke 子集（Grid/Detail/Location/Map）已在上一节记录；本次仅做 current-main 残余审计。PR #110 merge/main `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04`，PR CI `33535623051` / job `99949103128`，main push CI `33535786624` / job `99949636046` 均 success。Server docs/main `ab949d59c37680d53b4109e1502f8478b24cc655`、runtime/API freeze `e02f055fecddc0852085dc5a71b4eb136860774a`、OpenAPI source `ef0c6bd751642f4a604fe1bf88980f64e39dd992` 不变。S3 不宣称完成，S4/S5/S6 尚未开始。
