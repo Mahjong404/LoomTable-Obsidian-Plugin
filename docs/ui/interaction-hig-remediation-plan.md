@@ -2,7 +2,7 @@
 
 > 本文档是实施与验收计划，不是规范性 HIG。规范要求见 [Interaction HIG](./interaction-hig.md)；现有阶段和范围背景见 [HIG 落地计划](./interaction-hig-rollout.md)。
 >
-> 本计划的当前记录以 GitHub connector 核验的 Plugin 远端 main `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04` 为准；该提交是对 `3ae40775e7ede39096b410ce5dc2fda73f2c7289` 的 docs-only 收口，运行时内容与父提交 `c40c8f6d812ba04752c4f67bb0ba621862a3e253` 等价。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
+> 本计划的当前记录以 GitHub connector 核验的 Plugin 远端 main `7ef8c985b0f019db33dd6e346f058b0ac56b2b2e` 为准；该提交是对 `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04` 的 docs-only 收口，运行时内容与父提交 `c40c8f6d812ba04752c4f67bb0ba621862a3e253` 等价。Server docs/main 保持 `ab949d59c37680d53b4109e1502f8478b24cc655`；Server runtime/API stable-support freeze 保持 `e02f055fecddc0852085dc5a71b4eb136860774a`；Plugin 使用的 OpenAPI source 保持 `ef0c6bd751642f4a604fe1bf88980f64e39dd992`。本计划不自动授权修改 Server、OpenAPI、字段值合同或数据库结构。
 
 ## 1. 目的与边界
 
@@ -502,3 +502,10 @@ Retry 只允许用户明确触发当前失败的 Add/Upload/关联状态：同�
 当前仍保留的门禁是证据边界：Attachment action fixture、Settings 桌面路径、完整 error/offline/focus/theme/narrow-layout 矩阵为 `UNVERIFIED`；历史/静态/CI 证据不替代真实桌面验收。Attachment Resource Delete/Restore/GC 及引用影响、所有权/共享、恢复和清理语义继续 deferred，不能把资源级 `deleteAttachment` 误写成 Record Detach。
 
 当前 main 的直接 smoke 子集（Grid/Detail/Location/Map）已在上一节记录；本次仅做 current-main 残余审计。PR #110 merge/main `4b7b28615b4f9661e0ee16a3d41f81b1b8a76c04`，PR CI `33535623051` / job `99949103128`，main push CI `33535786624` / job `99949636046` 均 success。Server docs/main `ab949d59c37680d53b4109e1502f8478b24cc655`、runtime/API freeze `e02f055fecddc0852085dc5a71b4eb136860774a`、OpenAPI source `ef0c6bd751642f4a604fe1bf88980f64e39dd992` 不变。S3 不宣称完成，S4/S5/S6 尚未开始。
+## S3 Settings desktop smoke closeout（2026-09-02）
+
+本次以当前 Plugin main `7ef8c985b0f019db33dd6e346f058b0ac56b2b2e` 为基线，只记录受控、只读的 Settings 观察。LoomTable Settings 页面可见语言、连接档案、Server address（不记录具体地址）、掩码 token/Secret Storage 说明、认证 Token 开关、断开本次会话、Default、删除连接档案和添加连接档案；地图区域可见默认天地图矢量、掩码 token 与 Custom XYZ 配置说明。
+
+点击既有“测试连接”只读按钮后，页面显示“已连接并通过认证: Server v0.1.0 · API v1”，随后关闭设置窗口。该 Settings 桌面路径标记为 `PASS（仅限上述受控观察）`；没有改动配置、凭据、Provider、`data.json` 或用户数据，也没有记录秘密值或地址。
+
+Attachment action fixture、完整 error/offline/focus/theme/narrow-layout 桌面矩阵仍为 `UNVERIFIED`；Attachment Resource Delete/Restore/GC 继续 `DEFERRED`。S3 整体仍未完成，S4/S5/S6 不启动。本次不改变 Server/API/OpenAPI/runtime/offline 语义；Server docs/main、runtime/API freeze 与 OpenAPI source 沿用本计划顶部记录。
