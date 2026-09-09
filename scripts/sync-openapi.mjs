@@ -24,7 +24,7 @@ if (!contents.startsWith('openapi: 3.1.0')) {
   throw new Error('Downloaded file is not the expected LoomTable OpenAPI 3.1 document.');
 }
 
-await writeFile(snapshotPath, contents.endsWith('\n') ? contents : `${contents}\n`, 'utf8');
+await writeFile(snapshotPath, contents, 'utf8');
 await writeFile(sourcePath, `${JSON.stringify({ repository, path, commit }, null, 2)}\n`, 'utf8');
 
 console.log(`Synced ${repository}@${commit}:${path}`);
