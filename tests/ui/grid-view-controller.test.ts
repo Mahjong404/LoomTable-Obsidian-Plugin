@@ -2906,3 +2906,79 @@ describe('Field management', () => {
     expect((await controller.createField({ name: 'X', type: 'text' })).status).toBe('failed');
   });
 });
+
+describe('Undo/redo history', () => {
+  async function createUndoHarness(recordCount = 2) {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(recordCount), createGridConfig(false)),
+    );
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 2, entries: [] }),
+      transport: {
+        mutate: (tableId: string, request: MutationRequest) => client.mutate(tableId, request),
+      },
+    });
+    await scheduler.start();
+    await scheduler.setOnline(true);
+    await scheduler.setAuthReady(true);
+    let sequence = 0;
+    const controller = new GridViewController(client, {
+      mutationQueue: scheduler,
+      mutationIdFactory: () => `mut_${String(++sequence).padStart(26, '0')}`,
+      isOffline: () => false,
+    });
+    await controller.load();
+    return { client, controller, scheduler };
+  }
+
+  it('undoes and redoes a Cell edit through the local command stack', async () => {
+    const { controller, scheduler } = await createUndoHarness();
+
+    await controller.editCell('record_01', 'field_name', 'Edited');
+    expect(controller.state.records[0]?.values.field_name).toBe('Edited');
+    expect(controller.state.canUndo).toBe(true);
+
+    await controller.undo();
+    expect(controller.state.records[0]?.values.field_name).toBe('Record 1');
+    expect(controller.state.canRedo).toBe(true);
+
+    await controller.redo();
+    expect(controller.state.records[0]?.values.field_name).toBe('Edited');
+    controller.dispose();
+    scheduler.stop();
+  });
+
+  it('restores a deleted Record on undo and re-deletes it on redo', async () => {
+    const { client, controller, scheduler } = await createUndoHarness();
+
+    await controller.deleteRecord('record_01');
+    expect(
+      client.mutationRequests.map((entry) => entry.request.commands[0]?.kind),
+    ).toContain('deleteRecord');
+
+    await controller.undo();
+    expect(
+      client.mutationRequests.map((entry) => entry.request.commands[0]?.kind),
+    ).toContain('restoreRecord');
+
+    await controller.redo();
+    const deleteCalls = client.mutationRequests.filter(
+      (entry) => entry.request.commands[0]?.kind === 'deleteRecord',
+    ).length;
+    expect(deleteCalls).toBe(2);
+    controller.dispose();
+    scheduler.stop();
+  });
+
+  it('clears the undo stack when the Grid reloads', async () => {
+    const { controller, scheduler } = await createUndoHarness();
+    await controller.editCell('record_01', 'field_name', 'Edited');
+    expect(controller.state.canUndo).toBe(true);
+
+    await controller.load();
+    expect(controller.state.canUndo).toBe(false);
+    expect(controller.state.canRedo).toBe(false);
+    controller.dispose();
+    scheduler.stop();
+  });
+});

@@ -41,6 +41,7 @@ import type {
 import type { PersistedMutationQueueError } from '../settings/mutation-queue-settings';
 import { createTranslator, type Translator } from '../i18n';
 import type { ViewSaveStatus } from './save-status';
+import { UndoHistory } from './undo-history';
 import {
   findBrokenViewFieldIds,
   repairViewConfig,
@@ -136,6 +137,8 @@ export interface GridState {
   readonly deletedRecordsHasMore: boolean;
   readonly deletedRecordsError: LoomTableClientErrorDetails | null;
   readonly lastDeletedRecord: LoomTableRecord | null;
+  readonly canUndo?: boolean;
+  readonly canRedo?: boolean;
 }
 
 export type RecordDeleteGate = 'ok' | 'draft' | 'pending' | 'offline' | 'unavailable';
@@ -362,6 +365,7 @@ export class GridViewController {
   readonly #listeners = new Set<GridStateListener>();
   readonly #queue: MutationQueue | null;
   readonly #durableQueue: DurableMutationQueuePort | null;
+  readonly #history = new UndoHistory();
   readonly #mutationIdFactory: () => string;
   readonly #viewWrites: ViewWriteCoordinator | null;
   readonly #onNonGridViewSelected: GridViewControllerOptions['onNonGridViewSelected'];
@@ -600,6 +604,25 @@ export class GridViewController {
           message: 'The mutation response did not include the updated Record.',
         });
       }
+      if (!this.#history.isApplying) {
+        const hadBefore = fieldId in authoritative.values;
+        const beforeValue = authoritative.values[fieldId];
+        const afterUnset = options.unset === true;
+        this.#history.push({
+          undo: async () => {
+            await this.editCell(
+              recordId,
+              fieldId,
+              hadBefore ? beforeValue : undefined,
+              hadBefore ? {} : { unset: true },
+            );
+          },
+          redo: async () => {
+            await this.editCell(recordId, fieldId, value, afterUnset ? { unset: true } : {});
+          },
+        });
+        this.#publishHistory();
+      }
       return updated;
     } catch (error) {
       const durablePendingAfter = this.#durableQueue?.getRecordSnapshot(recordId).pending ?? 0;
@@ -689,6 +712,19 @@ export class GridViewController {
         message: 'The mutation response did not include the created Record.',
       });
     }
+    if (!this.#history.isApplying) {
+      const recordId = record.id;
+      const seed = { ...values };
+      this.#history.push({
+        undo: async () => {
+          await this.deleteRecord(recordId);
+        },
+        redo: async () => {
+          await this.createRecord(seed);
+        },
+      });
+      this.#publishHistory();
+    }
     return record;
   }
 
@@ -761,6 +797,17 @@ export class GridViewController {
         message: 'The mutation response did not include the deleted Record.',
       });
     }
+    if (!this.#history.isApplying) {
+      this.#history.push({
+        undo: async () => {
+          await this.restoreRecord(recordId);
+        },
+        redo: async () => {
+          await this.deleteRecord(recordId);
+        },
+      });
+      this.#publishHistory();
+    }
     return deleted;
   }
 
@@ -805,7 +852,38 @@ export class GridViewController {
       deletedRecords: this.#state.deletedRecords.filter((record) => record.id !== recordId),
     });
     this.#reloadDeletedRecordsIfLoaded();
+    if (!this.#history.isApplying) {
+      this.#history.push({
+        undo: async () => {
+          await this.deleteRecord(recordId);
+        },
+        redo: async () => {
+          await this.restoreRecord(recordId);
+        },
+      });
+      this.#publishHistory();
+    }
     return { status: 'restored', record: restored };
+  }
+
+  get canUndo(): boolean {
+    return this.#history.canUndo;
+  }
+
+  get canRedo(): boolean {
+    return this.#history.canRedo;
+  }
+
+  async undo(): Promise<void> {
+    if (await this.#history.undo()) this.#publishHistory();
+  }
+
+  async redo(): Promise<void> {
+    if (await this.#history.redo()) this.#publishHistory();
+  }
+
+  #publishHistory(): void {
+    this.#publish({ canUndo: this.#history.canUndo, canRedo: this.#history.canRedo });
   }
 
   async undoDelete(): Promise<RecordRestoreOutcome | null> {
@@ -957,6 +1035,7 @@ export class GridViewController {
 
   async load(): Promise<void> {
     const requestToken = ++this.#requestToken;
+    this.#history.clear();
     this.#publish({
       status: 'loading',
       phase: 'navigation',
@@ -965,6 +1044,8 @@ export class GridViewController {
       hasMore: false,
       nextCursor: null,
       totalCount: null,
+      canUndo: false,
+      canRedo: false,
     });
 
     try {
