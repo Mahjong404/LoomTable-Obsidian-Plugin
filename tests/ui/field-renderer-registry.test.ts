@@ -599,3 +599,67 @@ describe('select option colors', () => {
     expect(colors).toEqual(['blue', 'pink']);
   });
 });
+
+describe('Attachment thumbnails', () => {
+  const translate = createTranslator('en');
+
+  function imageAttachmentRendered() {
+    const field = createField('attachment', { maxCount: 10 });
+    return registry.render(
+      field,
+      [
+        {
+          id: 'attachment_img',
+          source: 'vault',
+          filename: 'photo.png',
+          mimeType: 'image/png',
+          vaultPath: 'attachments/photo.png',
+        },
+        {
+          id: 'attachment_doc',
+          source: 'vault',
+          filename: 'notes.md',
+          mimeType: 'text/markdown',
+          vaultPath: 'attachments/notes.md',
+        },
+      ],
+      { translate },
+    );
+  }
+
+  it('renders an image thumbnail when the resolver provides a URL', () => {
+    const element = createRenderedFieldValueElement(imageAttachmentRendered(), {
+      translate,
+      attachmentThumbnail: (attachment) =>
+        attachment.vaultPath === undefined
+          ? undefined
+          : `app://vault/${attachment.vaultPath}`,
+    });
+    const thumbs = element.querySelectorAll<HTMLImageElement>('img.loom-attachment-thumb');
+    expect(thumbs).toHaveLength(1);
+    expect(thumbs[0]?.src).toContain('attachments/photo.png');
+  });
+
+  it('omits thumbnails for non-image or unresolved attachments', () => {
+    const element = createRenderedFieldValueElement(imageAttachmentRendered(), {
+      translate,
+      attachmentThumbnail: () => undefined,
+    });
+    expect(element.querySelector('img.loom-attachment-thumb')).toBeNull();
+  });
+
+  it('shows a compact thumbnail strip in Grid cells', () => {
+    const element = createRenderedFieldValueElement(imageAttachmentRendered(), {
+      translate,
+      compactAttachments: true,
+      attachmentThumbnail: (attachment) =>
+        attachment.vaultPath === undefined
+          ? undefined
+          : `app://vault/${attachment.vaultPath}`,
+    });
+    expect(
+      element.querySelectorAll('.loom-attachment-thumbs img.loom-attachment-thumb'),
+    ).toHaveLength(1);
+    expect(element.querySelector('.loom-attachment-summary')).not.toBeNull();
+  });
+});

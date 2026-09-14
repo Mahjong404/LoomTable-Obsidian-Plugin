@@ -135,6 +135,7 @@ export interface MapViewOptions {
   readonly onAttachmentAdd?: AttachmentAddHandler;
   readonly onAttachmentAddRetry?: AttachmentAddHandler;
   readonly onAttachmentDetach?: AttachmentDetachHandler;
+  readonly attachmentThumbnail?: (attachment: RenderedAttachment) => string | undefined;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,

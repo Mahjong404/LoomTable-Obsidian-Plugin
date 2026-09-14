@@ -45,6 +45,8 @@ describe('LoomTable CSS contract', () => {
     expect(styles).toContain('.loom-record-detail');
     expect(styles).toContain('.loom-map-container');
     expect(styles).toContain('.loom-settings .setting-item-control');
+    expect(styles).toContain('.loom-detail-host');
+    expect(styles).toContain('.loom-attachment-thumbs');
   });
 
   it('retains non-color state and visible focus contracts', () => {

@@ -80,6 +80,7 @@ export interface RecordDetailCallbacks {
   readonly onAttachmentAdd?: AttachmentAddHandler;
   readonly onAttachmentAddRetry?: AttachmentAddHandler;
   readonly onAttachmentDetach?: AttachmentDetachHandler;
+  readonly attachmentThumbnail?: (attachment: RenderedAttachment) => string | undefined;
   readonly getConflict?: (recordId: string) => RecordConflictView | undefined;
   readonly onConflictAction?: (
     recordId: string,
@@ -404,6 +405,9 @@ function renderField(
         ...(onAttachmentOpen === undefined ? {} : { onAttachmentOpen }),
         ...(onAttachmentPreview === undefined ? {} : { onAttachmentPreview }),
         ...(onAttachmentDetach === undefined ? {} : { onAttachmentDetach }),
+        ...(options.callbacks?.attachmentThumbnail === undefined
+          ? {}
+          : { attachmentThumbnail: options.callbacks.attachmentThumbnail }),
       }),
     );
     body.dataset.valueState = displayValue.state;
