@@ -1261,3 +1261,44 @@ describe('Record Detail presentation', () => {
     container.remove();
   });
 });
+
+describe('Record Detail empty-fields group', () => {
+  it('collapses empty Fields into a toggleable group while keeping filled Fields visible', () => {
+    const container = document.createElement('div');
+    container.append(
+      createRecordDetail(
+        createRecord({ field_filled: 'Value', field_empty: null }),
+        {
+          fields: [
+            createField('field_filled', 'Filled'),
+            createField('field_empty', 'Empty'),
+          ],
+          translate: createTranslator('en'),
+        },
+      ),
+    );
+
+    const group = container.querySelector<HTMLDetailsElement>('.loom-record-fields-empty');
+    expect(group).not.toBeNull();
+    expect(group?.hidden).toBe(false);
+    expect(group?.querySelector('summary')?.textContent).toContain('1');
+    const groupLabels = [...(group?.querySelectorAll('dt') ?? [])].map((dt) => dt.textContent);
+    expect(groupLabels).toContain('Empty');
+    const mainLabels = [
+      ...container.querySelectorAll<HTMLElement>('.loom-record-detail > dl.loom-record-fields dt'),
+    ].map((dt) => dt.textContent);
+    expect(mainLabels).toEqual(['Filled']);
+  });
+
+  it('hides the empty-fields group when every Field has a value', () => {
+    const container = document.createElement('div');
+    container.append(
+      createRecordDetail(createRecord({ field_filled: 'Value' }), {
+        fields: [createField('field_filled', 'Filled')],
+        translate: createTranslator('en'),
+      }),
+    );
+    const group = container.querySelector<HTMLDetailsElement>('.loom-record-fields-empty');
+    expect(group?.hidden).toBe(true);
+  });
+});

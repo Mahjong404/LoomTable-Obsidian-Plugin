@@ -141,6 +141,7 @@ export const englishMessages = {
   'grid.menu.clear': 'Clear cell',
     'grid.undo': 'Undo',
   'grid.redo': 'Redo',
+  'record.detail.emptyFields': '{count} empty fields',
   'grid.selectedCount': '{count} selected',
 'grid.menu.column': 'Field actions',
   'field.add': 'Add field',
