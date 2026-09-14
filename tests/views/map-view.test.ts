@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Field, JsonValue, LoomTableRecord } from '../../src/client/loomtable-client';
+import type {
+  Field,
+  FilterNode,
+  JsonValue,
+  LoomTableRecord,
+} from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
 import {
   createAttachmentDownloadCallback,
@@ -22,6 +27,12 @@ describe('MapView', () => {
         bases: [],
         tables: [],
         views: [],
+        fields: [],
+        pendingViewIntents: [],
+        deletedViews: [],
+        deletedViewsStatus: 'idle',
+        viewWritePending: [],
+        viewWriteIssues: {},
         selectedWorkspaceId: 'workspace_01',
         selectedBaseId: null,
         selectedTableId: null,
@@ -43,7 +54,8 @@ describe('MapView', () => {
     expect(container.querySelector('.loom-map-tile-status')?.getAttribute('aria-live')).toBe(
       'polite',
     );
-    expect(container.querySelectorAll('select')).toHaveLength(4);
+    expect(container.querySelectorAll('select')).toHaveLength(3);
+    expect(container.querySelector('[role="tablist"]')).not.toBeNull();
     expect(controller.mount).toHaveBeenCalledTimes(1);
     expect(controller.load).toHaveBeenCalledTimes(1);
 
@@ -251,9 +263,9 @@ describe('MapView', () => {
     });
 
     expect([...container.querySelectorAll('button')].map((button) => button.textContent)).toEqual([
-      '刷新',
       '适合全部',
       '保存当前视角',
+      '刷新',
     ]);
     expect(
       container.querySelector<HTMLSelectElement>('select[aria-label="地图瓦片提供方"]'),
@@ -262,7 +274,9 @@ describe('MapView', () => {
     expect(container.querySelector('.loom-map-status')?.textContent).toBe(
       '3 匹配 · 1 可渲染 · 2 未定位 · 0 不可渲染',
     );
-    expect(container.querySelector('.loom-map-shell')?.getAttribute('aria-label')).toBe('地图');
+    const mapShell = container.querySelector('.loom-map-shell');
+    const mapLabelId = mapShell?.getAttribute('aria-labelledby');
+    expect(mapLabelId ? container.querySelector('#' + mapLabelId)?.textContent : null).toBe('地图');
     expect(container.querySelector('option')?.textContent).toBe('OpenStreetMap Standard');
   });
 
@@ -1062,9 +1076,203 @@ describe('MapView', () => {
     expect(link?.getAttribute('href')).toBe('https://example.com/docs');
     expect(cluster?.querySelector('.loom-map-cluster-record a')).toBeNull();
   });
+
+  it('uses the Table primary Field for Cluster titles even when it is not first', () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const other: Field = {
+      id: 'field_note',
+      tableId: 'table_01',
+      name: 'Note',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'text',
+      config: {},
+    };
+    const primary: Field = {
+      id: 'field_name',
+      tableId: 'table_01',
+      name: 'Name',
+      position: 1,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'text',
+      config: {},
+    };
+    const record: LoomTableRecord = {
+      id: 'record_01',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_note: 'side note', field_name: 'Shanghai Office' },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      clusterStatus: 'ready',
+      fields: [other, primary],
+      primaryFieldId: 'field_name',
+      clusterRecords: [record],
+      clusterToken: 'cluster-token',
+      clusterCursor: null,
+    } as unknown as ReturnType<typeof initialMapViewState>);
+
+    const title = container.querySelector<HTMLElement>('.loom-map-cluster-record-title');
+    expect(title?.textContent).toBe('Shanghai Office');
+    const meta = container.querySelector<HTMLElement>('.loom-map-cluster-record-meta');
+    expect(meta?.textContent).toContain('record_01');
+    expect(meta?.textContent).toContain('side note');
+  });
+
+  it('limits Cluster summaries to three additional non-empty Fields', () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const fields: Field[] = ['a', 'b', 'c', 'd', 'e'].map((id, position) => ({
+      id: `field_${id}`,
+      tableId: 'table_01',
+      name: id,
+      position,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'text',
+      config: {},
+    }));
+    const record: LoomTableRecord = {
+      id: 'record_01',
+      tableId: 'table_01',
+      revision: 1,
+      values: {
+        field_a: 'Title',
+        field_b: 'one',
+        field_c: 'two',
+        field_d: 'three',
+        field_e: 'four',
+      },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+    });
+
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      clusterStatus: 'ready',
+      fields,
+      primaryFieldId: 'field_a',
+      clusterRecords: [record],
+      clusterToken: 'cluster-token',
+      clusterCursor: null,
+    } as unknown as ReturnType<typeof initialMapViewState>);
+
+    const meta = container.querySelector<HTMLElement>('.loom-map-cluster-record-meta');
+    expect(meta?.textContent).toContain('one');
+    expect(meta?.textContent).toContain('three');
+    expect(meta?.textContent).not.toContain('four');
+  });
+
+  it('closes the map Detail with a closeRecord callback and returns focus to the map', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const controller = fakeController();
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+    });
+    view.mount();
+    const record = createLocationRecord('record_01', 'Office');
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      fields: [createLocationField()],
+      selectedRecord: record,
+    });
+
+    const detail = container.querySelector<HTMLElement>('.loom-map-record-detail');
+    expect(detail).not.toBeNull();
+    if (detail === null) return;
+    const close = [...detail.querySelectorAll<HTMLButtonElement>('button')].find(
+      (candidate) => candidate.getAttribute('aria-label') === 'Close',
+    );
+    expect(close).not.toBeUndefined();
+    close?.click();
+    expect(controller.closeRecord).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(container.querySelector('.loom-map-container'));
+    container.remove();
+  });
+
+  it('hides the filter toggle when onApplyFilter is not provided', () => {
+    const container = document.createElement('div');
+    const view = new MapView(container, fakeController() as unknown as MapViewController);
+    view.mount();
+
+    expect(container.querySelector('.loom-map-filter-toggle')).toBeNull();
+    view.destroy();
+  });
+
+  it('opens the filter builder and applies the draft through onApplyFilter', async () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const onApplyFilter = vi.fn(async (_viewId: string, _filter: FilterNode | undefined) => ({
+      status: 'saved' as const,
+      view: createMapView(),
+    }));
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      onApplyFilter,
+    });
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView(), [createLocationField()]),
+      dataStatus: 'ready',
+    });
+
+    const toggle = container.querySelector<HTMLButtonElement>('.loom-map-filter-toggle');
+    expect(toggle).not.toBeNull();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    toggle?.click();
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
+
+    container.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
+    const apply = container.querySelector<HTMLButtonElement>('[data-action="filter-apply"]');
+    expect(apply?.disabled).toBe(false);
+    apply?.click();
+    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled());
+    expect(onApplyFilter.mock.calls[0]?.[0]).toBe('view_map');
+    await vi.waitFor(() => expect(toggle?.getAttribute('aria-expanded')).toBe('false'));
+    view.destroy();
+  });
+
+  it('keeps the filter panel open when the write is not saved', async () => {
+    const container = document.createElement('div');
+    const controller = fakeController();
+    const onApplyFilter = vi.fn(async (_viewId: string, _filter: FilterNode | undefined) => ({
+      status: 'error' as const,
+    }));
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      onApplyFilter,
+    });
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView(), [createLocationField()]),
+      dataStatus: 'ready',
+    });
+
+    container.querySelector<HTMLButtonElement>('.loom-map-filter-toggle')?.click();
+    container.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
+    container.querySelector<HTMLButtonElement>('[data-action="filter-apply"]')?.click();
+    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled());
+    expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
+    view.destroy();
+  });
 });
 
-function fakeController(): {
+function fakeController(fields: readonly Field[] = []): {
   readonly state: ReturnType<typeof initialMapViewState>;
   readonly subscribe: ReturnType<typeof vi.fn>;
   mount: ReturnType<typeof vi.fn>;
@@ -1075,9 +1283,10 @@ function fakeController(): {
   saveDefaultCamera: ReturnType<typeof vi.fn>;
   loadNextClusterPage: ReturnType<typeof vi.fn>;
   closeCluster: ReturnType<typeof vi.fn>;
+  closeRecord: ReturnType<typeof vi.fn>;
   openRecord: ReturnType<typeof vi.fn>;
 } {
-  const state = initialMapViewState(createMapView());
+  const state = initialMapViewState(createMapView(), fields);
   const controller = {
     state,
     subscribe: vi.fn((listener: (value: typeof state) => void) => {
@@ -1091,6 +1300,7 @@ function fakeController(): {
     saveDefaultCamera: vi.fn(),
     loadNextClusterPage: vi.fn(),
     closeCluster: vi.fn(),
+    closeRecord: vi.fn(),
     openRecord: vi.fn(),
     dispose: vi.fn(),
   };
@@ -1155,3 +1365,108 @@ function createLocationRecord(id: string, label: string): LoomTableRecord {
     updatedAt: '',
   };
 }
+
+describe('Map record create', () => {
+  it('opens a create form from the toolbar and opens the new Record detail', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const controller = fakeController([createLocationField()]);
+    const created = createLocationRecord('record_new', 'Fresh');
+    const onCreateRecord = vi.fn(async () => created);
+    const view = new MapView(container, controller as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      onCreateRecord,
+    });
+    view.mount();
+
+    const button = container.querySelector<HTMLButtonElement>('.loom-map-record-create');
+    expect(button).not.toBeNull();
+    button?.click();
+    const form = container.querySelector<HTMLElement>('.loom-record-create');
+    expect(form).not.toBeNull();
+    form?.querySelector<HTMLButtonElement>('.loom-record-create-submit')?.click();
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalledWith({}));
+    await vi.waitFor(() => expect(controller.openRecord).toHaveBeenCalledWith('record_new'));
+    view.destroy();
+    container.remove();
+  });
+
+  it('hides the create entry without the callback', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const view = new MapView(container, fakeController() as unknown as MapViewController, {
+      translate: createTranslator('en'),
+    });
+    view.mount();
+    expect(container.querySelector('.loom-map-record-create')).toBeNull();
+    view.destroy();
+    container.remove();
+  });
+});
+
+describe('Map record delete', () => {
+  it('confirms and forwards Detail deletes through the shared callback', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onDeleteRecord = vi.fn(async () => undefined);
+    const record: LoomTableRecord = {
+      id: 'record_01',
+      tableId: 'table_01',
+      revision: 2,
+      values: { name: 'A record' },
+      createdAt: '',
+      updatedAt: '',
+    };
+    const view = new MapView(container, fakeController() as unknown as MapViewController, {
+      translate: createTranslator('en'),
+      onDeleteRecord,
+    });
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      selectedRecord: record,
+    });
+
+    const remove = container.querySelector<HTMLButtonElement>('[data-action="detail-delete"]');
+    expect(remove).not.toBeNull();
+    remove?.click();
+    const confirm = container.querySelector<HTMLButtonElement>(
+      '.loom-dangerous-confirmation [data-action="confirm"]',
+    );
+    expect(confirm).not.toBeNull();
+    confirm?.click();
+    await vi.waitFor(() =>
+      expect(onDeleteRecord).toHaveBeenCalledWith(
+        'record_01',
+        expect.objectContaining({ id: 'record_01' }),
+      ),
+    );
+    view.destroy();
+    container.remove();
+  });
+
+  it('hides the Detail delete action without the callback', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const view = new MapView(container, fakeController() as unknown as MapViewController, {
+      translate: createTranslator('en'),
+    });
+    view.mount();
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      dataStatus: 'ready',
+      selectedRecord: {
+        id: 'record_01',
+        tableId: 'table_01',
+        revision: 1,
+        values: {},
+        createdAt: '',
+        updatedAt: '',
+      },
+    });
+    expect(container.querySelector('[data-action="detail-delete"]')).toBeNull();
+    view.destroy();
+    container.remove();
+  });
+});

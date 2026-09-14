@@ -459,18 +459,14 @@ describe('Field renderer registry', () => {
     );
 
     expect(element.dataset.valueState).toBe('value');
-    expect(element.querySelector('[role="list"]')?.getAttribute('aria-label')).toBe(
-      'Old (Deleted option), One',
-    );
     expect(
       [...element.querySelectorAll<HTMLElement>('[role="listitem"]')].map((chip) => ({
         text: chip.textContent,
         state: chip.dataset.chipState,
-        ariaLabel: chip.getAttribute('aria-label'),
       })),
     ).toEqual([
-      { text: 'Old (Deleted option)', state: 'deleted', ariaLabel: 'Old (Deleted option)' },
-      { text: 'One', state: 'value', ariaLabel: 'One' },
+      { text: 'Old (Deleted option)', state: 'deleted' },
+      { text: 'One', state: 'value' },
     ]);
   });
 

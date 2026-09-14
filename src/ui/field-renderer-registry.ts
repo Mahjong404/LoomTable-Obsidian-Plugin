@@ -414,7 +414,6 @@ export function createRenderedFieldValueElement(
     return root;
   }
   if (rendered.attachments !== undefined && rendered.attachments.length > 0) {
-    root.setAttribute('aria-label', rendered.ariaLabel);
     if (options.compactAttachments === true) {
       const summary = document.createElement('span');
       summary.className = 'loom-attachment-summary';
@@ -426,7 +425,6 @@ export function createRenderedFieldValueElement(
     const list = document.createElement('span');
     list.className = 'loom-attachment-list';
     list.setAttribute('role', 'list');
-    list.setAttribute('aria-label', rendered.ariaLabel);
     for (const attachment of rendered.attachments) {
       list.append(createAttachmentElement(attachment, options));
     }
@@ -434,7 +432,6 @@ export function createRenderedFieldValueElement(
     return root;
   }
   if (rendered.chips === undefined) {
-    root.setAttribute('aria-label', rendered.ariaLabel);
     root.textContent = rendered.text;
     return root;
   }
@@ -442,13 +439,11 @@ export function createRenderedFieldValueElement(
   const list = document.createElement('span');
   list.className = 'loom-field-value-chips';
   list.setAttribute('role', 'list');
-  list.setAttribute('aria-label', rendered.ariaLabel);
   for (const chip of rendered.chips) {
     const element = document.createElement('span');
     element.className = 'loom-field-value-chip';
     element.dataset.chipState = chip.state;
     element.setAttribute('role', 'listitem');
-    element.setAttribute('aria-label', chip.ariaLabel);
     element.append(document.createTextNode(chip.text));
     if (chip.statusText !== undefined) {
       const status = document.createElement('span');
@@ -470,7 +465,6 @@ function createAttachmentElement(
   card.className = 'loom-attachment-card';
   card.dataset.attachmentState = attachment.state;
   card.setAttribute('role', 'listitem');
-  card.setAttribute('aria-label', attachment.ariaLabel);
 
   const filename = document.createElement('span');
   filename.className = 'loom-attachment-filename';

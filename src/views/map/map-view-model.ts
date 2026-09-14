@@ -32,6 +32,7 @@ export interface MapViewState {
   readonly tilePlanStatus: MapTilePlanStatus;
   readonly view: View;
   readonly fields: readonly Field[];
+  readonly primaryFieldId: string | null;
   readonly locationFieldId: string | null;
   readonly camera: MapCamera;
   readonly features: readonly MapFeature[];
@@ -59,6 +60,7 @@ export function initialMapViewState(
   view: View,
   fields: readonly Field[] = [],
   camera: MapCamera = DEFAULT_MAP_CAMERA,
+  primaryFieldId: string | null = null,
 ): MapViewState {
   return {
     dataStatus: 'idle',
@@ -66,6 +68,7 @@ export function initialMapViewState(
     tilePlanStatus: 'idle',
     view,
     fields,
+    primaryFieldId,
     locationFieldId: view.type === 'map' ? view.config.locationFieldId : null,
     camera,
     features: [],

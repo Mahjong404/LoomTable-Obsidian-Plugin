@@ -1,9 +1,11 @@
 import type {
   Base,
   Field,
+  FilterNode,
   JsonValue,
   LocationValue,
   LoomTableRecord,
+  MutationValue,
   Table,
   View,
   Workspace,
@@ -24,15 +26,40 @@ import {
   type RenderedFieldValue,
 } from '../../ui/field-renderer-registry';
 import { createRecordDetail, type RecordConflictView } from '../../ui/record-detail';
+import { FilterBuilder } from '../../ui/filter-builder';
+import { createRecordCreateForm, type RecordCreateForm } from '../../ui/record-create-form';
+import type { LocationPreviewHandle } from '../../ui/location-preview';
 import { renderSaveStatus } from '../../ui/save-status';
+import {
+  TableShell,
+  type DeletedViewsStatus,
+  type TableShellCallbacks,
+} from '../../ui/table-shell';
+import type { ViewConfigRepairInput } from '../../ui/view-config-repair';
+import type {
+  PendingViewCreateIntent,
+  ViewCopyOutcome,
+  ViewCreateInput,
+  ViewCreateOutcome,
+  ViewIssueAction,
+  ViewWriteIssue,
+  ViewWriteOutcome,
+} from '../../ui/view-write-coordinator';
 import type { MapViewController } from './map-view-controller';
 import type { MapViewState } from './map-view-model';
 
+import { ensureButtonLabels, labelContainer } from '../../ui/a11y';
 export interface MapViewNavigation {
   readonly workspaces: readonly Workspace[];
   readonly bases: readonly Base[];
   readonly tables: readonly Table[];
   readonly views: readonly View[];
+  readonly fields: readonly Field[];
+  readonly pendingViewIntents: readonly PendingViewCreateIntent[];
+  readonly deletedViews: readonly View[];
+  readonly deletedViewsStatus: DeletedViewsStatus;
+  readonly viewWritePending: readonly string[];
+  readonly viewWriteIssues: Readonly<Record<string, ViewWriteIssue>>;
   readonly selectedWorkspaceId: string | null;
   readonly selectedBaseId: string | null;
   readonly selectedTableId: string | null;
@@ -41,6 +68,23 @@ export interface MapViewNavigation {
   readonly onBaseChange: (baseId: string) => void | Promise<void>;
   readonly onTableChange: (tableId: string) => void | Promise<void>;
   readonly onViewChange: (viewId: string) => void | Promise<void>;
+  readonly onCreateView?: (input: ViewCreateInput) => Promise<ViewCreateOutcome>;
+  readonly onRetryViewIntent?: (intentId: string) => void | Promise<void>;
+  readonly onDismissViewIntent?: (intentId: string) => void | Promise<void>;
+  readonly onManageViews?: () => void | Promise<void>;
+  readonly onCloseManageViews?: () => void;
+  readonly onRenameView?: (viewId: string, name: string) => Promise<ViewWriteOutcome>;
+  readonly onCopyView?: (viewId: string, name: string) => Promise<ViewCopyOutcome>;
+  readonly onDeleteView?: (viewId: string) => Promise<ViewWriteOutcome>;
+  readonly onRestoreView?: (viewId: string) => Promise<ViewWriteOutcome>;
+  readonly onRepairView?: (
+    viewId: string,
+    repair: ViewConfigRepairInput,
+  ) => Promise<ViewWriteOutcome>;
+  readonly onResolveViewIssue?: (
+    viewId: string,
+    action: ViewIssueAction,
+  ) => void | Promise<unknown>;
 }
 export interface MapViewOptions {
   readonly translate?: Translator;
@@ -60,11 +104,17 @@ export interface MapViewOptions {
     location: LocationValue,
   ) => void | Promise<void>;
   readonly canOpenLocationInMap?: (fieldId: string) => boolean;
+  readonly locationPreview?: LocationPreviewHandle;
+  readonly onApplyFilter?: (
+    viewId: string,
+    filter: FilterNode | undefined,
+  ) => void | Promise<unknown>;
   readonly onFieldEdit?: (
     recordId: string,
     fieldId: string,
     value: JsonValue,
     record: LoomTableRecord,
+    options?: { readonly unset?: boolean },
   ) => LoomTableRecord | Promise<LoomTableRecord>;
   readonly onAttachmentDownload?: (
     recordId: string,
@@ -94,6 +144,10 @@ export interface MapViewOptions {
   readonly selectedProvider?: TileProviderRef;
   readonly onProviderChange?: (provider: TileProviderRef) => void | Promise<void>;
   readonly onOpenSettings?: () => void | Promise<void>;
+  readonly onCreateRecord?: (
+    values: Readonly<Record<string, MutationValue>>,
+  ) => Promise<LoomTableRecord>;
+  readonly onDeleteRecord?: (recordId: string, record: LoomTableRecord) => void | Promise<void>;
   readonly confirmDiscard?: (message: string) => boolean;
 }
 
@@ -123,6 +177,18 @@ export class MapView {
   readonly #actionButtons = new Map<HTMLButtonElement, MapActionButtonSpec>();
   readonly #clusterActionButtons = new Set<HTMLButtonElement>();
   #focusedAction: MapAction | null = null;
+  #navigation: MapViewNavigation | null = null;
+  #navShell: TableShell | null = null;
+  #navElement: HTMLElement | null = null;
+  #filterOpen = false;
+  #filterBuilder: FilterBuilder | null = null;
+  #filterRevision = -1;
+  #filterHost: HTMLElement | null = null;
+  #filterToggle: HTMLButtonElement | null = null;
+  #createOpen = false;
+  #createForm: RecordCreateForm | null = null;
+  #createHost: HTMLElement | null = null;
+  #createToggle: HTMLButtonElement | null = null;
 
   constructor(
     container: HTMLElement,
@@ -139,15 +205,20 @@ export class MapView {
     const root = document.createElement('section');
     root.className = 'loom-map-shell';
     root.setAttribute('role', 'region');
-    root.setAttribute('aria-label', translate('map.region'));
+    labelContainer(root, translate('map.region'));
     const toolbar = document.createElement('div');
     toolbar.className = 'loom-map-toolbar';
     toolbar.setAttribute('role', 'toolbar');
-    toolbar.setAttribute('aria-label', translate('map.region'));
-    const navigation =
-      this.options.navigation === undefined
-        ? null
-        : renderNavigation(this.options.navigation, translate);
+    labelContainer(toolbar, translate('map.region'));
+    this.#navigation = this.options.navigation ?? null;
+    let navigation: HTMLElement | null = null;
+    if (this.#navigation !== null) {
+      this.#navShell = new TableShell(translate, this.#navigationCallbacks(this.#navigation), {
+        className: 'loom-map-navigation',
+      });
+      navigation = this.#navShell.render(this.#navigation);
+      this.#navElement = navigation;
+    }
     const provider =
       this.options.providers === undefined || this.options.selectedProvider === undefined
         ? null
@@ -169,8 +240,57 @@ export class MapView {
       'map.savingCamera',
       () => this.#controller.saveDefaultCamera(),
     );
-    toolbar.append(refresh, fitAll, saveCamera);
-    if (provider !== null) toolbar.append(provider);
+    const start = document.createElement('div');
+    start.className = 'loom-toolbar-group loom-toolbar-start';
+    const end = document.createElement('div');
+    end.className = 'loom-toolbar-group loom-toolbar-end';
+    if (this.options.onApplyFilter !== undefined) {
+      const filterButton = document.createElement('button');
+      filterButton.type = 'button';
+      filterButton.className = 'loom-button loom-map-filter-toggle';
+      filterButton.textContent = translate('filter.title');
+      filterButton.setAttribute('aria-label', translate('filter.title'));
+      filterButton.setAttribute('aria-expanded', 'false');
+      filterButton.addEventListener('click', () => {
+        this.#filterOpen = !this.#filterOpen;
+        filterButton.setAttribute('aria-expanded', this.#filterOpen ? 'true' : 'false');
+        if (this.#lastState !== null) this.#renderFilterPanel(this.#lastState, translate);
+      });
+      start.append(filterButton);
+      this.#filterToggle = filterButton;
+    }
+    if (provider !== null) {
+      if (start.childElementCount > 0) {
+        const divider = document.createElement('span');
+        divider.className = 'loom-toolbar-divider';
+        divider.setAttribute('aria-hidden', 'true');
+        start.append(divider);
+      }
+      start.append(provider);
+    }
+    end.append(fitAll, saveCamera);
+    if (this.options.onCreateRecord !== undefined) {
+      const createButton = document.createElement('button');
+      createButton.type = 'button';
+      createButton.className = 'loom-button loom-map-record-create';
+      createButton.textContent = translate('record.create.add');
+      createButton.setAttribute('aria-expanded', 'false');
+      createButton.addEventListener('click', () => {
+        this.#createOpen = !this.#createOpen;
+        createButton.setAttribute('aria-expanded', this.#createOpen ? 'true' : 'false');
+        if (this.#lastState !== null) this.#renderCreatePanel(this.#lastState, translate);
+      });
+      end.append(createButton);
+      this.#createToggle = createButton;
+    }
+    end.append(refresh);
+    toolbar.append(start, end);
+    const filterHost = document.createElement('div');
+    filterHost.className = 'loom-map-filter-host';
+    this.#filterHost = filterHost;
+    const createHost = document.createElement('div');
+    createHost.className = 'loom-map-create-host';
+    this.#createHost = createHost;
     const status = document.createElement('div');
     status.className = 'loom-status loom-map-status';
     status.setAttribute('role', 'status');
@@ -179,6 +299,7 @@ export class MapView {
     const saveStatus = document.createElement('span');
     saveStatus.className = 'loom-save-status';
     saveStatus.setAttribute('aria-live', 'polite');
+    end.prepend(saveStatus);
     const tileStatus = document.createElement('div');
     tileStatus.className = 'loom-status loom-map-tile-status';
     tileStatus.setAttribute('role', 'status');
@@ -187,21 +308,23 @@ export class MapView {
     const mapContainer = document.createElement('div');
     mapContainer.className = 'loom-map-container';
     mapContainer.setAttribute('role', 'region');
-    mapContainer.setAttribute('aria-label', translate('map.region'));
+    labelContainer(mapContainer, translate('map.region'));
     mapContainer.tabIndex = -1;
     const details = document.createElement('div');
     details.className = 'loom-map-details';
     details.setAttribute('role', 'region');
-    details.setAttribute('aria-label', translate('record.details'));
+    labelContainer(details, translate('record.details'));
     root.append(
       ...(navigation === null ? [] : [navigation]),
       toolbar,
-      saveStatus,
+      filterHost,
+      createHost,
       status,
       tileStatus,
       mapContainer,
       details,
     );
+    ensureButtonLabels(root);
     this.#container.replaceChildren(root);
     this.#status = status;
     this.#saveStatus = saveStatus;
@@ -210,6 +333,147 @@ export class MapView {
     this.#unsubscribe = this.#controller.subscribe((state) => this.renderState(state));
     this.#controller.mount(mapContainer);
     void this.#controller.load();
+  }
+
+  updateNavigation(navigation: MapViewNavigation): void {
+    this.#navigation = navigation;
+    if (this.#navShell === null || this.#navElement === null || !this.#navElement.isConnected) {
+      return;
+    }
+    const next = this.#navShell.render(navigation);
+    this.#navElement.replaceWith(next);
+    this.#navElement = next;
+  }
+
+  openViewCreateForm(preset?: { type?: 'grid' | 'map'; locationFieldId?: string }): void {
+    this.#navShell?.openCreateForm(preset);
+  }
+
+  #renderFilterPanel(state: MapViewState, translate: Translator): void {
+    const host = this.#filterHost;
+    if (host === null) return;
+    const onApplyFilter = this.options.onApplyFilter;
+    if (!this.#filterOpen || onApplyFilter === undefined || state.view.type !== 'map') {
+      host.replaceChildren();
+      return;
+    }
+    const view = state.view;
+    if (this.#filterBuilder === null || this.#filterRevision !== view.revision) {
+      this.#filterBuilder = new FilterBuilder(
+        view.type === 'map' ? view.config.filter : undefined,
+        {
+          fields: state.fields.filter((field) => field.deletedAt === undefined),
+          translate,
+          onApply: async (filter) => {
+            const outcome = await onApplyFilter(view.id, filter);
+            const saved =
+              typeof outcome === 'object' &&
+              outcome !== null &&
+              (outcome as { status?: string }).status === 'saved';
+            if (saved) {
+              this.#filterOpen = false;
+              this.#filterToggle?.setAttribute('aria-expanded', 'false');
+              this.#filterBuilder = null;
+              if (this.#lastState !== null) this.#renderFilterPanel(this.#lastState, translate);
+            }
+            return outcome;
+          },
+          onCancel: () => {
+            this.#filterOpen = false;
+            this.#filterToggle?.setAttribute('aria-expanded', 'false');
+            this.#filterBuilder = null;
+            this.#renderFilterPanel(state, translate);
+          },
+          ...(this.options.confirmDiscard === undefined
+            ? {}
+            : { confirmDiscard: this.options.confirmDiscard }),
+          onInvalidate: () => {
+            if (this.#lastState !== null) this.#renderFilterPanel(this.#lastState, translate);
+          },
+        },
+      );
+      this.#filterRevision = view.revision;
+    }
+    host.replaceChildren(this.#filterBuilder.render());
+  }
+
+  #renderCreatePanel(state: MapViewState, translate: Translator): void {
+    const host = this.#createHost;
+    if (host === null) return;
+    const onCreateRecord = this.options.onCreateRecord;
+    if (!this.#createOpen || onCreateRecord === undefined) {
+      host.replaceChildren();
+      return;
+    }
+    if (this.#createForm === null) {
+      this.#createForm = createRecordCreateForm({
+        fields: state.fields.filter((field) => field.deletedAt === undefined),
+        translate,
+        offline: state.dataStatus === 'offline',
+        ...(this.options.confirmDiscard === undefined
+          ? {}
+          : { confirmDiscard: this.options.confirmDiscard }),
+        onSubmit: async (values) => {
+          this.#createForm?.setBusy(true);
+          try {
+            const record = await onCreateRecord(values);
+            this.#createOpen = false;
+            this.#createToggle?.setAttribute('aria-expanded', 'false');
+            this.#createForm = null;
+            if (this.#lastState !== null) {
+              this.#renderCreatePanel(this.#lastState, translate);
+            }
+            void this.#controller.openRecord(record.id);
+          } catch (error) {
+            this.#createForm?.setBusy(false);
+            this.#createForm?.showError(
+              error instanceof Error ? error.message : translate('record.create.failed'),
+            );
+          }
+        },
+        onCancel: () => {
+          this.#createOpen = false;
+          this.#createToggle?.setAttribute('aria-expanded', 'false');
+          this.#createForm = null;
+          this.#renderCreatePanel(state, translate);
+        },
+      });
+    }
+    host.replaceChildren(this.#createForm.element);
+  }
+
+  #navigationCallbacks(navigation: MapViewNavigation): TableShellCallbacks {
+    return {
+      onWorkspaceChange: (workspaceId) => this.#navigation?.onWorkspaceChange(workspaceId),
+      onBaseChange: (baseId) => this.#navigation?.onBaseChange(baseId),
+      onTableChange: (tableId) => this.#navigation?.onTableChange(tableId),
+      onViewChange: (viewId) => this.#navigation?.onViewChange(viewId),
+      ...(navigation.onCreateView === undefined
+        ? {}
+        : { onCreateView: (input: ViewCreateInput) => this.#navigation!.onCreateView!(input) }),
+      ...(navigation.onRetryViewIntent === undefined
+        ? {}
+        : {
+            onRetryViewIntent: (intentId) => this.#navigation?.onRetryViewIntent?.(intentId),
+            onDismissViewIntent: (intentId) => this.#navigation?.onDismissViewIntent?.(intentId),
+          }),
+      ...(navigation.onManageViews === undefined
+        ? {}
+        : {
+            onManageViews: () => this.#navigation?.onManageViews?.(),
+            onCloseManageViews: () => this.#navigation?.onCloseManageViews?.(),
+            onRenameView: (viewId: string, name: string) =>
+              this.#navigation!.onRenameView!(viewId, name),
+            onCopyView: (viewId: string, name: string) =>
+              this.#navigation!.onCopyView!(viewId, name),
+            onDeleteView: (viewId: string) => this.#navigation!.onDeleteView!(viewId),
+            onRestoreView: (viewId: string) => this.#navigation!.onRestoreView!(viewId),
+            onRepairView: (viewId: string, repair: ViewConfigRepairInput) =>
+              this.#navigation!.onRepairView!(viewId, repair),
+            onResolveViewIssue: (viewId: string, action: ViewIssueAction) =>
+              this.#navigation?.onResolveViewIssue?.(viewId, action),
+          }),
+    };
   }
 
   destroy(): void {
@@ -226,6 +490,17 @@ export class MapView {
     this.#errorActionButton = null;
     this.#lastState = null;
     this.#focusedAction = null;
+    this.#navigation = null;
+    this.#navShell = null;
+    this.#navElement = null;
+    this.#filterBuilder = null;
+    this.#filterHost = null;
+    this.#filterToggle = null;
+    this.#filterOpen = false;
+    this.#createForm = null;
+    this.#createHost = null;
+    this.#createToggle = null;
+    this.#createOpen = false;
     this.#actionButtons.clear();
     this.#clusterActionButtons.clear();
     this.#container.replaceChildren();
@@ -240,6 +515,7 @@ export class MapView {
       this.options.translate ?? createTranslator('en'),
     );
     const translate = this.options.translate ?? createTranslator('en');
+    this.#renderFilterPanel(state, translate);
     if (this.#errorActionButton !== null) this.#actionButtons.delete(this.#errorActionButton);
     if (this.#tileActionButton !== null) this.#actionButtons.delete(this.#tileActionButton);
     for (const element of this.#clusterActionButtons) this.#actionButtons.delete(element);
@@ -438,6 +714,10 @@ export class MapView {
       record.dataset.recordVersion = nextRecordVersion ?? '';
       const onFieldEdit = this.options.onFieldEdit;
       const callbacks = {
+        onClose: () => {
+          this.#controller.closeRecord();
+          this.#container.querySelector<HTMLElement>('.loom-map-container')?.focus();
+        },
         ...(this.options.onLocationEdit === undefined
           ? {}
           : {
@@ -471,8 +751,12 @@ export class MapView {
                 fieldId: string,
                 value: JsonValue,
                 recordValue: LoomTableRecord,
+                options?: { readonly unset?: boolean },
               ) => {
-                const updated = await onFieldEdit(recordId, fieldId, value, recordValue);
+                const updated =
+                  options === undefined
+                    ? await onFieldEdit(recordId, fieldId, value, recordValue)
+                    : await onFieldEdit(recordId, fieldId, value, recordValue, options);
                 await this.#controller.openRecord(recordId);
                 return updated;
               },
@@ -560,14 +844,22 @@ export class MapView {
                 await this.#controller.openRecord(recordId);
               },
             }),
+        ...(this.options.onDeleteRecord === undefined
+          ? {}
+          : { onDeleteRecord: this.options.onDeleteRecord }),
       };
       record.append(
         createRecordDetail(state.selectedRecord, {
           translate,
           fields: state.fields,
+          ...(state.primaryFieldId === null ? {} : { primaryFieldId: state.primaryFieldId }),
           offline: state.dataStatus === 'offline',
+          returnFocus: this.#container.querySelector<HTMLElement>('.loom-map-container'),
           confirmDiscard: (message) => window.confirm(message),
           callbacks,
+          ...(this.options.locationPreview === undefined
+            ? {}
+            : { locationPreview: this.options.locationPreview }),
         }),
       );
       this.#details.append(record);
@@ -627,9 +919,9 @@ export class MapView {
       for (const record of state.clusterRecords) {
         const item = document.createElement('li');
         item.setAttribute('role', 'listitem');
-        const preview = clusterRecordPreview(record, state.fields, translate);
+        const rendered = clusterRecordLabel(record, state.fields, translate, state.primaryFieldId);
         const open = button(
-          clusterRecordLabel(record, state.fields, translate),
+          rendered.label,
           () => {
             void this.#controller.openRecord(record.id);
           },
@@ -637,8 +929,8 @@ export class MapView {
         );
         open.classList.add('loom-map-cluster-record');
         item.append(open);
-        if (preview?.link !== undefined) {
-          const link = createRenderedFieldValueElement(preview);
+        if (rendered.link !== undefined) {
+          const link = createRenderedFieldValueElement(rendered.link);
           link.classList.add('loom-map-cluster-record-url');
           item.append(document.createTextNode(' — '), link);
         }
@@ -673,25 +965,8 @@ function clusterRecordLabel(
   record: LoomTableRecord,
   fields: readonly Field[],
   translate: Translator,
-): HTMLElement {
-  const preview = clusterRecordPreview(record, fields, translate);
-  const label = document.createElement('span');
-  label.className = 'loom-map-cluster-record-label';
-  label.append(document.createTextNode(`${translate('map.clusterRecord')}: ${record.id}`));
-  if (preview !== undefined && preview.link === undefined) {
-    label.append(
-      document.createTextNode(' — '),
-      createRenderedFieldValueElement(preview, { compactAttachments: true }),
-    );
-  }
-  return label;
-}
-
-function clusterRecordPreview(
-  record: LoomTableRecord,
-  fields: readonly Field[],
-  translate: Translator,
-): RenderedFieldValue | undefined {
+  primaryFieldId: string | null,
+): { readonly label: HTMLElement; readonly link?: RenderedFieldValue } {
   const candidates =
     fields.length > 0
       ? fields.map((field) => ({ field, value: record.values[field.id] }))
@@ -699,14 +974,44 @@ function clusterRecordPreview(
           field: fallbackTextField(record.tableId, id, position),
           value,
         }));
-  const preview = candidates
-    .map(({ field, value }) => defaultFieldRendererRegistry.render(field, value, { translate }))
-    .find(
-      (value) =>
-        (value.state === 'value' || value.state === 'located') &&
-        (value.chips === undefined ? value.text !== '' : value.chips.length > 0),
+  const rendered = candidates.map(({ field, value }) => ({
+    fieldId: field.id,
+    value: defaultFieldRendererRegistry.render(field, value, { translate }),
+  }));
+  const nonEmpty = rendered.filter(
+    ({ value }) =>
+      (value.state === 'value' || value.state === 'located') &&
+      (value.chips === undefined ? value.text !== '' : value.chips.length > 0),
+  );
+  const primary = nonEmpty.find(({ fieldId }) => fieldId === primaryFieldId);
+  const label = document.createElement('span');
+  label.className = 'loom-map-cluster-record-label';
+  const title = document.createElement('span');
+  title.className = 'loom-map-cluster-record-title';
+  if (primary !== undefined) {
+    title.append(createRenderedFieldValueElement(primary.value, { compactAttachments: true }));
+  } else {
+    title.textContent = record.id;
+  }
+  label.append(title);
+  const meta = document.createElement('span');
+  meta.className = 'loom-map-cluster-record-meta';
+  meta.append(document.createTextNode(`${translate('map.clusterRecord')}: ${record.id}`));
+  let link: RenderedFieldValue | undefined;
+  const extras = nonEmpty.filter(({ fieldId }) => fieldId !== primary?.fieldId).slice(0, 3);
+  for (const extra of extras) {
+    if (extra.value.link !== undefined) {
+      link ??= extra.value;
+      continue;
+    }
+    meta.append(
+      document.createTextNode(' · '),
+      createRenderedFieldValueElement(extra.value, { compactAttachments: true }),
     );
-  return preview;
+  }
+  if (extras.length > 0) label.append(document.createTextNode(' — '), meta);
+  else label.append(meta);
+  return link === undefined ? { label } : { label, link };
 }
 
 function fallbackTextField(tableId: string, id: string, position: number): Field {
@@ -724,64 +1029,6 @@ function fallbackTextField(tableId: string, id: string, position: number): Field
 
 function recordVersion(record: LoomTableRecord): string {
   return [record.id, record.revision, record.updatedAt].join(':');
-}
-
-function renderNavigation(navigation: MapViewNavigation, translate: Translator): HTMLElement {
-  const root = document.createElement('div');
-  root.className = 'loom-map-navigation';
-  root.setAttribute('role', 'group');
-  root.setAttribute('aria-label', translate('grid.view'));
-  root.append(
-    renderSelect(
-      translate('grid.workspace'),
-      navigation.workspaces,
-      navigation.selectedWorkspaceId,
-      navigation.onWorkspaceChange,
-    ),
-    renderSelect(
-      translate('grid.base'),
-      navigation.bases,
-      navigation.selectedBaseId,
-      navigation.onBaseChange,
-    ),
-    renderSelect(
-      translate('grid.table'),
-      navigation.tables,
-      navigation.selectedTableId,
-      navigation.onTableChange,
-    ),
-    renderSelect(
-      translate('grid.view'),
-      navigation.views,
-      navigation.selectedViewId,
-      navigation.onViewChange,
-    ),
-  );
-  return root;
-}
-
-function renderSelect<T extends { id: string; name: string }>(
-  labelText: string,
-  resources: readonly T[],
-  selectedId: string | null,
-  onChange: (id: string) => void | Promise<void>,
-): HTMLElement {
-  const label = document.createElement('label');
-  label.className = 'loom-map-select';
-  label.append(document.createTextNode(labelText));
-  const select = document.createElement('select');
-  select.setAttribute('aria-label', labelText);
-  for (const resource of resources) {
-    const option = document.createElement('option');
-    option.value = resource.id;
-    option.textContent = resource.name;
-    option.selected = resource.id === selectedId;
-    select.append(option);
-  }
-  select.disabled = resources.length === 0;
-  select.addEventListener('change', () => void onChange(select.value));
-  label.append(select);
-  return label;
 }
 
 function renderProviderSelect(

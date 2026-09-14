@@ -19,6 +19,7 @@ import {
   type RenderedAttachment,
 } from './field-renderer-registry';
 import { confirmDangerousAction as showDangerousActionConfirmation } from './dangerous-action-confirmation';
+import type { LocationPreviewHandle } from './location-preview';
 import { isSafeAttachmentVaultPath } from './attachment-host';
 import {
   describeAttachmentUploadError,
@@ -28,6 +29,7 @@ import {
   type AttachmentDetachHandler,
 } from './attachment-upload';
 
+import { ensureButtonLabels, labelContainer } from './a11y';
 const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
 type LocationPresentationState = 'located' | 'unlocated' | 'unrenderable';
 
@@ -38,6 +40,7 @@ export interface RecordDetailCallbacks {
     fieldId: string,
     value: JsonValue,
     record: LoomTableRecord,
+    options?: { readonly unset?: boolean },
   ) => LoomTableRecord | Promise<LoomTableRecord>;
   readonly onLocationEdit?: (
     recordId: string,
@@ -80,6 +83,7 @@ export interface RecordDetailCallbacks {
     recordId: string,
     action: 'use-server' | 'overwrite' | 'discard-all',
   ) => void | Promise<void>;
+  readonly onDeleteRecord?: (recordId: string, record: LoomTableRecord) => void | Promise<void>;
 }
 
 export interface RecordConflictView {
@@ -93,9 +97,16 @@ export interface RecordConflictView {
   readonly message: string;
 }
 
+export interface RecordDetailNavigation {
+  readonly canNavigate: (recordId: string, direction: -1 | 1) => boolean;
+  readonly onNavigate: (recordId: string, direction: -1 | 1) => Promise<LoomTableRecord | null>;
+}
+
 export interface RecordDetailOptions {
   readonly translate: Translator;
   readonly fields: readonly Field[];
+  readonly primaryFieldId?: string;
+  readonly navigation?: RecordDetailNavigation;
   readonly offline?: boolean;
   readonly returnFocus?: HTMLElement | null;
   readonly focusFallback?: () => HTMLElement | null;
@@ -106,17 +117,28 @@ export interface RecordDetailOptions {
     trigger?: HTMLElement,
   ) => Promise<boolean>;
   readonly callbacks?: RecordDetailCallbacks;
+  readonly locationPreview?: LocationPreviewHandle;
 }
 
 export function createRecordDetail(
   record: LoomTableRecord,
   options: RecordDetailOptions,
 ): HTMLElement {
+  const recordTitle = (target: LoomTableRecord): string => {
+    if (options.primaryFieldId === undefined) return target.id;
+    const value = target.values[options.primaryFieldId];
+    if (typeof value === 'string' && value !== '') return value;
+    if (typeof value === 'number') return String(value);
+    return options.translate('grid.untitledRecord');
+  };
   const root = document.createElement('section');
   root.className = 'loom-record-detail';
   root.setAttribute('role', 'region');
   root.tabIndex = -1;
-  const heading = createText('h2', options.translate('record.details') + ': ' + record.id);
+  const heading = createText(
+    'h2',
+    options.translate('record.details') + ': ' + recordTitle(record),
+  );
   heading.id = nextRecordDetailId();
   root.setAttribute('aria-labelledby', heading.id);
   const returnFocus =
@@ -126,23 +148,26 @@ export function createRecordDetail(
         ? document.activeElement
         : null;
 
-  const closeDetail = (): void => {
-    if (
-      root.querySelector<HTMLElement>(
-        '.loom-location-editor[data-saving="true"], .loom-record-field-editor[data-saving="true"]',
-      ) !== null
-    ) {
-      return;
-    }
-    const draft = root.querySelector<HTMLElement>(
+  const savingInFlight = (): boolean =>
+    root.querySelector<HTMLElement>(
+      '.loom-location-editor[data-saving="true"], .loom-record-field-editor[data-saving="true"]',
+    ) !== null;
+  const dirtyDraft = (): HTMLElement | null =>
+    root.querySelector<HTMLElement>(
       '.loom-location-editor[data-dirty="true"], .loom-record-field-editor[data-dirty="true"]',
     );
-    if (draft !== null) {
-      const message = draft.classList.contains('loom-record-field-editor')
-        ? options.translate('record.field.discardConfirm')
-        : options.translate('record.location.discardConfirm');
-      if (!confirmDiscard(options, message)) return;
-    }
+  const confirmDraftDiscard = (draft: HTMLElement): boolean => {
+    const message = draft.classList.contains('loom-record-field-editor')
+      ? options.translate('record.field.discardConfirm')
+      : options.translate('record.location.discardConfirm');
+    return confirmDiscard(options, message);
+  };
+
+  const closeDetail = (): void => {
+    if (savingInFlight()) return;
+    const draft = dirtyDraft();
+    if (draft !== null && !confirmDraftDiscard(draft)) return;
+    options.locationPreview?.close();
     options.callbacks?.onClose?.();
     if (returnFocus?.isConnected) returnFocus.focus();
     else {
@@ -154,13 +179,6 @@ export function createRecordDetail(
   const header = document.createElement('div');
   header.className = 'loom-record-detail-header';
   header.append(heading);
-  if (options.callbacks?.onClose !== undefined) {
-    const close = button(options.translate('common.close'));
-    close.setAttribute('aria-label', options.translate('common.close'));
-    close.addEventListener('click', closeDetail);
-    header.append(close);
-  }
-  root.append(header);
 
   root.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
@@ -181,15 +199,75 @@ export function createRecordDetail(
     detailStatus.textContent = message;
   };
   let currentRecord = record;
+  let previousButton: HTMLButtonElement | null = null;
+  let nextButton: HTMLButtonElement | null = null;
+  const navigation = options.navigation;
+  const syncNavigation = (): void => {
+    if (navigation === undefined || previousButton === null || nextButton === null) return;
+    previousButton.disabled = !navigation.canNavigate(currentRecord.id, -1);
+    nextButton.disabled = !navigation.canNavigate(currentRecord.id, 1);
+  };
   const renderValues = (nextRecord: LoomTableRecord): void => {
+    options.locationPreview?.close();
     currentRecord = nextRecord;
     values.replaceChildren(
       ...fields.flatMap((field) =>
         renderField(currentRecord, field, options, root, renderValues, announce),
       ),
     );
+    heading.textContent = options.translate('record.details') + ': ' + recordTitle(nextRecord);
+    syncNavigation();
   };
+  const navigate = async (direction: -1 | 1): Promise<void> => {
+    if (navigation === undefined || savingInFlight()) return;
+    const draft = dirtyDraft();
+    if (draft !== null && !confirmDraftDiscard(draft)) return;
+    const target = await navigation.onNavigate(currentRecord.id, direction);
+    if (target === null || !root.isConnected) return;
+    renderValues(target);
+  };
+  if (navigation !== undefined) {
+    const navWrap = document.createElement('div');
+    navWrap.className = 'loom-record-detail-nav';
+    previousButton = button(options.translate('record.nav.previous'));
+    previousButton.setAttribute('aria-label', options.translate('record.nav.previous'));
+    previousButton.dataset.action = 'detail-previous';
+    previousButton.addEventListener('click', () => void navigate(-1));
+    nextButton = button(options.translate('record.nav.next'));
+    nextButton.setAttribute('aria-label', options.translate('record.nav.next'));
+    nextButton.dataset.action = 'detail-next';
+    nextButton.addEventListener('click', () => void navigate(1));
+    navWrap.append(previousButton, nextButton);
+    header.append(navWrap);
+  }
+  if (options.callbacks?.onDeleteRecord !== undefined) {
+    const remove = button(options.translate('record.delete.action'));
+    remove.classList.add('loom-record-delete');
+    remove.dataset.action = 'detail-delete';
+    remove.setAttribute('aria-label', options.translate('record.delete.action'));
+    remove.addEventListener('click', () => {
+      void requestDangerousConfirmation(
+        options,
+        root,
+        options.translate('record.delete.confirm'),
+        remove,
+      ).then(async (confirmed) => {
+        if (!confirmed || !root.isConnected) return;
+        await options.callbacks?.onDeleteRecord?.(currentRecord.id, currentRecord);
+        if (root.isConnected) closeDetail();
+      });
+    });
+    header.append(remove);
+  }
+  if (options.callbacks?.onClose !== undefined) {
+    const close = button(options.translate('common.close'));
+    close.setAttribute('aria-label', options.translate('common.close'));
+    close.addEventListener('click', closeDetail);
+    header.append(close);
+  }
+  root.append(header);
   renderValues(record);
+  ensureButtonLabels(root);
   root.append(detailStatus, values);
   const existingConflict = options.callbacks?.getConflict?.(record.id);
   if (existingConflict !== undefined) {
@@ -290,7 +368,6 @@ function renderField(
         ...(onAttachmentDetach === undefined ? {} : { onAttachmentDetach }),
       }),
     );
-    body.setAttribute('aria-label', field.name + ': ' + displayValue.ariaLabel);
     body.dataset.valueState = displayValue.state;
     if (
       field.type === 'attachment' &&
@@ -369,7 +446,7 @@ function createScalarFieldEditor(
   form.className = 'loom-record-field-editor';
   form.dataset.fieldId = field.id;
   form.dataset.dirty = 'false';
-  form.setAttribute('aria-label', options.translate('record.field.editing') + ': ' + field.name);
+  labelContainer(form, options.translate('record.field.editing') + ': ' + field.name);
 
   const editor = defaultFieldRendererRegistry.createEditor(field, record.values[field.id], {
     translate: options.translate,
@@ -389,8 +466,11 @@ function createScalarFieldEditor(
   actions.className = 'loom-record-field-actions';
   const save = button(options.translate('common.save'));
   save.type = 'submit';
+  const unset = button(options.translate('record.field.unsetAction'));
+  unset.dataset.action = 'field-unset';
+  unset.hidden = !Object.prototype.hasOwnProperty.call(record.values, field.id);
   const cancel = button(options.translate('common.cancel'));
-  actions.append(save, cancel);
+  actions.append(save, unset, cancel);
   form.append(editor, error, actions);
 
   let saving = false;
@@ -400,6 +480,7 @@ function createScalarFieldEditor(
     form.setAttribute('aria-busy', String(value));
     editor.disabled = value;
     save.disabled = value;
+    unset.disabled = value;
     cancel.disabled = value;
   };
 
@@ -440,10 +521,14 @@ function createScalarFieldEditor(
       return;
     }
 
+    await runEdit(onFieldEdit(record.id, field.id, normalized.value, record));
+  };
+
+  const runEdit = async (edit: LoomTableRecord | Promise<LoomTableRecord>): Promise<void> => {
     setSaving(true);
     announce(options.translate('record.field.saving'));
     try {
-      const updated = await onFieldEdit(record.id, field.id, normalized.value, record);
+      const updated = await edit;
       onRecordUpdated(updated);
       announce(options.translate('record.field.saved'));
       focusFieldEdit(detailRoot, field.id);
@@ -463,6 +548,20 @@ function createScalarFieldEditor(
       if (form.isConnected) setSaving(false);
     }
   };
+
+  unset.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (saving) return;
+    void requestDangerousConfirmation(
+      options,
+      detailRoot,
+      options.translate('record.field.unsetConfirm'),
+      unset,
+    ).then((confirmed) => {
+      if (!confirmed || saving) return;
+      return runEdit(onFieldEdit(record.id, field.id, null, record, { unset: true }));
+    });
+  });
 
   form.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -633,7 +732,10 @@ function renderLocationValue(
       copy.addEventListener('click', () => {
         void copyCoordinates(record, field, coordinates, copy, options);
       });
-      wrapper.append(copy, createPreviewTrigger(coordinates, options.translate));
+      wrapper.append(copy);
+      if (state === 'located' && options.locationPreview !== undefined) {
+        wrapper.append(createPreviewTrigger(record, field, location, coordinates, options));
+      }
     }
   } else {
     const displayValue = defaultFieldRendererRegistry.render(field, raw, {
@@ -686,7 +788,7 @@ function createLocationEditor(
 ): HTMLElement {
   const root = document.createElement('form');
   root.className = 'loom-location-editor';
-  root.setAttribute('aria-label', options.translate('record.location.edit'));
+  labelContainer(root, options.translate('record.location.edit'));
   root.dataset.dirty = 'false';
 
   const location = raw !== undefined && isLocationValue(raw) ? raw : {};
@@ -898,14 +1000,13 @@ function renderConflict(
   box.setAttribute('role', 'region');
   box.setAttribute('aria-live', 'polite');
   box.setAttribute('aria-atomic', 'true');
-  box.setAttribute('aria-label', options.translate('record.conflictRegion'));
+  labelContainer(box, options.translate('record.conflictRegion'));
   box.tabIndex = -1;
   const heading = createText('h3', options.translate('record.conflict'));
   box.append(heading);
   box.append(createText('p', options.translate('record.serverValue')));
   const serverValues = document.createElement('pre');
   serverValues.className = 'loom-record-conflict-server';
-  serverValues.setAttribute('aria-label', options.translate('record.serverValue'));
   serverValues.textContent = JSON.stringify(
     {
       recordId,
@@ -922,7 +1023,6 @@ function renderConflict(
   box.append(createText('p', options.translate('record.localIntent')));
   const localIntent = document.createElement('pre');
   localIntent.className = 'loom-record-conflict-local';
-  localIntent.setAttribute('aria-label', options.translate('record.localIntent'));
   localIntent.textContent = JSON.stringify(
     {
       submittedSet: conflict.submittedSet,
@@ -979,53 +1079,37 @@ function renderConflict(
 }
 
 function createPreviewTrigger(
+  record: LoomTableRecord,
+  field: Field,
+  location: LocationValue,
   coordinates: { readonly lat: number; readonly lng: number },
-  translate: Translator,
+  options: RecordDetailOptions,
 ): HTMLElement {
-  const wrapper = document.createElement('button');
-  wrapper.type = 'button';
-  wrapper.className = 'loom-location-preview-trigger loom-button';
-  wrapper.textContent = translate('record.location.previewHint');
-  wrapper.setAttribute('aria-label', translate('record.location.previewHint'));
-  wrapper.title = translate('record.location.previewHint');
-  let timer: number | null = null;
-  const clear = (): void => {
-    if (timer !== null) window.clearTimeout(timer);
-    timer = null;
-    wrapper.querySelector('.loom-location-preview')?.remove();
-  };
-  const preview = (): void => {
-    if (wrapper.querySelector('.loom-location-preview') !== null) return;
-    const element = document.createElement('span');
-    element.className = 'loom-location-preview';
-    element.dataset.lat = String(coordinates.lat);
-    element.dataset.lng = String(coordinates.lng);
-    element.setAttribute('role', 'status');
-    element.textContent =
-      translate('record.location.preview') +
-      ': ' +
-      coordinates.lat +
-      ', ' +
-      coordinates.lng +
-      ' · ' +
-      translate('record.location.attribution');
-    wrapper.append(element);
-  };
-  wrapper.addEventListener('click', preview);
-  wrapper.addEventListener('mousemove', (event) => {
-    const mouse = event;
-    if (!mouse.ctrlKey && !mouse.metaKey) {
-      clear();
+  const preview = options.locationPreview;
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'loom-location-preview-trigger loom-button';
+  trigger.textContent = options.translate('record.location.preview');
+  trigger.setAttribute('aria-label', options.translate('record.location.preview'));
+  trigger.title = options.translate('record.location.previewHint');
+  const request = () => ({
+    recordId: record.id,
+    fieldId: field.id,
+    coordinates,
+    label: typeof location.label === 'string' ? location.label : '',
+    anchor: trigger,
+    mode: 'button' as const,
+  });
+  trigger.addEventListener('click', () => preview?.preview(request()));
+  trigger.addEventListener('mousemove', (event) => {
+    if (event.ctrlKey || event.metaKey) {
+      preview?.scheduleHover({ ...request(), mode: 'hover' });
       return;
     }
-    if (timer !== null) return;
-    timer = window.setTimeout(() => {
-      timer = null;
-      preview();
-    }, 180);
+    preview?.endHover();
   });
-  wrapper.addEventListener('mouseleave', clear);
-  return wrapper;
+  trigger.addEventListener('mouseleave', () => preview?.endHover());
+  return trigger;
 }
 
 let recordDetailId = 0;

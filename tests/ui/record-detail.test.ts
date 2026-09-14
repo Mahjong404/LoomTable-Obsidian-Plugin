@@ -457,44 +457,86 @@ describe('Record Detail Location seam', () => {
   });
 
   it('exposes Open in Map and a modifier-key preview without a write callback', async () => {
-    vi.useFakeTimers();
-    try {
-      const container = document.createElement('div');
-      const onOpenLocationInMap = vi.fn();
-      const onCopyCoordinates = vi.fn();
-      const onLocationEdit = vi.fn();
-      const record = createRecord({ field_location: { lat: 12, lng: 34 } });
-      container.append(
-        createRecordDetail(record, {
-          fields: [createField('field_location', 'Location')],
-          translate: createTranslator('en'),
-          callbacks: { onOpenLocationInMap, onCopyCoordinates, onLocationEdit },
-        }),
-      );
+    const container = document.createElement('div');
+    const onOpenLocationInMap = vi.fn();
+    const onCopyCoordinates = vi.fn();
+    const onLocationEdit = vi.fn();
+    const locationPreview = {
+      preview: vi.fn(),
+      scheduleHover: vi.fn(),
+      endHover: vi.fn(),
+      close: vi.fn(),
+    };
+    const record = createRecord({ field_location: { lat: 12, lng: 34 } });
+    container.append(
+      createRecordDetail(record, {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        callbacks: { onOpenLocationInMap, onCopyCoordinates, onLocationEdit },
+        locationPreview,
+      }),
+    );
 
-      container.querySelector<HTMLButtonElement>('.loom-location-open-map')?.click();
-      expect(onOpenLocationInMap).toHaveBeenCalledWith('record_01', 'field_location', {
+    container.querySelector<HTMLButtonElement>('.loom-location-open-map')?.click();
+    expect(onOpenLocationInMap).toHaveBeenCalledWith('record_01', 'field_location', {
+      lat: 12,
+      lng: 34,
+    });
+    container.querySelector<HTMLButtonElement>('.loom-location-copy')?.click();
+    await vi.waitFor(() =>
+      expect(onCopyCoordinates).toHaveBeenCalledWith('record_01', 'field_location', {
         lat: 12,
         lng: 34,
-      });
-      container.querySelector<HTMLButtonElement>('.loom-location-copy')?.click();
-      await vi.waitFor(() =>
-        expect(onCopyCoordinates).toHaveBeenCalledWith('record_01', 'field_location', {
-          lat: 12,
-          lng: 34,
-        }),
-      );
-      const trigger = container.querySelector<HTMLButtonElement>('.loom-location-preview-trigger');
-      expect(trigger).not.toBeNull();
-      expect(trigger?.tagName).toBe('BUTTON');
-      expect(trigger?.getAttribute('aria-label')).toBe('Ctrl/Cmd-hover to preview');
-      trigger?.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, ctrlKey: true }));
-      await vi.advanceTimersByTimeAsync(180);
-      expect(container.querySelector('.loom-location-preview')?.textContent).toContain('12, 34');
-      expect(onLocationEdit).not.toHaveBeenCalled();
-    } finally {
-      vi.useRealTimers();
-    }
+      }),
+    );
+    const trigger = container.querySelector<HTMLButtonElement>('.loom-location-preview-trigger');
+    expect(trigger).not.toBeNull();
+    expect(trigger?.tagName).toBe('BUTTON');
+    trigger?.click();
+    expect(locationPreview.preview).toHaveBeenCalledWith(
+      expect.objectContaining({
+        recordId: 'record_01',
+        fieldId: 'field_location',
+        coordinates: { lat: 12, lng: 34 },
+        mode: 'button',
+      }),
+    );
+    trigger?.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, ctrlKey: true }));
+    expect(locationPreview.scheduleHover).toHaveBeenCalledWith(
+      expect.objectContaining({ mode: 'hover' }),
+    );
+    trigger?.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+    expect(locationPreview.endHover).toHaveBeenCalled();
+    trigger?.dispatchEvent(new MouseEvent('mouseleave', { bubbles: true }));
+    expect(onLocationEdit).not.toHaveBeenCalled();
+  });
+
+  it('hides the map preview trigger for unrenderable or unlocated locations', () => {
+    const container = document.createElement('div');
+    const locationPreview = {
+      preview: vi.fn(),
+      scheduleHover: vi.fn(),
+      endHover: vi.fn(),
+      close: vi.fn(),
+    };
+    container.append(
+      createRecordDetail(createRecord({ field_location: { lat: 90, lng: 34 } }), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        locationPreview,
+      }),
+    );
+    expect(container.querySelector('.loom-location-preview-trigger')).toBeNull();
+    expect(container.querySelector('.loom-location-copy')).not.toBeNull();
+
+    container.append(
+      createRecordDetail(createRecord({ field_location: { label: 'No pair' } }), {
+        fields: [createField('field_location', 'Location')],
+        translate: createTranslator('en'),
+        locationPreview,
+      }),
+    );
+    expect(container.querySelectorAll('.loom-location-preview-trigger')).toHaveLength(0);
   });
 
   it('disables Location editing while offline', () => {
@@ -582,9 +624,11 @@ describe('Record Detail Location seam', () => {
     await vi.waitFor(() => expect(container.querySelector('.loom-record-conflict')).not.toBeNull());
 
     expect(container.querySelector('.loom-record-conflict')?.getAttribute('role')).toBe('region');
-    expect(container.querySelector('.loom-record-conflict')?.getAttribute('aria-label')).toBe(
-      'Record conflict',
-    );
+    const conflictBox = container.querySelector('.loom-record-conflict');
+    const conflictLabelId = conflictBox?.getAttribute('aria-labelledby');
+    expect(
+      conflictLabelId ? container.querySelector('#' + conflictLabelId)?.textContent : null,
+    ).toBe('Record conflict');
     expect(container.querySelector('.loom-record-conflict-local')?.textContent).toContain(
       'field_archived',
     );
@@ -715,7 +759,6 @@ describe('Record Detail Location seam', () => {
     );
     expect(text?.textContent).toBe('Empty');
     expect(text?.dataset.valueState).toBe('empty');
-    expect(text?.getAttribute('aria-label')).toBe('Text: Empty');
     expect(checkbox?.textContent).toBe('Checked');
     expect(attachment?.textContent).toBe(
       'notes.md · Source: Vault · Type: text/markdown · Size: 2 KB · Ready',
@@ -909,7 +952,6 @@ describe('Record Detail Location seam', () => {
         (chip) => chip.textContent,
       ),
     ).toEqual(['Old (Deleted option)', 'One']);
-    expect(value?.getAttribute('aria-label')).toBe('Tags: Old (Deleted option), One');
     expect(value?.textContent).not.toContain('option_old');
   });
 
@@ -963,3 +1005,209 @@ function createRecord(values: Record<string, unknown>): LoomTableRecord {
     updatedAt: '',
   };
 }
+
+describe('Record Detail navigation', () => {
+  function textField(id: string, name: string): Field {
+    return {
+      id,
+      tableId: 'table_01',
+      name,
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'text',
+      config: {},
+    };
+  }
+
+  it('titles the Detail from the primary Field value with an untitled fallback', () => {
+    const titled = createRecordDetail(createRecord({ field_name: 'Alpha' }), {
+      fields: [textField('field_name', 'Name')],
+      primaryFieldId: 'field_name',
+      translate: createTranslator('en'),
+    });
+    expect(titled.querySelector('h2')?.textContent).toContain('Alpha');
+
+    const untitled = createRecordDetail(createRecord({ field_name: '' }), {
+      fields: [textField('field_name', 'Name')],
+      primaryFieldId: 'field_name',
+      translate: createTranslator('en'),
+    });
+    expect(untitled.querySelector('h2')?.textContent).toContain('Untitled Record');
+  });
+
+  it('disables Previous at the boundary and navigates along the seam', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const second = { ...createRecord({ field_name: 'Two' }), id: 'record_02' };
+    const navigation = {
+      canNavigate: (recordId: string, direction: -1 | 1) =>
+        direction < 0 ? recordId === 'record_02' : recordId === 'record_01',
+      onNavigate: vi.fn(async (recordId: string, direction: -1 | 1) =>
+        recordId === 'record_01' && direction === 1 ? second : null,
+      ),
+    };
+    const detail = createRecordDetail(createRecord({ field_name: 'One' }), {
+      fields: [textField('field_name', 'Name')],
+      primaryFieldId: 'field_name',
+      navigation,
+      translate: createTranslator('en'),
+    });
+    container.append(detail);
+
+    const previous = detail.querySelector<HTMLButtonElement>('[data-action="detail-previous"]');
+    const next = detail.querySelector<HTMLButtonElement>('[data-action="detail-next"]');
+    expect(previous?.disabled).toBe(true);
+    expect(next?.disabled).toBe(false);
+
+    next?.click();
+    await vi.waitFor(() => expect(detail.querySelector('h2')?.textContent).toContain('Two'));
+    expect(navigation.onNavigate).toHaveBeenCalledWith('record_01', 1);
+    expect(previous?.disabled).toBe(false);
+    expect(next?.disabled).toBe(true);
+    container.remove();
+  });
+
+  it('confirms before navigating away from an unsubmitted draft', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onNavigate = vi.fn(async () => ({ ...createRecord({}), id: 'record_02' }));
+    const confirmDiscard = vi.fn(() => false);
+    const detail = createRecordDetail(createRecord({ field_name: 'One' }), {
+      fields: [textField('field_name', 'Name')],
+      primaryFieldId: 'field_name',
+      navigation: { canNavigate: () => true, onNavigate },
+      confirmDiscard,
+      translate: createTranslator('en'),
+      callbacks: { onFieldEdit: vi.fn() },
+    });
+    container.append(detail);
+
+    detail
+      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_name"]')
+      ?.click();
+    const editor = detail.querySelector<HTMLInputElement>(
+      '.loom-record-field-editor[data-field-id="field_name"] input',
+    );
+    expect(editor).not.toBeNull();
+    if (editor === null) return;
+    editor.value = 'draft';
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(detail.querySelector('.loom-record-field-editor[data-dirty="true"]')).not.toBeNull();
+
+    detail.querySelector<HTMLButtonElement>('[data-action="detail-next"]')?.click();
+    await Promise.resolve();
+    expect(confirmDiscard).toHaveBeenCalled();
+    expect(onNavigate).not.toHaveBeenCalled();
+    expect(detail.querySelector('.loom-record-field-editor')).not.toBeNull();
+    container.remove();
+  });
+
+  it('closes the location preview when the record navigates or the detail closes', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const locationPreview = {
+      preview: vi.fn(),
+      scheduleHover: vi.fn(),
+      endHover: vi.fn(),
+      close: vi.fn(),
+    };
+    const second = {
+      ...createRecord({ field_location: { lat: 5, lng: 6 } }),
+      id: 'record_02',
+    };
+    const onClose = vi.fn(() => detail.remove());
+    const detail = createRecordDetail(createRecord({ field_location: { lat: 12, lng: 34 } }), {
+      fields: [createField('field_location', 'Location')],
+      translate: createTranslator('en'),
+      locationPreview,
+      navigation: {
+        canNavigate: () => true,
+        onNavigate: vi.fn(async () => second),
+      },
+      callbacks: { onClose },
+    });
+    container.append(detail);
+    locationPreview.close.mockClear();
+
+    detail.querySelector<HTMLButtonElement>('[data-action="detail-next"]')?.click();
+    await vi.waitFor(() => expect(locationPreview.close).toHaveBeenCalled());
+
+    locationPreview.close.mockClear();
+    const close = [...detail.querySelectorAll<HTMLButtonElement>('button')].find(
+      (candidate) => candidate.getAttribute('aria-label') === 'Close',
+    );
+    close?.click();
+    expect(locationPreview.close).toHaveBeenCalled();
+    container.remove();
+  });
+});
+
+describe('Record Detail delete', () => {
+  function textField(id: string, name: string): Field {
+    return {
+      id,
+      tableId: 'table_01',
+      name,
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'text',
+      config: {},
+    };
+  }
+
+  it('confirms before deleting and closes the Detail after a successful delete', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onDeleteRecord = vi.fn(async () => undefined);
+    let detail: HTMLElement;
+    const onClose = vi.fn(() => detail?.remove());
+    detail = createRecordDetail(createRecord({ field_name: 'One' }), {
+      fields: [textField('field_name', 'Name')],
+      translate: createTranslator('en'),
+      confirmDangerousAction: async () => true,
+      callbacks: { onDeleteRecord, onClose },
+    });
+    container.append(detail);
+
+    detail.querySelector<HTMLButtonElement>('[data-action="detail-delete"]')?.click();
+    await vi.waitFor(() =>
+      expect(onDeleteRecord).toHaveBeenCalledWith(
+        'record_01',
+        expect.objectContaining({ id: 'record_01' }),
+      ),
+    );
+    await vi.waitFor(() => expect(detail.isConnected).toBe(false));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
+  it('keeps the Detail open when the confirmation is cancelled or the delete fails', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onDeleteRecord = vi.fn(async () => undefined);
+    const detail = createRecordDetail(createRecord({ field_name: 'One' }), {
+      fields: [textField('field_name', 'Name')],
+      translate: createTranslator('en'),
+      confirmDangerousAction: async () => false,
+      callbacks: { onDeleteRecord },
+    });
+    container.append(detail);
+
+    detail.querySelector<HTMLButtonElement>('[data-action="detail-delete"]')?.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onDeleteRecord).not.toHaveBeenCalled();
+    expect(detail.isConnected).toBe(true);
+    container.remove();
+  });
+
+  it('omits the delete action without the callback', () => {
+    const detail = createRecordDetail(createRecord({ field_name: 'One' }), {
+      fields: [textField('field_name', 'Name')],
+      translate: createTranslator('en'),
+    });
+    expect(detail.querySelector('[data-action="detail-delete"]')).toBeNull();
+  });
+});
