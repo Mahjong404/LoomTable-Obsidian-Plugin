@@ -622,3 +622,90 @@ describe('TableShell View management', () => {
     host.remove();
   });
 });
+
+describe('view tab overflow', () => {
+  it('collapses overflowing tabs behind a +N menu', () => {
+    const roCallbacks: ResizeObserverCallback[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          roCallbacks.push(callback);
+        }
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
+    const { shell, onViewChange } = createShell();
+    const views = [
+      gridView('view_1', 'One'),
+      gridView('view_2', 'Two'),
+      gridView('view_3', 'Three'),
+      mapView('view_4', 'Four'),
+    ];
+    const host = mount(shell, shellState({ views, selectedViewId: 'view_1' }));
+    const tablist = host.querySelector<HTMLElement>('.loom-view-tabs');
+    expect(tablist).not.toBeNull();
+    if (tablist === null) throw new Error('tablist missing');
+    const tabs = [...tablist.querySelectorAll<HTMLElement>('[role="tab"]')];
+    expect(tabs).toHaveLength(4);
+
+    Object.defineProperty(tablist, 'clientWidth', { value: 220, configurable: true });
+    for (const tab of tabs) {
+      Object.defineProperty(tab, 'offsetWidth', { value: 120, configurable: true });
+    }
+    roCallbacks[0]?.([], {} as ResizeObserver);
+
+    const overflow = tablist.querySelector<HTMLElement>('.loom-view-tab-overflow');
+    expect(overflow?.hidden).toBe(false);
+    expect(overflow?.textContent).toBe('+3');
+    expect(tabs[0]?.hidden).toBe(false);
+    expect(tabs[1]?.hidden).toBe(true);
+    expect(tabs[2]?.hidden).toBe(true);
+    expect(tabs[3]?.hidden).toBe(true);
+
+    overflow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const menu = host.querySelector('.loom-context-menu');
+    expect(menu).not.toBeNull();
+    const items = [...menu!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+    expect(items.map((item) => item.textContent)).toEqual(['Two', 'Three', 'Four']);
+    items[0]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(onViewChange).toHaveBeenCalledWith('view_2');
+    expect(host.querySelector('.loom-context-menu')).toBeNull();
+    host.remove();
+  });
+
+  it('keeps the selected tab visible even when it would overflow', () => {
+    const roCallbacks: ResizeObserverCallback[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          roCallbacks.push(callback);
+        }
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
+    const { shell } = createShell();
+    const views = [
+      gridView('view_1', 'One'),
+      gridView('view_2', 'Two'),
+      gridView('view_3', 'Three'),
+    ];
+    const host = mount(shell, shellState({ views, selectedViewId: 'view_3' }));
+    const tablist = host.querySelector<HTMLElement>('.loom-view-tabs');
+    if (tablist === null) throw new Error('tablist missing');
+    const tabs = [...tablist.querySelectorAll<HTMLElement>('[role="tab"]')];
+    Object.defineProperty(tablist, 'clientWidth', { value: 160, configurable: true });
+    for (const tab of tabs) {
+      Object.defineProperty(tab, 'offsetWidth', { value: 120, configurable: true });
+    }
+    roCallbacks[0]?.([], {} as ResizeObserver);
+    expect(tabs[2]?.hidden).toBe(false);
+    expect(tabs[1]?.hidden).toBe(true);
+    host.remove();
+  });
+});
