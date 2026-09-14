@@ -562,3 +562,40 @@ function createField(type: Field['type'], config: Field['config'] = {}): Field {
     config,
   } as Field;
 }
+
+describe('select option colors', () => {
+  it('renders single Select values as a colored chip', () => {
+    const translate = createTranslator('en');
+    const field = createField('select', {
+      options: [{ id: 'option_1', name: 'Done', color: 'green' }],
+      deletedOptions: [],
+    });
+
+    const rendered = registry.render(field, 'option_1', { translate });
+    expect(rendered.chips).toMatchObject([{ text: 'Done', color: 'green' }]);
+
+    const element = createRenderedFieldValueElement(rendered);
+    expect(
+      element.querySelector('.loom-field-value-chip[data-color="green"]')?.textContent,
+    ).toContain('Done');
+  });
+
+  it('forwards option colors to MultiSelect chips', () => {
+    const translate = createTranslator('en');
+    const field = createField('multiSelect', {
+      options: [
+        { id: 'option_1', name: 'A', color: 'blue' },
+        { id: 'option_2', name: 'B', color: 'pink' },
+      ],
+      deletedOptions: [],
+    });
+
+    const element = createRenderedFieldValueElement(
+      registry.render(field, ['option_1', 'option_2'], { translate }),
+    );
+    const colors = [...element.querySelectorAll('.loom-field-value-chip')].map(
+      (chip) => (chip as HTMLElement).dataset.color,
+    );
+    expect(colors).toEqual(['blue', 'pink']);
+  });
+});

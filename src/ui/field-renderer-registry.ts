@@ -57,6 +57,7 @@ export interface RenderedFieldChip {
   readonly text: string;
   readonly ariaLabel: string;
   readonly statusText?: string;
+  readonly color?: string;
 }
 
 export interface RenderedFieldLink {
@@ -99,6 +100,7 @@ export type FieldEditorElement = HTMLInputElement | HTMLTextAreaElement | HTMLSe
 
 export interface RenderedFieldValueElementOptions {
   readonly compactAttachments?: boolean;
+  readonly highlight?: string;
   readonly translate?: Translator;
   readonly attachmentDownloadDisabled?: boolean | ((attachment: RenderedAttachment) => boolean);
   readonly canAttachmentDownload?: (attachment: RenderedAttachment) => boolean;
@@ -388,9 +390,22 @@ function renderSelectValue(
   if (typeof value !== 'string') return optionUnavailable(translate);
   const option = findOption(field, value);
   if (option === null) return optionUnavailable(translate);
-  return renderedValue(
-    option.deleted ? `${option.name} (${translate('record.option.deleted')})` : option.name,
-  );
+  const statusText = option.deleted ? translate('record.option.deleted') : undefined;
+  const ariaLabel = statusText === undefined ? option.name : `${option.name} (${statusText})`;
+  return {
+    state: 'value',
+    text: option.name,
+    ariaLabel,
+    chips: [
+      {
+        state: option.deleted ? 'deleted' : 'value',
+        text: option.name,
+        ariaLabel,
+        ...(option.color === undefined ? {} : { color: option.color }),
+        ...(statusText === undefined ? {} : { statusText }),
+      },
+    ],
+  };
 }
 
 export function createRenderedFieldValueElement(
@@ -432,7 +447,7 @@ export function createRenderedFieldValueElement(
     return root;
   }
   if (rendered.chips === undefined) {
-    root.textContent = rendered.text;
+    appendHighlightedText(root, rendered.text, options.highlight);
     return root;
   }
 
@@ -443,6 +458,7 @@ export function createRenderedFieldValueElement(
     const element = document.createElement('span');
     element.className = 'loom-field-value-chip';
     element.dataset.chipState = chip.state;
+    if (chip.color !== undefined) element.dataset.color = chip.color;
     element.setAttribute('role', 'listitem');
     element.append(document.createTextNode(chip.text));
     if (chip.statusText !== undefined) {
@@ -669,6 +685,7 @@ function renderMultiSelectValue(
       state: option.deleted ? 'deleted' : 'value',
       text: option.name,
       ariaLabel,
+      ...(option.color === undefined ? {} : { color: option.color }),
       ...(statusText === undefined ? {} : { statusText }),
     });
   }
@@ -683,11 +700,11 @@ function renderMultiSelectValue(
 function findOption(
   field: SelectField | MultiSelectField,
   id: string,
-): { readonly name: string; readonly deleted: boolean } | null {
+): { readonly name: string; readonly deleted: boolean; readonly color?: string } | null {
   const active = field.config.options.find((option) => option.id === id);
-  if (active !== undefined) return { name: active.name, deleted: false };
+  if (active !== undefined) return { name: active.name, deleted: false, color: active.color };
   const deleted = field.config.deletedOptions.find((option) => option.id === id);
-  return deleted === undefined ? null : { name: deleted.name, deleted: true };
+  return deleted === undefined ? null : { name: deleted.name, deleted: true, color: deleted.color };
 }
 
 function renderLocationValue(value: JsonValue, translate: Translator): RenderedFieldValue {
@@ -878,6 +895,33 @@ function firstNonEmptyString(...values: (JsonValue | undefined)[]): string | nul
     if (typeof value === 'string' && value.trim() !== '') return value;
   }
   return null;
+}
+
+function appendHighlightedText(
+  host: HTMLElement,
+  text: string,
+  highlight: string | undefined,
+): void {
+  const term = highlight?.trim() ?? '';
+  if (term === '') {
+    host.textContent = text;
+    return;
+  }
+  const lower = text.toLowerCase();
+  const needle = term.toLowerCase();
+  let index = 0;
+  let hit = lower.indexOf(needle);
+  while (hit !== -1) {
+    if (hit > index) host.append(document.createTextNode(text.slice(index, hit)));
+    const mark = document.createElement('mark');
+    mark.className = 'loom-search-hit';
+    mark.textContent = text.slice(hit, hit + needle.length);
+    host.append(mark);
+    index = hit + needle.length;
+    hit = lower.indexOf(needle, index);
+  }
+  if (index < text.length) host.append(document.createTextNode(text.slice(index)));
+  if (index === 0) host.textContent = text;
 }
 
 function isJsonObject(value: JsonValue): value is Readonly<Record<string, JsonValue>> {

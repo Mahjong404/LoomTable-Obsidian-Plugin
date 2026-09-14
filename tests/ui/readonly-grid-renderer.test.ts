@@ -2388,3 +2388,67 @@ describe('column menu and field editor', () => {
     container.remove();
   });
 });
+
+describe('search highlight and footer', () => {
+  it('marks search hits inside cell text', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(2, { search: 'record' }));
+
+    const hits = container.querySelectorAll('.loom-search-hit');
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits[0]?.textContent?.toLowerCase()).toBe('record');
+    container.remove();
+  });
+
+  it('renders the bottom status bar with the loaded row count and view name', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(3));
+
+    const footer = container.querySelector<HTMLElement>('.loom-grid-footer');
+    expect(footer?.textContent).toContain('3');
+    expect(footer?.textContent).toContain('Grid');
+    container.remove();
+  });
+
+  it('moves cell focus horizontally with Tab and wraps across rows', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    const state = createTwoFieldState();
+    renderer.render({
+      ...state,
+      records: [
+        ...state.records,
+        { ...state.records[0]!, id: 'record_02', values: { field_name: 'Two' } },
+      ],
+    });
+
+    const cells = container.querySelectorAll<HTMLElement>('.loom-grid-cell');
+    cells[0]?.focus();
+    cells[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    expect(document.activeElement).toBe(cells[1]);
+    cells[1]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
+    expect(document.activeElement).toBe(cells[2]);
+    cells[2]?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }),
+    );
+    expect(document.activeElement).toBe(cells[1]);
+    container.remove();
+  });
+});

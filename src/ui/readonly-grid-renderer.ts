@@ -961,6 +961,12 @@ export class ReadonlyGridRenderer {
       canvas.append(addRow);
     }
     viewport.append(header, canvas);
+    const footer = createElement('div', 'loom-grid-footer');
+    const footerCount = createElement('span', 'loom-grid-footer-count');
+    footerCount.textContent = `${state.records.length} ${this.#translate('grid.rows')}`;
+    const footerView = createElement('span', 'loom-grid-footer-view');
+    footerView.textContent = gridView?.name ?? '';
+    footer.append(footerCount, footerView);
     this.#virtualGrid = {
       viewport,
       rowLayer,
@@ -985,6 +991,7 @@ export class ReadonlyGridRenderer {
       loadMore.addEventListener('click', () => void this.#callbacks.onLoadMore());
       wrapper.append(loadMore);
     }
+    wrapper.append(footer);
     return wrapper;
   }
 
@@ -1188,7 +1195,14 @@ export class ReadonlyGridRenderer {
         translate: this.#translate,
       });
       const cell = createGridCell('', 'loom-grid-cell');
-      cell.append(createRenderedFieldValueElement(displayValue, { compactAttachments: true }));
+      cell.append(
+        createRenderedFieldValueElement(displayValue, {
+          compactAttachments: true,
+          ...(gridState?.search !== undefined && gridState.search !== ''
+            ? { highlight: gridState.search }
+            : {}),
+        }),
+      );
       cell.setAttribute('role', 'gridcell');
       cell.setAttribute('aria-colindex', String(fieldIndex + 2));
       const frozenOffset = this.#virtualGrid?.columns.frozenOffsets.get(field.id);
@@ -1244,6 +1258,17 @@ export class ReadonlyGridRenderer {
       });
       cell.addEventListener('keydown', (event) => {
         event.stopPropagation();
+        if (event.key === 'Tab') {
+          const grid = this.#virtualGrid;
+          if (grid === null || grid.fields.length === 0) return;
+          const cols = grid.fields.length;
+          const next = rowIndex * cols + fieldIndex + (event.shiftKey ? -1 : 1);
+          if (next >= 0 && next < grid.state.records.length * cols) {
+            event.preventDefault();
+            this.#focusCellAt(Math.floor(next / cols), next % cols);
+          }
+          return;
+        }
         if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
           event.preventDefault();
           this.#focusAdjacentCell(rowIndex, fieldIndex, event.key === 'ArrowDown' ? 1 : -1);
@@ -1862,6 +1887,12 @@ export class ReadonlyGridRenderer {
       0,
       Math.min(grid.fields.length - 1, fieldIndex + (horizontal ? rowOffset : 0)),
     );
+    this.#focusCellAt(targetRow, targetField);
+  }
+
+  #focusCellAt(targetRow: number, targetField: number): void {
+    const grid = this.#virtualGrid;
+    if (grid === null) return;
     this.#focusedCellPosition = { rowIndex: targetRow, fieldIndex: targetField };
     const target = this.#findCellAt(targetRow, targetField);
     if (target === null) {
