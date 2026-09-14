@@ -60,16 +60,18 @@ describe('Record Detail scalar field editing', () => {
     ];
     for (const [index, [fieldId, value]] of edits.entries()) {
       detail
-        .querySelector<HTMLButtonElement>(`.loom-record-field-edit[data-field-id="${fieldId}"]`)
+        .querySelector<HTMLButtonElement>(`.loom-record-field-editable[data-field-id="${fieldId}"]`)
         ?.click();
+      if (fieldId === 'field_checkbox') {
+        await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(index + 1));
+        continue;
+      }
       const editor = detail.querySelector<HTMLInputElement | HTMLTextAreaElement>(
         `.loom-record-field-editor[data-field-id="${fieldId}"] input, .loom-record-field-editor[data-field-id="${fieldId}"] textarea`,
       );
       expect(editor).not.toBeNull();
       if (editor === null) return;
-      if (editor instanceof HTMLInputElement && editor.type === 'checkbox')
-        editor.checked = value === true;
-      else editor.value = String(value);
+      editor.value = String(value);
       editor.dispatchEvent(new Event('input', { bubbles: true }));
       const form = detail.querySelector<HTMLFormElement>(
         `.loom-record-field-editor[data-field-id="${fieldId}"]`,
@@ -129,7 +131,7 @@ describe('Record Detail scalar field editing', () => {
     document.body.append(container);
 
     detail
-      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_url"]')
+      .querySelector<HTMLButtonElement>('.loom-record-field-editable[data-field-id="field_url"]')
       ?.click();
     const urlEditor = detail.querySelector<HTMLInputElement>(
       '.loom-record-field-editor[data-field-id="field_url"] input[type="url"]',
@@ -152,7 +154,7 @@ describe('Record Detail scalar field editing', () => {
     expect(onFieldEdit.mock.calls[0]?.[2]).toBe('https://example.com/new');
 
     detail
-      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_select"]')
+      .querySelector<HTMLButtonElement>('.loom-record-field-editable[data-field-id="field_select"]')
       ?.click();
     const selectEditor = detail.querySelector<HTMLSelectElement>(
       '.loom-record-field-editor[data-field-id="field_select"] select:not([multiple])',
@@ -172,7 +174,7 @@ describe('Record Detail scalar field editing', () => {
     expect(onFieldEdit.mock.calls[1]?.[2]).toBe('option_active');
 
     detail
-      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_multi"]')
+      .querySelector<HTMLButtonElement>('.loom-record-field-editable[data-field-id="field_multi"]')
       ?.click();
     const multiEditor = detail.querySelector<HTMLSelectElement>(
       '.loom-record-field-editor[data-field-id="field_multi"] select[multiple]',
@@ -212,7 +214,7 @@ describe('Record Detail scalar field editing', () => {
     document.body.append(container);
 
     detail
-      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_select"]')
+      .querySelector<HTMLButtonElement>('.loom-record-field-editable[data-field-id="field_select"]')
       ?.click();
     const selectEditor = detail.querySelector<HTMLSelectElement>(
       '.loom-record-field-editor[data-field-id="field_select"] select',
@@ -227,7 +229,7 @@ describe('Record Detail scalar field editing', () => {
     expect(selectEditor?.getAttribute('aria-invalid')).toBe('true');
 
     detail
-      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_multi"]')
+      .querySelector<HTMLButtonElement>('.loom-record-field-editable[data-field-id="field_multi"]')
       ?.click();
     const multiEditor = detail.querySelector<HTMLSelectElement>(
       '.loom-record-field-editor[data-field-id="field_multi"] select[multiple]',
@@ -247,7 +249,7 @@ describe('Record Detail scalar field editing', () => {
     container.append(detail);
     document.body.append(container);
 
-    detail.querySelector<HTMLButtonElement>('.loom-record-field-edit')?.click();
+    detail.querySelector<HTMLElement>('.loom-record-field-editable')?.click();
     const editor = detail.querySelector<HTMLInputElement>('.loom-record-field-editor input');
     const form = detail.querySelector<HTMLFormElement>('.loom-record-field-editor');
     expect(editor).not.toBeNull();
@@ -278,7 +280,7 @@ describe('Record Detail scalar field editing', () => {
     container.append(detail);
     document.body.append(container);
 
-    detail.querySelector<HTMLButtonElement>('.loom-record-field-edit')?.click();
+    detail.querySelector<HTMLElement>('.loom-record-field-editable')?.click();
     const editor = detail.querySelector<HTMLInputElement>('.loom-record-field-editor input');
     const form = detail.querySelector<HTMLFormElement>('.loom-record-field-editor');
     expect(editor).not.toBeNull();
@@ -292,7 +294,7 @@ describe('Record Detail scalar field editing', () => {
     expect(onFieldEdit).not.toHaveBeenCalled();
     expect(detail.querySelector('.loom-record-field-editor')).toBeNull();
     expect(document.activeElement).toBe(
-      detail.querySelector<HTMLButtonElement>('.loom-record-field-edit'),
+      detail.querySelector<HTMLElement>('.loom-record-field-editable'),
     );
   });
 
@@ -308,10 +310,8 @@ describe('Record Detail scalar field editing', () => {
     container.append(detail);
     document.body.append(container);
 
-    const edit = detail.querySelector<HTMLButtonElement>('.loom-record-field-edit');
-    expect(edit?.disabled).toBe(true);
-    expect(edit?.getAttribute('aria-label')).toContain('Offline');
-    edit?.click();
+    const edit = detail.querySelector<HTMLElement>('.loom-record-field-editable');
+    expect(edit).toBeNull();
     expect(detail.querySelector('.loom-record-field-editor')).toBeNull();
     expect(onFieldEdit).not.toHaveBeenCalled();
   });
@@ -339,7 +339,7 @@ describe('Record Detail scalar field editing', () => {
     container.append(detail);
     document.body.append(container);
 
-    detail.querySelector<HTMLButtonElement>('.loom-record-field-edit')?.click();
+    detail.querySelector<HTMLElement>('.loom-record-field-editable')?.click();
     const editor = detail.querySelector<HTMLInputElement>('.loom-record-field-editor input');
     const form = detail.querySelector<HTMLFormElement>('.loom-record-field-editor');
     expect(editor).not.toBeNull();
@@ -358,7 +358,7 @@ describe('Record Detail scalar field editing', () => {
 
     await vi.waitFor(() => {
       expect(document.activeElement).toBe(
-        detail.querySelector<HTMLButtonElement>('.loom-record-field-edit'),
+        detail.querySelector<HTMLElement>('.loom-record-field-editable'),
       );
     });
     expect(detail.textContent).toContain('saved');
@@ -390,7 +390,7 @@ describe('Record Detail scalar field editing', () => {
     container.append(detail);
     document.body.append(container);
 
-    detail.querySelector<HTMLButtonElement>('.loom-record-field-edit')?.click();
+    detail.querySelector<HTMLElement>('.loom-record-field-editable')?.click();
     const editor = detail.querySelector<HTMLInputElement>('.loom-record-field-editor input');
     const form = detail.querySelector<HTMLFormElement>('.loom-record-field-editor');
     expect(editor).not.toBeNull();
@@ -419,7 +419,7 @@ describe('Record Detail scalar field editing', () => {
     container.append(detail);
     document.body.append(container);
 
-    detail.querySelector<HTMLButtonElement>('.loom-record-field-edit')?.click();
+    detail.querySelector<HTMLElement>('.loom-record-field-editable')?.click();
     const editor = detail.querySelector<HTMLInputElement>('.loom-record-field-editor input');
     const form = detail.querySelector<HTMLFormElement>('.loom-record-field-editor');
     expect(editor).not.toBeNull();
@@ -525,7 +525,7 @@ describe('Record Detail Unset action', () => {
     document.body.append(container);
 
     detail
-      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_text"]')
+      .querySelector<HTMLButtonElement>('.loom-record-field-editable[data-field-id="field_text"]')
       ?.click();
     const unset = detail.querySelector<HTMLButtonElement>('[data-action="field-unset"]');
     expect(unset).not.toBeNull();
@@ -556,7 +556,7 @@ describe('Record Detail Unset action', () => {
     document.body.append(container);
 
     detail
-      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_absent"]')
+      .querySelector<HTMLButtonElement>('.loom-record-field-editable[data-field-id="field_absent"]')
       ?.click();
     expect(
       detail.querySelector<HTMLButtonElement>(
@@ -565,7 +565,7 @@ describe('Record Detail Unset action', () => {
     ).toBe(true);
 
     detail
-      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_text"]')
+      .querySelector<HTMLButtonElement>('.loom-record-field-editable[data-field-id="field_text"]')
       ?.click();
     detail
       .querySelector<HTMLButtonElement>(
