@@ -137,3 +137,14 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - U14 窄屏回归：Detail ≤40rem 全宽、缩略图收敛、style audit 覆盖新选择器；tooltip 系统全面修复（容器 aria-label → aria-labelledby 隐藏标签，`ensureButtonLabels` 补齐按钮 tooltip）。
 - 验证：63 文件 786 tests 全绿；lint 0 error；api diff 为空；已部署 vault（main.js 584,199B / styles.css 62,585B）。
 - 待用户决定：U4 页签溢出策略（A 滚动+渐隐 / B +N 折叠菜单 / C 不动）。
+
+## 2026-XX — UX 跟进 3：截图反馈修复 + U4 页签溢出（W1–W5 + U4-B）
+
+- W1 加载横幅：已有记录时刷新不再渲染 `.loom-grid-status` 横幅；工具栏右侧 save-status 与「+新增记录」之间新增 `.loom-grid-loading-note`（role=status）提示刷新；空数据初始加载仍用完整状态块（含诊断/操作）。
+- W2 表头统一：所有字段列头统一「类型图标 + 文本 + 排序指示」flex 骨架——可排序列结构进排序按钮、指示器 `margin-inline-start:auto` 钉右；不可排序列同一骨架，消除图标/文字/边框错位。
+- W3 Detail 侧栏：location 操作并入 `.loom-location-actions` 单行紧凑按钮组（打开地图/复制/预览/编辑），unset/cleared/非法值也保留编辑入口；location 状态改 chip；侧栏内联按钮收敛为小尺寸。
+- W4 新增记录行收窄：`.loom-grid-add-row` 列模板从整行 `columnTemplate` 改为 `56px auto`——「+」对齐行号列、文字紧随，不再呈现为整行宽按钮条。
+- W5 查询面板浮层化：筛选/排序/显示/新建/回收站面板改为 `.loom-grid-toolbar` 内 absolute 浮层（top:100%+4px、width:max-content、min 24rem/max 40rem、max-height 70vh 滚动、panel shadow、z-index 50），不再以块级元素推移表格；焦点进入面板/取消恢复逻辑不变。
+- U4-B 页签溢出：`#syncTabOverflow`（ResizeObserver 观察 tablist，超出宽度的页签置 `hidden`，选中页签强制可见）+ `.loom-view-tab-overflow`「+N」按钮（aria-haspopup=menu）→ `openContextMenu` 下拉列出隐藏视图（类型图标+名称），点击经 onViewChange 切换并关闭；箭头/Home/End 导航跳过隐藏页签；jsdom/未挂载时（clientWidth=0）不折叠。
+- 测试：renderer +4（刷新指示/空态横幅保留/浮层锚定/新增行模板），table-shell +2（+3 折叠与菜单选中、选中页签强制可见）。
+- 验证：63 文件 796 tests 全绿；lint 0 error；format/typecheck 干净；openapi 无 diff；esbuild 通过；已部署 vault（main.js 586,322B / styles.css 65,578B）；gallery bundle 已重建。
