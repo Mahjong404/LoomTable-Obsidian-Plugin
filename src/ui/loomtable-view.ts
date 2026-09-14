@@ -209,6 +209,20 @@ export class LoomTableView extends ItemView {
       onApplyFilter: (viewId, filter) => controller.applyViewFilter(viewId, filter),
       onApplySort: (viewId, sort) => controller.applyViewSort(viewId, sort),
       onApplyDisplay: (viewId, patch) => controller.applyViewDisplay(viewId, patch),
+      onFieldSave: (input, context) =>
+        context.mode === 'edit'
+          ? controller.updateField(context.fieldId, {
+              name: input.name,
+              ...(input.options === undefined ? {} : { options: input.options }),
+              ...(input.maxCount === undefined ? {} : { maxCount: input.maxCount }),
+            })
+          : controller.createField(
+              input,
+              context.anchorFieldId === undefined
+                ? null
+                : { fieldId: context.anchorFieldId, side: context.side ?? 'right' },
+            ),
+      onFieldDelete: (fieldId) => controller.deleteField(fieldId),
       ...(controller.supportsRecordCreate
         ? {
             onCreateRecord: (values: Readonly<Record<string, MutationValue>>) =>

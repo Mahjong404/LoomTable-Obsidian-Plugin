@@ -2249,6 +2249,311 @@
   color: var(--loom-text-error);
 }
 
+/* Field editor popover (外部组件式 create/edit) */
+
+.loom-field-editor {
+  position: absolute;
+  z-index: 42;
+  display: flex;
+  flex-direction: column;
+  gap: var(--loom-space-2);
+  width: 15rem;
+  max-height: 22rem;
+  padding: var(--loom-space-2);
+  overflow-y: auto;
+  border: 1px solid var(--loom-grid-line-strong);
+  border-radius: var(--loom-radius-md);
+  background: var(--loom-bg-primary);
+  box-shadow: var(--loom-map-control-shadow, var(--shadow-s));
+}
+
+.loom-field-editor--measuring {
+  visibility: hidden;
+}
+
+.loom-field-editor-name {
+  width: 100%;
+  min-height: var(--loom-control-min-height);
+  padding: var(--loom-control-padding-block) var(--loom-control-padding-inline);
+  border: 1px solid var(--loom-grid-line-strong);
+  border-radius: var(--loom-radius-md);
+  background: var(--loom-bg-primary);
+  color: var(--loom-text-normal);
+  font-size: var(--loom-font-ui-small);
+}
+
+.loom-field-editor-name:focus {
+  border-color: var(--loom-focus);
+  outline: none;
+}
+
+.loom-field-editor-types {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--loom-grid-line);
+  border-radius: var(--loom-radius-md);
+  overflow: hidden;
+}
+
+.loom-field-editor-type {
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-2);
+  min-height: 1.9rem;
+  padding: 0 var(--loom-space-2);
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--loom-text-normal);
+  font-size: var(--loom-font-ui-smaller);
+  text-align: start;
+  cursor: pointer;
+}
+
+.loom-field-editor-type:hover {
+  background: var(--loom-bg-hover);
+}
+
+.loom-field-editor-type[aria-selected='true'] {
+  background: var(--loom-accent-soft);
+  color: var(--loom-accent);
+}
+
+.loom-field-editor-type-fixed {
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-2);
+  min-height: 1.9rem;
+  padding: 0 var(--loom-space-2);
+  border: 1px solid var(--loom-grid-line);
+  border-radius: var(--loom-radius-md);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
+}
+
+.loom-field-editor-type .loom-field-type-icon,
+.loom-field-editor-type-fixed .loom-field-type-icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.loom-field-editor-options-label {
+  margin-bottom: var(--loom-space-1);
+  color: var(--loom-text-faint);
+  font-size: var(--font-ui-smallest, 0.72em);
+  letter-spacing: 0.02em;
+}
+
+.loom-field-editor-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--loom-space-1);
+}
+
+.loom-field-editor-option-row {
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-1);
+  position: relative;
+}
+
+.loom-field-editor-option-row input {
+  flex: 1;
+  min-width: 0;
+  min-height: 1.75rem;
+  padding: 0 var(--loom-space-2);
+  border: 1px solid var(--loom-grid-line);
+  border-radius: var(--loom-radius-sm);
+  background: var(--loom-bg-primary);
+  color: var(--loom-text-normal);
+  font-size: var(--loom-font-ui-smaller);
+}
+
+.loom-field-editor-swatch {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 1px solid var(--loom-grid-line);
+  border-radius: 50%;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.loom-field-editor-option-remove {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--loom-radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--loom-text-faint);
+  cursor: pointer;
+}
+
+.loom-field-editor-option-remove:hover {
+  background: var(--loom-bg-hover);
+  color: var(--loom-text-error);
+}
+
+.loom-field-editor-option-remove svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.loom-field-editor-option-add {
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-1);
+  min-height: 1.75rem;
+  padding: 0 var(--loom-space-2);
+  border: 1px dashed var(--loom-grid-line-strong);
+  border-radius: var(--loom-radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
+  cursor: pointer;
+}
+
+.loom-field-editor-option-add:hover {
+  border-color: var(--loom-accent);
+  color: var(--loom-accent);
+}
+
+.loom-field-editor-option-add svg {
+  width: 0.75rem;
+  height: 0.75rem;
+}
+
+.loom-field-editor-palette {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + 2px);
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(9, 1.25rem);
+  gap: var(--loom-space-1);
+  padding: var(--loom-space-1);
+  border: 1px solid var(--loom-grid-line-strong);
+  border-radius: var(--loom-radius-sm);
+  background: var(--loom-bg-primary);
+  box-shadow: var(--loom-map-control-shadow, var(--shadow-s));
+}
+
+.loom-field-editor-maxcount {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--loom-space-2);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
+}
+
+.loom-field-editor-maxcount input {
+  width: 4.5rem;
+  min-height: 1.75rem;
+  padding: 0 var(--loom-space-2);
+  border: 1px solid var(--loom-grid-line);
+  border-radius: var(--loom-radius-sm);
+  background: var(--loom-bg-primary);
+  color: var(--loom-text-normal);
+}
+
+.loom-field-editor-submit {
+  min-height: var(--loom-control-min-height);
+  border-radius: var(--loom-radius-md);
+  font-size: var(--loom-font-ui-small);
+}
+
+/* Add-field header cell */
+
+.loom-grid-add-field {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.loom-grid-add-field-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  border-radius: var(--loom-radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--loom-text-faint);
+  cursor: pointer;
+}
+
+.loom-grid-add-field-button:hover,
+.loom-grid-add-field-button:focus-visible {
+  background: var(--loom-bg-hover);
+  color: var(--loom-accent);
+}
+
+.loom-grid-add-field-button svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+/* Select option semantic palette (Server tokens → theme-mixed values) */
+
+.loom-field-editor-swatch[data-color='gray'],
+.loom-select-swatch[data-color='gray'] {
+  background: color-mix(in srgb, var(--loom-text-faint) 45%, var(--loom-bg-primary));
+}
+
+.loom-field-editor-swatch[data-color='red'],
+.loom-select-swatch[data-color='red'] {
+  background: var(--loom-text-error);
+}
+
+.loom-field-editor-swatch[data-color='orange'],
+.loom-select-swatch[data-color='orange'] {
+  background: var(--loom-text-warning, darkorange);
+}
+
+.loom-field-editor-swatch[data-color='yellow'],
+.loom-select-swatch[data-color='yellow'] {
+  background: #d9a821;
+}
+
+.loom-field-editor-swatch[data-color='green'],
+.loom-select-swatch[data-color='green'] {
+  background: var(--loom-text-success);
+}
+
+.loom-field-editor-swatch[data-color='cyan'],
+.loom-select-swatch[data-color='cyan'] {
+  background: #0e9bb5;
+}
+
+.loom-field-editor-swatch[data-color='blue'],
+.loom-select-swatch[data-color='blue'] {
+  background: var(--loom-accent);
+}
+
+.loom-field-editor-swatch[data-color='purple'],
+.loom-select-swatch[data-color='purple'] {
+  background: #8b5cf6;
+}
+
+.loom-field-editor-swatch[data-color='pink'],
+.loom-select-swatch[data-color='pink'] {
+  background: #e0629b;
+}
+
 .loom-context-menu-item:disabled {
   opacity: 0.45;
   cursor: default;
