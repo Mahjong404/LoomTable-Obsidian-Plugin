@@ -4,18 +4,21 @@ import {
   LoomTableClientError,
   type ConflictDetails,
   type Field,
+  type FilterNode,
   type GridViewConfig,
   type JsonValue,
   type LoomTableRecord,
   type MutationRequest,
   type MutationResult,
   type QueryRequest,
+  type QueryResult,
   type View,
 } from '../../src/client/loomtable-client';
 import {
   GridViewController,
   createGridQuery,
   type GridDataSource,
+  type GridState,
 } from '../../src/ui/grid-view-controller';
 import {
   InMemoryLoomTableClient,
@@ -32,8 +35,12 @@ import {
 } from '../../src/ui/mutation-queue-scheduler';
 import {
   MutationQueueStore,
-  type MutationQueueSettingsV1,
+  type MutationQueueSettingsV2,
 } from '../../src/settings/mutation-queue-settings';
+import type {
+  PendingViewCreateIntent,
+  PendingViewCreateStore,
+} from '../../src/ui/view-write-coordinator';
 
 describe('GridViewController', () => {
   it('discovers the current Workspace/Base/Table/View and submits the saved query contract', async () => {
@@ -913,7 +920,7 @@ describe('GridViewController', () => {
 it('uses the durable queue seam instead of the client mutation bypass and applies the full returned Record', async () => {
   const data = createData(createRecords(1), createGridConfig(false));
   const client = new InMemoryLoomTableClient(data);
-  const saves: MutationQueueSettingsV1[] = [];
+  const saves: MutationQueueSettingsV2[] = [];
   const returnedRecord = {
     ...data.records[0]!,
     revision: 2,
@@ -984,6 +991,862 @@ it('uses the durable queue seam instead of the client mutation bypass and applie
   scheduler.stop();
 });
 
+describe('GridViewController View creation', () => {
+  it('creates a Grid View with the primary-field default config and selects it', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.createView({ type: 'grid', name: 'Board' });
+
+    expect(outcome.status).toBe('created');
+    if (outcome.status !== 'created' || outcome.view.type !== 'grid') {
+      throw new Error('Expected a created Grid View.');
+    }
+    expect(outcome.view.config.projection).toEqual(['field_name']);
+    expect(outcome.view.config.columnOrder).toEqual(['field_name']);
+    expect(controller.state.selectedViewId).toBe(outcome.view.id);
+    expect(controller.state.views.some((view) => view.id === outcome.view.id)).toBe(true);
+    expect(client.viewCreateKeys).toHaveLength(1);
+  });
+
+  it('delegates a created Map View to the non-grid surface', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [], [createLocationField()]),
+    );
+    const onNonGridViewSelected = vi.fn<(view: View, state: GridState) => void>();
+    const controller = new GridViewController(client, { onNonGridViewSelected });
+    await controller.load();
+
+    const outcome = await controller.createView({
+      type: 'map',
+      name: 'Map',
+      locationFieldId: 'field_location',
+    });
+
+    expect(outcome.status).toBe('created');
+    expect(onNonGridViewSelected).toHaveBeenCalledTimes(1);
+    const [delegatedView, delegatedState] = onNonGridViewSelected.mock.calls[0] ?? [];
+    if (outcome.status !== 'created') throw new Error('Expected a created Map View.');
+    expect(delegatedView?.id).toBe(outcome.view.id);
+    expect(delegatedState?.views.some((view) => view.id === outcome.view.id)).toBe(true);
+  });
+
+  it('does not attempt a View write while offline', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { isOffline: () => true });
+    await controller.load();
+
+    const outcome = await controller.createView({ type: 'grid', name: 'Board' });
+
+    expect(outcome.status).toBe('failed');
+    expect(client.viewCreateKeys).toHaveLength(0);
+  });
+
+  it('rejects a Map View without an active Location Field before any write', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.createView({
+      type: 'map',
+      name: 'Map',
+      locationFieldId: 'field_missing',
+    });
+
+    expect(outcome.status).toBe('failed');
+    expect(client.viewCreateKeys).toHaveLength(0);
+  });
+
+  it('keeps an unconfirmed create durable, retries it once, and supports dismiss', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    vi.spyOn(client, 'createView').mockImplementationOnce(async () => {
+      throw new LoomTableClientError('network', { message: 'offline' });
+    });
+    const intents = createIntentStore();
+    const controller = new GridViewController(client, { viewIntents: intents.store });
+    await controller.load();
+
+    const outcome = await controller.createView({ type: 'grid', name: 'Board' });
+    expect(outcome.status).toBe('unresolved');
+    expect(intents.store.list()).toHaveLength(1);
+    expect(controller.state.pendingViewIntents).toHaveLength(1);
+
+    const intentId = intents.store.list()[0]?.intentId ?? '';
+    const retried = await controller.retryViewIntent(intentId);
+    expect(retried?.status).toBe('created');
+    expect(intents.store.list()).toHaveLength(0);
+    expect(controller.state.pendingViewIntents).toHaveLength(0);
+    expect(client.viewCreateKeys).toEqual([intentId]);
+    if (retried?.status === 'created') {
+      expect(controller.state.selectedViewId).toBe(retried.view.id);
+    }
+
+    vi.spyOn(client, 'createView').mockImplementationOnce(async () => {
+      throw new LoomTableClientError('network', { message: 'offline' });
+    });
+    const second = await controller.createView({ type: 'grid', name: 'Later' });
+    expect(second.status).toBe('unresolved');
+    await controller.dismissViewIntent(intents.store.list()[0]?.intentId ?? '');
+    expect(intents.store.list()).toHaveLength(0);
+    expect(controller.state.pendingViewIntents).toHaveLength(0);
+  });
+
+  it('falls back to another View when the selected View was deleted', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [
+        { ...createView(createGridConfig(false)), id: 'view_02', name: 'Second' },
+      ]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    await controller.selectView('view_02');
+    expect(controller.state.selectedViewId).toBe('view_02');
+
+    await client.deleteView('view_02', 1);
+    await controller.refresh();
+
+    expect(controller.state.status).toBe('ready');
+    expect(controller.state.selectedViewId).toBe('view_01');
+  });
+
+  it('reports an empty View state when the Table has no Views', async () => {
+    const data = createData(createRecords(1), createGridConfig(false));
+    const client = new InMemoryLoomTableClient({ ...data, views: [] });
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    expect(controller.state.status).toBe('empty');
+    expect(controller.state.emptyReason).toBe('view');
+    expect(controller.state.selectedViewId).toBeNull();
+    expect(controller.state.views).toEqual([]);
+  });
+});
+
+describe('GridViewController View management', () => {
+  it('lists deleted Views for the manage panel and reports load failures', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [
+        {
+          ...createView(createGridConfig(false)),
+          id: 'view_deleted',
+          name: 'Old Board',
+          revision: 3,
+          deletedAt: '2026-09-01T00:00:00Z',
+        },
+      ]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    await controller.openManageViews();
+
+    expect(controller.state.deletedViewsStatus).toBe('ready');
+    expect(controller.state.deletedViews.map((view) => view.id)).toEqual(['view_deleted']);
+
+    const failing = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    vi.spyOn(failing, 'listViews').mockImplementation(async (_tableId, options) => {
+      if (options?.lifecycle === 'deleted') {
+        throw new LoomTableClientError('network', { message: 'offline' });
+      }
+      return [];
+    });
+    const failingController = new GridViewController(failing);
+    await failingController.load();
+    await failingController.openManageViews();
+    expect(failingController.state.deletedViewsStatus).toBe('error');
+  });
+
+  it('renames a View with the full config and revision, then reloads the selected query', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    const queriesBefore = client.queryRequests.length;
+
+    const updateView = vi.spyOn(client, 'updateView');
+    const outcome = await controller.renameView('view_01', 'Renamed Board');
+
+    expect(outcome.status).toBe('saved');
+    const renamed = controller.state.views.find((view) => view.id === 'view_01');
+    expect(renamed?.name).toBe('Renamed Board');
+    expect(renamed?.revision).toBe(2);
+    expect(client.queryRequests.length).toBeGreaterThan(queriesBefore);
+    const update = updateView.mock.calls.at(-1);
+    expect(update?.[1]).toEqual({
+      type: 'grid',
+      name: 'Renamed Board',
+      config: createGridConfig(false),
+      expectedRevision: 1,
+    });
+  });
+
+  it('stores a conflict issue with the latest View and adopts or re-edits on it', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    await client.updateView('view_01', {
+      type: 'grid',
+      name: 'Elsewhere',
+      config: createGridConfig(false),
+      expectedRevision: 1,
+    });
+
+    const conflicted = await controller.renameView('view_01', 'Local name');
+
+    expect(conflicted.status).toBe('conflict');
+    const issue = controller.state.viewWriteIssues['view_01'];
+    expect(issue?.kind).toBe('conflict');
+    expect(issue?.latestView?.name).toBe('Elsewhere');
+
+    await controller.resolveViewConflict('view_01', 're-edit');
+    expect(controller.state.viewWriteIssues['view_01']).toBeUndefined();
+
+    const reapplied = await controller.renameView('view_01', 'Local name');
+    expect(reapplied.status).toBe('saved');
+    expect(controller.state.views.find((view) => view.id === 'view_01')?.name).toBe('Local name');
+  });
+
+  it('adopts the latest View on a conflict without reapplying stale edits', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    await client.updateView('view_01', {
+      type: 'grid',
+      name: 'Elsewhere',
+      config: createGridConfig(false),
+      expectedRevision: 1,
+    });
+    await controller.renameView('view_01', 'Local name');
+
+    await controller.resolveViewConflict('view_01', 'adopt-latest');
+
+    const view = controller.state.views.find((candidate) => candidate.id === 'view_01');
+    expect(view?.name).toBe('Elsewhere');
+    expect(view?.revision).toBe(2);
+    expect(controller.state.viewWriteIssues['view_01']).toBeUndefined();
+  });
+
+  it('copies a View with the saved config under a confirmed name', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(true)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.copyView('view_01', 'Board copy');
+
+    expect(outcome.status).toBe('created');
+    if (outcome.status !== 'created' || outcome.view.type !== 'grid') {
+      throw new Error('Expected a created Grid View.');
+    }
+    expect(outcome.view.name).toBe('Board copy');
+    expect(outcome.view.config).toEqual(createGridConfig(true));
+    expect(outcome.view.revision).toBe(1);
+    expect(controller.state.selectedViewId).toBe(outcome.view.id);
+  });
+
+  it('drops stale display-only Field references when copying a View', async () => {
+    const stale: View = {
+      ...createView(createGridConfig(false)),
+      config: {
+        ...createGridConfig(false),
+        columnOrder: ['field_name', 'field_gone'],
+        columnWidths: { field_name: 180, field_gone: 240 },
+        frozenFieldIds: ['field_gone'],
+      },
+    };
+    const client = new InMemoryLoomTableClient({
+      ...createData(createRecords(1), createGridConfig(false)),
+      views: [stale],
+    });
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.copyView('view_01', 'Copy');
+
+    expect(outcome.status).toBe('created');
+    if (outcome.status !== 'created' || outcome.view.type !== 'grid') {
+      throw new Error('Expected a created Grid View.');
+    }
+    expect(outcome.view.config.columnOrder).toEqual(['field_name']);
+    expect(outcome.view.config.columnWidths).toEqual({ field_name: 180 });
+    expect(outcome.view.config.frozenFieldIds).toEqual([]);
+  });
+
+  it('blocks copying a View with broken query refs until it is repaired', async () => {
+    const broken: View = {
+      ...createView(createGridConfig(false)),
+      config: { ...createGridConfig(false), projection: ['field_name', 'field_gone'] },
+    };
+    const client = new InMemoryLoomTableClient({
+      ...createData(createRecords(1), createGridConfig(false)),
+      views: [broken],
+    });
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.copyView('view_01', 'Copy');
+
+    expect(outcome.status).toBe('repair-required');
+    expect(client.viewCreateKeys).toHaveLength(0);
+  });
+
+  it('deletes a non-selected View and keeps the current selection', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [
+        { ...createView(createGridConfig(false)), id: 'view_02', name: 'Second' },
+      ]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.deleteView('view_02');
+
+    expect(outcome.status).toBe('deleted');
+    expect(controller.state.views.map((view) => view.id)).toEqual(['view_01']);
+    expect(controller.state.selectedViewId).toBe('view_01');
+  });
+
+  it('selects the next active View after deleting the selected one, then the previous', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [
+        { ...createView(createGridConfig(false)), id: 'view_02', name: 'Second' },
+        { ...createView(createGridConfig(false)), id: 'view_03', name: 'Third' },
+      ]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    await controller.selectView('view_02');
+
+    const deleted = await controller.deleteView('view_02');
+    expect(deleted.status).toBe('deleted');
+    expect(controller.state.selectedViewId).toBe('view_03');
+
+    await controller.selectView('view_01');
+    await controller.deleteView('view_03');
+    expect(controller.state.selectedViewId).toBe('view_01');
+
+    await controller.deleteView('view_01');
+    expect(controller.state.selectedViewId).toBeNull();
+    expect(controller.state.status).toBe('empty');
+    expect(controller.state.emptyReason).toBe('view');
+  });
+
+  it('restores a deleted View and refreshes both lists', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [
+        {
+          ...createView(createGridConfig(false)),
+          id: 'view_deleted',
+          name: 'Old Board',
+          revision: 3,
+          deletedAt: '2026-09-01T00:00:00Z',
+        },
+      ]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    await controller.openManageViews();
+
+    const outcome = await controller.restoreView('view_deleted');
+
+    expect(outcome.status).toBe('saved');
+    expect(controller.state.views.map((view) => view.id)).toEqual(['view_01', 'view_deleted']);
+    expect(controller.state.deletedViews).toEqual([]);
+  });
+
+  it('repairs a broken View config with an explicit field removal', async () => {
+    const broken: View = {
+      ...createView(createGridConfig(false)),
+      config: {
+        ...createGridConfig(false),
+        projection: ['field_name', 'field_gone'],
+        columnOrder: ['field_name', 'field_gone'],
+        sort: [{ fieldId: 'field_gone', direction: 'asc', nulls: 'last' }],
+      },
+    };
+    const client = new InMemoryLoomTableClient({
+      ...createData(createRecords(1), createGridConfig(false)),
+      views: [broken],
+    });
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.repairView('view_01', { removeFieldIds: ['field_gone'] });
+
+    expect(outcome.status).toBe('saved');
+    const view = controller.state.views.find((candidate) => candidate.id === 'view_01');
+    if (view?.type !== 'grid') throw new Error('Expected a Grid View.');
+    expect(view.config.projection).toEqual(['field_name']);
+    expect(view.config.columnOrder).toEqual(['field_name']);
+    expect(view.config.sort).toEqual([]);
+  });
+
+  it('keeps an unresolved write retryable with the original revision and dismiss reconciles', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    vi.spyOn(client, 'updateView').mockImplementationOnce(async () => {
+      throw new LoomTableClientError('timeout', { message: 'slow' });
+    });
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const unresolved = await controller.renameView('view_01', 'Maybe');
+    expect(unresolved.status).toBe('unresolved');
+    expect(controller.state.viewWriteIssues['view_01']?.kind).toBe('unresolved');
+
+    const retried = await controller.retryViewWrite('view_01');
+    expect(retried?.status).toBe('saved');
+    expect(controller.state.views.find((view) => view.id === 'view_01')?.name).toBe('Maybe');
+    expect(controller.state.viewWriteIssues['view_01']).toBeUndefined();
+
+    vi.spyOn(client, 'updateView').mockImplementationOnce(async () => {
+      throw new LoomTableClientError('network', { message: 'offline' });
+    });
+    await controller.renameView('view_01', 'Stuck');
+    await controller.dismissViewWriteIssue('view_01');
+    expect(controller.state.viewWriteIssues['view_01']).toBeUndefined();
+  });
+
+  it('marks a View write pending while in flight and blocks a second write', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    let release: (() => void) | undefined;
+    vi.spyOn(client, 'updateView').mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () =>
+            resolve({ ...createView(createGridConfig(false)), revision: 2, name: 'Held' });
+        }),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const pending = controller.renameView('view_01', 'Held');
+    expect(controller.state.viewWritePending).toEqual(['view_01']);
+
+    const blocked = await controller.renameView('view_01', 'Other');
+    expect(blocked.status).toBe('failed');
+
+    release?.();
+    await pending;
+    expect(controller.state.viewWritePending).toEqual([]);
+  });
+
+  it('rejects all View management writes while offline without touching the client', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const updateView = vi.spyOn(client, 'updateView');
+    const controller = new GridViewController(client, { isOffline: () => true });
+    await controller.load();
+
+    expect((await controller.renameView('view_01', 'x')).status).toBe('failed');
+    expect((await controller.copyView('view_01', 'x')).status).toBe('failed');
+    expect((await controller.deleteView('view_01')).status).toBe('failed');
+    expect((await controller.restoreView('view_01')).status).toBe('failed');
+    expect((await controller.repairView('view_01', { removeFieldIds: [] })).status).toBe('failed');
+    expect(updateView).not.toHaveBeenCalled();
+  });
+});
+
+describe('GridViewController query controls', () => {
+  const containsRule = (value: string): FilterNode => ({
+    kind: 'rule',
+    fieldId: 'field_name',
+    operator: 'contains',
+    value,
+  });
+  const selectedConfig = (controller: GridViewController): GridViewConfig => {
+    const view = controller.state.views.find(
+      (candidate) => candidate.id === controller.state.selectedViewId,
+    );
+    if (view?.type !== 'grid') throw new Error('The selected View is not a Grid View.');
+    return view.config;
+  };
+
+  it('applies a normalized Search term without saving it to the View config', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+
+    await expect(controller.setSearch('  alpha  ')).resolves.toBe(true);
+
+    expect(controller.state.search).toBe('alpha');
+    const request = client.queryRequests.at(-1);
+    expect(request?.search).toBe('alpha');
+    expect(request?.cursor).toBeUndefined();
+    expect(JSON.stringify(selectedConfig(controller))).not.toContain('search');
+  });
+
+  it('rejects an over-length Search and skips a request for an unchanged term', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    expect(client.queryRequests).toHaveLength(1);
+
+    await expect(controller.setSearch('x'.repeat(501))).resolves.toBe(false);
+    expect(client.queryRequests).toHaveLength(1);
+    expect(controller.state.search).toBe('');
+
+    await controller.setSearch('alpha');
+    await controller.setSearch(' alpha ');
+    expect(client.queryRequests).toHaveLength(2);
+  });
+
+  it('clears an applied Search explicitly and re-queries from the first page', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+    await controller.setSearch('alpha');
+
+    await controller.setSearch('   ');
+
+    expect(controller.state.search).toBe('');
+    const request = client.queryRequests.at(-1);
+    expect(request).not.toHaveProperty('search');
+    expect(request?.cursor).toBeUndefined();
+  });
+
+  it('reports a no-match empty result while a Search is applied', async () => {
+    const client = new InMemoryLoomTableClient(createData([], createGridConfig(false)));
+    const controller = new GridViewController(client);
+    await controller.load();
+    expect(controller.state.emptyReason).toBe('records');
+
+    await controller.setSearch('alpha');
+
+    expect(controller.state.status).toBe('empty');
+    expect(controller.state.emptyReason).toBe('no-match');
+  });
+
+  it('keeps the applied Search on refresh and resets it when the View changes', async () => {
+    const secondView = { ...createView(createGridConfig(false)), id: 'view_02', name: 'Second' };
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [secondView]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    await controller.setSearch('alpha');
+
+    await controller.refresh();
+    expect(controller.state.search).toBe('alpha');
+    expect(client.queryRequests.at(-1)?.search).toBe('alpha');
+
+    await controller.selectView('view_02');
+    expect(controller.state.search).toBe('');
+    expect(client.queryRequests.at(-1)).not.toHaveProperty('search');
+  });
+
+  it('saves a Filter through the View write path and re-queries with it', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    const rule = containsRule('needle');
+
+    const outcome = await controller.applyViewFilter('view_01', rule);
+
+    expect(outcome.status).toBe('saved');
+    expect(selectedConfig(controller).filter).toEqual(rule);
+    const request = client.queryRequests.at(-1);
+    expect(request?.filter).toEqual(rule);
+    expect(request?.cursor).toBeUndefined();
+  });
+
+  it('clears the saved Filter by writing a config without filter', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(true)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.applyViewFilter('view_01', undefined);
+
+    expect(outcome.status).toBe('saved');
+    expect('filter' in selectedConfig(controller)).toBe(false);
+    expect(client.queryRequests.at(-1)).not.toHaveProperty('filter');
+  });
+
+  it('saves Sort changes and clears back to the Server default order', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    const sort = [{ fieldId: 'field_name', direction: 'desc' as const, nulls: 'first' as const }];
+
+    await expect(controller.applyViewSort('view_01', sort)).resolves.toMatchObject({
+      status: 'saved',
+    });
+    expect(selectedConfig(controller).sort).toEqual(sort);
+    expect(client.queryRequests.at(-1)?.sort).toEqual(sort);
+
+    await expect(controller.applyViewSort('view_01', [])).resolves.toMatchObject({
+      status: 'saved',
+    });
+    expect(selectedConfig(controller).sort).toEqual([]);
+    expect(client.queryRequests.at(-1)).not.toHaveProperty('sort');
+  });
+
+  it('rejects an invalid Filter draft without a View write', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    const updateSpy = vi.spyOn(client, 'updateView');
+
+    const outcome = await controller.applyViewFilter('view_01', {
+      kind: 'rule',
+      fieldId: 'field_missing',
+      operator: 'contains',
+      value: 'x',
+    });
+
+    expect(outcome.status).toBe('failed');
+    if (outcome.status === 'failed') expect(outcome.kind).toBe('validation');
+    expect(updateSpy).not.toHaveBeenCalled();
+    expect(selectedConfig(controller).filter).toBeUndefined();
+  });
+
+  it('rejects duplicate or unsortable Sort drafts without a View write', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [], [createLocationField()]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    const updateSpy = vi.spyOn(client, 'updateView');
+
+    const duplicate = await controller.applyViewSort('view_01', [
+      { fieldId: 'field_name', direction: 'asc', nulls: 'first' },
+      { fieldId: 'field_name', direction: 'desc', nulls: 'last' },
+    ]);
+    expect(duplicate.status).toBe('failed');
+
+    const unsortable = await controller.applyViewSort('view_01', [
+      { fieldId: 'field_location', direction: 'asc', nulls: 'first' },
+    ]);
+    expect(unsortable.status).toBe('failed');
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('saves a display patch through the View write path and re-queries with the projection', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false), [], [createLocationField()]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.applyViewDisplay('view_01', {
+      projection: ['field_name'],
+      columnOrder: ['field_name', 'field_location'],
+      columnWidths: { field_name: 240 },
+      frozenFieldIds: ['field_name'],
+      rowHeight: 'compact',
+    });
+
+    expect(outcome.status).toBe('saved');
+    expect(selectedConfig(controller).projection).toEqual(['field_name']);
+    expect(selectedConfig(controller).columnWidths).toEqual({ field_name: 240 });
+    expect(selectedConfig(controller).frozenFieldIds).toEqual(['field_name']);
+    expect(selectedConfig(controller).rowHeight).toBe('compact');
+    const request = client.queryRequests.at(-1);
+    expect(request?.projection).toEqual(['field_name']);
+    expect(request?.cursor).toBeUndefined();
+  });
+
+  it('rejects an invalid display patch without a View write', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    const updateSpy = vi.spyOn(client, 'updateView');
+
+    const empty = await controller.applyViewDisplay('view_01', {
+      projection: [],
+      columnOrder: ['field_name'],
+      columnWidths: {},
+      frozenFieldIds: [],
+      rowHeight: 'standard',
+    });
+    expect(empty.status).toBe('failed');
+
+    const badWidth = await controller.applyViewDisplay('view_01', {
+      projection: ['field_name'],
+      columnOrder: ['field_name'],
+      columnWidths: { field_name: 40 },
+      frozenFieldIds: [],
+      rowHeight: 'standard',
+    });
+    expect(badWidth.status).toBe('failed');
+
+    const frozenHidden = await controller.applyViewDisplay('view_01', {
+      projection: ['field_name'],
+      columnOrder: ['field_name'],
+      columnWidths: {},
+      frozenFieldIds: ['field_other'],
+      rowHeight: 'standard',
+    });
+    expect(frozenHidden.status).toBe('failed');
+    expect(updateSpy).not.toHaveBeenCalled();
+  });
+
+  it('keeps the previous rows while a Filter write reloads the query', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    let resolveReload!: (result: QueryResult) => void;
+    vi.spyOn(client, 'query').mockImplementationOnce(
+      () =>
+        new Promise<QueryResult>((resolve) => {
+          resolveReload = resolve;
+        }),
+    );
+
+    const pending = controller.applyViewFilter('view_01', containsRule('needle'));
+    await vi.waitFor(() => expect(controller.state.status).toBe('loading'));
+    expect(controller.state.records).toHaveLength(2);
+
+    resolveReload({
+      items: [createRecords(1)[0]!],
+      hasMore: false,
+      changeCursor: 'change_02',
+      totalCount: 1,
+    });
+    await pending;
+    expect(controller.state.records).toHaveLength(1);
+    expect(controller.state.status).toBe('ready');
+  });
+
+  it('keeps the old data and a discoverable issue when the Filter write fails', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    vi.spyOn(client, 'updateView').mockRejectedValue(
+      new LoomTableClientError('network', { message: 'offline' }),
+    );
+
+    const outcome = await controller.applyViewFilter('view_01', containsRule('needle'));
+
+    expect(outcome.status).toBe('unresolved');
+    expect(controller.state.viewWriteIssues['view_01']?.kind).toBe('unresolved');
+    expect(controller.state.records).toHaveLength(2);
+    expect(selectedConfig(controller).filter).toBeUndefined();
+  });
+
+  it('preserves the saved config and reports a refresh failure after a successful write', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    vi.spyOn(client, 'query').mockRejectedValueOnce(
+      new LoomTableClientError('server', { message: 'boom' }),
+    );
+
+    const outcome = await controller.applyViewFilter('view_01', containsRule('needle'));
+
+    expect(outcome.status).toBe('saved');
+    expect(selectedConfig(controller).filter).toEqual(containsRule('needle'));
+    expect(controller.state.error?.message).toBe(
+      'The View configuration was saved, but refreshing the data failed.',
+    );
+  });
+
+  it('drops a stale continuation page issued before a Search change', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+    let resolvePage!: (result: QueryResult) => void;
+    vi.spyOn(client, 'query').mockImplementationOnce(
+      () =>
+        new Promise<QueryResult>((resolve) => {
+          resolvePage = resolve;
+        }),
+    );
+
+    const pendingPage = controller.loadNextPage();
+    await controller.setSearch('beta');
+    resolvePage({
+      items: [createRecords(3)[2]!],
+      hasMore: false,
+      changeCursor: 'change_02',
+    });
+    await pendingPage;
+
+    expect(controller.state.records.map((record) => record.id)).toEqual(['record_01', 'record_02']);
+    await controller.loadNextPage();
+    expect(controller.state.records.map((record) => record.id)).toEqual([
+      'record_01',
+      'record_02',
+      'record_03',
+    ]);
+  });
+
+  it('dedupes overlapping Records across continuation pages', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    const records = createRecords(3);
+    vi.spyOn(client, 'query')
+      .mockResolvedValueOnce({
+        items: records.slice(0, 2),
+        hasMore: true,
+        nextCursor: 'cursor_1',
+        changeCursor: 'change_01',
+        totalCount: 3,
+      })
+      .mockResolvedValueOnce({
+        items: [records[1]!, records[2]!],
+        hasMore: false,
+        changeCursor: 'change_02',
+      });
+
+    await controller.load();
+    await controller.loadNextPage();
+
+    expect(controller.state.records.map((record) => record.id)).toEqual([
+      'record_01',
+      'record_02',
+      'record_03',
+    ]);
+  });
+});
+
 describe('createGridQuery', () => {
   it('keeps the cursor and view query semantics separate from the route Table ID', () => {
     const view = createView(createGridConfig(true));
@@ -997,6 +1860,15 @@ describe('createGridQuery', () => {
       filter: view.config.filter,
       sort: view.config.sort,
     });
+  });
+
+  it('attaches the applied Search term to the query contract', () => {
+    const view = createView(createGridConfig(false));
+
+    expect(createGridQuery('table_01', view, 50, undefined, 'alpha')).toMatchObject({
+      search: 'alpha',
+    });
+    expect(createGridQuery('table_01', view, 50, undefined, '')).not.toHaveProperty('search');
   });
 });
 
@@ -1190,6 +2062,24 @@ function withGetRecord(
   };
 }
 
+function createIntentStore(): { store: PendingViewCreateStore } {
+  const intents: PendingViewCreateIntent[] = [];
+  return {
+    store: {
+      list: () => [...intents],
+      put: (intent) => {
+        const index = intents.findIndex((item) => item.intentId === intent.intentId);
+        if (index >= 0) intents.splice(index, 1, intent);
+        else intents.push(intent);
+      },
+      remove: (intentId) => {
+        const index = intents.findIndex((item) => item.intentId === intentId);
+        if (index >= 0) intents.splice(index, 1);
+      },
+    },
+  };
+}
+
 async function loadRecordForDetail(
   controller: GridViewController,
   record: LoomTableRecord,
@@ -1250,6 +2140,21 @@ class QueuedDurableQueue implements DurableMutationQueuePort {
     return this.#snapshot;
   }
 
+  getOperationSnapshot(clientMutationId: string): MutationQueueRecordSnapshot {
+    void clientMutationId;
+    return this.#snapshot;
+  }
+
+  discardOperation(clientMutationId: string): Promise<void> {
+    void clientMutationId;
+    return Promise.resolve();
+  }
+
+  retryOperation(clientMutationId: string): Promise<void> {
+    void clientMutationId;
+    return Promise.resolve();
+  }
+
   enqueue(): Promise<MutationResult> {
     if (this.#snapshot.pending === 0) {
       this.#snapshot = { state: 'queued', pending: 1 };
@@ -1299,9 +2204,26 @@ class FakeDurableQueue implements DurableMutationQueuePort {
     return this.#snapshot;
   }
 
+  getOperationSnapshot(clientMutationId: string): MutationQueueRecordSnapshot {
+    void clientMutationId;
+    return this.#snapshot;
+  }
+
+  discardOperation(clientMutationId: string): Promise<void> {
+    void clientMutationId;
+    return Promise.resolve();
+  }
+
+  retryOperation(clientMutationId: string): Promise<void> {
+    void clientMutationId;
+    return Promise.resolve();
+  }
+
   async enqueue(): Promise<MutationResult> {
     this.#snapshot = this.#entryState;
     const event: MutationQueueSchedulerEvent = {
+      operationId: 'mut_0000000000000000000000000A',
+      kind: 'updateRecord',
       recordId: 'record_01',
       snapshot: this.#snapshot,
     };
@@ -1321,3 +2243,550 @@ class FakeDurableQueue implements DurableMutationQueuePort {
     });
   }
 }
+
+describe('Record create', () => {
+  it('enqueues a createRecord command with a stable mutation ID and returns the new Record', async () => {
+    const transport = {
+      mutate: vi.fn(
+        async (_tableId: string, request: MutationRequest): Promise<MutationResult> => ({
+          clientMutationId: request.clientMutationId,
+          results: [
+            {
+              index: 0,
+              status: 'applied',
+              record: {
+                id: 'record_new',
+                tableId: 'table_01',
+                revision: 1,
+                values: { field_name: 'Draft' },
+                createdAt: '2026-08-15T00:00:00Z',
+                updatedAt: '2026-08-15T00:00:00Z',
+              },
+            },
+          ],
+          changeCursor: 'change_02',
+        }),
+      ),
+    };
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 2, entries: [] }),
+      transport,
+    });
+    await scheduler.start();
+    await scheduler.setOnline(true);
+    await scheduler.setAuthReady(true);
+
+    const controller = new GridViewController(
+      new InMemoryLoomTableClient(createData(createRecords(1), createGridConfig(false))),
+      {
+        mutationQueue: scheduler,
+        mutationIdFactory: () => 'mut_0123456789ABCDEFGHJKMNPQRS',
+        isOffline: () => false,
+      },
+    );
+    await controller.load();
+
+    const record = await controller.createRecord({ field_name: 'Draft' });
+
+    expect(record.id).toBe('record_new');
+    expect(transport.mutate).toHaveBeenCalledTimes(1);
+    expect(transport.mutate.mock.calls[0]?.[1]).toEqual({
+      clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+      commands: [{ kind: 'createRecord', values: { field_name: 'Draft' } }],
+    });
+    // The created Record is tracked as an applied create op, not inserted
+    // into the active query page.
+    expect(controller.state.records.map((candidate) => candidate.id)).not.toContain('record_new');
+    expect(controller.state.recordCreateOps).toHaveLength(1);
+    expect(controller.state.recordCreateOps[0]).toMatchObject({
+      operationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+      tableId: 'table_01',
+      state: 'idle',
+      createdRecord: { id: 'record_new' },
+    });
+    controller.dispose();
+    scheduler.stop();
+  });
+
+  it('rejects creation while offline and when the durable queue is missing', async () => {
+    const offline = new GridViewController(
+      new InMemoryLoomTableClient(createData(createRecords(1), createGridConfig(false))),
+      { mutationQueue: new QueuedDurableQueue(), isOffline: () => true },
+    );
+    await offline.load();
+    await expect(offline.createRecord({})).rejects.toMatchObject({ kind: 'validation' });
+    offline.dispose();
+
+    const noQueue = new GridViewController(
+      new InMemoryLoomTableClient(createData(createRecords(1), createGridConfig(false))),
+      { isOffline: () => false },
+    );
+    await noQueue.load();
+    await expect(noQueue.createRecord({})).rejects.toMatchObject({ kind: 'validation' });
+    noQueue.dispose();
+  });
+
+  it('tracks a queued create op, supports retry/discard, and ignores other Tables', async () => {
+    const releases = new Map<string, () => void>();
+    const transport = {
+      mutate: vi.fn(
+        (tableId: string, request: MutationRequest) =>
+          new Promise<MutationResult>((resolve) => {
+            void tableId;
+            releases.set(request.clientMutationId, () =>
+              resolve({
+                clientMutationId: request.clientMutationId,
+                results: [
+                  {
+                    index: 0,
+                    status: 'applied',
+                    record: {
+                      id: 'record_new',
+                      tableId: 'table_01',
+                      revision: 1,
+                      values: {},
+                      createdAt: '2026-08-15T00:00:00Z',
+                      updatedAt: '2026-08-15T00:00:00Z',
+                    },
+                  },
+                ],
+                changeCursor: 'change_02',
+              }),
+            );
+          }),
+      ),
+    };
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 2, entries: [] }),
+      transport,
+    });
+    await scheduler.start();
+    const controller = new GridViewController(
+      new InMemoryLoomTableClient(createData(createRecords(1), createGridConfig(false))),
+      {
+        mutationQueue: scheduler,
+        mutationIdFactory: () => 'mut_0123456789ABCDEFGHJKMNPQRS',
+        isOffline: () => false,
+      },
+    );
+    await controller.load();
+    await scheduler.setOnline(true);
+    await scheduler.setAuthReady(true);
+
+    // The transport never resolves, so the create op stays in-flight.
+    const pending = controller.createRecord({ field_name: 'Later' }).catch((e: unknown) => e);
+    await vi.waitFor(() =>
+      expect(controller.state.recordCreateOps).toEqual([
+        expect.objectContaining({
+          operationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+          tableId: 'table_01',
+        }),
+      ]),
+    );
+    expect(controller.state.recordCreateOps[0]?.state).toBe('sending');
+
+    // A create lane for another Table must not surface in this controller.
+    const foreignPending = scheduler
+      .enqueue('table_02', {
+        clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRT',
+        commands: [{ kind: 'createRecord', values: {} }],
+      })
+      .catch((error: unknown) => error);
+    // The foreign op persists durably; its lane events never reach this Table.
+    await vi.waitFor(() => expect(scheduler.getSnapshot().entries).toHaveLength(2));
+    expect(
+      controller.state.recordCreateOps.some(
+        (op) => op.operationId === 'mut_0123456789ABCDEFGHJKMNPQRT',
+      ),
+    ).toBe(false);
+
+    await scheduler.discardOperation('mut_0123456789ABCDEFGHJKMNPQRS');
+    await scheduler.discardOperation('mut_0123456789ABCDEFGHJKMNPQRT');
+    expect(await pending).toBeInstanceOf(Error);
+    expect(await foreignPending).toBeInstanceOf(Error);
+    await vi.waitFor(() => expect(controller.state.recordCreateOps).toEqual([]));
+    controller.dispose();
+    scheduler.stop();
+  });
+
+  it('ignores late applied queue events after dispose', async () => {
+    let release: ((result: MutationResult) => void) | undefined;
+    const transport = {
+      mutate: vi.fn(
+        (_tableId: string, request: MutationRequest) =>
+          new Promise<MutationResult>((resolve) => {
+            release = resolve;
+            void request;
+          }),
+      ),
+    };
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 2, entries: [] }),
+      transport,
+    });
+    await scheduler.start();
+    const controller = new GridViewController(
+      new InMemoryLoomTableClient(createData(createRecords(1), createGridConfig(false))),
+      {
+        mutationQueue: scheduler,
+        mutationIdFactory: () => 'mut_0123456789ABCDEFGHJKMNPQRS',
+        isOffline: () => false,
+      },
+    );
+    await controller.load();
+    await scheduler.setOnline(true);
+    await scheduler.setAuthReady(true);
+    const pending = controller.createRecord({ field_name: 'Late' }).catch((e: unknown) => e);
+    await vi.waitFor(() => expect(controller.state.recordCreateOps[0]?.state).toBe('sending'));
+
+    controller.dispose();
+    release?.({
+      clientMutationId: 'mut_0123456789ABCDEFGHJKMNPQRS',
+      results: [
+        {
+          index: 0,
+          status: 'applied',
+          record: {
+            id: 'record_new',
+            tableId: 'table_01',
+            revision: 1,
+            values: {},
+            createdAt: '2026-08-15T00:00:00Z',
+            updatedAt: '2026-08-15T00:00:00Z',
+          },
+        },
+      ],
+      changeCursor: 'change_02',
+    });
+    expect(await pending).toMatchObject({ id: 'record_new' });
+    await scheduler.drain();
+    expect(controller.state.recordCreateOps).toEqual([
+      expect.objectContaining({ state: 'sending' }),
+    ]);
+    scheduler.stop();
+  });
+});
+
+describe('Record lifecycle', () => {
+  function createLifecycleController(
+    records: readonly LoomTableRecord[] = createRecords(3),
+    options: { readonly sequence?: number } = {},
+  ) {
+    let sequence = options.sequence ?? 0;
+    const client = new InMemoryLoomTableClient(createData(records, createGridConfig(false)));
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 2, entries: [] }),
+      transport: client,
+    });
+    const controller = new GridViewController(client, {
+      mutationQueue: scheduler,
+      mutationIdFactory: () => `mut_${String(++sequence).padStart(26, '0')}`,
+      isOffline: () => false,
+    });
+    return { client, scheduler, controller };
+  }
+
+  async function startLifecycle(
+    scheduler: MutationQueueScheduler,
+    controller: GridViewController,
+  ): Promise<void> {
+    await scheduler.start();
+    await controller.load();
+    await scheduler.setOnline(true);
+    await scheduler.setAuthReady(true);
+  }
+
+  it('deletes a Record with its authoritative revision and surfaces an undo notice', async () => {
+    const { client, scheduler, controller } = createLifecycleController();
+    await startLifecycle(scheduler, controller);
+
+    expect(controller.canDeleteRecord('record_01')).toBe('ok');
+    const deleted = await controller.deleteRecord('record_01');
+    await scheduler.drain();
+
+    expect(deleted.deletedAt).not.toBeUndefined();
+    const sent = client.mutationRequests[0]?.request;
+    expect(sent?.commands[0]).toEqual({
+      kind: 'deleteRecord',
+      recordId: 'record_01',
+      expectedRevision: 1,
+    });
+    expect(controller.state.records.some((record) => record.id === 'record_01')).toBe(false);
+    expect(controller.state.lastDeletedRecord?.id).toBe('record_01');
+    expect(controller.state.records).toHaveLength(2);
+    scheduler.stop();
+  });
+
+  it('blocks delete while an update is pending and reports the draft gate', async () => {
+    const { scheduler, controller } = createLifecycleController();
+    await startLifecycle(scheduler, controller);
+
+    void controller.editCell('record_01', 'field_name', 'draft');
+    await vi.waitFor(() => expect(controller.state.editDrafts.length).toBeGreaterThan(0));
+    expect(controller.canDeleteRecord('record_01')).toBe('draft');
+    await expect(controller.deleteRecord('record_01')).rejects.toMatchObject({
+      kind: 'validation',
+    });
+    scheduler.stop();
+  });
+
+  it('restores a deleted Record with the current authoritative revision', async () => {
+    const { client, scheduler, controller } = createLifecycleController();
+    await startLifecycle(scheduler, controller);
+    await controller.deleteRecord('record_01');
+    await scheduler.drain();
+
+    const outcome = await controller.restoreRecord('record_01');
+    await scheduler.drain();
+
+    expect(outcome).toMatchObject({ status: 'restored' });
+    const restoreRequest = client.mutationRequests[1]?.request;
+    expect(restoreRequest?.commands[0]).toEqual({
+      kind: 'restoreRecord',
+      recordId: 'record_01',
+      expectedRevision: 2,
+    });
+    expect(controller.state.lastDeletedRecord).toBeNull();
+    scheduler.stop();
+  });
+
+  it('reports already-active on undo without sending a second restore', async () => {
+    const { client, scheduler, controller } = createLifecycleController();
+    await startLifecycle(scheduler, controller);
+    await controller.deleteRecord('record_01');
+    await scheduler.drain();
+    // Simulate another client restoring the Record first.
+    await client.mutate('table_01', {
+      clientMutationId: 'mut_external_restore',
+      commands: [{ kind: 'restoreRecord', recordId: 'record_01', expectedRevision: 2 }],
+    });
+    const before = client.mutationRequests.length;
+
+    const outcome = await controller.restoreRecord('record_01');
+
+    expect(outcome.status).toBe('already-active');
+    expect(client.mutationRequests).toHaveLength(before);
+    expect(controller.state.lastDeletedRecord).toBeNull();
+    scheduler.stop();
+  });
+
+  it('lists deleted Records without View scoping and paginates the recycle list', async () => {
+    const deleted: LoomTableRecord[] = Array.from({ length: 3 }, (_, index) => ({
+      id: `record_d${index + 1}`,
+      tableId: 'table_01',
+      revision: 2,
+      values: { field_name: `Deleted ${index + 1}` },
+      createdAt: '2026-08-14T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+      deletedAt: '2026-08-15T00:00:00Z',
+    }));
+    const { client, scheduler, controller } = createLifecycleController([
+      ...createRecords(1),
+      ...deleted,
+    ]);
+    await startLifecycle(scheduler, controller);
+
+    await controller.loadDeletedRecords({ pageSize: 2 });
+
+    const recycle = client.queryRequests.at(-1);
+    expect(recycle).toMatchObject({ tableId: 'table_01', lifecycle: 'deleted', limit: 2 });
+    expect(recycle?.viewId).toBeUndefined();
+    expect(recycle?.filter).toBeUndefined();
+    expect(controller.state.deletedRecords.map((record) => record.id)).toEqual([
+      'record_d1',
+      'record_d2',
+    ]);
+    expect(controller.state.deletedRecordsHasMore).toBe(true);
+
+    await controller.loadMoreDeletedRecords();
+    expect(controller.state.deletedRecords.map((record) => record.id)).toEqual([
+      'record_d1',
+      'record_d2',
+      'record_d3',
+    ]);
+    expect(controller.state.deletedRecordsHasMore).toBe(false);
+    scheduler.stop();
+  });
+
+  it('removes a restored Record from the recycle list', async () => {
+    const { client, scheduler, controller } = createLifecycleController();
+    await startLifecycle(scheduler, controller);
+    await controller.deleteRecord('record_01');
+    await scheduler.drain();
+    await controller.loadDeletedRecords();
+    expect(controller.state.deletedRecords.some((record) => record.id === 'record_01')).toBe(true);
+
+    const outcome = await controller.restoreRecord('record_01');
+    expect(outcome.status).toBe('restored');
+    expect(controller.state.deletedRecords.some((record) => record.id === 'record_01')).toBe(false);
+    void client;
+    scheduler.stop();
+  });
+
+  it('keeps the Record and surfaces the failure when delete fails', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 2, entries: [] }),
+      transport: {
+        mutate: async (_tableId: string, request: MutationRequest) => {
+          const command = request.commands[0];
+          if (command?.kind === 'deleteRecord') {
+            throw new LoomTableClientError('validation', {
+              message: 'delete failed',
+              httpStatus: 400,
+            });
+          }
+          return client.mutate(_tableId, request);
+        },
+      },
+    });
+    let sequence = 0;
+    const controller = new GridViewController(client, {
+      mutationQueue: scheduler,
+      mutationIdFactory: () => `mut_${String(++sequence).padStart(26, '9')}`,
+      isOffline: () => false,
+    });
+    await startLifecycle(scheduler, controller);
+
+    const pending = controller.deleteRecord('record_01').catch((e: unknown) => e);
+    const outcome = await pending;
+    expect(outcome).toBeInstanceOf(Error);
+    await vi.waitFor(() => expect(controller.state.editStatuses['record_01']).toBe('terminal'));
+    expect(controller.state.records.some((record) => record.id === 'record_01')).toBe(true);
+    expect(controller.state.lastDeletedRecord).toBeNull();
+    scheduler.stop();
+  });
+
+  it('allows a fresh delete after a terminal failure by discarding the stale entry', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    let failDelete = true;
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 2, entries: [] }),
+      transport: {
+        mutate: async (_tableId: string, request: MutationRequest) => {
+          if (request.commands[0]?.kind === 'deleteRecord' && failDelete) {
+            throw new LoomTableClientError('validation', {
+              message: 'delete failed',
+              httpStatus: 400,
+            });
+          }
+          return client.mutate(_tableId, request);
+        },
+      },
+    });
+    let sequence = 0;
+    const controller = new GridViewController(client, {
+      mutationQueue: scheduler,
+      mutationIdFactory: () => `mut_${String(++sequence).padStart(26, '5')}`,
+      isOffline: () => false,
+    });
+    await startLifecycle(scheduler, controller);
+
+    await expect(controller.deleteRecord('record_01')).rejects.toBeInstanceOf(Error);
+    await vi.waitFor(() => expect(controller.state.editStatuses['record_01']).toBe('terminal'));
+
+    failDelete = false;
+    expect(controller.canDeleteRecord('record_01')).toBe('ok');
+    const deleted = await controller.deleteRecord('record_01');
+    expect(deleted.deletedAt).not.toBeUndefined();
+    expect(controller.state.records.some((record) => record.id === 'record_01')).toBe(false);
+    expect(controller.state.editStatuses['record_01']).toBeUndefined();
+    scheduler.stop();
+  });
+
+  it('blocks a second delete while one is in flight and keeps other Records editable', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    let releaseDelete!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      releaseDelete = resolve;
+    });
+    const scheduler = new MutationQueueScheduler({
+      store: new MutationQueueStore({ schemaVersion: 2, entries: [] }),
+      transport: {
+        mutate: async (_tableId: string, request: MutationRequest) => {
+          if (request.commands[0]?.kind === 'deleteRecord') await gate;
+          return client.mutate(_tableId, request);
+        },
+      },
+    });
+    let sequence = 0;
+    const controller = new GridViewController(client, {
+      mutationQueue: scheduler,
+      mutationIdFactory: () => `mut_${String(++sequence).padStart(26, '7')}`,
+      isOffline: () => false,
+    });
+    await startLifecycle(scheduler, controller);
+
+    const deletePending = controller.deleteRecord('record_01');
+    await vi.waitFor(() => expect(controller.state.editStatuses['record_01']).toBe('saving'));
+
+    expect(controller.canDeleteRecord('record_01')).toBe('pending');
+    await expect(controller.deleteRecord('record_01')).rejects.toMatchObject({
+      kind: 'validation',
+    });
+    expect(controller.canDeleteRecord('record_02')).toBe('ok');
+    const edit = controller.editCell('record_02', 'field_name', 'still editable');
+    releaseDelete();
+    await edit;
+    await deletePending;
+
+    expect(controller.state.records.some((record) => record.id === 'record_01')).toBe(false);
+    expect(
+      controller.state.records.find((record) => record.id === 'record_02')?.values.field_name,
+    ).toBe('still editable');
+    scheduler.stop();
+  });
+});
+
+describe('Record navigation', () => {
+  it('reports bounds and returns adjacent Records along the query sequence', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+
+    expect(controller.canNavigateRecord('record_01', -1)).toBe(false);
+    expect(controller.canNavigateRecord('record_01', 1)).toBe(true);
+    expect(controller.canNavigateRecord('record_02', -1)).toBe(true);
+    expect(controller.canNavigateRecord('record_02', 1)).toBe(true);
+    expect(controller.canNavigateRecord('record_missing', 1)).toBe(false);
+
+    expect((await controller.navigateRecord('record_01', 1))?.id).toBe('record_02');
+    expect(await controller.navigateRecord('record_01', -1)).toBeNull();
+    expect(await controller.navigateRecord('record_missing', 1)).toBeNull();
+  });
+
+  it('loads the next page when navigating past the loaded boundary', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+    expect(controller.state.records).toHaveLength(2);
+
+    const target = await controller.navigateRecord('record_02', 1);
+    expect(target?.id).toBe('record_03');
+    expect(controller.state.records).toHaveLength(3);
+    expect(client.queryRequests.at(-1)?.cursor).toBe('cursor:2');
+    expect(controller.canNavigateRecord('record_03', 1)).toBe(false);
+  });
+
+  it('does not fabricate a reverse cursor when the previous page is unknown', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+    await controller.loadNextPage();
+
+    expect((await controller.navigateRecord('record_02', -1))?.id).toBe('record_01');
+    expect(controller.canNavigateRecord('record_01', -1)).toBe(false);
+  });
+});
