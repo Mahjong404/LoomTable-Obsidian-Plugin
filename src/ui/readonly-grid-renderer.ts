@@ -161,6 +161,10 @@ export class ReadonlyGridRenderer {
   #focusedCellKey: string | null = null;
   #focusedHeaderFieldId: string | null = null;
   #focusedCellPosition: { readonly rowIndex: number; readonly fieldIndex: number } | null = null;
+  #selection: {
+    readonly anchor: { readonly rowIndex: number; readonly fieldIndex: number };
+    readonly head: { readonly rowIndex: number; readonly fieldIndex: number };
+  } | null = null;
   #lastConflictIds = new Set<string>();
   #lastState: GridState | null = null;
   #dismissedEditDraftKey: string | null = null;
@@ -868,6 +872,11 @@ export class ReadonlyGridRenderer {
       const fieldHeader = createGridCell(field.name, 'loom-grid-header-cell');
       fieldHeader.setAttribute('role', 'columnheader');
       fieldHeader.setAttribute('aria-colindex', String(fieldIndex + 2));
+      fieldHeader.dataset.fieldIndex = String(fieldIndex);
+      fieldHeader.addEventListener('click', (event) => {
+        if ((event.target as HTMLElement).closest('button') !== null) return;
+        this.#selectColumn(fieldIndex);
+      });
       const frozenOffset = columns.frozenOffsets.get(field.id);
       if (frozenOffset !== undefined) {
         fieldHeader.classList.add('loom-grid-frozen');
@@ -1183,6 +1192,10 @@ export class ReadonlyGridRenderer {
       this.#callbacks.onRecordOpen(record);
     });
     indexCell.append(rowNumber, open);
+    indexCell.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.#selectRow(rowIndex);
+    });
     indexCell.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -1232,6 +1245,17 @@ export class ReadonlyGridRenderer {
       );
       cell.dataset.valueState = displayValue.state;
       if (editStatus !== undefined) cell.dataset.editState = editStatus;
+      const selectionRect = this.#selectionRect();
+      if (this.#isCellSelected(rowIndex, fieldIndex)) cell.classList.add('is-selected');
+      if (
+        selectionRect !== null &&
+        selectionRect.left === 0 &&
+        selectionRect.right === fields.length - 1 &&
+        rowIndex >= selectionRect.top &&
+        rowIndex <= selectionRect.bottom
+      ) {
+        indexCell.classList.add('is-selected');
+      }
       cell.addEventListener('focus', () => {
         this.#focusedHeaderFieldId = null;
         this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
@@ -1239,7 +1263,14 @@ export class ReadonlyGridRenderer {
       cell.addEventListener('click', (event) => {
         event.stopPropagation();
         this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
-        if (isEditableField(field) && canEdit) {
+        const wasActive =
+          this.#selection !== null &&
+          this.#selection.anchor.rowIndex === rowIndex &&
+          this.#selection.anchor.fieldIndex === fieldIndex &&
+          this.#selection.head.rowIndex === rowIndex &&
+          this.#selection.head.fieldIndex === fieldIndex;
+        this.#selectCell(rowIndex, fieldIndex, event.shiftKey);
+        if (wasActive && !event.shiftKey && isEditableField(field) && canEdit) {
           this.#beginCellEdit(cell, record, field, rowIndex, fieldIndex);
         }
       });
@@ -1288,10 +1319,20 @@ export class ReadonlyGridRenderer {
         }
         if ((event.ctrlKey || event.metaKey) && !event.altKey) {
           const key = event.key.toLowerCase();
+          if (key === 'a') {
+            event.preventDefault();
+            this.#selectAll();
+            return;
+          }
           if (key === 'c' || key === 'v') {
             event.preventDefault();
-            if (key === 'c') void this.#copyCell(field, record.values[field.id]);
-            else void this.#pasteCell(record, field);
+            const rect = this.#selectionRect();
+            const range =
+              rect !== null && (rect.bottom - rect.top > 0 || rect.right - rect.left > 0);
+            if (key === 'c') {
+              if (range) this.#copySelection();
+              else void this.#copyCell(field, record.values[field.id]);
+            } else void this.#pasteCell(record, field);
           }
           return;
         }
@@ -1888,6 +1929,180 @@ export class ReadonlyGridRenderer {
       Math.min(grid.fields.length - 1, fieldIndex + (horizontal ? rowOffset : 0)),
     );
     this.#focusCellAt(targetRow, targetField);
+  }
+
+  #selectCell(rowIndex: number, fieldIndex: number, extend: boolean): void {
+    if (extend && this.#selection !== null) {
+      this.#selection = {
+        anchor: this.#selection.anchor,
+        head: { rowIndex, fieldIndex },
+      };
+    } else {
+      this.#selection = {
+        anchor: { rowIndex, fieldIndex },
+        head: { rowIndex, fieldIndex },
+      };
+    }
+    this.#applySelection();
+  }
+
+  #selectRow(rowIndex: number): void {
+    const grid = this.#virtualGrid;
+    if (grid === null || grid.fields.length === 0) return;
+    this.#selection = {
+      anchor: { rowIndex, fieldIndex: 0 },
+      head: { rowIndex, fieldIndex: grid.fields.length - 1 },
+    };
+    this.#applySelection();
+  }
+
+  #selectColumn(fieldIndex: number): void {
+    const grid = this.#virtualGrid;
+    if (grid === null || grid.state.records.length === 0) return;
+    this.#selection = {
+      anchor: { rowIndex: 0, fieldIndex },
+      head: { rowIndex: grid.state.records.length - 1, fieldIndex },
+    };
+    this.#applySelection();
+  }
+
+  #selectAll(): void {
+    const grid = this.#virtualGrid;
+    if (grid === null || grid.fields.length === 0 || grid.state.records.length === 0) {
+      return;
+    }
+    this.#selection = {
+      anchor: { rowIndex: 0, fieldIndex: 0 },
+      head: {
+        rowIndex: grid.state.records.length - 1,
+        fieldIndex: grid.fields.length - 1,
+      },
+    };
+    this.#applySelection();
+  }
+
+  #selectionRect(): {
+    readonly top: number;
+    readonly bottom: number;
+    readonly left: number;
+    readonly right: number;
+  } | null {
+    const selection = this.#selection;
+    if (selection === null) return null;
+    const grid = this.#virtualGrid;
+    const lastRow = Math.max(0, (grid?.state.records.length ?? 1) - 1);
+    const lastCol = Math.max(0, (grid?.fields.length ?? 1) - 1);
+    return {
+      top: Math.min(selection.anchor.rowIndex, selection.head.rowIndex),
+      bottom: Math.min(
+        Math.max(selection.anchor.rowIndex, selection.head.rowIndex),
+        lastRow,
+      ),
+      left: Math.min(selection.anchor.fieldIndex, selection.head.fieldIndex),
+      right: Math.min(
+        Math.max(selection.anchor.fieldIndex, selection.head.fieldIndex),
+        lastCol,
+      ),
+    };
+  }
+
+  #isCellSelected(rowIndex: number, fieldIndex: number): boolean {
+    const rect = this.#selectionRect();
+    if (rect === null) return false;
+    return (
+      rowIndex >= rect.top &&
+      rowIndex <= rect.bottom &&
+      fieldIndex >= rect.left &&
+      fieldIndex <= rect.right
+    );
+  }
+
+  #applySelection(): void {
+    const grid = this.#virtualGrid;
+    if (grid === null) return;
+    const rect = this.#selectionRect();
+    const lastCol = grid.fields.length - 1;
+    const lastRow = grid.state.records.length - 1;
+    grid.viewport
+      .querySelectorAll<HTMLElement>('.loom-grid-cell')
+      .forEach((cell) => {
+        const rowIndex = Number(cell.dataset.rowIndex);
+        const fieldIndex = Number(cell.dataset.fieldIndex);
+        cell.classList.toggle(
+          'is-selected',
+          rect !== null &&
+            rowIndex >= rect.top &&
+            rowIndex <= rect.bottom &&
+            fieldIndex >= rect.left &&
+            fieldIndex <= rect.right,
+        );
+      });
+    grid.viewport
+      .querySelectorAll<HTMLElement>('.loom-grid-row .loom-grid-index-cell')
+      .forEach((indexCell) => {
+        const row = indexCell.closest<HTMLElement>('.loom-grid-row');
+        const rowIndex = Number(row?.dataset.rowIndex);
+        indexCell.classList.toggle(
+          'is-selected',
+          rect !== null &&
+            rowIndex >= rect.top &&
+            rowIndex <= rect.bottom &&
+            rect.left === 0 &&
+            rect.right === lastCol,
+        );
+      });
+    grid.viewport
+      .querySelectorAll<HTMLElement>('.loom-grid-header-cell[data-field-index]')
+      .forEach((headerCell) => {
+        const fieldIndex = Number(headerCell.dataset.fieldIndex);
+        headerCell.classList.toggle(
+          'is-selected',
+          rect !== null &&
+            fieldIndex >= rect.left &&
+            fieldIndex <= rect.right &&
+            rect.top === 0 &&
+            rect.bottom === lastRow,
+        );
+      });
+    const footerCount = this.#container.querySelector<HTMLElement>(
+      '.loom-grid-footer-count',
+    );
+    if (footerCount !== null) {
+      const base = `${grid.state.records.length} ${this.#translate('grid.rows')}`;
+      footerCount.textContent =
+        rect !== null && (rect.bottom - rect.top + 1) * (rect.right - rect.left + 1) > 1
+          ? `${base} · ${this.#translate('grid.selectedCount').replace('{count}', String((rect.bottom - rect.top + 1) * (rect.right - rect.left + 1)))}`
+          : base;
+    }
+  }
+
+  #copySelection(): void {
+    const grid = this.#virtualGrid;
+    const rect = this.#selectionRect();
+    if (grid === null || rect === null) return;
+    const host = this.#clipboardHost();
+    if (host === null) {
+      this.#announceClipboard(this.#translate('grid.clipboard.failed'));
+      return;
+    }
+    const lines: string[] = [];
+    for (let rowIndex = rect.top; rowIndex <= rect.bottom; rowIndex += 1) {
+      const record = grid.state.records[rowIndex];
+      const cells: string[] = [];
+      for (let fieldIndex = rect.left; fieldIndex <= rect.right; fieldIndex += 1) {
+        const field = grid.fields[fieldIndex];
+        cells.push(
+          record === undefined || field === undefined
+            ? ''
+            : (serializeCellForClipboard(field, record.values[field.id]) ?? ''),
+        );
+      }
+      lines.push(cells.join('\t'));
+    }
+    void host.writeText(lines.join('\n')).then(
+      () => this.#announceClipboard(this.#translate('grid.clipboard.copied')),
+      () => this.#announceClipboard(this.#translate('grid.clipboard.failed')),
+    );
   }
 
   #focusCellAt(targetRow: number, targetField: number): void {
