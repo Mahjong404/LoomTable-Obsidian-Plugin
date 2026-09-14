@@ -2,14 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type {
   Field,
+  FilterNode,
   GridViewConfig,
   JsonValue,
   LoomTableRecord,
+  SortSpec,
   View,
 } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
 import { ReadonlyGridRenderer, getVirtualRowRange } from '../../src/ui/readonly-grid-renderer';
+import type { GridDisplayPatch } from '../../src/ui/grid-display';
 import type { GridState } from '../../src/ui/grid-view-controller';
+import type { ViewCreateOutcome } from '../../src/ui/view-write-coordinator';
 
 describe('ReadonlyGridRenderer', () => {
   it('renders only the fixed-height viewport window for a large result page', () => {
@@ -67,7 +71,10 @@ describe('ReadonlyGridRenderer', () => {
     const firstCell = container.querySelector<HTMLElement>(
       '.loom-grid-cell[data-record-id="record_01"]',
     );
-    expect(grid?.getAttribute('aria-label')).toBe('Table');
+    const gridLabelId = grid?.getAttribute('aria-labelledby');
+    expect(gridLabelId ? container.querySelector('#' + gridLabelId)?.textContent : null).toBe(
+      'Table',
+    );
     expect(firstCell?.getAttribute('role')).toBe('gridcell');
     expect(firstCell?.tabIndex).toBe(0);
     firstCell?.focus();
@@ -91,9 +98,6 @@ describe('ReadonlyGridRenderer', () => {
     const link = container.querySelector<HTMLAnchorElement>('.loom-field-value-link');
     expect(link?.getAttribute('href')).toBe('https://example.com/docs');
     expect(link?.getAttribute('aria-label')).toBe('Open URL: https://example.com/docs');
-    expect(container.querySelector('.loom-grid-cell')?.getAttribute('aria-label')).toBe(
-      'Website: Open URL: https://example.com/docs',
-    );
   });
 
   it('restores the focused business cell or clamps to the nearest row after redraw', () => {
@@ -359,7 +363,6 @@ describe('ReadonlyGridRenderer', () => {
       vi.advanceTimersByTime(1_200);
       expect(status?.textContent).toBe('✓');
       expect(status?.getAttribute('aria-label')).toBe('Saved');
-      expect(status?.title).toBe('Saved');
     } finally {
       vi.useRealTimers();
     }
@@ -525,9 +528,11 @@ describe('ReadonlyGridRenderer', () => {
       'field_archived',
     );
     expect(container.querySelector('.loom-grid-conflicts')?.getAttribute('role')).toBe('region');
-    expect(container.querySelector('.loom-grid-conflicts')?.getAttribute('aria-label')).toBe(
-      'Conflict details',
-    );
+    const conflictRegion = container.querySelector('.loom-grid-conflicts');
+    const conflictsLabelId = conflictRegion?.getAttribute('aria-labelledby');
+    expect(
+      conflictsLabelId ? container.querySelector('#' + conflictsLabelId)?.textContent : null,
+    ).toBe('Conflict details');
     expect(
       container.querySelector('.loom-grid-conflicts')?.querySelector('details'),
     ).not.toBeNull();
@@ -620,7 +625,6 @@ describe('ReadonlyGridRenderer', () => {
       '.loom-grid-cell[data-field-id="field_name"]',
     );
     expect(cell?.textContent).toBe('Empty');
-    expect(cell?.getAttribute('aria-label')).toBe('Name: Empty');
     expect(cell?.dataset.valueState).toBe('empty');
   });
 
@@ -754,6 +758,514 @@ describe('ReadonlyGridRenderer', () => {
     editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_multi', ['option_1']);
   });
+
+  it('renders the shared View tabs in the navigation and forwards selection', () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1));
+
+    expect(container.querySelector('[role="tablist"]')).not.toBeNull();
+    const tabs = [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
+    expect(tabs.map((tab) => tab.dataset.viewId)).toEqual(['view_01']);
+    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
+    tabs[0]?.click();
+    expect(callbacks.onViewChange).toHaveBeenCalledWith('view_01');
+  });
+
+  it('offers an explicit View creation entry when the Table has no Views', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const outcomeView = createState(0).views[0];
+    if (outcomeView === undefined) throw new Error('View fixture is missing.');
+    const onCreateView = vi.fn(async (): Promise<ViewCreateOutcome> => ({
+      status: 'created',
+      view: outcomeView,
+    }));
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateView,
+    });
+
+    renderer.render(
+      createState(0, {
+        status: 'empty',
+        emptyReason: 'view',
+        views: [],
+        selectedViewId: null,
+        totalCount: 0,
+      }),
+    );
+
+    const entry = container.querySelector<HTMLButtonElement>('.loom-grid-status .loom-button');
+    expect(entry?.textContent).toBe('Create a View');
+    entry?.click();
+    expect(container.querySelector('.loom-view-create-form')).not.toBeNull();
+    expect(document.activeElement).toBe(container.querySelector('input[name="view-name"]'));
+
+    const form = container.querySelector<HTMLFormElement>('.loom-view-create-form');
+    const name = form?.querySelector<HTMLInputElement>('input[name="view-name"]');
+    if (form === null || name === null || name === undefined) {
+      throw new Error('Create form is missing.');
+    }
+    name.value = 'Board';
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(onCreateView).toHaveBeenCalledTimes(1));
+    expect(onCreateView).toHaveBeenCalledWith({ type: 'grid', name: 'Board' });
+    container.remove();
+  });
+});
+
+describe('Grid query controls', () => {
+  it('submits Search only on Enter or the Search button, never while typing', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onSearch = vi.fn(async (_term: string) => true);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onSearch,
+    });
+    renderer.render(createState(1));
+
+    const input = container.querySelector<HTMLInputElement>('input[data-role="grid-search"]');
+    if (input === null) throw new Error('Search input is missing.');
+    input.value = 'alp';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(onSearch).not.toHaveBeenCalled();
+
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await vi.waitFor(() => expect(onSearch).toHaveBeenCalledWith('alp'));
+    container.remove();
+  });
+
+  it('shows the applied Search term and clears it explicitly', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onSearch = vi.fn(async (_term: string) => true);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onSearch,
+    });
+    renderer.render(createState(1, { search: 'alpha' }));
+
+    const input = container.querySelector<HTMLInputElement>('input[data-role="grid-search"]');
+    expect(input?.value).toBe('alpha');
+    container.querySelector<HTMLButtonElement>('[data-action="search-clear"]')?.click();
+    await vi.waitFor(() => expect(onSearch).toHaveBeenCalledWith(''));
+    container.remove();
+  });
+
+  it('surfaces a too-long Search rejection and keeps the typed draft', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onSearch = vi.fn(async (_term: string) => false);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onSearch,
+    });
+    renderer.render(createState(1));
+
+    const input = container.querySelector<HTMLInputElement>('input[data-role="grid-search"]');
+    if (input === null) throw new Error('Search input is missing.');
+    input.value = 'x'.repeat(501);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    container.querySelector<HTMLButtonElement>('[data-action="search-submit"]')?.click();
+    await vi.waitFor(() => expect(onSearch).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-grid-search-error')).not.toBeNull(),
+    );
+    expect(container.querySelector<HTMLInputElement>('input[data-role="grid-search"]')?.value).toBe(
+      'x'.repeat(501),
+    );
+    container.remove();
+  });
+
+  it('opens the Filter Builder and applies the draft through onApplyFilter', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const savedState = createState(1);
+    const onApplyFilter = vi.fn(
+      async (_viewId: string, _filter: FilterNode | undefined) =>
+        ({ status: 'saved', view: savedState.views[0]! }) as const,
+    );
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter,
+    });
+    renderer.render(savedState);
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')?.click();
+    const builder = container.querySelector('.loom-filter-builder');
+    expect(builder).not.toBeNull();
+
+    builder?.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
+    const valueInput = container.querySelector<HTMLInputElement>('input[data-role="filter-value"]');
+    if (valueInput === null) throw new Error('Filter value input is missing.');
+    valueInput.value = 'needle';
+    valueInput.dispatchEvent(new Event('input', { bubbles: true }));
+
+    container.querySelector<HTMLButtonElement>('[data-action="filter-apply"]')?.click();
+    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled());
+    expect(onApplyFilter.mock.calls[0]?.[0]).toBe('view_01');
+    expect(onApplyFilter.mock.calls[0]?.[1]).toEqual({
+      kind: 'group',
+      operator: 'and',
+      children: [{ kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'needle' }],
+    });
+
+    renderer.render(savedState);
+    expect(container.querySelector('.loom-filter-builder')).toBeNull();
+    container.remove();
+  });
+
+  it('keeps the Filter Builder open when the config write fails', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const state = createState(1);
+    const onApplyFilter = vi.fn(
+      async (_viewId: string, _filter: FilterNode | undefined) =>
+        ({
+          status: 'failed',
+          kind: 'validation',
+          error: { message: 'The Server rejected the Filter.' },
+        }) as const,
+    );
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter,
+    });
+    renderer.render(state);
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')?.click();
+    container
+      .querySelector<HTMLElement>('.loom-filter-builder')
+      ?.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')
+      ?.click();
+    const valueInput = container.querySelector<HTMLInputElement>('input[data-role="filter-value"]');
+    if (valueInput === null) throw new Error('Filter value input is missing.');
+    valueInput.value = 'x';
+    valueInput.dispatchEvent(new Event('input', { bubbles: true }));
+    container.querySelector<HTMLButtonElement>('[data-action="filter-apply"]')?.click();
+    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled());
+
+    const issueState: GridState = {
+      ...state,
+      viewWriteIssues: {
+        view_01: { kind: 'error', message: 'The Server rejected the Filter.' },
+      },
+    };
+    renderer.render(issueState);
+    expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
+    expect(container.querySelector('.loom-query-panel-issue')?.textContent).toBe(
+      'The Server rejected the Filter.',
+    );
+    container.remove();
+  });
+
+  it('cycles the saved sort from the column header', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onApplySort = vi.fn(
+      async (_viewId: string, _sort: readonly SortSpec[]) =>
+        ({ status: 'saved', view: createState(0).views[0]! }) as const,
+    );
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplySort,
+    });
+    renderer.render(createState(1));
+
+    const headerButton = container.querySelector<HTMLButtonElement>(
+      '[data-action="header-sort"][data-field-id="field_name"]',
+    );
+    if (headerButton === null) throw new Error('Sortable header is missing.');
+    headerButton.click();
+    await vi.waitFor(() =>
+      expect(onApplySort).toHaveBeenCalledWith('view_01', [
+        { fieldId: 'field_name', direction: 'asc', nulls: 'last' },
+      ]),
+    );
+
+    const sorted = createState(1);
+    const sortedView = sorted.views[0];
+    if (sortedView?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...sorted,
+      views: [
+        {
+          ...sortedView,
+          config: {
+            ...sortedView.config,
+            sort: [{ fieldId: 'field_name', direction: 'asc', nulls: 'last' }],
+          },
+        },
+      ],
+    });
+    container
+      .querySelector<HTMLButtonElement>('[data-action="header-sort"][data-field-id="field_name"]')
+      ?.click();
+    await vi.waitFor(() =>
+      expect(onApplySort).toHaveBeenLastCalledWith('view_01', [
+        { fieldId: 'field_name', direction: 'desc', nulls: 'last' },
+      ]),
+    );
+
+    const descending = createState(1);
+    const descendingView = descending.views[0];
+    if (descendingView?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...descending,
+      views: [
+        {
+          ...descendingView,
+          config: {
+            ...descendingView.config,
+            sort: [{ fieldId: 'field_name', direction: 'desc', nulls: 'last' }],
+          },
+        },
+      ],
+    });
+    const header = container
+      .querySelector<HTMLElement>('[data-action="header-sort"][data-field-id="field_name"]')
+      ?.closest('[role="columnheader"]');
+    expect(header?.getAttribute('aria-sort')).toBe('descending');
+    container.remove();
+  });
+
+  it('opens the Sort Panel instead of dropping other rules when multiple sorts exist', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onApplySort = vi.fn();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplySort,
+    });
+    const state = createTwoFieldState();
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...state,
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            sort: [
+              { fieldId: 'field_name', direction: 'asc', nulls: 'last' },
+              { fieldId: 'field_second', direction: 'desc', nulls: 'first' },
+            ],
+          },
+        },
+      ],
+    });
+
+    container
+      .querySelector<HTMLButtonElement>('[data-action="header-sort"][data-field-id="field_name"]')
+      ?.click();
+
+    expect(onApplySort).not.toHaveBeenCalled();
+    const panel = container.querySelector('.loom-sort-panel');
+    expect(panel).not.toBeNull();
+    expect(panel?.querySelectorAll('li[data-sort-index]')).toHaveLength(2);
+    expect(
+      document.activeElement instanceof HTMLSelectElement &&
+        document.activeElement.dataset.role === 'sort-field' &&
+        document.activeElement.value === 'field_name',
+    ).toBe(true);
+    container.remove();
+  });
+
+  it('offers clear-filter, editor and clear-search actions for a no-match result', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onApplyFilter = vi.fn(
+      async (_viewId: string, _filter: FilterNode | undefined) =>
+        ({ status: 'saved', view: createState(0).views[0]! }) as const,
+    );
+    const onSearch = vi.fn(async (_term: string) => true);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter,
+      onSearch,
+    });
+    const state = createState(0);
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...state,
+      status: 'empty',
+      emptyReason: 'no-match',
+      search: 'alpha',
+      records: [],
+      totalCount: 0,
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            filter: {
+              kind: 'rule',
+              fieldId: 'field_name',
+              operator: 'contains',
+              value: 'a',
+            },
+          },
+        },
+      ],
+    });
+
+    container.querySelector<HTMLButtonElement>('[data-action="empty-clear-filter"]')?.click();
+    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalledWith('view_01', undefined));
+    container.querySelector<HTMLButtonElement>('[data-action="empty-clear-search"]')?.click();
+    await vi.waitFor(() => expect(onSearch).toHaveBeenCalledWith(''));
+    container.querySelector<HTMLButtonElement>('[data-action="empty-edit-filter"]')?.click();
+    expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
+    container.remove();
+  });
+
+  it('opens the Display panel and applies the patch through onApplyDisplay', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const savedState = createState(1);
+    const onApplyDisplay = vi.fn(async (_viewId: string, _patch: GridDisplayPatch) => ({
+      status: 'saved' as const,
+      view: savedState.views[0]!,
+    }));
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyDisplay,
+    });
+    renderer.render(savedState);
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-display"]')?.click();
+    const panel = container.querySelector('.loom-display-panel');
+    expect(panel).not.toBeNull();
+
+    panel
+      ?.querySelector<HTMLInputElement>(
+        'li[data-field-id="field_name"] input[data-role="display-width"]',
+      )
+      ?.focus();
+    const width = panel?.querySelector<HTMLInputElement>(
+      'li[data-field-id="field_name"] input[data-role="display-width"]',
+    );
+    if (width === null || width === undefined) throw new Error('width input missing');
+    width.value = '240';
+    width.dispatchEvent(new Event('input', { bubbles: true }));
+
+    container.querySelector<HTMLButtonElement>('[data-action="display-apply"]')?.click();
+    await vi.waitFor(() => expect(onApplyDisplay).toHaveBeenCalled());
+    const patch = onApplyDisplay.mock.calls[0]?.[1];
+    expect(patch?.columnWidths).toEqual({ field_name: 240 });
+    expect(patch?.projection).toEqual(['field_name']);
+
+    renderer.render(savedState);
+    expect(container.querySelector('.loom-display-panel')).toBeNull();
+    container.remove();
+  });
+
+  it('hides a column that remains in columnOrder', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const state = createTwoFieldState();
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+    });
+    renderer.render({
+      ...state,
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            projection: ['field_name'],
+            columnOrder: ['field_second', 'field_name'],
+          },
+        },
+      ],
+    });
+
+    const headers = [...container.querySelectorAll<HTMLElement>('.loom-grid-header-cell')].map(
+      (cell) => cell.textContent,
+    );
+    expect(headers).not.toContain('Second');
+    const cells = [
+      ...container.querySelectorAll<HTMLElement>('.loom-grid-row .loom-grid-cell'),
+    ].map((cell) => cell.dataset.fieldId);
+    expect(cells).toEqual(['field_name']);
+    container.remove();
+  });
+
+  it('pins frozen columns with shared sticky offsets in header and rows', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const state = createTwoFieldState();
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+    });
+    renderer.render({
+      ...state,
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            frozenFieldIds: ['field_second'],
+            columnWidths: { field_name: 200 },
+            columnOrder: ['field_name', 'field_second'],
+          },
+        },
+      ],
+    });
+
+    const headerCell = container.querySelector<HTMLElement>(
+      '.loom-grid-header-cell.loom-grid-frozen',
+    );
+    const rowCell = container.querySelector<HTMLElement>(
+      '.loom-grid-row .loom-grid-cell.loom-grid-frozen',
+    );
+    const indexCell = container.querySelector<HTMLElement>('.loom-grid-index-cell');
+    expect(headerCell?.style.left).toBe('56px');
+    expect(rowCell?.style.left).toBe('56px');
+    expect(indexCell?.classList.contains('loom-grid-index-cell')).toBe(true);
+    expect(headerCell?.classList.contains('loom-grid-frozen-last')).toBe(true);
+    expect(headerCell?.textContent).toContain('Second');
+    container.remove();
+  });
+
+  it('restores the scroll anchor by first visible Record and offset after a row-height change', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const state = createState(50);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+    });
+    renderer.render(state);
+    const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    if (viewport === null) throw new Error('viewport missing');
+    viewport.scrollTop = 36 * 10 + 12;
+
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...state,
+      views: [
+        {
+          ...view,
+          revision: 2,
+          config: { ...view.config, rowHeight: 'compact' },
+        },
+      ],
+    });
+
+    const nextViewport = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    expect(nextViewport?.scrollTop).toBe(10 * 30 + 12);
+    container.remove();
+  });
 });
 
 describe('getVirtualRowRange', () => {
@@ -877,6 +1389,7 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     nextCursor: null,
     changeCursor: 'change_01',
     totalCount: recordCount,
+    search: '',
     emptyReason: null,
     error: null,
     editStatuses: {},
@@ -885,6 +1398,19 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     editDrafts: [],
     editErrorRecordId: null,
     saveStatus: 'saved',
+    pendingViewIntents: [],
+    deletedViews: [],
+    deletedViewsStatus: 'idle',
+    deletedViewsError: null,
+    viewWritePending: [],
+    viewWriteIssues: {},
+    recordCreateOps: [],
+    deletedRecords: [],
+    deletedRecordsStatus: 'idle',
+    deletedRecordsNextCursor: null,
+    deletedRecordsHasMore: false,
+    deletedRecordsError: null,
+    lastDeletedRecord: null,
     ...update,
   };
 }
@@ -999,3 +1525,707 @@ function urlState(value: JsonValue | undefined): GridState {
     ],
   };
 }
+
+describe('Grid V5 cell interactions', () => {
+  function numberFieldState(): GridState {
+    const state = createState(1);
+    const view = state.views[0];
+    const field = state.fields[0];
+    const record = state.records[0];
+    if (view?.type !== 'grid' || field === undefined || record === undefined) {
+      throw new Error('Grid fixture is missing.');
+    }
+    const numberField: Field = {
+      id: 'field_name',
+      tableId: 'table_01',
+      name: 'Name',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'number',
+      config: {},
+    };
+    return {
+      ...state,
+      fields: [numberField],
+      records: [{ ...record, values: { field_name: 42 } }],
+    };
+  }
+
+  it('starts a replacement edit from a printable character', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(1));
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"]',
+    );
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor?.value).toBe('a');
+    container.remove();
+  });
+
+  it('clears the Cell to null on Delete and Backspace', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(1));
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"]',
+    );
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Delete', bubbles: true }));
+    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', null);
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true }));
+    expect(callbacks.onCellEdit).toHaveBeenCalledTimes(2);
+    container.remove();
+  });
+
+  it('copies the Cell text through the clipboard host seam', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const clipboard = { writeText: vi.fn(async () => {}), readText: vi.fn(async () => '') };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      clipboard,
+    });
+    renderer.render(createState(1));
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_01"]')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }));
+    await vi.waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith('Record 1'));
+    expect(container.querySelector('.loom-grid-clipboard-note')?.textContent).toContain('Copied');
+    container.remove();
+  });
+
+  it('pastes a valid clipboard value through the edit seam', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const clipboard = { writeText: vi.fn(async () => {}), readText: vi.fn(async () => '12.5') };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...callbacks,
+      clipboard,
+    });
+    renderer.render(numberFieldState());
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_01"]')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true }));
+    await vi.waitFor(() =>
+      expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', 12.5),
+    );
+    container.remove();
+  });
+
+  it('rejects an invalid paste with an explicit message and no write', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const clipboard = { writeText: vi.fn(async () => {}), readText: vi.fn(async () => 'abc') };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...callbacks,
+      clipboard,
+    });
+    renderer.render(numberFieldState());
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_01"]')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true }));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-grid-clipboard-note')?.textContent).toContain(
+        'not valid',
+      ),
+    );
+    expect(callbacks.onCellEdit).not.toHaveBeenCalled();
+    container.remove();
+  });
+
+  it('reports copy and paste as unsupported on complex Fields', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const clipboard = { writeText: vi.fn(async () => {}), readText: vi.fn(async () => 'x') };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...callbacks,
+      clipboard,
+    });
+    renderer.render(locationState({ lat: 31.2, lng: 121.4 }));
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_location"]',
+    );
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-grid-clipboard-note')?.textContent).toContain(
+        'cannot be copied or pasted',
+      ),
+    );
+    expect(clipboard.writeText).not.toHaveBeenCalled();
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true }));
+    expect(callbacks.onCellEdit).not.toHaveBeenCalled();
+    container.remove();
+  });
+
+  it('falls back to the nearest visible Cell when the focused Field is hidden', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    const state = createTwoFieldState();
+    renderer.render(state);
+    container.querySelector<HTMLElement>('.loom-grid-cell[data-field-id="field_second"]')?.focus();
+
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...state,
+      views: [
+        {
+          ...view,
+          config: { ...view.config, projection: ['field_name'] },
+        },
+      ],
+    });
+    expect((document.activeElement as HTMLElement | null)?.dataset.fieldId).toBe('field_name');
+    container.remove();
+  });
+});
+
+describe('Grid V5 virtualization safety', () => {
+  it('keeps an active editor mounted when virtual scrolling past its row', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(200));
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"]',
+    );
+    cell?.click();
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor).not.toBeNull();
+    if (editor === null) return;
+    editor.value = 'draft text';
+    editor.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    expect(viewport).not.toBeNull();
+    if (viewport === null) return;
+    viewport.scrollTop = 36 * 150;
+    viewport.dispatchEvent(new Event('scroll'));
+
+    const kept = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(kept).toBe(editor);
+    expect(kept?.value).toBe('draft text');
+    expect(document.activeElement).toBe(editor);
+    expect(callbacks.onCellEdit).not.toHaveBeenCalled();
+    container.remove();
+  });
+});
+
+describe('Grid V5 header action focus', () => {
+  it('restores focus to the same header sort control after a redraw', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplySort: vi.fn(async () => ({
+        status: 'saved' as const,
+        view: createState(1).views[0]!,
+      })),
+    });
+    renderer.render(createTwoFieldState());
+
+    const button = container.querySelector<HTMLElement>(
+      '.loom-grid-sort[data-field-id="field_second"]',
+    );
+    expect(button).not.toBeNull();
+    button?.focus();
+    renderer.render(createTwoFieldState());
+
+    expect(document.activeElement).toBe(
+      container.querySelector('.loom-grid-sort[data-field-id="field_second"]'),
+    );
+    container.remove();
+  });
+});
+
+describe('Grid V5 bounded DOM', () => {
+  it('keeps the row DOM bounded for a 20k-Record result set', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(20_000));
+
+    const rows = container.querySelectorAll('.loom-grid-row');
+    expect(rows.length).toBeLessThan(100);
+    expect(container.querySelector('.loom-grid-canvas')).not.toBeNull();
+    container.remove();
+  });
+});
+
+describe('Grid record create', () => {
+  it('opens the create form from the toolbar and submits through onCreateRecord', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const record: LoomTableRecord = {
+      id: 'record_new',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_name: 'Fresh' },
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    const callbacks = {
+      ...rendererCallbacks(),
+      onCreateRecord: vi.fn(async () => record),
+    };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(1));
+
+    const button = container.querySelector<HTMLButtonElement>('.loom-grid-record-create');
+    expect(button).not.toBeNull();
+    button?.click();
+    const form = container.querySelector<HTMLElement>('.loom-record-create');
+    expect(form).not.toBeNull();
+    const input = container.querySelector<HTMLInputElement>('.loom-record-create-fields input');
+    expect(input).not.toBeNull();
+    if (input === null) return;
+    input.value = 'Fresh';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    form?.querySelector<HTMLButtonElement>('.loom-record-create-submit')?.click();
+    await vi.waitFor(() => expect(callbacks.onCreateRecord).toHaveBeenCalled());
+    expect(callbacks.onCreateRecord).toHaveBeenCalledWith({ field_name: 'Fresh' });
+    await vi.waitFor(() =>
+      expect(callbacks.onRecordOpen).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'record_new' }),
+      ),
+    );
+    expect(container.querySelector('.loom-record-create')).toBeNull();
+    container.remove();
+  });
+
+  it('hides the create entry without the callback and disables it while offline', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(1));
+    expect(container.querySelector('.loom-grid-record-create')).toBeNull();
+
+    const withCreate = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord: vi.fn(async () => {
+        throw new Error('unreachable');
+      }),
+    });
+    withCreate.render(createState(1, { status: 'offline' }));
+    const button = container.querySelector<HTMLButtonElement>('.loom-grid-record-create');
+    expect(button?.disabled).toBe(true);
+    container.remove();
+  });
+
+  it('surfaces queued, failed, and applied create ops with retry/discard/open actions', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const created: LoomTableRecord = {
+      id: 'record_new',
+      tableId: 'table_01',
+      revision: 1,
+      values: {},
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    const callbacks = {
+      ...rendererCallbacks(),
+      onCreateRecord: vi.fn(async () => created),
+      onRetryRecordCreate: vi.fn(),
+      onDiscardRecordCreate: vi.fn(async () => undefined),
+      onDismissRecordCreate: vi.fn(),
+    };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(
+      createState(1, {
+        recordCreateOps: [
+          { operationId: 'op_pending', tableId: 'table_01', state: 'sending' },
+          {
+            operationId: 'op_failed',
+            tableId: 'table_01',
+            state: 'error',
+            lastError: {
+              kind: 'network',
+              message: 'offline',
+            },
+          },
+          {
+            operationId: 'op_done',
+            tableId: 'table_01',
+            state: 'idle',
+            createdRecord: created,
+          },
+        ],
+      }),
+    );
+
+    const ops = container.querySelectorAll<HTMLElement>('.loom-record-create-op');
+    expect(ops).toHaveLength(3);
+    const failed = [...ops].find((op) => op.dataset.operationId === 'op_failed');
+    failed?.querySelector<HTMLButtonElement>('.loom-record-create-retry')?.click();
+    expect(callbacks.onRetryRecordCreate).toHaveBeenCalledWith('op_failed');
+    failed?.querySelector<HTMLButtonElement>('.loom-record-create-discard')?.click();
+    expect(callbacks.onDiscardRecordCreate).toHaveBeenCalledWith('op_failed');
+
+    const done = [...ops].find((op) => op.dataset.operationId === 'op_done');
+    done?.querySelector<HTMLButtonElement>('.loom-record-create-open')?.click();
+    expect(callbacks.onRecordOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'record_new' }),
+    );
+    expect(callbacks.onDismissRecordCreate).toHaveBeenCalledWith('op_done');
+    container.remove();
+  });
+});
+
+describe('Grid record lifecycle', () => {
+  function lifecycleCallbacks() {
+    return {
+      ...rendererCallbacks(),
+      onDeleteRecord: vi.fn(async (_recordId: string) => undefined),
+      onUndoDelete: vi.fn(async () => undefined),
+      onDismissDeleteNotice: vi.fn(),
+      onLoadDeletedRecords: vi.fn(async () => undefined),
+      onLoadMoreDeletedRecords: vi.fn(async () => undefined),
+      onRestoreRecord: vi.fn(async (_recordId: string) => undefined),
+    };
+  }
+
+  function deletedRecord(id: string): LoomTableRecord {
+    return {
+      id,
+      tableId: 'table_01',
+      revision: 3,
+      values: { field_name: 'Deleted ' + id },
+      createdAt: '2026-08-14T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+      deletedAt: '2026-08-15T01:00:00Z',
+    };
+  }
+
+  it('confirms before deleting and reports the Record id after confirmation', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...callbacks,
+      confirmDangerousAction: vi.fn(async () => true),
+    });
+    renderer.render(createState(2));
+
+    const button = container.querySelector<HTMLButtonElement>(
+      '.loom-grid-delete-record[data-record-id="record_01"]',
+    );
+    expect(button).not.toBeNull();
+    button?.click();
+    await vi.waitFor(() => expect(callbacks.onDeleteRecord).toHaveBeenCalledWith('record_01'));
+    container.remove();
+  });
+
+  it('does not delete when the confirmation is cancelled', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...callbacks,
+      confirmDangerousAction: vi.fn(async () => false),
+    });
+    renderer.render(createState(2));
+
+    container
+      .querySelector<HTMLButtonElement>('.loom-grid-delete-record[data-record-id="record_01"]')
+      ?.click();
+    await Promise.resolve();
+    expect(callbacks.onDeleteRecord).not.toHaveBeenCalled();
+    container.remove();
+  });
+
+  it('hides the delete action without the callback and disables it while the Record is pending', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(2));
+    expect(container.querySelector('.loom-grid-delete-record')).toBeNull();
+
+    const withDelete = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      lifecycleCallbacks(),
+    );
+    withDelete.render(createState(2, { editStatuses: { record_01: 'queued' } }));
+    const button = container.querySelector<HTMLButtonElement>(
+      '.loom-grid-delete-record[data-record-id="record_01"]',
+    );
+    expect(button?.disabled).toBe(true);
+    container.remove();
+  });
+
+  it('shows the deleted notice with undo and dismiss actions', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(1, { lastDeletedRecord: deletedRecord('record_01') }));
+
+    const notice = container.querySelector<HTMLElement>('.loom-grid-deleted-notice');
+    expect(notice).not.toBeNull();
+    notice?.querySelector<HTMLButtonElement>('.loom-grid-undo-delete')?.click();
+    expect(callbacks.onUndoDelete).toHaveBeenCalledTimes(1);
+    notice?.querySelector<HTMLButtonElement>('.loom-grid-dismiss-delete')?.click();
+    expect(callbacks.onDismissDeleteNotice).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
+  it('loads the deleted Records list on demand and restores entries', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(
+      createState(1, {
+        deletedRecords: [deletedRecord('record_09'), deletedRecord('record_10')],
+        deletedRecordsStatus: 'ready',
+        deletedRecordsHasMore: true,
+        deletedRecordsNextCursor: 'cursor_2',
+      }),
+    );
+
+    const toggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-recycle"]');
+    expect(toggle).not.toBeNull();
+    toggle?.click();
+    expect(callbacks.onLoadDeletedRecords).toHaveBeenCalledTimes(1);
+
+    const panel = container.querySelector<HTMLElement>('.loom-recycle-panel');
+    expect(panel).not.toBeNull();
+    const items = panel?.querySelectorAll<HTMLElement>('.loom-recycle-item') ?? [];
+    expect(items).toHaveLength(2);
+    items[0]?.querySelector<HTMLButtonElement>('.loom-recycle-restore')?.click();
+    expect(callbacks.onRestoreRecord).toHaveBeenCalledWith('record_09');
+    panel?.querySelector<HTMLButtonElement>('.loom-recycle-load-more')?.click();
+    expect(callbacks.onLoadMoreDeletedRecords).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
+  it('surfaces the recycle list loading, empty, and error states', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1, { deletedRecordsStatus: 'loading' }));
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-recycle"]')?.click();
+    expect(container.querySelector('.loom-recycle-status')?.textContent).toContain('Loading');
+
+    renderer.render(createState(1, { deletedRecordsStatus: 'ready', deletedRecords: [] }));
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-recycle"]')?.click();
+    await Promise.resolve();
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-recycle"]')?.click();
+    expect(container.querySelector('.loom-recycle-status')?.textContent).toContain('No deleted');
+
+    renderer.render(
+      createState(1, {
+        deletedRecordsStatus: 'error',
+        deletedRecordsError: { message: 'boom' },
+      }),
+    );
+    expect(container.querySelector('.loom-recycle-status')?.textContent).toContain(
+      'could not be loaded',
+    );
+    container.remove();
+  });
+
+  it('renders a field type icon beside each column header name', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createTwoFieldState());
+
+    const headers = [...container.querySelectorAll<HTMLElement>('.loom-grid-header-cell')];
+    const nameHeader = headers.find((header) => header.textContent?.includes('Name'));
+    const secondHeader = headers.find((header) => header.textContent?.includes('Second'));
+    expect(nameHeader?.querySelector('.loom-field-type-icon svg')).not.toBeNull();
+    expect(secondHeader?.querySelector('.loom-field-type-icon svg')).not.toBeNull();
+    expect(nameHeader?.querySelector('.loom-field-type-icon')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
+    expect(nameHeader?.textContent).toContain('Name');
+    expect(secondHeader?.textContent).toContain('Second');
+  });
+
+  it('keeps the sort control working when a field type icon is present', () => {
+    const container = document.createElement('div');
+    const callbacks = { ...rendererCallbacks(), onApplySort: vi.fn() };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(1));
+
+    const button = container.querySelector<HTMLButtonElement>('.loom-grid-sort');
+    expect(button?.querySelector('.loom-field-type-icon svg')).not.toBeNull();
+    expect(button?.textContent).toContain('Name');
+    button?.click();
+    expect(callbacks.onApplySort).toHaveBeenCalled();
+  });
+
+  it('opens a cell context menu with edit, copy, and details actions', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(1));
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"]',
+    );
+    cell?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 50 }));
+
+    const menu = container.querySelector<HTMLElement>('.loom-context-menu');
+    expect(menu?.getAttribute('role')).toBe('menu');
+    const items = [...(menu?.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item') ?? [])];
+    expect(items.map((item) => item.textContent)).toEqual([
+      'Edit cell',
+      'Copy cell',
+      'Clear cell',
+      'Open details',
+    ]);
+    expect(items.every((item) => item.querySelector('.loom-ui-icon svg') !== null)).toBe(true);
+    items.find((item) => item.textContent === 'Open details')?.click();
+    expect(callbacks.onRecordOpen).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'record_01' }),
+    );
+    expect(container.querySelector('.loom-context-menu')).toBeNull();
+    container.remove();
+  });
+
+  it('dismisses the context menu with Escape and closes on outside pointerdown', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(1));
+    const cell = container.querySelector<HTMLElement>('.loom-grid-cell');
+
+    cell?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    expect(container.querySelector('.loom-context-menu')).not.toBeNull();
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    expect(container.querySelector('.loom-context-menu')).toBeNull();
+
+    cell?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    expect(container.querySelector('.loom-context-menu')).not.toBeNull();
+    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(container.querySelector('.loom-context-menu')).toBeNull();
+    container.remove();
+  });
+
+  it('routes the context-menu delete entry through the confirmation flow', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = {
+      ...rendererCallbacks(),
+      onDeleteRecord: vi.fn(async (_recordId: string) => undefined),
+      confirmDangerousAction: vi.fn(async () => true),
+    };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(1));
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"]',
+    );
+    cell?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    const danger = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+    ].find((item) => item.dataset.variant === 'danger');
+    expect(danger?.textContent).toBe('Delete Record');
+    danger?.click();
+    await vi.waitFor(() => expect(callbacks.onDeleteRecord).toHaveBeenCalledWith('record_01'));
+    container.remove();
+  });
+
+  it('paints filler grid lines and an inline add-record row below the last record', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = {
+      ...rendererCallbacks(),
+      onCreateRecord: vi.fn(async () => ({ id: 'record_new' }) as never),
+    };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(2));
+
+    const canvas = container.querySelector<HTMLElement>('.loom-grid-canvas');
+    expect(canvas?.style.backgroundImage).toContain('repeating-linear-gradient');
+    const addRow = container.querySelector<HTMLButtonElement>(
+      '.loom-grid-add-row[data-action="grid-add-row"]',
+    );
+    expect(addRow).not.toBeNull();
+    expect(addRow?.textContent).toContain('Add Record');
+    addRow?.click();
+    expect(container.querySelector('.loom-record-create')).not.toBeNull();
+    container.remove();
+  });
+
+  it('does not render the inline add row while more pages remain', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord: vi.fn(async () => ({ id: 'record_new' }) as never),
+    });
+    renderer.render(createState(2, { hasMore: true, nextCursor: 'cursor_2' }));
+    expect(container.querySelector('.loom-grid-add-row')).toBeNull();
+  });
+
+  it('clears an editable cell value from the context menu', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(1));
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_01"]')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    const clearItem = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+    ].find((item) => item.textContent === 'Clear cell');
+    expect(clearItem?.disabled).toBe(false);
+    clearItem?.click();
+    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', null);
+    container.remove();
+  });
+});

@@ -3,8 +3,11 @@ import {
   type Base,
   type ConflictBody,
   type ConflictDetails,
+  type CreateViewRequest,
   type Field,
   type AttachmentRef,
+  type FilterNode,
+  type GridViewConfig,
   type LoomTableClient,
   type LoomTableClientErrorDetails,
   type LoomTableRecord,
@@ -13,6 +16,7 @@ import {
   type MutationValue,
   type QueryRequest,
   type QueryResult,
+  type SortSpec,
   type Table,
   type UpdateRecordCommand,
   type View,
@@ -28,10 +32,36 @@ import { MutationQueue, createMutationId, type MutationQueueSnapshot } from './m
 import type {
   DurableMutationQueuePort,
   MutationQueueRecordSnapshot,
+  MutationQueueRecordState,
   MutationQueueSchedulerEvent,
 } from './mutation-queue-scheduler';
+import type { PersistedMutationQueueError } from '../settings/mutation-queue-settings';
 import { createTranslator, type Translator } from '../i18n';
 import type { ViewSaveStatus } from './save-status';
+import {
+  findBrokenViewFieldIds,
+  repairViewConfig,
+  type ViewConfigRepairInput,
+} from './view-config-repair';
+import {
+  MAX_SEARCH_CODE_POINTS,
+  MAX_SORT_FIELDS,
+  isSortableField,
+  validateFilterDraft,
+} from './view-query-model';
+import { validateDisplayPatch, type GridDisplayPatch } from './grid-display';
+import {
+  ViewWriteCoordinator,
+  type PendingViewCreateIntent,
+  type PendingViewCreateStore,
+  type ViewCopyOutcome,
+  type ViewCreateInput,
+  type ViewCreateOutcome,
+  type ViewUpdatePatch,
+  type ViewWriteClient,
+  type ViewWriteIssue,
+  type ViewWriteOutcome,
+} from './view-write-coordinator';
 
 export const DEFAULT_GRID_PAGE_SIZE = 100;
 
@@ -81,6 +111,7 @@ export interface GridState {
   readonly nextCursor: string | null;
   readonly changeCursor: string | null;
   readonly totalCount: number | null;
+  readonly search: string;
   readonly emptyReason: GridEmptyReason | null;
   readonly error: LoomTableClientErrorDetails | null;
   readonly editStatuses: Readonly<Record<string, GridEditStatus>>;
@@ -89,13 +120,51 @@ export interface GridState {
   readonly editDrafts: readonly GridEditDraft[];
   readonly editErrorRecordId: string | null;
   readonly saveStatus: ViewSaveStatus;
+  readonly pendingViewIntents: readonly PendingViewCreateIntent[];
+  readonly deletedViews: readonly View[];
+  readonly deletedViewsStatus: 'idle' | 'loading' | 'ready' | 'error';
+  readonly deletedViewsError: LoomTableClientErrorDetails | null;
+  readonly viewWritePending: readonly string[];
+  readonly viewWriteIssues: Readonly<Record<string, ViewWriteIssue>>;
+  readonly recordCreateOps: readonly RecordCreateOp[];
+  readonly deletedRecords: readonly LoomTableRecord[];
+  readonly deletedRecordsStatus: 'idle' | 'loading' | 'ready' | 'error';
+  readonly deletedRecordsNextCursor: string | null;
+  readonly deletedRecordsHasMore: boolean;
+  readonly deletedRecordsError: LoomTableClientErrorDetails | null;
+  readonly lastDeletedRecord: LoomTableRecord | null;
+}
+
+export type RecordDeleteGate = 'ok' | 'draft' | 'pending' | 'offline' | 'unavailable';
+
+export type RecordRestoreOutcome =
+  | { readonly status: 'restored'; readonly record: LoomTableRecord }
+  | { readonly status: 'already-active'; readonly record: LoomTableRecord };
+
+export interface RecordCreateOp {
+  readonly operationId: string;
+  readonly tableId: string;
+  readonly state: MutationQueueRecordState;
+  readonly lastError?: PersistedMutationQueueError;
+  readonly createdRecord?: LoomTableRecord;
 }
 
 export type GridDataSource = Pick<
   LoomTableClient,
   'listWorkspaces' | 'listBases' | 'listTables' | 'listFields' | 'listViews' | 'query'
 > &
-  Partial<Pick<LoomTableClient, 'getRecord' | 'mutate'>>;
+  Partial<
+    Pick<
+      LoomTableClient,
+      | 'getRecord'
+      | 'mutate'
+      | 'getView'
+      | 'createView'
+      | 'updateView'
+      | 'deleteView'
+      | 'restoreView'
+    >
+  >;
 
 export interface GridViewControllerOptions {
   readonly pageSize?: number;
@@ -105,6 +174,7 @@ export interface GridViewControllerOptions {
   readonly mutationNetworkAttempts?: number;
   readonly translate?: Translator;
   readonly onNonGridViewSelected?: (view: View, state: GridState) => void | Promise<void>;
+  readonly viewIntents?: PendingViewCreateStore;
 }
 
 export interface GridEditOptions {
@@ -129,6 +199,23 @@ interface GridSelection {
   readonly viewId?: string;
 }
 
+type ViewWriteRun = (view: View, writes: ViewWriteCoordinator) => Promise<ViewWriteOutcome>;
+
+interface ViewWriteRetry {
+  readonly view: View;
+  readonly run: ViewWriteRun;
+}
+
+interface ViewWriteFailure {
+  readonly status: 'failed';
+  readonly kind: LoomTableClientError['kind'];
+  readonly error: LoomTableClientErrorDetails;
+}
+
+function viewWriteFailed(kind: LoomTableClientError['kind'], message: string): ViewWriteFailure {
+  return { status: 'failed', kind, error: { message } };
+}
+
 const INITIAL_STATE: GridState = {
   status: 'idle',
   phase: 'idle',
@@ -146,6 +233,7 @@ const INITIAL_STATE: GridState = {
   nextCursor: null,
   changeCursor: null,
   totalCount: null,
+  search: '',
   emptyReason: null,
   error: null,
   editStatuses: {},
@@ -154,6 +242,19 @@ const INITIAL_STATE: GridState = {
   editDrafts: [],
   editErrorRecordId: null,
   saveStatus: 'saved',
+  pendingViewIntents: [],
+  deletedViews: [],
+  deletedViewsStatus: 'idle',
+  deletedViewsError: null,
+  viewWritePending: [],
+  viewWriteIssues: {},
+  recordCreateOps: [],
+  deletedRecords: [],
+  deletedRecordsStatus: 'idle',
+  deletedRecordsNextCursor: null,
+  deletedRecordsHasMore: false,
+  deletedRecordsError: null,
+  lastDeletedRecord: null,
 };
 
 export class GridViewController {
@@ -165,16 +266,23 @@ export class GridViewController {
   readonly #queue: MutationQueue | null;
   readonly #durableQueue: DurableMutationQueuePort | null;
   readonly #mutationIdFactory: () => string;
+  readonly #viewWrites: ViewWriteCoordinator | null;
   readonly #onNonGridViewSelected: GridViewControllerOptions['onNonGridViewSelected'];
   #queueUnsubscribe: (() => void) | null = null;
   readonly #authoritativeRecords = new Map<string, LoomTableRecord>();
   readonly #optimisticRecords = new Map<string, LoomTableRecord>();
   readonly #conflicts = new Map<string, GridConflict>();
   readonly #dirtyRecords = new Set<string>();
+  readonly #viewWriteBases = new Map<string, View>();
+  readonly #viewWriteRetries = new Map<string, ViewWriteRetry>();
+  readonly #viewWriteIssues = new Map<string, ViewWriteIssue>();
+  readonly #viewWritePending = new Set<string>();
   #state: GridState = INITIAL_STATE;
   #selection: GridSelection = {};
   #requestToken = 0;
-  #loadingMore = false;
+  #loadingMoreToken: number | null = null;
+  #searchTerm = '';
+  #searchViewId: string | null = null;
 
   constructor(client: GridDataSource, options: GridViewControllerOptions = {}) {
     this.#client = client;
@@ -184,6 +292,14 @@ export class GridViewController {
     this.#onNonGridViewSelected = options.onNonGridViewSelected;
     this.#durableQueue = options.mutationQueue ?? null;
     this.#mutationIdFactory = options.mutationIdFactory ?? createMutationId;
+    this.#viewWrites = isViewWriteClient(client)
+      ? new ViewWriteCoordinator(client, {
+          ...(options.viewIntents === undefined ? {} : { intents: options.viewIntents }),
+          ...(options.mutationIdFactory === undefined
+            ? {}
+            : { mutationIdFactory: options.mutationIdFactory }),
+        })
+      : null;
     const mutate = client.mutate?.bind(client);
     this.#queue =
       this.#durableQueue !== null || mutate === undefined
@@ -238,6 +354,24 @@ export class GridViewController {
       return record;
     }
     return this.#client.getRecord(record.id);
+  }
+
+  canNavigateRecord(recordId: string, direction: -1 | 1): boolean {
+    const index = this.#state.records.findIndex((record) => record.id === recordId);
+    if (index < 0) return false;
+    if (direction < 0) return index > 0;
+    return index < this.#state.records.length - 1 || this.#state.hasMore;
+  }
+
+  async navigateRecord(recordId: string, direction: -1 | 1): Promise<LoomTableRecord | null> {
+    let index = this.#state.records.findIndex((record) => record.id === recordId);
+    if (index < 0) return null;
+    if (index + direction >= this.#state.records.length && this.#state.hasMore) {
+      await this.loadNextPage();
+      index = this.#state.records.findIndex((record) => record.id === recordId);
+      if (index < 0) return null;
+    }
+    return this.#state.records[index + direction] ?? null;
   }
 
   subscribe(listener: GridStateListener): () => void {
@@ -419,6 +553,221 @@ export class GridViewController {
       );
     }
     return this.#state.records.find((candidate) => candidate.id === recordId);
+  }
+
+  get supportsRecordCreate(): boolean {
+    return this.#durableQueue !== null;
+  }
+
+  get supportsRecordLifecycle(): boolean {
+    return this.#durableQueue !== null;
+  }
+
+  async createRecord(values: Readonly<Record<string, MutationValue>>): Promise<LoomTableRecord> {
+    const tableId = this.#state.selectedTableId;
+    if (tableId === null) {
+      throw new LoomTableClientError('validation', {
+        message: 'A Table must be selected before creating a Record.',
+      });
+    }
+    if (this.#isOffline()) {
+      throw new LoomTableClientError('validation', {
+        message: 'Record creation is unavailable while offline.',
+      });
+    }
+    if (this.#durableQueue === null) {
+      throw new LoomTableClientError('validation', {
+        message: 'Record creation requires the durable mutation queue.',
+      });
+    }
+
+    const clientMutationId = this.#mutationIdFactory();
+    const result = await this.#durableQueue.enqueue(tableId, {
+      clientMutationId,
+      commands: [{ kind: 'createRecord', values: { ...values } }],
+    });
+    const record = result.results.find((item) => item.index === 0)?.record;
+    if (record === undefined) {
+      throw new LoomTableClientError('invalid-response', {
+        message: 'The mutation response did not include the created Record.',
+      });
+    }
+    return record;
+  }
+
+  retryRecordCreate(operationId: string): Promise<void> {
+    return this.#durableQueue?.retryOperation(operationId) ?? Promise.resolve();
+  }
+
+  async discardRecordCreate(operationId: string): Promise<void> {
+    await this.#durableQueue?.discardOperation(operationId);
+    this.#removeCreateOp(operationId);
+  }
+
+  dismissRecordCreate(operationId: string): void {
+    this.#removeCreateOp(operationId);
+  }
+
+  canDeleteRecord(recordId: string): RecordDeleteGate {
+    if (this.#isOffline() || this.#state.status === 'offline') return 'offline';
+    if (this.#durableQueue === null) return 'unavailable';
+    if (this.#state.editDrafts.some((draft) => draft.recordId === recordId)) return 'draft';
+    const status = this.#state.editStatuses[recordId];
+    if (
+      (status !== undefined && status !== 'terminal') ||
+      this.#state.conflicts.some((conflict) => conflict.recordId === recordId)
+    ) {
+      return 'pending';
+    }
+    return 'ok';
+  }
+
+  async deleteRecord(
+    recordId: string,
+    options?: { readonly discardDraft?: boolean },
+  ): Promise<LoomTableRecord> {
+    const gate = this.canDeleteRecord(recordId);
+    if (gate === 'draft' && options?.discardDraft !== true) {
+      throw this.#publishEditFailure(this.#translate('record.delete.blocked.draft'));
+    }
+    if (gate !== 'ok' && gate !== 'draft') {
+      throw this.#publishEditFailure(this.#translate(`record.delete.blocked.${gate}` as const));
+    }
+    const tableId = this.#state.selectedTableId;
+    const queue = this.#durableQueue;
+    if (tableId === null || queue === null) {
+      throw this.#publishEditFailure(this.#translate('record.delete.blocked.unavailable'));
+    }
+    const record =
+      this.#authoritativeRecords.get(recordId) ??
+      this.#state.records.find((candidate) => candidate.id === recordId);
+    if (record === undefined || record.deletedAt !== undefined) {
+      throw new LoomTableClientError('validation', {
+        message: 'The Record is unavailable for deletion.',
+      });
+    }
+    if (gate === 'draft') {
+      this.#publish({
+        editDrafts: removeEditDraftsForRecord(this.#state.editDrafts, recordId),
+      });
+    }
+    // Clear stale terminal entries so a retried delete is not stuck behind a
+    // failed lane head; in-flight ops were already rejected by the gate above.
+    await queue.discardAllForRecord(recordId);
+    const result = await queue.enqueue(tableId, {
+      clientMutationId: this.#mutationIdFactory(),
+      commands: [{ kind: 'deleteRecord', recordId, expectedRevision: record.revision }],
+    });
+    const deleted = result.results.find((item) => item.index === 0)?.record;
+    if (deleted === undefined) {
+      throw new LoomTableClientError('invalid-response', {
+        message: 'The mutation response did not include the deleted Record.',
+      });
+    }
+    return deleted;
+  }
+
+  async restoreRecord(recordId: string): Promise<RecordRestoreOutcome> {
+    const tableId = this.#state.selectedTableId;
+    const queue = this.#durableQueue;
+    const getRecord = this.#client.getRecord?.bind(this.#client);
+    if (tableId === null || queue === null || getRecord === undefined) {
+      throw this.#publishEditFailure(this.#translate('record.delete.blocked.unavailable'));
+    }
+    if (this.#isOffline()) {
+      throw this.#publishEditFailure(this.#translate('record.delete.blocked.offline'));
+    }
+    const current = await getRecord(recordId);
+    if (current.deletedAt === undefined) {
+      this.#authoritativeRecords.set(recordId, current);
+      this.#clearDeleteNotice(recordId);
+      this.#publish({
+        deletedRecords: this.#state.deletedRecords.filter((record) => record.id !== recordId),
+      });
+      return { status: 'already-active', record: current };
+    }
+    await queue.discardAllForRecord(recordId);
+    const result = await queue.enqueue(tableId, {
+      clientMutationId: this.#mutationIdFactory(),
+      commands: [
+        {
+          kind: 'restoreRecord',
+          recordId,
+          expectedRevision: current.revision,
+        },
+      ],
+    });
+    const restored = result.results.find((item) => item.index === 0)?.record;
+    if (restored === undefined) {
+      throw new LoomTableClientError('invalid-response', {
+        message: 'The mutation response did not include the restored Record.',
+      });
+    }
+    this.#clearDeleteNotice(recordId);
+    this.#publish({
+      deletedRecords: this.#state.deletedRecords.filter((record) => record.id !== recordId),
+    });
+    this.#reloadDeletedRecordsIfLoaded();
+    return { status: 'restored', record: restored };
+  }
+
+  async undoDelete(): Promise<RecordRestoreOutcome | null> {
+    const record = this.#state.lastDeletedRecord;
+    if (record === null) return null;
+    return this.restoreRecord(record.id);
+  }
+
+  dismissDeleteNotice(): void {
+    this.#publish({ lastDeletedRecord: null });
+  }
+
+  async loadDeletedRecords(options?: {
+    readonly pageSize?: number;
+    readonly cursor?: string;
+  }): Promise<void> {
+    const tableId = this.#state.selectedTableId;
+    if (tableId === null) return;
+    this.#publish({ deletedRecordsStatus: 'loading', deletedRecordsError: null });
+    try {
+      const result = await this.#client.query({
+        tableId,
+        lifecycle: 'deleted',
+        limit: options?.pageSize ?? this.#pageSize,
+        ...(options?.cursor === undefined ? {} : { cursor: options.cursor }),
+      });
+      this.#publish({
+        deletedRecords:
+          options?.cursor === undefined
+            ? [...result.items]
+            : [...this.#state.deletedRecords, ...result.items],
+        deletedRecordsStatus: 'ready',
+        deletedRecordsNextCursor: result.nextCursor ?? null,
+        deletedRecordsHasMore: result.hasMore,
+      });
+    } catch (error) {
+      this.#publish({
+        deletedRecordsStatus: 'error',
+        deletedRecordsError: asClientError(error).details,
+      });
+    }
+  }
+
+  async loadMoreDeletedRecords(): Promise<void> {
+    const cursor = this.#state.deletedRecordsNextCursor;
+    if (cursor === null || !this.#state.deletedRecordsHasMore) return;
+    await this.loadDeletedRecords({ cursor });
+  }
+
+  #clearDeleteNotice(recordId: string): void {
+    if (this.#state.lastDeletedRecord?.id === recordId) {
+      this.#publish({ lastDeletedRecord: null });
+    }
+  }
+
+  #reloadDeletedRecordsIfLoaded(): void {
+    if (this.#state.deletedRecordsStatus !== 'idle') {
+      void this.loadDeletedRecords();
+    }
   }
 
   resolveConflict(recordId: string, action: 'use-server' | 'overwrite' | 'discard-all'): void {
@@ -604,6 +953,10 @@ export class GridViewController {
         tableId: table.id,
         viewId: view.id,
       };
+      if (this.#searchViewId !== view.id) {
+        this.#searchTerm = '';
+        this.#searchViewId = view.id;
+      }
       this.#publish({
         status: 'loading',
         phase: 'query',
@@ -623,6 +976,21 @@ export class GridViewController {
         totalCount: null,
         emptyReason: null,
         error: null,
+        deletedViews: [],
+        deletedViewsStatus: 'idle',
+        deletedViewsError: null,
+        // Keep create ops for the re-selected Table so a pending create
+        // resurfaces after navigation; other Tables' ops are dropped.
+        recordCreateOps: this.#state.recordCreateOps.filter((op) => op.tableId === table.id),
+        deletedRecords: [],
+        deletedRecordsStatus: 'idle',
+        deletedRecordsNextCursor: null,
+        deletedRecordsHasMore: false,
+        deletedRecordsError: null,
+        lastDeletedRecord:
+          this.#state.lastDeletedRecord?.tableId === table.id
+            ? this.#state.lastDeletedRecord
+            : null,
       });
       await this.#loadQuery(requestToken, table.id, view, undefined, true);
     } catch (error) {
@@ -681,21 +1049,475 @@ export class GridViewController {
     await this.load();
   }
 
+  async createView(input: ViewCreateInput): Promise<ViewCreateOutcome> {
+    const tableId = this.#state.selectedTableId;
+    if (this.#viewWrites === null || tableId === null || this.#isOffline()) {
+      return viewWriteFailed('validation', 'View creation is unavailable for this connection.');
+    }
+    const request = createViewRequest(input, this.#state);
+    if (request === null) {
+      return viewWriteFailed(
+        'validation',
+        'A Map View requires an active Location Field in this Table.',
+      );
+    }
+    const outcome = await this.#viewWrites.createView(tableId, request);
+    if (outcome.status === 'created') {
+      await this.#acceptCreatedView(outcome.view);
+    } else {
+      this.#publish({});
+    }
+    return outcome;
+  }
+
+  async retryViewIntent(intentId: string): Promise<ViewCreateOutcome | null> {
+    if (this.#viewWrites === null) return null;
+    const outcome = await this.#viewWrites.retryCreateIntent(intentId);
+    if (outcome?.status === 'created') {
+      await this.#acceptCreatedView(outcome.view);
+    } else {
+      this.#publish({});
+    }
+    return outcome;
+  }
+
+  async dismissViewIntent(intentId: string): Promise<void> {
+    await this.#viewWrites?.dismissCreateIntent(intentId);
+    this.#publish({});
+  }
+
+  async openManageViews(): Promise<void> {
+    const tableId = this.#state.selectedTableId;
+    if (tableId === null || this.#isOffline()) {
+      this.#publish({
+        deletedViews: [],
+        deletedViewsStatus: 'error',
+        deletedViewsError: {
+          message:
+            tableId === null
+              ? 'Select a Table to manage its Views.'
+              : 'View management is unavailable while offline.',
+        },
+      });
+      return;
+    }
+    this.#publish({ deletedViewsStatus: 'loading', deletedViewsError: null });
+    try {
+      const deletedViews = await this.#client.listViews(tableId, { lifecycle: 'deleted' });
+      this.#publish({ deletedViews, deletedViewsStatus: 'ready', deletedViewsError: null });
+    } catch (error) {
+      this.#publish({
+        deletedViewsStatus: 'error',
+        deletedViewsError: asClientError(error).details,
+      });
+    }
+  }
+
+  closeManageViews(): void {
+    this.#publish({
+      deletedViews: [],
+      deletedViewsStatus: 'idle',
+      deletedViewsError: null,
+    });
+  }
+
+  async updateView(viewId: string, patch: ViewUpdatePatch): Promise<ViewWriteOutcome> {
+    return this.#runViewWrite(viewId, (view, writes) => writes.updateView(view, patch));
+  }
+
+  async renameView(viewId: string, name: string): Promise<ViewWriteOutcome> {
+    return this.#runViewWrite(viewId, (view, writes) => writes.updateView(view, { name }));
+  }
+
+  async copyView(viewId: string, name: string): Promise<ViewCopyOutcome> {
+    const view = this.#state.views.find((candidate) => candidate.id === viewId);
+    if (view === undefined || this.#viewWrites === null) {
+      return viewWriteFailed('validation', 'View copying is unavailable for this connection.');
+    }
+    if (this.#isOffline()) {
+      return viewWriteFailed('network', 'View copying is unavailable while offline.');
+    }
+    if (findBrokenViewFieldIds(view, this.#state.fields).queryFieldIds.length > 0) {
+      return { status: 'repair-required', view };
+    }
+    const repairedConfig = repairViewConfig(view, this.#state.fields, { removeFieldIds: [] });
+    const source = repairedConfig === null ? view : ({ ...view, config: repairedConfig } as View);
+    const outcome = await this.#viewWrites.copyView(source, name);
+    if (outcome.status === 'created') {
+      await this.#acceptCreatedView(outcome.view);
+    } else {
+      this.#publish({});
+    }
+    return outcome;
+  }
+
+  async deleteView(viewId: string): Promise<ViewWriteOutcome> {
+    return this.#runViewWrite(viewId, (view, writes) => writes.deleteView(view));
+  }
+
+  async restoreView(viewId: string): Promise<ViewWriteOutcome> {
+    return this.#runViewWrite(viewId, (view, writes) => writes.restoreView(view));
+  }
+
+  async applyViewFilter(viewId: string, filter: FilterNode | undefined): Promise<ViewWriteOutcome> {
+    return this.#runViewWrite(viewId, (view, writes) => {
+      if (view.type !== 'grid') {
+        return Promise.resolve(
+          viewWriteFailed('validation', 'Filters can only be saved on a Grid View.'),
+        );
+      }
+      if (filter !== undefined && validateFilterDraft(filter, this.#state.fields).length > 0) {
+        return Promise.resolve(viewWriteFailed('validation', 'The Filter draft is invalid.'));
+      }
+      const config: { -readonly [K in keyof GridViewConfig]: GridViewConfig[K] } = {
+        ...view.config,
+      };
+      if (filter === undefined) {
+        delete config.filter;
+      } else {
+        config.filter = filter;
+      }
+      return writes.updateView(view, { config });
+    });
+  }
+
+  async applyViewSort(viewId: string, sort: readonly SortSpec[]): Promise<ViewWriteOutcome> {
+    return this.#runViewWrite(viewId, (view, writes) => {
+      if (view.type !== 'grid') {
+        return Promise.resolve(
+          viewWriteFailed('validation', 'Sort can only be saved on a Grid View.'),
+        );
+      }
+      const fields = new Map(this.#state.fields.map((field) => [field.id, field]));
+      const seen = new Set<string>();
+      for (const entry of sort) {
+        const field = fields.get(entry.fieldId);
+        if (
+          field === undefined ||
+          field.deletedAt !== undefined ||
+          !isSortableField(field) ||
+          seen.has(entry.fieldId)
+        ) {
+          return Promise.resolve(viewWriteFailed('validation', 'The Sort draft is invalid.'));
+        }
+        seen.add(entry.fieldId);
+      }
+      if (sort.length > MAX_SORT_FIELDS) {
+        return Promise.resolve(viewWriteFailed('validation', 'The Sort draft is invalid.'));
+      }
+      return writes.updateView(view, {
+        config: { ...view.config, sort: sort.map((entry) => ({ ...entry })) },
+      });
+    });
+  }
+
+  async applyViewDisplay(viewId: string, patch: GridDisplayPatch): Promise<ViewWriteOutcome> {
+    return this.#runViewWrite(viewId, (view, writes) => {
+      if (view.type !== 'grid') {
+        return Promise.resolve(
+          viewWriteFailed('validation', 'Display settings can only be saved on a Grid View.'),
+        );
+      }
+      if (validateDisplayPatch(patch, this.#state.fields).length > 0) {
+        return Promise.resolve(viewWriteFailed('validation', 'The display patch is invalid.'));
+      }
+      return writes.updateView(view, {
+        config: {
+          ...view.config,
+          projection: [...patch.projection],
+          columnOrder: [...patch.columnOrder],
+          columnWidths: { ...patch.columnWidths },
+          frozenFieldIds: [...patch.frozenFieldIds],
+          rowHeight: patch.rowHeight,
+        },
+      });
+    });
+  }
+
+  async setSearch(raw: string): Promise<boolean> {
+    const term = raw.trim();
+    if ([...term].length > MAX_SEARCH_CODE_POINTS) return false;
+    const view = this.#state.views.find((candidate) => candidate.id === this.#state.selectedViewId);
+    if (view === undefined || !isGridView(view) || this.#state.selectedTableId === null) {
+      return false;
+    }
+    if (this.#searchViewId === view.id && term === this.#searchTerm) return true;
+    this.#searchTerm = term;
+    this.#searchViewId = view.id;
+    this.#publish({});
+    await this.#reloadSelectedViewQuery(view);
+    return true;
+  }
+
+  async repairView(viewId: string, repair: ViewConfigRepairInput): Promise<ViewWriteOutcome> {
+    return this.#runViewWrite(viewId, (view, writes) => {
+      const config = repairViewConfig(view, this.#state.fields, repair);
+      if (config === null) {
+        return Promise.resolve(
+          viewWriteFailed('validation', 'The View repair requires an active Location Field.'),
+        );
+      }
+      const remaining = findBrokenViewFieldIds({ ...view, config } as View, this.#state.fields);
+      if (remaining.queryFieldIds.length > 0) {
+        return Promise.resolve(
+          viewWriteFailed(
+            'validation',
+            'Some broken Field references still need a decision before saving.',
+          ),
+        );
+      }
+      return writes.updateView(view, { config });
+    });
+  }
+
+  async resolveViewConflict(viewId: string, action: 'adopt-latest' | 're-edit'): Promise<void> {
+    const issue = this.#viewWriteIssues.get(viewId);
+    if (issue?.kind !== 'conflict') return;
+    this.#viewWriteIssues.delete(viewId);
+    const latest = issue.latestView;
+    if (latest === undefined || latest.deletedAt !== undefined) {
+      this.#publish({});
+      return;
+    }
+    if (action === 're-edit') {
+      this.#viewWriteBases.set(viewId, latest);
+      this.#publish({});
+      return;
+    }
+    const views = this.#state.views.some((candidate) => candidate.id === viewId)
+      ? this.#state.views.map((candidate) => (candidate.id === viewId ? latest : candidate))
+      : [...this.#state.views, latest];
+    this.#publish({ views });
+    if (this.#state.selectedViewId === viewId && isGridView(latest)) {
+      await this.#reloadSelectedViewQuery(latest, this.#translate('view.write.refreshFailed'));
+    }
+  }
+
+  async retryViewWrite(viewId: string): Promise<ViewWriteOutcome | null> {
+    const entry = this.#viewWriteRetries.get(viewId);
+    if (entry === undefined) return null;
+    return this.#executeViewWrite(entry.view, entry.run);
+  }
+
+  async dismissViewWriteIssue(viewId: string): Promise<void> {
+    this.#viewWriteIssues.delete(viewId);
+    this.#viewWriteRetries.delete(viewId);
+    this.#viewWriteBases.delete(viewId);
+    await this.#refreshViewLists();
+  }
+
+  async #runViewWrite(viewId: string, run: ViewWriteRun): Promise<ViewWriteOutcome> {
+    const view =
+      this.#viewWriteBases.get(viewId) ??
+      this.#state.views.find((candidate) => candidate.id === viewId) ??
+      this.#state.deletedViews.find((candidate) => candidate.id === viewId);
+    if (view === undefined) {
+      return viewWriteFailed('validation', 'The View is no longer available in this Table.');
+    }
+    return this.#executeViewWrite(view, run);
+  }
+
+  async #executeViewWrite(view: View, run: ViewWriteRun): Promise<ViewWriteOutcome> {
+    const writes = this.#viewWrites;
+    if (writes === null) {
+      return viewWriteFailed('validation', 'View management is unavailable for this connection.');
+    }
+    if (this.#isOffline()) {
+      return viewWriteFailed('network', 'View management is unavailable while offline.');
+    }
+    if (this.#viewWritePending.has(view.id)) {
+      return viewWriteFailed('validation', 'Another View write is already in progress.');
+    }
+    this.#viewWritePending.add(view.id);
+    this.#publish({});
+    try {
+      const outcome = await run(view, writes);
+      await this.#handleViewWriteOutcome(view, outcome, run);
+      return outcome;
+    } finally {
+      this.#viewWritePending.delete(view.id);
+      this.#publish({});
+    }
+  }
+
+  async #handleViewWriteOutcome(
+    view: View,
+    outcome: ViewWriteOutcome,
+    run: ViewWriteRun,
+  ): Promise<void> {
+    switch (outcome.status) {
+      case 'saved': {
+        this.#clearViewWriteState(view.id);
+        if (this.#state.views.some((candidate) => candidate.id === view.id)) {
+          const views = this.#state.views.map((candidate) =>
+            candidate.id === view.id ? outcome.view : candidate,
+          );
+          this.#publish({ views });
+        } else {
+          await this.#refreshViewLists();
+        }
+        if (this.#state.selectedViewId === view.id && isGridView(outcome.view)) {
+          await this.#reloadSelectedViewQuery(
+            outcome.view,
+            this.#translate('view.write.refreshFailed'),
+          );
+        }
+        return;
+      }
+      case 'deleted': {
+        this.#clearViewWriteState(view.id);
+        await this.#applyViewDeleted(view.id);
+        return;
+      }
+      case 'conflict': {
+        this.#viewWriteIssues.set(view.id, {
+          kind: 'conflict',
+          message: 'The View configuration changed on the Server.',
+          ...(outcome.latestView === null ? {} : { latestView: outcome.latestView }),
+        });
+        this.#publish({});
+        return;
+      }
+      case 'unresolved': {
+        this.#viewWriteRetries.set(view.id, { view, run });
+        this.#viewWriteIssues.set(view.id, {
+          kind: 'unresolved',
+          message: outcome.error.message,
+        });
+        this.#publish({});
+        return;
+      }
+      case 'failed': {
+        this.#viewWriteIssues.set(view.id, {
+          kind:
+            outcome.kind === 'authentication' || outcome.kind === 'forbidden'
+              ? 'permission'
+              : 'error',
+          message: outcome.error.message,
+        });
+        this.#publish({});
+      }
+    }
+  }
+
+  async #applyViewDeleted(viewId: string): Promise<void> {
+    const index = this.#state.views.findIndex((candidate) => candidate.id === viewId);
+    const wasSelected = this.#state.selectedViewId === viewId;
+    await this.#refreshViewLists();
+    if (!wasSelected) return;
+    const active = this.#state.views.filter((candidate) => candidate.deletedAt === undefined);
+    const fallback = active[index] ?? active[index - 1] ?? null;
+    if (fallback === null) {
+      this.#selection = {
+        ...(this.#state.selectedWorkspaceId === null
+          ? {}
+          : { workspaceId: this.#state.selectedWorkspaceId }),
+        ...(this.#state.selectedBaseId === null ? {} : { baseId: this.#state.selectedBaseId }),
+        ...(this.#state.selectedTableId === null ? {} : { tableId: this.#state.selectedTableId }),
+      };
+      this.#publishEmpty('view', { selectedViewId: null });
+      return;
+    }
+    await this.selectView(fallback.id);
+  }
+
+  async #refreshViewLists(): Promise<void> {
+    const tableId = this.#state.selectedTableId;
+    if (tableId === null) return;
+    try {
+      const views = await this.#client.listViews(tableId);
+      this.#publish({ views });
+      if (this.#state.deletedViewsStatus !== 'idle') {
+        await this.#refreshDeletedViews(tableId);
+      }
+    } catch {
+      this.#publish({});
+    }
+  }
+
+  async #refreshDeletedViews(tableId: string): Promise<void> {
+    try {
+      const deletedViews = await this.#client.listViews(tableId, { lifecycle: 'deleted' });
+      this.#publish({ deletedViews, deletedViewsStatus: 'ready', deletedViewsError: null });
+    } catch (error) {
+      this.#publish({
+        deletedViewsStatus: 'error',
+        deletedViewsError: asClientError(error).details,
+      });
+    }
+  }
+
+  async #reloadSelectedViewQuery(view: GridView, failureMessage?: string): Promise<void> {
+    const requestToken = ++this.#requestToken;
+    this.#publish({
+      status: 'loading',
+      phase: 'query',
+      error: null,
+      hasMore: false,
+      nextCursor: null,
+      totalCount: null,
+    });
+    try {
+      await this.#loadQuery(requestToken, view.tableId, view, undefined, true);
+    } catch (error) {
+      if (failureMessage !== undefined) {
+        if (!this.#isCurrent(requestToken)) return;
+        const clientError = asClientError(error);
+        this.#publish({
+          status: gridStatusForError(clientError, this.#isOffline()),
+          phase: 'idle',
+          error: { ...clientError.details, message: failureMessage },
+        });
+        return;
+      }
+      this.#publishError(requestToken, error);
+    }
+  }
+
+  #clearViewWriteState(viewId: string): void {
+    this.#viewWriteIssues.delete(viewId);
+    this.#viewWriteRetries.delete(viewId);
+    this.#viewWriteBases.delete(viewId);
+  }
+
+  async #acceptCreatedView(view: View): Promise<void> {
+    const tableId = this.#state.selectedTableId;
+    if (tableId !== null) {
+      try {
+        const views = await this.#client.listViews(tableId);
+        this.#publish({ views });
+      } catch {
+        this.#publish({});
+      }
+    }
+    if (view.type === 'grid') {
+      await this.selectView(view.id);
+    } else {
+      await this.#onNonGridViewSelected?.(view, this.#state);
+    }
+  }
+
   async loadNextPage(): Promise<void> {
     const { nextCursor, selectedTableId, selectedViewId, views } = this.#state;
-    if (this.#loadingMore || nextCursor === null || selectedTableId === null) return;
+    if (
+      this.#loadingMoreToken === this.#requestToken ||
+      nextCursor === null ||
+      selectedTableId === null
+    ) {
+      return;
+    }
     const view = views.find((candidate) => candidate.id === selectedViewId);
     if (view === undefined || !isGridView(view)) return;
 
     const requestToken = this.#requestToken;
-    this.#loadingMore = true;
+    this.#loadingMoreToken = requestToken;
     this.#publish({ status: 'loading', phase: 'query', error: null });
     try {
       await this.#loadQuery(requestToken, selectedTableId, view, nextCursor, false);
     } catch (error) {
       this.#publishError(requestToken, error);
     } finally {
-      this.#loadingMore = false;
+      if (this.#loadingMoreToken === requestToken) this.#loadingMoreToken = null;
     }
   }
 
@@ -707,7 +1529,7 @@ export class GridViewController {
     replace: boolean,
   ): Promise<void> {
     return this.#client
-      .query(createGridQuery(tableId, view, this.#pageSize, cursor))
+      .query(createGridQuery(tableId, view, this.#pageSize, cursor, this.#searchTerm))
       .then(async (result) => {
         if (!this.#isCurrent(requestToken)) return;
         if (replace || !this.#state.records.length) {
@@ -726,7 +1548,9 @@ export class GridViewController {
   }
 
   #applyQueryResult(result: QueryResult, replace: boolean): void {
-    const sourceRecords = replace ? result.items : [...this.#state.records, ...result.items];
+    const knownIds = new Set(this.#state.records.map((record) => record.id));
+    const incoming = replace ? result.items : result.items.filter((item) => !knownIds.has(item.id));
+    const sourceRecords = replace ? incoming : [...this.#state.records, ...incoming];
     for (const record of result.items) {
       this.#authoritativeRecords.set(record.id, record);
       if (this.#pendingFor(record.id) === 0) {
@@ -766,19 +1590,96 @@ export class GridViewController {
     }
     this.#conflicts.delete(recordId);
     const clearsEditError = this.#state.editErrorRecordId === recordId;
+    if (record.deletedAt !== undefined) {
+      // Deleted Records leave the active page immediately; membership/counts
+      // are re-queried through the invalidation path, never recomputed here.
+      this.#optimisticRecords.delete(recordId);
+      this.#publish({
+        records: this.#state.records.filter((candidate) => candidate.id !== recordId),
+        conflicts: [...this.#conflicts.values()],
+        editStatuses: removeEditStatus(this.#state.editStatuses, recordId),
+        editDrafts: removeEditDraftsForRecord(this.#state.editDrafts, recordId),
+        editError: clearsEditError ? null : this.#state.editError,
+        editErrorRecordId: clearsEditError ? null : this.#state.editErrorRecordId,
+        lastDeletedRecord: record,
+      });
+      this.#reloadDeletedRecordsIfLoaded();
+      return;
+    }
     this.#publish({
       records: replaceRecord(this.#state.records, this.#optimisticRecords.get(recordId) ?? record),
       conflicts: [...this.#conflicts.values()],
       editError: clearsEditError ? null : this.#state.editError,
       editErrorRecordId: clearsEditError ? null : this.#state.editErrorRecordId,
+      ...(this.#state.lastDeletedRecord?.id === recordId ? { lastDeletedRecord: null } : {}),
+      deletedRecords: this.#state.deletedRecords.filter((candidate) => candidate.id !== recordId),
     });
   }
 
   #handleDurableQueueEvent(event: MutationQueueSchedulerEvent): void {
-    if (event.applied !== undefined) {
-      this.#handleMutationApplied(event.recordId, event.applied.result);
+    if (event.tableId !== undefined && event.tableId !== this.#state.selectedTableId) {
+      return;
     }
-    this.#handleQueueSnapshot(event.recordId, controllerSnapshot(event.snapshot));
+    if (event.kind === 'createRecord') {
+      this.#handleCreateOpEvent(event);
+      return;
+    }
+    const recordId =
+      event.recordId ?? event.applied?.result.results.find((item) => item.index === 0)?.record.id;
+    if (recordId === undefined) return;
+    if (event.applied !== undefined) {
+      this.#handleMutationApplied(recordId, event.applied.result);
+    }
+    if (event.recordId !== undefined) {
+      this.#handleQueueSnapshot(recordId, controllerSnapshot(event.snapshot));
+    }
+  }
+
+  #handleCreateOpEvent(event: MutationQueueSchedulerEvent): void {
+    const tableId = event.tableId ?? this.#state.selectedTableId;
+    if (tableId === null) return;
+    const ops = [...this.#state.recordCreateOps];
+    const index = ops.findIndex((op) => op.operationId === event.operationId);
+    const previous = index < 0 ? undefined : ops[index];
+    const createdRecord =
+      event.applied?.result.results.find((item) => item.index === 0)?.record ??
+      previous?.createdRecord;
+    // A lane that goes idle without an applied result was discarded — drop the op.
+    if (createdRecord === undefined && event.snapshot.state === 'idle') {
+      if (index >= 0) {
+        ops.splice(index, 1);
+        this.#publishCreateOps(ops);
+      }
+      return;
+    }
+    // Lane removal after apply reports an idle snapshot; keep the applied
+    // marker so the "open new Record" affordance survives until dismissed.
+    const lastError = event.snapshot.lastError ?? previous?.lastError;
+    const next: RecordCreateOp = {
+      operationId: event.operationId,
+      tableId,
+      state: createdRecord !== undefined ? 'idle' : event.snapshot.state,
+      ...(lastError === undefined ? {} : { lastError }),
+      ...(createdRecord === undefined ? {} : { createdRecord }),
+    };
+    if (index < 0) ops.push(next);
+    else ops[index] = next;
+    this.#publishCreateOps(ops);
+  }
+
+  #publishCreateOps(ops: readonly RecordCreateOp[]): void {
+    const nextState = { ...this.#state, recordCreateOps: ops };
+    this.#publish({
+      recordCreateOps: ops,
+      saveStatus: gridSaveStatus(nextState, this.#isOffline(), this.#dirtyRecords.size > 0),
+    });
+  }
+
+  #removeCreateOp(operationId: string): void {
+    if (!this.#state.recordCreateOps.some((op) => op.operationId === operationId)) return;
+    this.#publishCreateOps(
+      this.#state.recordCreateOps.filter((op) => op.operationId !== operationId),
+    );
   }
 
   #handleLegacyQueueSnapshot(recordId: string, snapshot: MutationQueueSnapshot): void {
@@ -898,6 +1799,8 @@ export class GridViewController {
         >
       >,
   ): void {
+    this.#searchTerm = '';
+    this.#searchViewId = null;
     this.#publish({
       ...state,
       status: 'empty',
@@ -909,6 +1812,9 @@ export class GridViewController {
       totalCount: 0,
       emptyReason,
       error: null,
+      deletedViews: [],
+      deletedViewsStatus: 'idle',
+      deletedViewsError: null,
     });
   }
 
@@ -924,7 +1830,14 @@ export class GridViewController {
   }
 
   #publish(update: Partial<GridState>): void {
-    this.#state = { ...this.#state, ...update };
+    this.#state = {
+      ...this.#state,
+      ...update,
+      search: this.#searchTerm,
+      pendingViewIntents: this.#viewWrites?.listPendingCreates() ?? [],
+      viewWritePending: [...this.#viewWritePending],
+      viewWriteIssues: Object.fromEntries(this.#viewWriteIssues),
+    };
     for (const listener of this.#listeners) listener(this.#state);
   }
 
@@ -938,6 +1851,7 @@ export function createGridQuery(
   view: GridView,
   limit = DEFAULT_GRID_PAGE_SIZE,
   cursor?: string,
+  search?: string,
 ): QueryRequest {
   const config = view.config;
   return {
@@ -948,6 +1862,7 @@ export function createGridQuery(
     ...(config.projection.length === 0 ? {} : { projection: [...config.projection] }),
     ...(config.filter === undefined ? {} : { filter: config.filter }),
     ...(config.sort.length === 0 ? {} : { sort: config.sort.map((sort) => ({ ...sort })) }),
+    ...(search === undefined || search === '' ? {} : { search }),
   };
 }
 
@@ -955,6 +1870,40 @@ export type GridView = Extract<View, { type: 'grid' }>;
 
 function isGridView(view: View): view is GridView {
   return view.type === 'grid';
+}
+
+function isViewWriteClient(client: GridDataSource): client is GridDataSource & ViewWriteClient {
+  return (
+    typeof client.getView === 'function' &&
+    typeof client.createView === 'function' &&
+    typeof client.updateView === 'function' &&
+    typeof client.deleteView === 'function' &&
+    typeof client.restoreView === 'function'
+  );
+}
+
+function createViewRequest(input: ViewCreateInput, state: GridState): CreateViewRequest | null {
+  if (input.type === 'map') {
+    const locationField = state.fields.find(
+      (field) =>
+        field.id === input.locationFieldId &&
+        field.type === 'location' &&
+        field.deletedAt === undefined,
+    );
+    if (locationField === undefined) return null;
+    return { type: 'map', name: input.name, config: { locationFieldId: locationField.id } };
+  }
+  const table = state.tables.find((candidate) => candidate.id === state.selectedTableId);
+  const primary = state.fields.find((field) => field.id === table?.primaryFieldId);
+  const config: GridViewConfig = {
+    projection: primary === undefined ? [] : [primary.id],
+    columnOrder: primary === undefined ? [] : [primary.id],
+    columnWidths: {},
+    frozenFieldIds: [],
+    rowHeight: 'standard',
+    sort: [],
+  };
+  return { type: 'grid', name: input.name, config };
 }
 
 function chooseResource<T extends { id: string }>(
@@ -967,7 +1916,11 @@ function chooseResource<T extends { id: string }>(
 function queryEmptyReason(state: GridState, result: QueryResult): GridEmptyReason {
   if (state.selectedViewId === null) return 'records';
   const view = state.views.find((candidate) => candidate.id === state.selectedViewId);
-  if (result.totalCount === 0 && view?.type === 'grid' && view.config.filter !== undefined) {
+  if (
+    result.totalCount === 0 &&
+    view?.type === 'grid' &&
+    (view.config.filter !== undefined || state.search !== '')
+  ) {
     return 'no-match';
   }
   return 'records';
@@ -1040,6 +1993,14 @@ function removeEditDraftsForRecord(
   return drafts.filter((draft) => draft.recordId !== recordId);
 }
 
+function removeEditStatus(
+  statuses: Readonly<Record<string, GridEditStatus>>,
+  recordId: string,
+): Readonly<Record<string, GridEditStatus>> {
+  const { [recordId]: _removed, ...rest } = statuses;
+  return rest;
+}
+
 function withValues(
   record: LoomTableRecord,
   set: Readonly<Record<string, MutationValue>>,
@@ -1096,19 +2057,31 @@ function controllerSnapshot(snapshot: MutationQueueRecordSnapshot): ControllerQu
 
 function gridSaveStatus(state: GridState, offline: boolean, dirty = false): ViewSaveStatus {
   if (offline || state.status === 'offline') return 'offline-readonly';
+  const createStates = state.recordCreateOps
+    .filter((op) => op.createdRecord === undefined)
+    .map((op) => op.state);
   if (
     state.conflicts.length > 0 ||
-    Object.values(state.editStatuses).some((status) => status === 'conflict')
+    Object.values(state.editStatuses).some((status) => status === 'conflict') ||
+    createStates.some((status) => status === 'conflict')
   ) {
     return 'conflict';
   }
   if (
-    Object.values(state.editStatuses).some((status) => status === 'error' || status === 'terminal')
+    Object.values(state.editStatuses).some(
+      (status) => status === 'error' || status === 'terminal',
+    ) ||
+    createStates.some(
+      (status) => status === 'error' || status === 'terminal' || status === 'auth-paused',
+    )
   ) {
     return 'error';
   }
   if (
-    Object.values(state.editStatuses).some((status) => status === 'queued' || status === 'saving')
+    Object.values(state.editStatuses).some(
+      (status) => status === 'queued' || status === 'saving',
+    ) ||
+    createStates.some((status) => status === 'queued' || status === 'sending')
   ) {
     return 'saving';
   }
