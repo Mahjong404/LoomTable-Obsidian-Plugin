@@ -492,3 +492,87 @@ function createRecord(values: Record<string, unknown>): LoomTableRecord {
     updatedAt: '',
   };
 }
+
+describe('Record Detail Unset action', () => {
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('unsets a scalar Field through a separate confirmed action', async () => {
+    const container = document.createElement('div');
+    const onFieldEdit = vi.fn(
+      async (
+        _recordId: string,
+        fieldId: string,
+        _value: JsonValue,
+        sourceRecord: LoomTableRecord,
+        options?: { readonly unset?: boolean },
+      ): Promise<LoomTableRecord> => {
+        const values = { ...sourceRecord.values };
+        if (options?.unset === true) delete values[fieldId];
+        else values[fieldId] = _value;
+        return { ...sourceRecord, revision: sourceRecord.revision + 1, values };
+      },
+    );
+    const confirmDangerousAction = vi.fn(async () => true);
+    const detail = createRecordDetail(createRecord({ field_text: 'present' }), {
+      fields: [createField('field_text', 'Text', 'text')],
+      translate: createTranslator('en'),
+      confirmDangerousAction,
+      callbacks: { onFieldEdit },
+    });
+    container.append(detail);
+    document.body.append(container);
+
+    detail
+      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_text"]')
+      ?.click();
+    const unset = detail.querySelector<HTMLButtonElement>('[data-action="field-unset"]');
+    expect(unset).not.toBeNull();
+    expect(unset?.hidden).toBe(false);
+    unset?.click();
+
+    await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalled());
+    expect(confirmDangerousAction).toHaveBeenCalled();
+    expect(onFieldEdit.mock.calls[0]?.[2]).toBeNull();
+    expect(onFieldEdit.mock.calls[0]?.[4]).toEqual({ unset: true });
+    await vi.waitFor(() => expect(detail.querySelector('.loom-record-field-editor')).toBeNull());
+  });
+
+  it('hides Unset for an already-unset Field and honors a declined confirmation', async () => {
+    const container = document.createElement('div');
+    const onFieldEdit = vi.fn(async () => createRecord({}));
+    const confirmDangerousAction = vi.fn(async () => false);
+    const detail = createRecordDetail(createRecord({ field_text: 'present' }), {
+      fields: [
+        createField('field_text', 'Text', 'text'),
+        { ...createField('field_absent', 'Absent', 'text') },
+      ],
+      translate: createTranslator('en'),
+      confirmDangerousAction,
+      callbacks: { onFieldEdit },
+    });
+    container.append(detail);
+    document.body.append(container);
+
+    detail
+      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_absent"]')
+      ?.click();
+    expect(
+      detail.querySelector<HTMLButtonElement>(
+        '.loom-record-field-editor[data-field-id="field_absent"] [data-action="field-unset"]',
+      )?.hidden,
+    ).toBe(true);
+
+    detail
+      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_text"]')
+      ?.click();
+    detail
+      .querySelector<HTMLButtonElement>(
+        '.loom-record-field-editor[data-field-id="field_text"] [data-action="field-unset"]',
+      )
+      ?.click();
+    await vi.waitFor(() => expect(confirmDangerousAction).toHaveBeenCalled());
+    expect(onFieldEdit).not.toHaveBeenCalled();
+  });
+});

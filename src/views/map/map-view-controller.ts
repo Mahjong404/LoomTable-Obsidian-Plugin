@@ -13,6 +13,7 @@ import type {
   TileCredentialReader,
   TileProviderRef,
 } from '../../maps/providers/tile-provider-schema';
+import type { ViewUpdatePatch, ViewWriteOutcome } from '../../ui/view-write-coordinator';
 import type { MutationInvalidationEvent } from '../../ui/mutation-invalidation';
 import { TileProviderRegistry } from '../../maps/providers/tile-provider-registry';
 import type { MapCamera, MapRenderer, MapRendererError } from '../../maps/renderer/map-renderer';
@@ -39,6 +40,8 @@ export interface MapViewControllerOptions {
   readonly beforeRecordSelected?: (recordId: string) => boolean | Promise<boolean>;
   readonly onRecordSelected?: (record: LoomTableRecord) => void;
   readonly onClusterRecords?: (records: readonly LoomTableRecord[]) => void;
+  readonly saveViewConfig?: (viewId: string, patch: ViewUpdatePatch) => Promise<ViewWriteOutcome>;
+  readonly primaryFieldId?: string;
 }
 
 export type MapViewStateListener = (state: MapViewState) => void;
@@ -73,7 +76,12 @@ export class MapViewController {
     this.#debounceMs = options.debounceMs ?? 150;
     this.#view = view;
     this.#providerRef = options.provider;
-    this.#state = initialMapViewState(view, fields, defaultCamera(view));
+    this.#state = initialMapViewState(
+      view,
+      fields,
+      defaultCamera(view),
+      options.primaryFieldId ?? null,
+    );
   }
 
   get state(): MapViewState {
@@ -140,6 +148,38 @@ export class MapViewController {
     }
   }
 
+  async applyViewUpdate(view: View): Promise<void> {
+    if (this.#destroyed || view.id !== this.#view.id) return;
+    this.publish({
+      view,
+      clusterStatus: 'idle',
+      clusterRecords: [],
+      clusterToken: null,
+      clusterCursor: null,
+      clusterError: null,
+    });
+    const configurationError = this.validateConfiguration();
+    if (configurationError !== null) {
+      this.publish({ dataStatus: 'configuration-required', error: configurationError });
+      return;
+    }
+    const sequence = ++this.#querySequence;
+    if (this.#options.isOffline?.() === true) {
+      this.publish({ dataStatus: 'offline', saveStatus: 'offline-readonly' });
+      return;
+    }
+    this.publish({ dataStatus: 'loading', error: null });
+    try {
+      const summary = await this.#client.summarizeMap(this.#view.id);
+      if (this.#destroyed || sequence !== this.#querySequence) return;
+      this.applySummaryResult(summary);
+      await this.queryViewport(sequence);
+    } catch (error) {
+      if (this.#destroyed || sequence !== this.#querySequence) return;
+      this.handleDataError(error);
+    }
+  }
+
   async refreshCurrentViewport(): Promise<void> {
     if (this.#destroyed) return;
     const sequence = ++this.#querySequence;
@@ -190,14 +230,35 @@ export class MapViewController {
     }
     this.publish({ saveStatus: 'dirty' });
     this.publish({ saveStatus: 'saving' });
+    const config = {
+      ...this.#view.config,
+      center: this.#state.camera.center,
+      zoom: this.#state.camera.zoom,
+    };
+    const saveViewConfig = this.#options.saveViewConfig;
+    if (saveViewConfig !== undefined) {
+      const outcome = await saveViewConfig(this.#view.id, { config });
+      if (outcome.status === 'saved') {
+        this.#view = outcome.view;
+        this.publish({ view: outcome.view, saveStatus: 'saved' });
+        return;
+      }
+      if (
+        outcome.status === 'conflict' &&
+        outcome.latestView !== null &&
+        outcome.latestView.type === 'map'
+      ) {
+        this.#view = outcome.latestView;
+        this.publish({ view: outcome.latestView, saveStatus: 'conflict' });
+        return;
+      }
+      this.publish({ saveStatus: outcome.status === 'conflict' ? 'conflict' : 'error' });
+      return;
+    }
     try {
       const view = await this.#client.updateView(this.#view.id, {
         type: 'map',
-        config: {
-          ...this.#view.config,
-          center: this.#state.camera.center,
-          zoom: this.#state.camera.zoom,
-        },
+        config,
         expectedRevision: this.#view.revision,
       });
       this.#view = view;
@@ -218,7 +279,9 @@ export class MapViewController {
     }
 
     if (this.#state.selectedRecord?.id === event.recordId) {
-      this.publish({ selectedRecord: event.record });
+      this.publish({
+        selectedRecord: event.record.deletedAt === undefined ? event.record : null,
+      });
     }
     // The event cursor is an opaque hint; only sequenced Server responses update shared cursor state.
     if (this.#options.isOffline?.() === true) {
@@ -227,7 +290,15 @@ export class MapViewController {
     }
 
     const sequence = ++this.#querySequence;
-    this.publish({ dataStatus: 'loading', error: null });
+    this.publish({
+      dataStatus: 'loading',
+      error: null,
+      clusterStatus: 'idle',
+      clusterRecords: [],
+      clusterToken: null,
+      clusterCursor: null,
+      clusterError: null,
+    });
     try {
       const summary = await this.#client.summarizeMap(this.#view.id);
       if (this.#destroyed || sequence !== this.#querySequence) return;
@@ -256,12 +327,26 @@ export class MapViewController {
     try {
       const record = await this.#client.getRecord(recordId);
       if (this.#destroyed || requestSequence !== this.#recordRequestSequence) return;
-      this.publish({ selectedRecord: record });
+      this.publish({
+        selectedRecord: record,
+        clusterToken: null,
+        clusterCursor: null,
+      });
       this.#options.onRecordSelected?.(record);
     } catch (error) {
       if (this.#destroyed || requestSequence !== this.#recordRequestSequence) return;
       this.handleDataError(error);
     }
+  }
+
+  closeRecord(): void {
+    if (this.#destroyed || this.#state.selectedRecord === null) return;
+    this.#recordRequestSequence += 1;
+    this.publish({
+      selectedRecord: null,
+      clusterToken: null,
+      clusterCursor: null,
+    });
   }
 
   async openCluster(clusterId: string): Promise<void> {
@@ -492,6 +577,11 @@ export class MapViewController {
       changeCursor: result.changeCursor,
       viewRevision: result.viewRevision,
       error: null,
+      clusterStatus: 'idle',
+      clusterRecords: [],
+      clusterToken: null,
+      clusterCursor: null,
+      clusterError: null,
     });
   }
 

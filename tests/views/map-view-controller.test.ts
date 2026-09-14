@@ -1091,6 +1091,197 @@ describe('MapViewController', () => {
     expect(controller.state.dataStatus).toBe(expectedStatus);
     expect(controller.state.error?.message).toBe(kind);
   });
+
+  it('carries the Table primary Field into Map state for Cluster titles', () => {
+    const controller = createController(
+      createClient(),
+      createMapView('field_location'),
+      [createField('field_location')],
+      { primaryFieldId: 'field_name' },
+    );
+    expect(controller.state.primaryFieldId).toBe('field_name');
+  });
+
+  it('invalidates the Cluster token and cursor when the viewport requeries', async () => {
+    const queryMapClusterRecords = vi.fn().mockResolvedValue({
+      items: [createRecord('record_01')],
+      hasMore: true,
+      nextCursor: 'cursor_01',
+      changeCursor: 'change_01',
+    });
+    const controller = createController(
+      createClient({ queryMapClusterRecords }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+    await controller.refreshCurrentViewport();
+    await controller.openCluster('cluster_01');
+    expect(controller.state.clusterToken).toBe('cluster_token');
+    expect(controller.state.clusterCursor).toBe('cursor_01');
+
+    await controller.refreshCurrentViewport();
+    expect(controller.state.clusterStatus).toBe('idle');
+    expect(controller.state.clusterToken).toBeNull();
+    expect(controller.state.clusterCursor).toBeNull();
+    expect(controller.state.clusterRecords).toEqual([]);
+  });
+
+  it('invalidates Cluster paging state when a Record mutation applies', async () => {
+    const queryMapClusterRecords = vi.fn().mockResolvedValue({
+      items: [createRecord('record_01')],
+      hasMore: true,
+      nextCursor: 'cursor_01',
+      changeCursor: 'change_01',
+    });
+    const controller = createController(
+      createClient({ queryMapClusterRecords }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+    await controller.refreshCurrentViewport();
+    await controller.openCluster('cluster_01');
+
+    await controller.applyMutationInvalidation({
+      tableId: 'table_01',
+      recordId: 'record_02',
+      record: createRecord('record_02'),
+      changeCursor: 'cursor_mutation',
+    });
+    expect(controller.state.clusterStatus).toBe('idle');
+    expect(controller.state.clusterToken).toBeNull();
+    expect(controller.state.clusterCursor).toBeNull();
+  });
+
+  it('clears the selected Record when a mutation marks it deleted', async () => {
+    const controller = createController(createClient(), createMapView('field_location'), [
+      createField('field_location'),
+    ]);
+    await controller.refreshCurrentViewport();
+    await controller.openRecord('record_01');
+    expect(controller.state.selectedRecord?.id).toBe('record_01');
+
+    await controller.applyMutationInvalidation({
+      tableId: 'table_01',
+      recordId: 'record_01',
+      record: { ...createRecord('record_01'), deletedAt: '2026-08-20T00:00:00Z' },
+      changeCursor: 'cursor_mutation',
+    });
+    expect(controller.state.selectedRecord).toBeNull();
+  });
+
+  it('invalidates Cluster paging when Detail opens or closes while keeping the open list', async () => {
+    const queryMapClusterRecords = vi.fn().mockResolvedValue({
+      items: [createRecord('record_01')],
+      hasMore: true,
+      nextCursor: 'cursor_01',
+      changeCursor: 'change_01',
+    });
+    const controller = createController(
+      createClient({ queryMapClusterRecords }),
+      createMapView('field_location'),
+      [createField('field_location')],
+    );
+    await controller.refreshCurrentViewport();
+    await controller.openCluster('cluster_01');
+    expect(controller.state.clusterCursor).toBe('cursor_01');
+
+    await controller.openRecord('record_01');
+    expect(controller.state.selectedRecord?.id).toBe('record_01');
+    expect(controller.state.clusterToken).toBeNull();
+    expect(controller.state.clusterCursor).toBeNull();
+    expect(controller.state.clusterRecords).toHaveLength(1);
+
+    await controller.loadNextClusterPage();
+    expect(queryMapClusterRecords).toHaveBeenCalledTimes(1);
+
+    controller.closeRecord();
+    expect(controller.state.selectedRecord).toBeNull();
+    expect(controller.state.clusterToken).toBeNull();
+  });
+
+  describe('applyViewUpdate', () => {
+    it('re-summarizes and re-queries with the saved view, clearing cluster state', async () => {
+      const summarizeMap = vi
+        .fn()
+        .mockResolvedValueOnce(summaryResult('cursor_initial', 1))
+        .mockResolvedValueOnce(summaryResult('cursor_updated', 2));
+      const queryMap = vi
+        .fn()
+        .mockResolvedValueOnce({ ...queryResult('record_initial', 1), changeCursor: 'q1' })
+        .mockResolvedValueOnce({ ...queryResult('record_filtered', 2), changeCursor: 'q2' });
+      const controller = createController(
+        createClient({ summarizeMap, queryMap }),
+        createMapView('field_location'),
+        [createField('field_location')],
+      );
+      controller.mount(document.createElement('div'));
+      await controller.load();
+      await controller.openCluster('cluster_01');
+      expect(controller.state.clusterToken).toBe('cluster_token');
+
+      const updated = {
+        ...createMapView('field_location', 2),
+        config: {
+          locationFieldId: 'field_location',
+          filter: {
+            kind: 'rule' as const,
+            fieldId: 'field_location',
+            operator: 'isNotEmpty' as const,
+          },
+        },
+      };
+      await controller.applyViewUpdate(updated);
+
+      expect(summarizeMap).toHaveBeenCalledTimes(2);
+      expect(queryMap).toHaveBeenCalledTimes(2);
+      expect(controller.state.view).toBe(updated);
+      expect(controller.state.dataStatus).toBe('ready');
+      expect(controller.state.features).toEqual(queryResult('record_filtered', 2).features);
+      expect(controller.state.changeCursor).toBe('q2');
+      expect(controller.state.clusterStatus).toBe('idle');
+      expect(controller.state.clusterToken).toBeNull();
+      expect(controller.state.clusterCursor).toBeNull();
+      expect(controller.state.clusterRecords).toHaveLength(0);
+      controller.dispose();
+    });
+
+    it('ignores updates for a different view id', async () => {
+      const summarizeMap = vi.fn().mockResolvedValue(summaryResult('cursor', 1));
+      const queryMap = vi.fn().mockResolvedValue(queryResult('record_01', 1));
+      const controller = createController(
+        createClient({ summarizeMap, queryMap }),
+        createMapView('field_location'),
+        [createField('field_location')],
+      );
+      controller.mount(document.createElement('div'));
+      await controller.load();
+
+      await controller.applyViewUpdate({ ...createMapView('field_location', 2), id: 'other' });
+
+      expect(controller.state.view.id).toBe('view_map');
+      expect(controller.state.view.revision).toBe(1);
+      expect(summarizeMap).toHaveBeenCalledTimes(1);
+      controller.dispose();
+    });
+
+    it('enters configuration-required when the updated view is broken', async () => {
+      const summarizeMap = vi.fn().mockResolvedValue(summaryResult('cursor', 1));
+      const queryMap = vi.fn().mockResolvedValue(queryResult('record_01', 1));
+      const controller = createController(
+        createClient({ summarizeMap, queryMap }),
+        createMapView('field_location'),
+        [createField('field_location')],
+      );
+      controller.mount(document.createElement('div'));
+      await controller.load();
+
+      await controller.applyViewUpdate(createMapView('field_missing', 2));
+
+      expect(controller.state.dataStatus).toBe('configuration-required');
+      expect(summarizeMap).toHaveBeenCalledTimes(1);
+      controller.dispose();
+    });
+  });
 });
 
 function createController(
@@ -1119,6 +1310,7 @@ function createController(
     ...(options.onClusterRecords === undefined
       ? {}
       : { onClusterRecords: options.onClusterRecords }),
+    ...(options.primaryFieldId === undefined ? {} : { primaryFieldId: options.primaryFieldId }),
   });
 }
 function summaryResult(changeCursor = 'change_summary', viewRevision = 1): MapSummaryResult {
