@@ -2626,3 +2626,52 @@ describe('Undo/redo wiring', () => {
     expect(disabled.find((button) => button.getAttribute('aria-label') === 'Redo')?.disabled).toBe(true);
   });
 });
+
+describe('Column drag reorder', () => {
+  function fakeDataTransfer(): DataTransfer {
+    const store: Record<string, string> = {};
+    return {
+      types: ['text/plain'],
+      effectAllowed: 'move',
+      dropEffect: 'move',
+      setData: (type: string, value: string) => { store[type] = value; },
+      getData: (type: string) => store[type] ?? '',
+    } as unknown as DataTransfer;
+  }
+
+  it('reorders columnOrder when a header is dropped on another header', async () => {
+    const container = document.createElement('div');
+    const onApplyDisplay = vi.fn(async () => ({ status: 'applied' as const }));
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyDisplay,
+    });
+
+    renderer.render(createTwoByTwoState());
+    const headers = container.querySelectorAll<HTMLElement>(
+      '.loom-grid-header-cell[data-field-index]',
+    );
+    const source = headers[0];
+    const target = headers[1];
+    expect(source?.draggable).toBe(true);
+
+    const transfer = fakeDataTransfer();
+    const dragstart = new Event('dragstart', { bubbles: true });
+    Object.defineProperty(dragstart, 'dataTransfer', { value: transfer });
+    source?.dispatchEvent(dragstart);
+    const dragover = new Event('dragover', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragover, 'dataTransfer', { value: transfer });
+    target?.dispatchEvent(dragover);
+    expect(target?.classList.contains('is-drop-target')).toBe(true);
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', { value: transfer });
+    target?.dispatchEvent(drop);
+
+    await vi.waitFor(() => expect(onApplyDisplay).toHaveBeenCalledTimes(1));
+    expect(onApplyDisplay.mock.calls[0]?.[0]).toBe('view_01');
+    expect(onApplyDisplay.mock.calls[0]?.[1]?.columnOrder).toEqual([
+      'field_second',
+      'field_name',
+    ]);
+  });
+});

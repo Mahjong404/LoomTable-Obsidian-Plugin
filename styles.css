@@ -2756,3 +2756,13 @@
   background: var(--loom-accent-soft);
   color: var(--loom-accent);
 }
+
+/* Column drag reorder */
+
+.loom-grid-header-cell.is-dragging {
+  opacity: 0.45;
+}
+
+.loom-grid-header-cell.is-drop-target {
+  box-shadow: inset 3px 0 0 var(--loom-accent);
+}

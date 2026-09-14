@@ -898,6 +898,37 @@ export class ReadonlyGridRenderer {
         if ((event.target as HTMLElement).closest('button') !== null) return;
         this.#selectColumn(fieldIndex);
       });
+      if (this.#callbacks.onApplyDisplay !== undefined) {
+        fieldHeader.draggable = true;
+        fieldHeader.addEventListener('dragstart', (event) => {
+          event.dataTransfer?.setData('text/plain', field.id);
+          if (event.dataTransfer !== null) event.dataTransfer.effectAllowed = 'move';
+          fieldHeader.classList.add('is-dragging');
+        });
+        fieldHeader.addEventListener('dragend', () => {
+          fieldHeader.classList.remove('is-dragging');
+          this.#clearDropTargets();
+        });
+        fieldHeader.addEventListener('dragover', (event) => {
+          const dragged = event.dataTransfer?.types.includes('text/plain');
+          if (dragged !== true) return;
+          event.preventDefault();
+          if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'move';
+          this.#clearDropTargets();
+          fieldHeader.classList.add('is-drop-target');
+        });
+        fieldHeader.addEventListener('dragleave', () => {
+          fieldHeader.classList.remove('is-drop-target');
+        });
+        fieldHeader.addEventListener('drop', (event) => {
+          event.preventDefault();
+          this.#clearDropTargets();
+          const draggedFieldId = event.dataTransfer?.getData('text/plain');
+          if (draggedFieldId !== undefined && draggedFieldId !== field.id) {
+            this.#moveColumn(draggedFieldId, field.id);
+          }
+        });
+      }
       const frozenOffset = columns.frozenOffsets.get(field.id);
       if (frozenOffset !== undefined) {
         fieldHeader.classList.add('loom-grid-frozen');
@@ -2137,6 +2168,33 @@ export class ReadonlyGridRenderer {
       () => this.#announceClipboard(this.#translate('grid.clipboard.copied')),
       () => this.#announceClipboard(this.#translate('grid.clipboard.failed')),
     );
+  }
+
+  #clearDropTargets(): void {
+    this.#container
+      .querySelectorAll('.loom-grid-header-cell.is-drop-target')
+      .forEach((cell) => cell.classList.remove('is-drop-target'));
+  }
+
+  #moveColumn(fromFieldId: string, toFieldId: string): void {
+    const state = this.#lastState;
+    const gridView = state === null ? null : selectedGridView(state);
+    if (gridView === null || this.#callbacks.onApplyDisplay === undefined) return;
+    const config = gridView.config;
+    const order = [...config.columnOrder];
+    const fromIndex = order.indexOf(fromFieldId);
+    const toIndex = order.indexOf(toFieldId);
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
+    const moved = order.splice(fromIndex, 1)[0];
+    if (moved === undefined) return;
+    order.splice(toIndex, 0, moved);
+    void this.#callbacks.onApplyDisplay(gridView.id, {
+      projection: config.projection,
+      columnOrder: order,
+      columnWidths: config.columnWidths,
+      frozenFieldIds: config.frozenFieldIds,
+      rowHeight: config.rowHeight,
+    });
   }
 
   #focusCellAt(targetRow: number, targetField: number): void {
