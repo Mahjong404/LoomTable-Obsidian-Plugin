@@ -2685,6 +2685,7 @@ describe('refresh indicator and anchored panels', () => {
     expect(container.querySelector('.loom-grid-status')).toBeNull();
     const note = container.querySelector<HTMLElement>('.loom-grid-loading-note');
     expect(note?.textContent).toBe('Loading Grid records…');
+    expect(note?.dataset.active).toBe('true');
     const create = container.querySelector('.loom-grid-record-create');
     expect(note?.nextElementSibling).toBe(create);
     expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
@@ -2727,58 +2728,33 @@ describe('refresh indicator and anchored panels', () => {
     addRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(container.querySelector('.loom-record-create')).not.toBeNull();
   });
-});
 
-describe('refresh indicator and anchored panels', () => {
-  it('shows a toolbar refresh note instead of the loading banner when records exist', () => {
+  it('keeps the refresh note mounted but hidden when idle', () => {
     const container = document.createElement('div');
-    const callbacks = { ...rendererCallbacks(), onCreateRecord: vi.fn() };
-    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
-    renderer.render(createState(3, { status: 'loading' }));
-
-    expect(container.querySelector('.loom-grid-status')).toBeNull();
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(2));
     const note = container.querySelector<HTMLElement>('.loom-grid-loading-note');
-    expect(note?.textContent).toBe('Loading Grid records…');
-    const create = container.querySelector('.loom-grid-record-create');
-    expect(note?.nextElementSibling).toBe(create);
-    expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
+    expect(note).not.toBeNull();
+    expect(note?.dataset.active).toBe('false');
   });
 
-  it('keeps the full loading status when the grid has no records yet', () => {
+  it('extends the grid template with the add-field column when field save is wired', () => {
     const container = document.createElement('div');
-    const renderer = new ReadonlyGridRenderer(
-      container,
-      createTranslator('en'),
-      rendererCallbacks(),
-    );
-    renderer.render(createState(0, { status: 'loading' }));
-    expect(container.querySelector('.loom-grid-status')).not.toBeNull();
-  });
-
-  it('anchors the filter panel inside the toolbar without displacing the grid', () => {
-    const container = document.createElement('div');
-    const callbacks = { ...rendererCallbacks(), onApplyFilter: vi.fn() };
-    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
-    renderer.render(createState(3));
-    container
-      .querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')
-      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-
-    const panel = container.querySelector('.loom-query-panel');
-    expect(panel?.parentElement?.classList.contains('loom-grid-toolbar')).toBe(true);
-    expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
-  });
-
-  it('renders the add-record row as a compact index and label row', () => {
-    const container = document.createElement('div');
-    const callbacks = { ...rendererCallbacks(), onCreateRecord: vi.fn() };
+    const callbacks = {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(async () => ({ status: 'applied' }) as never),
+    };
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
     renderer.render(createState(2));
-
-    const addRow = container.querySelector<HTMLElement>('.loom-grid-add-row');
-    expect(addRow).not.toBeNull();
-    expect(addRow?.style.gridTemplateColumns).toBe('56px auto');
-    addRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(container.querySelector('.loom-record-create')).not.toBeNull();
+    const header = container.querySelector<HTMLElement>('.loom-grid-header');
+    const row = container.querySelector<HTMLElement>('.loom-grid-row');
+    expect(header?.style.gridTemplateColumns).toBe(row?.style.gridTemplateColumns);
+    expect(header?.style.gridTemplateColumns.endsWith('2.5rem')).toBe(true);
+    expect(container.querySelector('.loom-grid-add-field')).not.toBeNull();
+    expect(container.querySelector('.loom-grid-viewport')?.getAttribute('aria-colcount')).toBe('3');
   });
 });

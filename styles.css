@@ -285,6 +285,19 @@
   color: var(--loom-on-accent);
 }
 
+/* Obsidian's global button chrome (box-shadow) must not leak into chromeless controls. */
+.loom-grid-shell button:not(.loom-button),
+.loom-table-shell button:not(.loom-button),
+.loom-map-shell button:not(.loom-button),
+.loom-record-detail button:not(.loom-button),
+.loom-detail-host button:not(.loom-button),
+.loom-map-details button:not(.loom-button),
+.loom-context-menu button:not(.loom-button),
+.loom-query-panel button:not(.loom-button),
+.loom-field-editor button:not(.loom-button) {
+  box-shadow: none;
+}
+
 .loom-toolbar-divider {
   flex: 0 0 auto;
   width: 1px;
@@ -1657,6 +1670,25 @@
   color: var(--loom-text-error);
 }
 
+.loom-record-field-editable {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 1.625rem;
+  padding: 0.125rem var(--loom-space-2);
+  margin-inline-start: calc(-1 * var(--loom-space-2));
+  border-radius: var(--loom-radius-sm);
+  cursor: text;
+}
+
+.loom-record-field-editable:hover {
+  background: var(--loom-bg-hover);
+}
+
+.loom-record-field-editable:focus-visible {
+  outline: 2px solid var(--loom-focus);
+  outline-offset: 1px;
+}
+
 .loom-record-field-edit,
 .loom-location-actions .loom-button,
 .loom-record-fields .loom-attachment-action {
@@ -1782,6 +1814,11 @@
   background: color-mix(in srgb, var(--loom-bg-primary, black) 40%, transparent);
   box-shadow: none;
   overflow-y: auto;
+}
+
+.loom-detail-host.is-modal:empty,
+.loom-map-details.is-modal:empty {
+  display: none;
 }
 
 .loom-detail-host.is-modal .loom-record-detail,
@@ -2644,6 +2681,7 @@
 /* Add-field header cell */
 
 .loom-grid-add-field {
+  border-inline-end: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2949,12 +2987,17 @@
 /* Toolbar refresh indicator (replaces the loading band on refresh) */
 
 .loom-grid-loading-note {
+  visibility: hidden;
   display: inline-flex;
   align-items: center;
   gap: var(--loom-space-1);
   color: var(--loom-text-faint);
   font-size: var(--loom-font-ui-smaller);
   white-space: nowrap;
+}
+
+.loom-grid-loading-note[data-active='true'] {
+  visibility: visible;
 }
 
 .loom-grid-loading-note::before {
