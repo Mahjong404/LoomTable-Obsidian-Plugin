@@ -121,3 +121,19 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - 测试：readonly-grid-renderer.test.ts +5（图标渲染与 aria-hidden、排序按钮带图标可点击、菜单项与 openDetails 闭环、Esc/外部点击关闭、删除走确认流）；styles-audit 焦点环断言更新为 --loom-selection-border。
 - 检查：62 文件 741 tests 全绿；lint 0 error；format/typecheck 干净；api diff 为空；esbuild production build 通过；已部署至 vault 插件目录（main.js 549,948B / styles.css 45,044B）。
 - 状态：待用户实测 D2/D4/D6 视觉与交互。
+
+## 2026-XX — P1.5 UX 对齐切片（U1–U14，外部表格组件库/外部多维表产品 参照）
+
+- U1 列头右键菜单全量 + 新建字段：列头右键菜单（编辑字段/左右插入/隐藏/删除，主字段删除禁用，删除走确认）；末尾 `+` 表头格打开 `field-editor-panel`（10 种字段类型、select 选项+语义色）；client 新增 createField/updateField/deleteField/restoreField（Idempotency-Key、expectedRevision），InMemory fixture 同步实现。未改 Server——合同已含字段生命周期端点。
+- U2 select 语义色 chip：option color token → `--loom-select-*` 调色板变量，单选也渲染 chip；删除选项保留可访问状态。
+- U3/U12 选中模型：`#selection` 矩形选区（点击选中、Shift 扩选、行号整行、列头整列、Ctrl+A 全选、Ctrl+C 复制 TSV 经既有 clipboard host）；第二次点击进入编辑（外部表格组件库 模型）；选中态样式 + 底栏选中计数。
+- U5 搜索命中高亮：gridState.search → `<mark>` 包裹匹配子串。
+- U7 底部状态栏：行数 + 视图名 + 选中计数。
+- U8 undo/redo：`src/ui/undo-history.ts` 本地命令栈（cell 编辑 before/after、新建→删除、删除→恢复、恢复→删除），controller `undo()/redo()` + GridState `canUndo/canRedo`，工具栏按钮 + Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y，`load()` 清空历史防陈旧 revision 重放。
+- U9 列拖拽排序：表头 HTML5 DnD → 完整 display patch（columnOrder 重排）经 `onApplyDisplay`；行拖拽未做（Server 记录无 position）。
+- U10/U6 Detail：modal 变体（`is-modal` 居中）+ 主字段置顶强调 + 空字段 `<details>` 折叠组。
+- U11 附件缩略图：`attachmentThumbnail` resolver seam（vault 图片 → `app.vault.getResourcePath`）；Grid 紧凑格 ≤3 缩略图条，Detail 卡片缩略图；managed 附件保持文本态。
+- U13 Tab/Shift+Tab 横向导航回绕。
+- U14 窄屏回归：Detail ≤40rem 全宽、缩略图收敛、style audit 覆盖新选择器；tooltip 系统全面修复（容器 aria-label → aria-labelledby 隐藏标签，`ensureButtonLabels` 补齐按钮 tooltip）。
+- 验证：63 文件 786 tests 全绿；lint 0 error；api diff 为空；已部署 vault（main.js 584,199B / styles.css 62,585B）。
+- 待用户决定：U4 页签溢出策略（A 滚动+渐隐 / B +N 折叠菜单 / C 不动）。
