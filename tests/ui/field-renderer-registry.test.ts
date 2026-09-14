@@ -631,9 +631,7 @@ describe('Attachment thumbnails', () => {
     const element = createRenderedFieldValueElement(imageAttachmentRendered(), {
       translate,
       attachmentThumbnail: (attachment) =>
-        attachment.vaultPath === undefined
-          ? undefined
-          : `app://vault/${attachment.vaultPath}`,
+        attachment.vaultPath === undefined ? undefined : `app://vault/${attachment.vaultPath}`,
     });
     const thumbs = element.querySelectorAll<HTMLImageElement>('img.loom-attachment-thumb');
     expect(thumbs).toHaveLength(1);
@@ -653,9 +651,7 @@ describe('Attachment thumbnails', () => {
       translate,
       compactAttachments: true,
       attachmentThumbnail: (attachment) =>
-        attachment.vaultPath === undefined
-          ? undefined
-          : `app://vault/${attachment.vaultPath}`,
+        attachment.vaultPath === undefined ? undefined : `app://vault/${attachment.vaultPath}`,
     });
     expect(
       element.querySelectorAll('.loom-attachment-thumbs img.loom-attachment-thumb'),

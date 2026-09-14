@@ -1266,16 +1266,10 @@ describe('Record Detail empty-fields group', () => {
   it('collapses empty Fields into a toggleable group while keeping filled Fields visible', () => {
     const container = document.createElement('div');
     container.append(
-      createRecordDetail(
-        createRecord({ field_filled: 'Value', field_empty: null }),
-        {
-          fields: [
-            createField('field_filled', 'Filled'),
-            createField('field_empty', 'Empty'),
-          ],
-          translate: createTranslator('en'),
-        },
-      ),
+      createRecordDetail(createRecord({ field_filled: 'Value', field_empty: null }), {
+        fields: [createField('field_filled', 'Filled'), createField('field_empty', 'Empty')],
+        translate: createTranslator('en'),
+      }),
     );
 
     const group = container.querySelector<HTMLDetailsElement>('.loom-record-fields-empty');

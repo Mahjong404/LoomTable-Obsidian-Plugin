@@ -315,13 +315,11 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
         ? {
             options: (
               request.config as { options: { id?: string; name: string; color: string }[] }
-            ).options.map(
-              (option, index) => ({
-                id: option.id ?? `option_${this.#fieldSequence}_${index}`,
-                name: option.name,
-                color: option.color,
-              }),
-            ),
+            ).options.map((option, index) => ({
+              id: option.id ?? `option_${this.#fieldSequence}_${index}`,
+              name: option.name,
+              color: option.color,
+            })),
             deletedOptions: [],
           }
         : structuredClone(request.config);
@@ -370,12 +368,13 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
         ? field.config
         : request.type === 'select' || request.type === 'multiSelect'
           ? {
-              options: (request.config as { options: { id?: string; name: string; color: string }[] })
-                .options.map((option, optionIndex) => ({
-                  id: option.id ?? `option_${this.#fieldSequence}_${optionIndex}`,
-                  name: option.name,
-                  color: option.color,
-                })),
+              options: (
+                request.config as { options: { id?: string; name: string; color: string }[] }
+              ).options.map((option, optionIndex) => ({
+                id: option.id ?? `option_${this.#fieldSequence}_${optionIndex}`,
+                name: option.name,
+                color: option.color,
+              })),
               deletedOptions: [],
             }
           : structuredClone(request.config);

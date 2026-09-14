@@ -2952,14 +2952,14 @@ describe('Undo/redo history', () => {
     const { client, controller, scheduler } = await createUndoHarness();
 
     await controller.deleteRecord('record_01');
-    expect(
-      client.mutationRequests.map((entry) => entry.request.commands[0]?.kind),
-    ).toContain('deleteRecord');
+    expect(client.mutationRequests.map((entry) => entry.request.commands[0]?.kind)).toContain(
+      'deleteRecord',
+    );
 
     await controller.undo();
-    expect(
-      client.mutationRequests.map((entry) => entry.request.commands[0]?.kind),
-    ).toContain('restoreRecord');
+    expect(client.mutationRequests.map((entry) => entry.request.commands[0]?.kind)).toContain(
+      'restoreRecord',
+    );
 
     await controller.redo();
     const deleteCalls = client.mutationRequests.filter(

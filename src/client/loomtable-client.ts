@@ -218,15 +218,7 @@ export type Field =
     });
 
 export type SelectOptionColor =
-  | 'gray'
-  | 'red'
-  | 'orange'
-  | 'yellow'
-  | 'green'
-  | 'cyan'
-  | 'blue'
-  | 'purple'
-  | 'pink';
+  'gray' | 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'pink';
 
 export interface SelectOptionInput {
   readonly id?: string;
@@ -239,9 +231,7 @@ export interface SelectFieldConfigInput {
 }
 
 export type FieldConfigInput =
-  | Readonly<Record<string, never>>
-  | SelectFieldConfigInput
-  | AttachmentFieldConfig;
+  Readonly<Record<string, never>> | SelectFieldConfigInput | AttachmentFieldConfig;
 
 export interface CreateFieldRequest {
   readonly name: string;
@@ -590,11 +580,7 @@ export interface LoomTableClient {
   updateView(viewId: string, request: UpdateViewRequest): Promise<View>;
   deleteView(viewId: string, expectedRevision: number): Promise<void>;
   restoreView(viewId: string, expectedRevision: number): Promise<View>;
-  createField(
-    tableId: string,
-    request: CreateFieldRequest,
-    idempotencyKey: string,
-  ): Promise<Field>;
+  createField(tableId: string, request: CreateFieldRequest, idempotencyKey: string): Promise<Field>;
   updateField(fieldId: string, request: UpdateFieldRequest): Promise<Field>;
   deleteField(fieldId: string, expectedRevision: number): Promise<void>;
   restoreField(fieldId: string, expectedRevision: number): Promise<Field>;
