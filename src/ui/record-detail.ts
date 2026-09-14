@@ -733,6 +733,8 @@ function renderLocationValue(
   const wrapper = document.createElement('div');
   wrapper.className = 'loom-location-field';
 
+  const actions = createText('div', '');
+  actions.className = 'loom-location-actions';
   if (raw === undefined) {
     wrapper.dataset.locationState = 'unset';
     wrapper.append(createLocationStatus('unset', options.translate('record.field.unset')));
@@ -786,7 +788,7 @@ function renderLocationValue(
           'click',
           () => void options.callbacks?.onOpenLocationInMap?.(record.id, field.id, location),
         );
-        wrapper.append(open);
+        actions.append(open);
       } else if (canOpen === false) {
         const unavailable = createText('span', options.translate('record.location.mapUnavailable'));
         unavailable.className = 'loom-location-map-unavailable';
@@ -799,18 +801,17 @@ function renderLocationValue(
       copy.addEventListener('click', () => {
         void copyCoordinates(record, field, coordinates, copy, options);
       });
-      wrapper.append(copy);
+      actions.append(copy);
       if (state === 'located' && options.locationPreview !== undefined) {
-        wrapper.append(createPreviewTrigger(record, field, location, coordinates, options));
+        actions.append(createPreviewTrigger(record, field, location, coordinates, options));
       }
     }
-  } else {
+  } else if (raw !== undefined) {
     const displayValue = defaultFieldRendererRegistry.render(field, raw, {
       translate: options.translate,
     });
     wrapper.append(createText('span', displayValue.text));
   }
-
   const edit = button(options.translate('record.location.edit'));
   edit.classList.add('loom-location-edit');
   edit.disabled = options.offline === true || options.callbacks?.onLocationEdit === undefined;
@@ -819,7 +820,8 @@ function renderLocationValue(
     const editor = createLocationEditor(record, field, raw, options, detailRoot);
     wrapper.replaceChildren(editor);
   });
-  wrapper.append(edit);
+  actions.append(edit);
+  if (actions.childElementCount > 0) wrapper.append(actions);
   return wrapper;
 }
 

@@ -262,10 +262,11 @@ export class ReadonlyGridRenderer {
     root.setAttribute('role', 'region');
     labelContainer(root, this.#translate('grid.table'));
     root.tabIndex = -1;
-    root.append(this.#renderNavigation(state), this.#renderToolbar(state));
+    const toolbar = this.#renderToolbar(state);
+    root.append(this.#renderNavigation(state), toolbar);
     root.append(this.#renderClipboardNote());
     const queryPanel = this.#renderQueryPanel(state);
-    if (queryPanel !== null) root.append(queryPanel);
+    if (queryPanel !== null) toolbar.append(queryPanel);
     const createOps = this.#renderCreateOps(state);
     if (createOps !== null) root.append(createOps);
     const deleteNotice = this.#renderDeletedNotice(state);
@@ -278,7 +279,8 @@ export class ReadonlyGridRenderer {
     } else if (state.records.length === 0) {
       root.append(this.#renderStatus(state.status, state));
     } else {
-      if (state.status !== 'ready') root.append(this.#renderStatus(state.status, state));
+      const showStatusBand = state.status !== 'ready' && state.status !== 'loading';
+      if (showStatusBand) root.append(this.#renderStatus(state.status, state));
       if (state.fields.length === 0) {
         root.append(
           this.#renderStatus('server-error', {
@@ -362,6 +364,12 @@ export class ReadonlyGridRenderer {
       end.append(undoButton, redoButton);
     }
     end.append(count, saveStatus);
+    if (state.status === 'loading') {
+      const loading = createElement('span', 'loom-grid-loading-note');
+      loading.setAttribute('role', 'status');
+      loading.textContent = this.#translate('grid.loading');
+      end.append(loading);
+    }
     if (this.#callbacks.onCreateRecord !== undefined && state.selectedTableId !== null) {
       const createButton = this.#toggleButton(
         'create',
@@ -947,11 +955,12 @@ export class ReadonlyGridRenderer {
         button.type = 'button';
         button.dataset.action = 'header-sort';
         button.dataset.fieldId = field.id;
-        button.append(createFieldTypeIcon(field.type), createTextElement('span', field.name));
+        const label = createElement('span', 'loom-grid-header-label');
+        label.append(createFieldTypeIcon(field.type), createTextElement('span', field.name));
         const indicator = createElement('span', 'loom-grid-sort-indicator');
         indicator.setAttribute('aria-hidden', 'true');
         indicator.textContent = entry === undefined ? '' : entry.direction === 'asc' ? '↑' : '↓';
-        button.append(indicator);
+        button.append(label, indicator);
         button.addEventListener('focus', () => {
           this.#focusedHeaderFieldId = field.id;
         });
@@ -967,10 +976,11 @@ export class ReadonlyGridRenderer {
         });
         fieldHeader.replaceChildren(button);
       } else {
-        fieldHeader.replaceChildren(
-          createFieldTypeIcon(field.type),
-          createTextElement('span', field.name),
-        );
+        const label = createElement('span', 'loom-grid-header-label');
+        label.append(createFieldTypeIcon(field.type), createTextElement('span', field.name));
+        const indicator = createElement('span', 'loom-grid-sort-indicator');
+        indicator.setAttribute('aria-hidden', 'true');
+        fieldHeader.replaceChildren(label, indicator);
       }
       fieldHeader.addEventListener('contextmenu', (event) => {
         event.preventDefault();
@@ -1010,7 +1020,7 @@ export class ReadonlyGridRenderer {
       addRow.dataset.action = 'grid-add-row';
       addRow.style.top = `${state.records.length * rowHeight}px`;
       addRow.style.height = `${rowHeight}px`;
-      addRow.style.gridTemplateColumns = columnTemplate;
+      addRow.style.gridTemplateColumns = `${GRID_INDEX_COLUMN_WIDTH}px auto`;
       const indexCell = createElement('span', 'loom-grid-index-cell loom-grid-add-row-index');
       indexCell.append(createUiIcon('tool-create'));
       const label = createTextElement('span', this.#translate('record.create.add'));

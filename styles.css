@@ -127,6 +127,10 @@
   flex-wrap: wrap;
 }
 
+.loom-grid-toolbar {
+  position: relative;
+}
+
 .loom-toolbar-group {
   display: flex;
   align-items: center;
@@ -333,6 +337,10 @@
   margin-inline-start: auto;
 }
 
+.loom-table-shell {
+  position: relative;
+}
+
 .loom-view-tabs {
   display: flex;
   flex: 1 1 auto;
@@ -373,6 +381,38 @@
   background: var(--loom-accent-soft);
   color: var(--loom-accent);
   font-weight: var(--loom-font-semibold);
+}
+
+.loom-view-tab-overflow {
+  flex: 0 0 auto;
+  min-height: 1.75rem;
+  padding: 0 0.5rem;
+  border: none;
+  border-radius: var(--loom-radius-md);
+  background: transparent;
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.loom-view-tab-overflow:hover {
+  background: var(--loom-bg-hover);
+  color: var(--loom-text-normal);
+}
+
+.loom-view-tab-overflow:focus-visible {
+  outline: 2px solid var(--loom-focus);
+  outline-offset: 2px;
+}
+
+.loom-view-tab-overflow[hidden] {
+  display: none;
+}
+
+.loom-view-tab[hidden] {
+  display: none;
 }
 
 .loom-view-intents {
@@ -633,8 +673,29 @@
 }
 
 .loom-grid-sort-indicator {
+  flex: 0 0 1em;
   margin-inline-start: auto;
   color: var(--loom-text-accent);
+  text-align: end;
+}
+
+.loom-grid-header-label {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: var(--loom-space-1);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.loom-grid-header-label > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loom-grid-header-cell > .loom-grid-header-label {
+  width: 100%;
 }
 
 .loom-field-type-icon {
@@ -671,15 +732,23 @@
 }
 
 .loom-query-panel {
+  position: absolute;
+  top: calc(100% + var(--loom-space-1));
+  inset-inline-start: 0;
+  z-index: 50;
   display: flex;
   flex-direction: column;
   gap: var(--loom-space-2);
+  width: max-content;
+  min-width: min(24rem, 92vw);
+  max-width: min(40rem, 95vw);
+  max-height: 70vh;
   padding: var(--loom-space-2);
+  overflow: auto;
   border: 1px solid var(--loom-border);
-  border-radius: var(--loom-radius-sm);
-  background: var(--loom-bg-secondary);
-  min-width: 0;
-  max-width: 100%;
+  border-radius: var(--loom-radius-md);
+  background: var(--loom-bg-primary);
+  box-shadow: var(--loom-panel-shadow);
 }
 
 .loom-record-create {
@@ -1385,6 +1454,19 @@
   overflow-wrap: anywhere;
 }
 
+.loom-record-fields dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--loom-space-1) var(--loom-space-2);
+}
+
+.loom-record-fields dd > .loom-location-field,
+.loom-record-fields dd > .loom-attachment-list,
+.loom-record-fields dd > pre {
+  flex: 1 1 100%;
+}
+
 .loom-location-field {
   display: grid;
   gap: var(--loom-space-2);
@@ -1394,8 +1476,33 @@
   font-weight: var(--loom-font-semibold);
 }
 
-.loom-location-open-map {
-  justify-self: start;
+.loom-location-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--loom-space-1);
+}
+
+.loom-location-actions .loom-button {
+  min-height: 1.625rem;
+  padding: 0.125rem var(--loom-space-2);
+  font-size: var(--loom-font-ui-smaller);
+}
+
+.loom-location-status {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 1.375rem;
+  padding: 0 var(--loom-space-2);
+  border-radius: 999px;
+  background: var(--loom-bg-secondary-alt);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
+}
+
+.loom-location-status[data-state='located'] {
+  background: var(--loom-accent-soft);
+  color: var(--loom-accent);
 }
 
 .loom-location-preview-trigger {
@@ -1550,8 +1657,12 @@
   color: var(--loom-text-error);
 }
 
-.loom-record-field-edit {
-  justify-self: start;
+.loom-record-field-edit,
+.loom-location-actions .loom-button,
+.loom-record-fields .loom-attachment-action {
+  min-height: 1.625rem;
+  padding: 0.125rem var(--loom-space-2);
+  font-size: var(--loom-font-ui-smaller);
 }
 
 .loom-record-conflict {
@@ -2680,7 +2791,8 @@
 
 .loom-grid-add-row {
   position: absolute;
-  inset-inline: 0;
+  inset-inline-start: 0;
+  width: max-content;
   display: grid;
   min-width: max-content;
   align-items: stretch;
@@ -2832,4 +2944,34 @@
 .loom-record-fields-empty-summary:hover {
   color: var(--loom-text-normal);
   background: var(--loom-bg-hover);
+}
+
+/* Toolbar refresh indicator (replaces the loading band on refresh) */
+
+.loom-grid-loading-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--loom-space-1);
+  color: var(--loom-text-faint);
+  font-size: var(--loom-font-ui-smaller);
+  white-space: nowrap;
+}
+
+.loom-grid-loading-note::before {
+  content: '';
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--loom-accent);
+  animation: loom-loading-pulse 1s ease-in-out infinite;
+}
+
+@keyframes loom-loading-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
 }

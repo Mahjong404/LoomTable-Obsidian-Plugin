@@ -2674,3 +2674,111 @@ describe('Column drag reorder', () => {
     expect(onApplyDisplay.mock.calls[0]?.[1]?.columnOrder).toEqual(['field_second', 'field_name']);
   });
 });
+
+describe('refresh indicator and anchored panels', () => {
+  it('shows a toolbar refresh note instead of the loading banner when records exist', () => {
+    const container = document.createElement('div');
+    const callbacks = { ...rendererCallbacks(), onCreateRecord: vi.fn() };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(3, { status: 'loading' }));
+
+    expect(container.querySelector('.loom-grid-status')).toBeNull();
+    const note = container.querySelector<HTMLElement>('.loom-grid-loading-note');
+    expect(note?.textContent).toBe('Loading Grid records…');
+    const create = container.querySelector('.loom-grid-record-create');
+    expect(note?.nextElementSibling).toBe(create);
+    expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
+  });
+
+  it('keeps the full loading status when the grid has no records yet', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(0, { status: 'loading' }));
+    expect(container.querySelector('.loom-grid-status')).not.toBeNull();
+  });
+
+  it('anchors the filter panel inside the toolbar without displacing the grid', () => {
+    const container = document.createElement('div');
+    const callbacks = { ...rendererCallbacks(), onApplyFilter: vi.fn() };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(3));
+    container
+      .querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const panel = container.querySelector('.loom-query-panel');
+    expect(panel?.parentElement?.classList.contains('loom-grid-toolbar')).toBe(true);
+    expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
+  });
+
+  it('renders the add-record row as a compact index and label row', () => {
+    const container = document.createElement('div');
+    const callbacks = { ...rendererCallbacks(), onCreateRecord: vi.fn() };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(2));
+
+    const addRow = container.querySelector<HTMLElement>('.loom-grid-add-row');
+    expect(addRow).not.toBeNull();
+    expect(addRow?.style.gridTemplateColumns).toBe('56px auto');
+    addRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(container.querySelector('.loom-record-create')).not.toBeNull();
+  });
+});
+
+describe('refresh indicator and anchored panels', () => {
+  it('shows a toolbar refresh note instead of the loading banner when records exist', () => {
+    const container = document.createElement('div');
+    const callbacks = { ...rendererCallbacks(), onCreateRecord: vi.fn() };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(3, { status: 'loading' }));
+
+    expect(container.querySelector('.loom-grid-status')).toBeNull();
+    const note = container.querySelector<HTMLElement>('.loom-grid-loading-note');
+    expect(note?.textContent).toBe('Loading Grid records…');
+    const create = container.querySelector('.loom-grid-record-create');
+    expect(note?.nextElementSibling).toBe(create);
+    expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
+  });
+
+  it('keeps the full loading status when the grid has no records yet', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(0, { status: 'loading' }));
+    expect(container.querySelector('.loom-grid-status')).not.toBeNull();
+  });
+
+  it('anchors the filter panel inside the toolbar without displacing the grid', () => {
+    const container = document.createElement('div');
+    const callbacks = { ...rendererCallbacks(), onApplyFilter: vi.fn() };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(3));
+    container
+      .querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+    const panel = container.querySelector('.loom-query-panel');
+    expect(panel?.parentElement?.classList.contains('loom-grid-toolbar')).toBe(true);
+    expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
+  });
+
+  it('renders the add-record row as a compact index and label row', () => {
+    const container = document.createElement('div');
+    const callbacks = { ...rendererCallbacks(), onCreateRecord: vi.fn() };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(2));
+
+    const addRow = container.querySelector<HTMLElement>('.loom-grid-add-row');
+    expect(addRow).not.toBeNull();
+    expect(addRow?.style.gridTemplateColumns).toBe('56px auto');
+    addRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(container.querySelector('.loom-record-create')).not.toBeNull();
+  });
+});
