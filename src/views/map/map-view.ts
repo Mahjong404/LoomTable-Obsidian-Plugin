@@ -716,6 +716,7 @@ export class MapView {
       const onFieldEdit = this.options.onFieldEdit;
       const callbacks = {
         onClose: () => {
+          this.#details?.classList.remove('is-modal');
           this.#controller.closeRecord();
           this.#container.querySelector<HTMLElement>('.loom-map-container')?.focus();
         },

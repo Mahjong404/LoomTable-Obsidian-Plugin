@@ -316,7 +316,7 @@ export function createRecordDetail(
       'aria-label',
       options.translate(modal ? 'record.detail.collapse' : 'record.detail.expand'),
     );
-    expand.replaceChildren(createUiIcon(modal ? 'detail-close' : 'detail-expand'));
+    expand.replaceChildren(createUiIcon(modal ? 'detail-collapse' : 'detail-expand'));
   });
   header.append(expand);
   if (options.callbacks?.onClose !== undefined) {
@@ -408,34 +408,47 @@ function renderField(
             announce(options.translate('record.attachment.action.detached'));
           }
         : undefined;
-    body.append(
-      createRenderedFieldValueElement(displayValue, {
-        translate: options.translate,
-        attachmentDownloadDisabled:
-          options.offline === true ? (attachment) => attachment.source !== 'vault' : false,
-        attachmentOpenPreviewDisabled: options.offline === true,
-        attachmentDetachDisabled: options.offline === true,
-        ...(field.type === 'attachment'
-          ? {
-              canAttachmentOpen: (attachment: RenderedAttachment) =>
-                attachment.source === 'vault' && isSafeAttachmentVaultPath(attachment.vaultPath),
-              canAttachmentPreview: (attachment: RenderedAttachment) =>
-                attachment.source === 'managed',
-            }
-          : {}),
-        ...(field.type === 'attachment' && options.callbacks?.canAttachmentDownload !== undefined
-          ? { canAttachmentDownload: options.callbacks.canAttachmentDownload }
-          : {}),
-        ...(onAttachmentDownload === undefined ? {} : { onAttachmentDownload }),
-        ...(onAttachmentOpen === undefined ? {} : { onAttachmentOpen }),
-        ...(onAttachmentPreview === undefined ? {} : { onAttachmentPreview }),
-        ...(onAttachmentDetach === undefined ? {} : { onAttachmentDetach }),
-        ...(options.callbacks?.attachmentThumbnail === undefined
-          ? {}
-          : { attachmentThumbnail: options.callbacks.attachmentThumbnail }),
-      }),
-    );
+    const valueElement = createRenderedFieldValueElement(displayValue, {
+      translate: options.translate,
+      attachmentDownloadDisabled:
+        options.offline === true ? (attachment) => attachment.source !== 'vault' : false,
+      attachmentOpenPreviewDisabled: options.offline === true,
+      attachmentDetachDisabled: options.offline === true,
+      ...(field.type === 'attachment'
+        ? {
+            canAttachmentOpen: (attachment: RenderedAttachment) =>
+              attachment.source === 'vault' && isSafeAttachmentVaultPath(attachment.vaultPath),
+            canAttachmentPreview: (attachment: RenderedAttachment) =>
+              attachment.source === 'managed',
+          }
+        : {}),
+      ...(field.type === 'attachment' && options.callbacks?.canAttachmentDownload !== undefined
+        ? { canAttachmentDownload: options.callbacks.canAttachmentDownload }
+        : {}),
+      ...(onAttachmentDownload === undefined ? {} : { onAttachmentDownload }),
+      ...(onAttachmentOpen === undefined ? {} : { onAttachmentOpen }),
+      ...(onAttachmentPreview === undefined ? {} : { onAttachmentPreview }),
+      ...(onAttachmentDetach === undefined ? {} : { onAttachmentDetach }),
+      ...(options.callbacks?.attachmentThumbnail === undefined
+        ? {}
+        : { attachmentThumbnail: options.callbacks.attachmentThumbnail }),
+    });
+    body.append(valueElement);
     body.dataset.valueState = displayValue.state;
+    const onFieldEdit = options.callbacks?.onFieldEdit;
+    if (onFieldEdit !== undefined && isDetailScalarField(field) && options.offline !== true) {
+      makeScalarValueEditable(
+        valueElement,
+        record,
+        field,
+        options,
+        detailRoot,
+        body,
+        onFieldEdit,
+        onRecordUpdated,
+        announce,
+      );
+    }
     if (
       field.type === 'attachment' &&
       options.callbacks?.onAttachmentAdd !== undefined &&
@@ -443,26 +456,12 @@ function renderField(
     ) {
       body.append(createAttachmentAddAction(record, field, options, onRecordUpdated, announce));
     }
-    const onFieldEdit = options.callbacks?.onFieldEdit;
-    if (onFieldEdit !== undefined && isDetailScalarField(field)) {
-      body.append(
-        createScalarFieldEditAction(
-          record,
-          field,
-          options,
-          detailRoot,
-          body,
-          onFieldEdit,
-          onRecordUpdated,
-          announce,
-        ),
-      );
-    }
   }
   return [label, body];
 }
 
-function createScalarFieldEditAction(
+function makeScalarValueEditable(
+  valueElement: HTMLElement,
   record: LoomTableRecord,
   field: Field,
   options: RecordDetailOptions,
@@ -471,20 +470,27 @@ function createScalarFieldEditAction(
   onFieldEdit: NonNullable<RecordDetailCallbacks['onFieldEdit']>,
   onRecordUpdated: (record: LoomTableRecord) => void,
   announce: (message: string) => void,
-): HTMLButtonElement {
-  const edit = button(options.translate('record.field.edit'));
-  edit.classList.add('loom-record-field-edit');
-  edit.dataset.fieldId = field.id;
-  const offline = options.offline === true;
-  edit.disabled = offline;
-  edit.setAttribute(
+): void {
+  valueElement.classList.add('loom-record-field-editable');
+  valueElement.dataset.fieldId = field.id;
+  valueElement.tabIndex = 0;
+  valueElement.setAttribute('role', 'button');
+  valueElement.setAttribute(
     'aria-label',
-    offline
-      ? options.translate('record.field.offline')
-      : options.translate('record.field.edit') + ': ' + field.name,
+    options.translate('record.field.edit') + ': ' + field.name,
   );
-  edit.addEventListener('click', () => {
-    if (offline || edit.disabled) return;
+  const activate = (): void => {
+    if (field.type === 'checkbox') {
+      const next = record.values[field.id] !== true;
+      announce(options.translate('record.field.saving'));
+      void Promise.resolve(onFieldEdit(record.id, field.id, next, record))
+        .then((updated) => {
+          onRecordUpdated(updated);
+          announce(options.translate('record.field.saved'));
+        })
+        .catch(() => announce(options.translate('record.field.saveError')));
+      return;
+    }
     const form = createScalarFieldEditor(
       record,
       field,
@@ -496,8 +502,19 @@ function createScalarFieldEditAction(
     );
     body.replaceChildren(form);
     focusScalarEditor(form);
+  };
+  valueElement.addEventListener('click', (event) => {
+    if ((event.target as HTMLElement).closest('button, a, input, select, textarea') !== null)
+      return;
+    activate();
   });
-  return edit;
+  valueElement.addEventListener('keydown', (event) => {
+    if (event.target !== valueElement) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      activate();
+    }
+  });
 }
 
 function createScalarFieldEditor(
@@ -667,7 +684,7 @@ function focusScalarEditor(form: HTMLFormElement): void {
 }
 
 function focusFieldEdit(detailRoot: HTMLElement, fieldId: string): void {
-  const edit = [...detailRoot.querySelectorAll<HTMLButtonElement>('.loom-record-field-edit')].find(
+  const edit = [...detailRoot.querySelectorAll<HTMLElement>('.loom-record-field-editable')].find(
     (candidate) => candidate.dataset.fieldId === fieldId,
   );
   edit?.focus();

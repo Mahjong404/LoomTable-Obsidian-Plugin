@@ -1096,7 +1096,7 @@ describe('Record Detail navigation', () => {
     container.append(detail);
 
     detail
-      .querySelector<HTMLButtonElement>('.loom-record-field-edit[data-field-id="field_name"]')
+      .querySelector<HTMLButtonElement>('.loom-record-field-editable[data-field-id="field_name"]')
       ?.click();
     const editor = detail.querySelector<HTMLInputElement>(
       '.loom-record-field-editor[data-field-id="field_name"] input',
@@ -1237,8 +1237,15 @@ describe('Record Detail presentation', () => {
     container.append(detail);
 
     const expand = detail.querySelector<HTMLButtonElement>('.loom-record-detail-expand');
+    const close = detail.querySelector<HTMLButtonElement>('[data-action="detail-close"]');
     expand?.click();
     expect(container.classList.contains('is-modal')).toBe(true);
+    expect(expand?.getAttribute('aria-pressed')).toBe('true');
+    // collapse affordance must not look like a second close button
+    expect(expand?.innerHTML).not.toBe(close?.innerHTML);
+    expect(
+      detail.querySelectorAll('.loom-record-detail-header [data-action="detail-close"]'),
+    ).toHaveLength(1);
     expand?.click();
     expect(container.classList.contains('is-modal')).toBe(false);
     container.remove();

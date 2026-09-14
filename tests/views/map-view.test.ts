@@ -357,7 +357,7 @@ describe('MapView', () => {
       selectedRecord: record,
     });
 
-    const edit = container.querySelector<HTMLButtonElement>('.loom-record-field-edit');
+    const edit = container.querySelector<HTMLElement>('.loom-record-field-editable');
     edit?.click();
     const editor = container.querySelector<HTMLInputElement>('.loom-record-field-editor input');
     const form = container.querySelector<HTMLFormElement>('.loom-record-field-editor');
@@ -428,7 +428,7 @@ describe('MapView', () => {
       selectedRecord: record,
     });
 
-    container.querySelector<HTMLButtonElement>('.loom-record-field-edit')?.click();
+    container.querySelector<HTMLElement>('.loom-record-field-editable')?.click();
     const editor = container.querySelector<HTMLSelectElement>(
       '.loom-record-field-editor select[multiple]',
     );
