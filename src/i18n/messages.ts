@@ -141,6 +141,8 @@ export const englishMessages = {
   'grid.menu.clear': 'Clear cell',
   'grid.menu.column': 'Field actions',
   'field.add': 'Add field',
+  'record.detail.expand': 'Expand record',
+  'record.detail.collapse': 'Collapse to sidebar',
   'field.create.title': 'New field',
   'field.edit.title': 'Edit field',
   'field.name.label': 'Field name',

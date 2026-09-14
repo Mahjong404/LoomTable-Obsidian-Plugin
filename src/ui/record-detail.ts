@@ -215,10 +215,17 @@ export function createRecordDetail(
   const renderValues = (nextRecord: LoomTableRecord): void => {
     options.locationPreview?.close();
     currentRecord = nextRecord;
+    const ordered = [...fields].sort((a, b) =>
+      a.id === options.primaryFieldId ? -1 : b.id === options.primaryFieldId ? 1 : 0,
+    );
     values.replaceChildren(
-      ...fields.flatMap((field) =>
-        renderField(currentRecord, field, options, root, renderValues, announce),
-      ),
+      ...ordered.flatMap((field) => {
+        const elements = renderField(currentRecord, field, options, root, renderValues, announce);
+        if (field.id === options.primaryFieldId) {
+          for (const element of elements) element.dataset.primary = 'true';
+        }
+        return elements;
+      }),
     );
     heading.textContent = recordTitle(nextRecord);
     syncNavigation();
@@ -269,9 +276,27 @@ export function createRecordDetail(
     });
     header.append(remove);
   }
+  const expand = button('');
+  expand.classList.add('loom-record-detail-iconbtn', 'loom-record-detail-expand');
+  expand.append(createUiIcon('detail-expand'));
+  expand.setAttribute('aria-label', options.translate('record.detail.expand'));
+  expand.setAttribute('aria-pressed', 'false');
+  expand.addEventListener('click', () => {
+    const host = root.closest<HTMLElement>('.loom-detail-host, .loom-map-details');
+    if (host === null) return;
+    const modal = host.classList.toggle('is-modal');
+    expand.setAttribute('aria-pressed', String(modal));
+    expand.setAttribute(
+      'aria-label',
+      options.translate(modal ? 'record.detail.collapse' : 'record.detail.expand'),
+    );
+    expand.replaceChildren(createUiIcon(modal ? 'detail-close' : 'detail-expand'));
+  });
+  header.append(expand);
   if (options.callbacks?.onClose !== undefined) {
     const close = button('');
     close.classList.add('loom-record-detail-iconbtn');
+    close.dataset.action = 'detail-close';
     close.append(createUiIcon('detail-close'));
     close.setAttribute('aria-label', options.translate('common.close'));
     close.addEventListener('click', closeDetail);
