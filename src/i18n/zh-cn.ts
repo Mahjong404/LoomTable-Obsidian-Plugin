@@ -133,6 +133,8 @@ export const simplifiedChineseMessages = {
   'grid.menu.clear': '清空内容',
   'grid.menu.column': '字段操作',
   'field.add': '新建字段',
+  'record.detail.expand': '展开记录',
+  'record.detail.collapse': '收起为侧栏',
   'field.create.title': '新建字段',
   'field.edit.title': '编辑字段',
   'field.name.label': '字段名',

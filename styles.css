@@ -1657,6 +1657,34 @@
   display: none;
 }
 
+.loom-detail-host.is-modal,
+.loom-map-details.is-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  width: auto;
+  padding: var(--loom-space-4);
+  border: none;
+  background: color-mix(in srgb, var(--loom-bg-primary, black) 40%, transparent);
+  box-shadow: none;
+  overflow-y: auto;
+}
+
+.loom-detail-host.is-modal .loom-record-detail,
+.loom-map-details.is-modal .loom-record-detail {
+  width: min(40rem, 92vw);
+  min-height: 0;
+  max-height: 84vh;
+  margin: 0;
+  border: 1px solid var(--loom-grid-line-strong);
+  border-radius: var(--loom-radius-md);
+  background: var(--loom-bg-primary);
+  box-shadow: var(--loom-panel-shadow);
+  overflow-y: auto;
+}
+
 .loom-detail-host .loom-record-detail,
 .loom-map-details .loom-record-detail {
   display: flex;
@@ -2699,4 +2727,16 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Detail: primary field prominence (外部产品式 record title row) */
+
+.loom-record-fields dt[data-primary='true'] {
+  padding-top: 0;
+}
+
+.loom-record-fields dd[data-primary='true'] .loom-field-value,
+.loom-record-fields dd[data-primary='true'] .loom-record-field-input {
+  font-size: 1.05em;
+  font-weight: var(--loom-font-semibold);
 }

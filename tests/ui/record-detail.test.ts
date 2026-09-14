@@ -140,7 +140,11 @@ describe('Record Detail Location seam', () => {
     expect(container.querySelector('.loom-location-editor')).not.toBeNull();
     expect(confirmDiscard).toHaveBeenCalledTimes(1);
 
-    container.querySelector<HTMLButtonElement>('.loom-record-detail-header button')?.click();
+    container
+      .querySelector<HTMLButtonElement>(
+        '.loom-record-detail-header button[data-action="detail-close"]',
+      )
+      ?.click();
     expect(onClose).not.toHaveBeenCalled();
     expect(confirmDiscard).toHaveBeenCalledTimes(2);
 
@@ -169,7 +173,11 @@ describe('Record Detail Location seam', () => {
     container.append(detail);
     trigger.remove();
 
-    detail.querySelector<HTMLButtonElement>('.loom-record-detail-header button')?.click();
+    detail
+      .querySelector<HTMLButtonElement>(
+        '.loom-record-detail-header button[data-action="detail-close"]',
+      )
+      ?.click();
 
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(fallback);
@@ -658,7 +666,11 @@ describe('Record Detail Location seam', () => {
     );
     expect(onConflictAction).toHaveBeenNthCalledWith(1, 'record_01', 'use-server');
 
-    container.querySelector<HTMLButtonElement>('.loom-record-detail-header button')?.click();
+    container
+      .querySelector<HTMLButtonElement>(
+        '.loom-record-detail-header button[data-action="detail-close"]',
+      )
+      ?.click();
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onConflictAction).toHaveBeenCalledTimes(2);
 
@@ -1209,5 +1221,43 @@ describe('Record Detail delete', () => {
       translate: createTranslator('en'),
     });
     expect(detail.querySelector('[data-action="detail-delete"]')).toBeNull();
+  });
+});
+
+describe('Record Detail presentation', () => {
+  it('toggles the modal presentation through the expand action', () => {
+    const container = document.createElement('div');
+    container.className = 'loom-detail-host';
+    document.body.append(container);
+    const detail = createRecordDetail(createRecord({ field_a: 'A' }), {
+      fields: [createField('field_a', 'A')],
+      translate: createTranslator('en'),
+      callbacks: { onClose: vi.fn() },
+    });
+    container.append(detail);
+
+    const expand = detail.querySelector<HTMLButtonElement>('.loom-record-detail-expand');
+    expand?.click();
+    expect(container.classList.contains('is-modal')).toBe(true);
+    expand?.click();
+    expect(container.classList.contains('is-modal')).toBe(false);
+    container.remove();
+  });
+
+  it('orders the primary field first and marks it', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const detail = createRecordDetail(createRecord({ field_a: 'Alpha', field_b: 'Beta' }), {
+      fields: [createField('field_b', 'B'), createField('field_a', 'A')],
+      primaryFieldId: 'field_a',
+      translate: createTranslator('en'),
+    });
+    container.append(detail);
+
+    const labels = [...detail.querySelectorAll<HTMLElement>('.loom-record-fields dt')];
+    expect(labels[0]?.dataset.fieldId).toBe('field_a');
+    expect(labels[0]?.dataset.primary).toBe('true');
+    expect(labels[1]?.dataset.primary).toBeUndefined();
+    container.remove();
   });
 });

@@ -41,6 +41,7 @@ export type UiIconName =
   | 'nav-prev'
   | 'nav-next'
   | 'detail-close'
+  | 'detail-expand'
   | 'field-add'
   | 'col-insert-left'
   | 'col-insert-right'
@@ -140,6 +141,12 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
   'detail-close': [
     ['path', { d: 'M18 6 6 18' }],
     ['path', { d: 'M6 6l12 12' }],
+  ],
+  'detail-expand': [
+    ['path', { d: 'M15 3h6v6' }],
+    ['path', { d: 'M9 21H3v-6' }],
+    ['path', { d: 'm21 3-7 7' }],
+    ['path', { d: 'm3 21 7-7' }],
   ],
   'field-add': [
     ['path', { d: 'M5 12h14' }],

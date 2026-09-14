@@ -308,8 +308,6 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
       });
     }
     this.#fieldSequence += 1;
-    this.#clock += 1;
-    const stamp = new Date(1_800_000_000_000 + this.#clock * 1000).toISOString();
     const position =
       Math.max(0, ...this.#fields.filter((f) => f.tableId === tableId).map((f) => f.position)) + 1;
     const config =
