@@ -1,0 +1,50 @@
+# P1.5 状态
+
+唯一进度接力表；需求和完成门禁见 [总要求](./README.md) 与 [工作流](./workflow.md)。工作区 `docs/sessions/status.md` 只保留指向本文件的入口，不复制状态矩阵。
+
+## 当前交接
+
+- 2026-09-14：统筹文档已整理，尚未实施本次新增功能。
+- 读取的 Plugin HEAD：`c893cdbb1dc3e56a94f82990b26ca9cc8bf75263`；Server HEAD：`ab949d59c37680d53b4109e1502f8478b24cc655`。后续执行者启动时记录实际基线。
+- 已有 S1–S3 代码继续复用，按需求做针对性回归；附件资源生命周期为明确排除，不阻塞本期。
+- 切片 A 已交付：`LoomTableClient` 补齐 View 生命周期方法（recording-transport 测试覆盖路由/请求体/幂等键/错误解码）；Grid/Map 共用 `TableShell` 提供上下文 Select、`role="tablist"` View Tabs（稳定 View ID、同名加类型标注）、Add View 显式创建表单（Map 要求 active Location Field，取消零写入）、未确认创建 Intent 提示与重试/忽略；`ViewWriteCoordinator` 按 View 串行化写操作并处理 409 读回与已删除语义，未决创建经 `ViewCreateIntentStore` 持久化到 Plugin Settings（profile+origin 隔离）；GridViewController 提供 `createView`/`retryViewIntent`/`dismissViewIntent` 并在已选 View 删除后回退；`loomtable-view` 组合根已接线。
+- 切片 B 已交付：`TableShell` 新增 Manage Views 面板（活动列表 + `lifecycle=deleted` 回收列表，零活动视图可达）；View 重命名（PATCH 完整 config+expectedRevision）、复制（确认新名称；query 语义失效引用先要求修复，不静默丢 Filter；presentation 过期引用复制时清理）、软删除（命名确认、已删除幂等、选中回退 next→previous→空态）、恢复（按最新 deleted revision）；`view-config-repair` 暴露 `brokenFieldIds` 并支持显式移除 query 引用、Map Location Field 必选重选、presentation 过期随保存清理；写入冲突/未决/失败以 issue 行呈现 adopt-latest/re-edit/retry/dismiss；Map camera 保存与 Grid/Map 管理操作统一经 `ViewWriteCoordinator`，Map 导航实时刷新。
+- 切片 C 已交付：`view-query-model` 提供类型化 operator 选择、嵌套 and/or 组树操作、草稿校验（空组/深度/节点数/未知字段/不支持 operator/缺失或类型不符值/未知选项）与合同预算（深度 8、节点 100、Sort 10、Search 500 码点）；`FilterBuilder` 从空草稿起步，按 Field 类型渲染值编辑器，支持嵌套组、删除组/规则、已删选项标注、脏草稿丢弃确认、应用失败保持打开；`SortPanel` 仅列可排序字段、去重、上限、方向/空值序/重排/删除、空列表即清除；Search 为临时查询（Enter 或按钮提交、不逐键查询、trim 归一化、超长拒绝且保留草稿、显式清除、不落 View 配置）；表头排序在单一规则时循环 asc→desc→清除，多规则时打开 Sort Panel；控制器 `setSearch`/`applyViewFilter`/`applyViewSort` 生效即失效分页（清 records/hasMore/cursor/totalCount 并重查第一页），`#requestToken` 丢弃过期响应，`cursor-expired` 自动回第一页，续页按 Record ID 去重；Filter/Sort 保存经 `ViewWriteCoordinator`（含 controller 侧草稿校验），saved 后刷新查询，失败保留旧数据并给出 issue/retry；renderer 工具栏提供 Filter 摘要徽章/清除、Sort/Search 控件、no-match 空态的清除/编辑动作，面板经 `onInvalidate` 在父级重绘后重建；`loomtable-view` 组合根已接线全部回调。
+- 切片 D 已交付：`grid-display.ts` 统一解析有效列（active Field ∩ 非空 projection，空 projection 兼容展开为全部 active 列，columnOrder 排序后补齐漏项，冻结列按有效顺序稳定分区并给出偏移）；`display-panel.ts` 提供投影显隐（至少一列可见、主字段可隐藏）、上移/下移排序、宽度输入（80–1000 整数、非法值显式报错不静默截断、重置删键回落 180px）、冻结开关（仅可见列）、三档行高；`DisplayPanel` 草稿不直接写 savedView，应用经 `ViewWriteCoordinator`；renderer 消费解析结果渲染表头/单元格（sticky 表头、冻结列 left 偏移、同一行高源供测量与虚拟窗口、行高变更按首可见行+偏移恢复滚动锚点、窄布局禁用 sticky 并给出说明）；V5 补全可打印字符替换式编辑、Ctrl/Cmd+C/V 经 `clipboard` host seam（Select 按 name 往返、结构型字段拒绝且明确提示、粘贴经 `normalizeCellValue` 校验后走既有 `onCellEdit` 队列）、Delete/Backspace 写 null、Detail scalar Unset 为独立确认动作（`onFieldEdit` 增加 `unset` 选项，`editCell` 发 `unsetFieldIds`）；焦点身份含 Table/View/Record/Field（外层连接身份即 renderer 容器作用域），字段隐藏/记录离开按同列位次夹取回退、表头排序按钮焦点按 fieldId 恢复、虚拟滚动保留活动编辑器行并同步恢复其焦点不重复提交；Detail 标题取 `primaryFieldId`（无则 record.id，空值走本地化无标题），上一条/下一条沿当前查询序列（边界处显式加载下一页，未知前页禁用 Previous 不臆造反向 cursor），导航沿用草稿确认。
+- 切片 E 已交付：`location-preview.ts` 为 Record/Map Detail 提供真实临时地图预览（closed→waiting→open 状态机，Enter/Space/click/touch 立即打开，Ctrl/Cmd-hover 180ms 延迟打开，修饰键释放/指针离开/记录字段变更/Detail 关闭/窗口失焦/dispose 取消；trigger↔popover 150ms 容差；generation 防陈旧挂载；renderer 每次预览 mount/destroy 恰好一次；初始 zoom 14 按 provider min/max 夹取；可见后 invalidateSize）；provider 经既有解析链（匹配 Map View 用其 provider，否则 profile 默认），确认/配置/凭据缺失与离线均零 tile 请求；预览不创建/保存 View，不调 Map query/summary/mutation/View-update API；Open in Map 经 `map-view-picker.ts` 按 0/1/N 匹配（同表 active Map + 同 locationFieldId）直达/选择/进入创建表单预选 Location 字段，创建成功才导航；Map Detail 统一 primaryFieldId 标题；Cluster 面板用 primaryFieldText 标题 + 摘要字段 chips，terminal cluster 用 recordsQueryToken 分页（游标原样传递、过期清分页刷新视口不无限重试），cluster 失败不覆盖整体数据状态；`applyViewUpdate` 支持外部保存（Map Filter 面板）后失效 cluster 并重查。
+- 切片 F 已交付：持久化队列升级 V2 schema（条目 kind + create 无 recordId/expectedRevision + operation 身份，V1→V2 确定性迁移保留请求/键/revision/retry/conflict，`sending` 恢复为 `queued`）；Scheduler 按 lane 调度（同 Record FIFO、不同 Record/Create 并行），事件携带 operationId/kind/tableId，`getOperationSnapshot`/`retryOperation`/`discardOperation` 端口，未知结果以同键重发；Runtime 恢复失败不再静默回退空队列——返回 null + `recoveryError`，`main.ts` 注入 `UnavailableMutationQueuePort`（enqueue 拒绝且不覆盖原存储）；`record-create-form.ts` 复用字段编辑器/normalizer（Unset 语义、空表单可提交、附件提示后置、脏草稿取消确认、确定性校验失败保留草稿、busy 防重复提交）；`GridViewController.createRecord` 生成稳定 `mut_` 键、先持久化后发送、`recordCreateOps` 跟踪 queued/sending/error/applied，跨 Table 事件过滤、dispose 后忽略迟到事件、`load()` 保留当前表在途 op、`gridSaveStatus` 聚合 create 状态；Grid/Map 工具栏「新增记录」+ ops 待处理表面（重试/放弃/打开新记录），创建成功经 `onRecordOpen`/`openRecord` 进入 Detail，applied 事件经既有失效链刷新查询/Map。
+- 切片 G 已交付：单记录删除/恢复走持久化队列——Scheduler 门控（delete 在途时同 Record 的 update/delete 拒绝入队，restore 为唯一逆向通道）、delete 在前序 update 应用后以最新 revision 重基不超车、delete/restore 冲突经 `conflictRetryEntry` 按原 kind 忠实重发（不转假 updateRecord）、422 `INVALID_STATE_TRANSITION` 归类 terminal；`GridViewController` 新增 `canDeleteRecord`（draft/pending/offline/unavailable 门控经既有 editError 表面化）、`deleteRecord`（当前权威 revision、discardAllForRecord 清终态滞留头后可重试）、`restoreRecord`（先 `getRecord` 取最新权威 revision、已激活返回 already-active 不重发）、`undoDelete`/`dismissDeleteNotice`、`loadDeletedRecords`/`loadMoreDeletedRecords`（独立 `lifecycle:'deleted'` 查询不带 View/Filter）；applied 删除立即移出活动页并保留 `lastDeletedRecord` 撤销通知，恢复/删除成功后已加载的回收列表自动重查，恢复的 Record 不本地插入 filtered active 查询而经失效链刷新；Grid 行内删除按钮（确认浮层、queued/saving 禁用、offline 禁用）、删除撤销通知条、回收站面板（loading/empty/error/restore/load-more）；Detail 与 Map Detail 共用同一 `onDeleteRecord` 确认路径，Map 失效链在 deletedAt 时清空 selectedRecord。
+- 切片 H 已交付：开发专用 DOM Gallery 位于 `tests/gallery/`——`pnpm gallery` 产出 `tests/gallery/bundle.js`（gitignored，esbuild iife，独立 `src/main.ts`），打开 `tests/gallery/index.html` 即用；场景全部复用生产组件（`ReadonlyGridRenderer`/`TableShell`/`FilterBuilder`/`SortPanel`/`DisplayPanel`/`createRecordDetail`/`createRecordCreateForm`/`MapView`+`MapViewController`/`MutationQueueRuntime`+`MutationQueueScheduler`），数据走 `InMemoryLoomTableClient`，宿主能力用 typed fake（`GalleryMapRenderer`）；`InMemoryLoomTableClient` 补齐完整 `LoomTableClient`（`queryMap` 低 zoom 聚合 cluster、`summarizeMap`、`queryMapClusterRecords` 分页、`pullChanges`、`getMeta`/`checkConnection`、附件方法以 capability 错误拒绝）；`gallery.test.ts` 25 项 jsdom 覆盖九个分区（控件、十类字段全状态、编辑/脏/queued/saving/error/terminal/conflict、offline、no-match 空态、回收站分页+撤销通知、无 View 空态、重复名/待决 intent/删除 View/损坏配置/写冲突、Filter/Sort/Display 面板、不可用算子、Detail 导航、创建表单、Map tiles/point/cluster/detail/provider 缺失、宽度变体与 dark token 容器），interactive 场景经真实 controller+队列完成删除与创建闭环；断言仅限 DOM 语义/角色/可见状态，不声称真实桌面像素验收。
+- 下一项：P1.5 需求表全部条目已交付；后续按缺陷或新需求另立切片。
+- 当前产品/合同阻塞：无。GitHub 交付状态由执行者实际操作后填写，不从本地 HEAD 推断。
+
+## 需求追踪
+
+| ID | 状态 | 实现/测试证据或具体剩余 |
+| --- | --- | --- |
+| F1 | 已有基础，待本期回归 | 共享 registry、normalizer、Detail、Attachment 已有；查询能力与紧凑溢出按要求补齐 |
+| V1 | 已交付 | TableShell 共用 Grid/Map 导航与 View Tabs 已接线（src/ui/table-shell.ts） |
+| V2 | 已交付 | 创建/重命名/复制/软删除/回收/恢复/配置修复已接线（`table-shell.ts`、`view-write-coordinator.ts`、`view-config-repair.ts`、`grid-view-controller.ts`）；Map camera 写入同一 coordinator |
+| V3 | 已交付 | `view-query-model.ts`、`filter-builder.ts`、`sort-panel.ts`、`query-focus.ts` + controller/renderer 接线；Filter/Sort/Search、分页失效、requestToken 过期响应丢弃、cursor-expired 恢复均有测试 |
+| V4 | 已交付 | `grid-display.ts` 解析器 + `display-panel.ts` + renderer 消费（冻结偏移、行高锚点、宽度 80–1000、空 projection 兼容）；controller `applyViewDisplay` 走 coordinator |
+| V5 | 已交付 | 替换式编辑/剪贴板 seam（`grid-clipboard.ts`）/Delete 写 null/Detail Unset 确认/焦点回退链/编辑器行虚拟化保留/Detail prev-next 分页导航（`canNavigateRecord`/`navigateRecord`）/20k 行 DOM 上限测试 |
+| M1 | 已交付 | `location-preview.ts` 真实渲染器预览（hover/键盘/触摸激活、provider 解析与披露、零请求失败路径、generation/生命周期、zoom 夹取），Detail/Map Detail 生产接线，19 项测试 |
+| M2 | 已交付 | Open in Map 0/1/N 匹配与 `map-view-picker.ts`、创建表单预选 Location、成功后才导航；primaryFieldId 标题；cluster token 分页/过期/失效清态；Map Filter 面板经 `applyViewUpdate`；管理/生命周期与 Grid 对齐 |
+| R1 | 已交付 | `record-create-form.ts` + Grid/Map 工具栏 + `createRecord`/`recordCreateOps` 队列集成；创建成功经 Detail 入口呈现，离线/无队列拒绝，测试见 `tests/ui/record-create-form.test.ts`、`grid-view-controller.test.ts` |
+| R2 | 已交付 | Grid 行/Detail/Map Detail 共用 `deleteRecord` 确认路径；撤销通知 + 回收站面板（`lifecycle:'deleted'` 独立查询/分页/恢复）；测试见 `grid-view-controller.test.ts` Record lifecycle、`readonly-grid-renderer.test.ts` Grid record lifecycle、`record-detail.test.ts`、`map-view.test.ts` |
+| R3 | 已交付 | 队列 V2 schema + V1 迁移 + 多命令 lane + 恢复失败端口；生命周期门控（pending delete 拒绝同 Record 后续 update/delete）、delete 重基、冲突按原 kind 重试、422 终态、跨 Table 事件过滤 |
+| Q1 | 已有基础，持续要求 | 新组件使用既有 HIG/i18n/token，修复本期触及的真实缺口 |
+| Q2 | 已交付 | `tests/gallery/`（scenarios.ts/data.ts/main.ts/index.html/README.md）+ `pnpm gallery` → `tests/gallery/bundle.js`（gitignored、独立于生产入口）+ `gallery.test.ts` 25 项自动化覆盖；`InMemoryLoomTableClient` 扩展为完整 `LoomTableClient`（queryMap/summarizeMap/queryMapClusterRecords/pullChanges/getMeta/附件 capability 拒绝） |
+
+## 每次交付更新
+
+在此记录最近一次有效交接即可，较早的实现摘要进入 `docs/development-log.md`，不要逐项复制 CI 历史。
+
+- 切片与需求 ID：切片 H —— Q2（开发 Gallery 与全量状态自动化覆盖）。
+- 代码/测试位置：`tests/gallery/{data,scenarios,main,index.html,README.md,gallery.test.ts}`、`scripts/build-gallery.mjs`、`package.json`（`pnpm gallery`）、`.gitignore`/`eslint.config.mts`（bundle.js 排除）、`tests/fixtures/in-memory-loomtable-client.ts`（补齐完整 `LoomTableClient`：map 查询/汇总/cluster 分页/pullChanges/meta/附件 capability 拒绝）。
+- 已完成行为：九个分区 14 个场景全部以生产组件渲染；Gallery 不包含任何夹具/测试按钮/调试凭据进入生产构建（独立 bundle、gitignored）；interactive Grid 经真实 `GridViewController`+`MutationQueueRuntime`+`InMemoryLoomTableClient` 完成编辑/创建/删除/撤销/回收闭环；`InMemoryLoomTableClient` 的 map 查询按 zoom 阈值输出 cluster/point 并保持 recordsQueryToken 分页。
+- 实际检查命令、结果和未运行原因：`pnpm exec vitest run tests/gallery/gallery.test.ts`（25/25）、`pnpm gallery`（产出 bundle.js 成功）、`pnpm check` 全绿（format、lint 0 error、typecheck、62 文件 732 tests、api 生成 diff 为空、esbuild build）；`git diff --check` 干净；`src/generated/transport.ts` 无 diff。桌面证据流程已取消，未运行。
+- Review 发现及处理：interactive 场景最初缺少 `onApplied→refresh` 接线（生产中由 main.ts 失效发布驱动），导致 create/delete 成功后列表不刷新——已补；回收站/创建入口仅在对应回调接线时出现，静态场景已补 `onLoadDeletedRecords` 等回调；无 View 空态需 `status:'empty'`+`emptyReason:'view'` 且 create 入口依赖 `onCreateView` 回调——场景按真实呈现路径构造。
+- PR/CI/合并状态（若实际存在）：未执行远端操作；本环境无 GitHub connector 结果，不声称 PR/CI 状态。
+- 未完成需求或阻塞：无。需求表全部条目已交付。
+- 下一项具体实现：P1.5 全部需求交付完成；如复核发现缺口另立切片处理。
