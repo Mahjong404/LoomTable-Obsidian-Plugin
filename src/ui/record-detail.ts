@@ -30,6 +30,8 @@ import {
 } from './attachment-upload';
 
 import { ensureButtonLabels, labelContainer } from './a11y';
+import { createFieldTypeIcon } from './field-type-icon';
+import { createUiIcon } from './icons';
 const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
 type LocationPresentationState = 'located' | 'unlocated' | 'unrenderable';
 
@@ -135,10 +137,10 @@ export function createRecordDetail(
   root.className = 'loom-record-detail';
   root.setAttribute('role', 'region');
   root.tabIndex = -1;
-  const heading = createText(
-    'h2',
-    options.translate('record.details') + ': ' + recordTitle(record),
-  );
+  const eyebrow = createText('p', options.translate('record.details'));
+  eyebrow.className = 'loom-record-detail-eyebrow';
+  const heading = createText('h2', recordTitle(record));
+  heading.className = 'loom-record-detail-title';
   heading.id = nextRecordDetailId();
   root.setAttribute('aria-labelledby', heading.id);
   const returnFocus =
@@ -178,7 +180,10 @@ export function createRecordDetail(
 
   const header = document.createElement('div');
   header.className = 'loom-record-detail-header';
-  header.append(heading);
+  const titleWrap = document.createElement('div');
+  titleWrap.className = 'loom-record-detail-title-wrap';
+  titleWrap.append(eyebrow, heading);
+  header.append(titleWrap);
 
   root.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
@@ -215,7 +220,7 @@ export function createRecordDetail(
         renderField(currentRecord, field, options, root, renderValues, announce),
       ),
     );
-    heading.textContent = options.translate('record.details') + ': ' + recordTitle(nextRecord);
+    heading.textContent = recordTitle(nextRecord);
     syncNavigation();
   };
   const navigate = async (direction: -1 | 1): Promise<void> => {
@@ -229,20 +234,25 @@ export function createRecordDetail(
   if (navigation !== undefined) {
     const navWrap = document.createElement('div');
     navWrap.className = 'loom-record-detail-nav';
-    previousButton = button(options.translate('record.nav.previous'));
+    previousButton = button('');
     previousButton.setAttribute('aria-label', options.translate('record.nav.previous'));
     previousButton.dataset.action = 'detail-previous';
     previousButton.addEventListener('click', () => void navigate(-1));
-    nextButton = button(options.translate('record.nav.next'));
+    nextButton = button('');
     nextButton.setAttribute('aria-label', options.translate('record.nav.next'));
     nextButton.dataset.action = 'detail-next';
     nextButton.addEventListener('click', () => void navigate(1));
+    previousButton.prepend(createUiIcon('nav-prev'));
+    previousButton.classList.add('loom-record-detail-iconbtn');
+    nextButton.prepend(createUiIcon('nav-next'));
+    nextButton.classList.add('loom-record-detail-iconbtn');
     navWrap.append(previousButton, nextButton);
-    header.append(navWrap);
+    header.prepend(navWrap);
   }
   if (options.callbacks?.onDeleteRecord !== undefined) {
-    const remove = button(options.translate('record.delete.action'));
-    remove.classList.add('loom-record-delete');
+    const remove = button('');
+    remove.classList.add('loom-record-delete', 'loom-record-detail-iconbtn');
+    remove.append(createUiIcon('menu-delete'));
     remove.dataset.action = 'detail-delete';
     remove.setAttribute('aria-label', options.translate('record.delete.action'));
     remove.addEventListener('click', () => {
@@ -260,7 +270,9 @@ export function createRecordDetail(
     header.append(remove);
   }
   if (options.callbacks?.onClose !== undefined) {
-    const close = button(options.translate('common.close'));
+    const close = button('');
+    close.classList.add('loom-record-detail-iconbtn');
+    close.append(createUiIcon('detail-close'));
     close.setAttribute('aria-label', options.translate('common.close'));
     close.addEventListener('click', closeDetail);
     header.append(close);
@@ -285,7 +297,8 @@ function renderField(
   announce: (message: string) => void,
 ): HTMLElement[] {
   const value = record.values[field.id];
-  const label = createText('dt', field.name);
+  const label = document.createElement('dt');
+  label.append(createFieldTypeIcon(field.type), createText('span', field.name));
   label.dataset.fieldId = field.id;
   const body = document.createElement('dd');
   body.dataset.fieldId = field.id;

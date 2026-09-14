@@ -1129,38 +1129,19 @@ export class ReadonlyGridRenderer {
     const indexCell = createElement('div', 'loom-grid-index-cell');
     indexCell.setAttribute('role', 'rowheader');
     indexCell.setAttribute('aria-colindex', '1');
+    const rowNumber = createTextElement('span', String(rowIndex + 1));
+    rowNumber.className = 'loom-grid-row-number';
     const open = document.createElement('button');
     open.type = 'button';
-    open.className = 'loom-grid-open';
+    open.className = 'loom-grid-open loom-grid-row-expand';
+    open.dataset.recordId = record.id;
     open.setAttribute('aria-label', this.#translate('grid.openDetails'));
-    open.textContent = '↗';
+    open.append(createUiIcon('menu-open'));
     open.addEventListener('click', (event) => {
       event.stopPropagation();
       this.#callbacks.onRecordOpen(record);
     });
-    indexCell.append(document.createTextNode(String(rowIndex + 1)), open);
-    if (this.#callbacks.onDeleteRecord !== undefined) {
-      const remove = document.createElement('button');
-      remove.type = 'button';
-      remove.className = 'loom-grid-delete-record';
-      remove.dataset.recordId = record.id;
-      remove.setAttribute('aria-label', this.#translate('record.delete.action'));
-      remove.textContent = '×';
-      const editStatus = gridState?.editStatuses[record.id];
-      remove.disabled =
-        gridState?.status === 'offline' || editStatus === 'queued' || editStatus === 'saving';
-      remove.addEventListener('click', (event) => {
-        event.stopPropagation();
-        void this.#requestDangerousConfirmation(
-          this.#translate('record.delete.confirm'),
-          row,
-          remove,
-        ).then((confirmed) => {
-          if (confirmed) void this.#callbacks.onDeleteRecord?.(record.id);
-        });
-      });
-      indexCell.append(remove);
-    }
+    indexCell.append(rowNumber, open);
     indexCell.addEventListener('contextmenu', (event) => {
       event.preventDefault();
       event.stopPropagation();

@@ -200,7 +200,7 @@
   min-height: var(--loom-control-min-height);
   padding: var(--loom-control-padding-block) var(--loom-control-padding-inline);
   border: 1px solid var(--loom-border);
-  border-radius: var(--loom-radius-sm);
+  border-radius: var(--loom-radius-md);
   background: var(--loom-control-bg);
   color: var(--loom-text-normal);
   cursor: pointer;
@@ -286,7 +286,7 @@
   min-height: var(--loom-control-min-height);
   padding-block: var(--loom-control-padding-block);
   padding-inline: var(--loom-control-padding-inline);
-  border-radius: var(--loom-radius-sm);
+  border-radius: var(--loom-radius-md);
 }
 
 .loom-root input:focus-visible,
@@ -1166,32 +1166,57 @@
   left: 0;
   z-index: 3;
   background: inherit;
-  justify-content: space-between;
+  justify-content: center;
   color: var(--loom-text-faint);
   font-size: var(--loom-font-ui-smaller);
 }
 
+.loom-grid-row-number {
+  display: inline-block;
+  min-width: 1.25em;
+  text-align: center;
+}
+
 .loom-grid-open {
-  padding: 0;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: none;
+  width: 1.375rem;
+  height: 1.375rem;
+  padding: 0.25rem;
+  align-items: center;
+  justify-content: center;
   border: 0;
+  border-radius: var(--loom-radius-sm);
   background: transparent;
   color: var(--loom-text-muted);
   cursor: pointer;
+  transform: translate(-50%, -50%);
 }
 
-.loom-grid-open,
-.loom-grid-delete-record {
-  opacity: 0;
-  transition: opacity 120ms ease;
+.loom-grid-open .loom-ui-icon {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  margin-inline-end: 0;
+}
+
+.loom-grid-open:hover,
+.loom-grid-open:focus-visible {
+  background: var(--loom-bg-hover);
+  color: var(--loom-accent);
+  outline: none;
+}
+
+.loom-grid-row:hover .loom-grid-row-number,
+.loom-grid-row:focus-within .loom-grid-row-number {
+  visibility: hidden;
 }
 
 .loom-grid-row:hover .loom-grid-open,
-.loom-grid-row:hover .loom-grid-delete-record,
 .loom-grid-row:focus-within .loom-grid-open,
-.loom-grid-row:focus-within .loom-grid-delete-record,
-.loom-grid-open:focus-visible,
-.loom-grid-delete-record:focus-visible {
-  opacity: 1;
+.loom-grid-open:focus-visible {
+  display: inline-flex;
 }
 
 .loom-grid-open:hover,
@@ -1623,12 +1648,96 @@
   display: none;
 }
 
-.loom-detail-host .loom-record-detail {
+.loom-detail-host .loom-record-detail,
+.loom-map-details .loom-record-detail {
+  display: flex;
   min-height: 100%;
   margin-block-start: 0;
+  padding: 0;
+  flex-direction: column;
   border: none;
   border-radius: 0;
   background: var(--loom-bg-primary);
+}
+
+.loom-detail-host .loom-record-detail-header,
+.loom-map-details .loom-record-detail-header {
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0.875rem 0.875rem 0.625rem;
+  border-bottom: 1px solid var(--loom-grid-line);
+}
+
+.loom-record-detail-eyebrow {
+  margin: 0 0 var(--loom-space-1);
+  color: var(--loom-text-faint);
+  font-size: 0.6875rem;
+}
+
+.loom-record-detail-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--loom-text-normal);
+  font-size: 0.9375rem;
+  font-weight: var(--loom-font-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loom-record-detail-title-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.loom-record-detail-iconbtn {
+  display: inline-flex;
+  min-height: 1.5rem;
+  min-width: 1.5rem;
+  padding: 0.1875rem;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--loom-radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--loom-text-muted);
+}
+
+.loom-record-detail-iconbtn .loom-ui-icon {
+  margin-inline-end: 0;
+}
+
+.loom-record-detail-iconbtn:hover:not(:disabled) {
+  background: var(--loom-bg-hover);
+  color: var(--loom-text-normal);
+}
+
+.loom-record-detail-nav {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  margin-block-start: 0.625rem;
+}
+
+.loom-record-detail .loom-record-delete:hover:not(:disabled) {
+  color: var(--loom-text-error);
+}
+
+.loom-detail-host .loom-record-fields,
+.loom-map-details .loom-record-fields {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0.75rem 0.875rem 1.125rem;
+  overflow: auto;
+  align-content: start;
+}
+
+.loom-record-fields dt {
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 6px;
 }
 
 .loom-grid-clipboard-note {
@@ -1655,6 +1764,11 @@
 
 .loom-map-details:empty {
   display: none;
+}
+
+.loom-map-details:has(> .loom-record-detail) {
+  gap: 0;
+  padding: 0;
 }
 
 .loom-map-record-detail,
@@ -2152,7 +2266,7 @@
 .loom-context-menu-separator {
   height: 1px;
   margin: var(--loom-space-1) var(--loom-space-2);
-  background: var(--loom-grid-line);
+  background: color-mix(in srgb, var(--loom-border) 30%, transparent);
 }
 
 .loom-grid-add-row {
@@ -2163,10 +2277,10 @@
   align-items: stretch;
   padding: 0;
   border: 0;
-  border-bottom: 1px solid var(--loom-grid-line);
   background: transparent;
   color: var(--loom-text-faint);
   font: inherit;
+  font-size: var(--loom-font-ui-smaller);
   text-align: start;
   cursor: pointer;
 }
@@ -2186,7 +2300,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-inline-end: 1px solid var(--loom-grid-line);
   background: inherit;
 }
 

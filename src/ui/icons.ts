@@ -37,7 +37,10 @@ export type UiIconName =
   | 'tool-recycle'
   | 'tool-refresh'
   | 'view-add'
-  | 'view-manage';
+  | 'view-manage'
+  | 'nav-prev'
+  | 'nav-next'
+  | 'detail-close';
 
 const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
   'view-grid': [
@@ -125,6 +128,12 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
   'view-add': [
     ['path', { d: 'M5 12h14' }],
     ['path', { d: 'M12 5v14' }],
+  ],
+  'nav-prev': [['path', { d: 'm15 18-6-6 6-6' }]],
+  'nav-next': [['path', { d: 'm9 18 6-6-6-6' }]],
+  'detail-close': [
+    ['path', { d: 'M18 6 6 18' }],
+    ['path', { d: 'M6 6l12 12' }],
   ],
   'view-manage': [
     ['line', { x1: '21', x2: '14', y1: '4', y2: '4' }],
