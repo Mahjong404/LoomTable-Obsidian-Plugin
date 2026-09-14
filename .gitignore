@@ -9,6 +9,7 @@ node_modules/
 # Plugin bundles and compiler output
 main.js
 main.js.map
+tests/gallery/bundle.js
 dist/
 build/
 *.tsbuildinfo

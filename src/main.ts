@@ -18,7 +18,7 @@ import type { ConnectionProfile } from './settings/connection-profile';
 import { LoomTableSettingTab } from './settings/settings-tab';
 import { LOOMTABLE_VIEW_TYPE, LoomTableView, type MapRendererInstance } from './ui/loomtable-view';
 import { MutationInvalidationBus } from './ui/mutation-invalidation';
-import { MutationQueueRuntime } from './ui/mutation-queue-runtime';
+import { MutationQueueRuntime, UnavailableMutationQueuePort } from './ui/mutation-queue-runtime';
 
 export default class LoomTablePlugin extends Plugin {
   override settings: PluginSettings = normalizePluginSettings(null);
@@ -68,13 +68,13 @@ export default class LoomTablePlugin extends Plugin {
         const record = result.results.find(
           (item) =>
             item.index === 0 &&
-            item.record.id === entry.recordId &&
+            (entry.recordId === undefined || item.record.id === entry.recordId) &&
             item.record.tableId === entry.tableId,
         )?.record;
         if (record !== undefined) {
           this.mutationInvalidations.publish({
             tableId: entry.tableId,
-            recordId: entry.recordId,
+            recordId: record.id,
             record,
             changeCursor: result.changeCursor,
           });
@@ -82,7 +82,9 @@ export default class LoomTablePlugin extends Plugin {
       },
     });
     this.mutationQueueRuntime = mutationQueueRuntime;
-    const mutationScheduler = await mutationQueueRuntime.start();
+    const mutationScheduler =
+      (await mutationQueueRuntime.start()) ??
+      new UnavailableMutationQueuePort(mutationQueueRuntime.recoveryError);
     if (typeof window !== 'undefined') {
       this.registerDomEvent(window, 'online', () => {
         void this.mutationQueueRuntime?.setOnline(true);

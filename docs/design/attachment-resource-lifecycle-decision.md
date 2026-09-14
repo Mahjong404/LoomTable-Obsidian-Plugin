@@ -5,6 +5,8 @@
 - Scope: Plugin S3-C3-C3 documentation decision only
 - Current Plugin main at review: `4d6f79781ad0da5a679c8e76a737f74724302f8a`
 
+P1.5 note (2026-09-14): resource Delete/Restore/GC is outside the current milestone and does not block View/Grid, Map or Record lifecycle work. The future proposal below is reference only; current execution starts at [P1.5](../p1.5/README.md).
+
 > This record separates a Record Attachment reference from the Attachment resource it points to. It does not publish a new API, change an existing wire type, authorize a Server change, or claim that resource deletion is currently available in the Plugin.
 
 ## Decision
@@ -74,5 +76,4 @@ Shared-reference findings must block or change the user choice; they must never 
 
 - S3-C3-C2 is the delivered safe subset: Record Detach and bounded Retry, not resource lifecycle completion.
 - This decision record is documentation-only. It does not modify Server/API/OpenAPI, Attachment wire types, offline semantics, Mutation Queue, Conflict, revision, or changeCursor behavior.
-- Current-main real Obsidian smoke remains `UNVERIFIED`; automated checks and prior DOM evidence are not desktop acceptance.
 - S3-C3-C3 resource-level implementation is deferred. S4/S5/S6, new fields/views, CRUD, Filter/Sort, and Dashboard remain outside this decision.

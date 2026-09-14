@@ -4,7 +4,7 @@
 
 Grid View 是第一阶段的核心交互。它必须支持约 20k Records 的浏览、筛选、排序和编辑，同时避免把完整数据集转换成完整 DOM。
 
-当前 main 已交付的 Grid 编辑 P1 最小切片是在只读 Grid 基础上增加：单条 `UpdateRecord`；同一 Record 的 FIFO Mutation Queue 与不同 Record 的并行；复用稳定 `clientMutationId` 的有限网络重试；Conflict UI 的 use-server/明确确认后的 overwrite；以及离线只读闸门（UI 与 controller 均禁止编辑和发送 Mutation）。create/delete/restore、逐字段 Conflict merge、离线写入和重启后队列持久化不属于当前切片，保留为 backlog/设计约束。列虚拟化仍为后续接口约束。
+本文保留 Grid 的通用设计。当前 P1.5 实现范围、已交付基础和具体行为以 [View 与 Grid](../p1.5/view-grid.md) 为准；已有 UpdateRecord 持久化队列继续复用，新增单条生命周期按 [Record 生命周期](../p1.5/record-lifecycle.md) 实施。逐字段合并、离线新写入和列虚拟化不在本期。
 
 ## 结构
 
@@ -56,7 +56,7 @@ P0 使用原生 DOM 自定义行虚拟化，并采用固定行高模式：
 
 基础字段支持：
 
-- 点击或 Enter 进入编辑。
+- 单击选中，双击或 Enter 进入编辑。
 - Enter 提交。
 - Esc 取消。
 - Tab / Shift+Tab 移动。
@@ -91,11 +91,11 @@ P0 剪贴板只支持单个 Cell 的复制和粘贴。矩形 TSV 多 Cell 粘贴
 
 ## Record 生命周期
 
-当前 P1 Grid 只支持对已存在 Record 的单条 `UpdateRecord`。create/delete/restore 不属于当前 Plugin UI/Mutation Queue 交付，保留为 backlog；未来实现时仍须携带 `expectedRevision` 并遵守与 Cell 编辑相同的 Conflict 处理规则。
+P1.5 要实现单条 Create/Delete/Restore。Create 不需要 `expectedRevision`，Delete/Restore 使用当前权威 revision；具体产品流程、队列兼容和重试见 [Record 生命周期](../p1.5/record-lifecycle.md)。
 
 ## Filter、Sort 和 Search
 
-- Filter Builder 根据 `FieldTypeRegistry` 只显示该 Field Type 支持的 Operator。
+- Filter Builder 根据共享字段能力只显示该 Field Type 支持的 Operator。
 - 支持嵌套 `AND` / `OR` Filter Group。
 - 支持多字段 Sort，并明确每个 Sort 的方向和空值位置。
 - Filter、Sort 和 Search 全部提交 Server 执行；Plugin 不对缓存页进行本地重算。

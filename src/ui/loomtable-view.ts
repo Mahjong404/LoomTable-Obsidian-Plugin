@@ -1,12 +1,20 @@
 import { ItemView, type WorkspaceLeaf } from 'obsidian';
 
-import type { JsonValue, LoomTableClient, LoomTableRecord, View } from '../client/loomtable-client';
+import type {
+  FilterNode,
+  JsonValue,
+  LoomTableClient,
+  LoomTableRecord,
+  MutationValue,
+  View,
+} from '../client/loomtable-client';
 import type { Translator } from '../i18n';
 import type { TileCredentialReader } from '../maps/providers/tile-provider-schema';
 import type { TileProviderRegistry } from '../maps/providers/tile-provider-registry';
 import type { MapRenderer } from '../maps/renderer/map-renderer';
 import type { ConnectionProfile } from '../settings/connection-profile';
 import type { PluginSettings } from '../settings/plugin-settings';
+import { ViewCreateIntentStore } from '../settings/view-intents';
 import type { DurableMutationQueuePort } from './mutation-queue-scheduler';
 import {
   subscribeMutationInvalidation,
@@ -16,6 +24,7 @@ import { GridViewController, type GridState } from './grid-view-controller';
 import { ReadonlyGridRenderer } from './readonly-grid-renderer';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
 import { MapView, type MapViewNavigation } from '../views/map/map-view';
+import type { ViewUpdatePatch } from './view-write-coordinator';
 import {
   createAttachmentDownloadCallback,
   createBrowserAttachmentDownloadHost,
@@ -30,6 +39,12 @@ import {
   createObsidianAttachmentOpenHost,
 } from './attachment-host';
 import { createRecordDetail } from './record-detail';
+import {
+  LocationPreviewController,
+  type LocationPreviewHandle,
+  type LocationPreviewRequest,
+} from './location-preview';
+import { chooseMapViewTarget } from './map-view-picker';
 
 export const LOOMTABLE_VIEW_TYPE = 'loomtable-main';
 
@@ -56,6 +71,8 @@ export class LoomTableView extends ItemView {
   #gridHost: HTMLElement | null = null;
   #detailHost: HTMLElement | null = null;
   #gridClient: LoomTableClient | null = null;
+  #gridRenderer: ReadonlyGridRenderer | null = null;
+  #locationPreview: LocationPreviewController | null = null;
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -114,8 +131,22 @@ export class LoomTableView extends ItemView {
       new GridViewController(client, {
         translate: this.getTranslator(),
         ...(this.mutationQueue === null ? {} : { mutationQueue: this.mutationQueue }),
+        viewIntents: this.createViewIntentStore(profile),
         onNonGridViewSelected: (view, state) => this.showMap(profile, view, state),
       }),
+    );
+  }
+
+  private createViewIntentStore(profile: ConnectionProfile): ViewCreateIntentStore {
+    return new ViewCreateIntentStore(
+      { profileId: profile.id, serverOrigin: profile.serverOrigin },
+      {
+        load: () => this.getSettings().viewIntents,
+        save: async (data) => {
+          this.getSettings().viewIntents = data;
+          await this.mapContext.saveSettings();
+        },
+      },
     );
   }
 
@@ -155,6 +186,56 @@ export class LoomTableView extends ItemView {
         if (!this.prepareForNavigation()) return;
         await controller.selectView(viewId);
       },
+      onCreateView: (input) => controller.createView(input),
+      onRetryViewIntent: async (intentId) => {
+        await controller.retryViewIntent(intentId);
+      },
+      onDismissViewIntent: (intentId) => controller.dismissViewIntent(intentId),
+      onManageViews: () => controller.openManageViews(),
+      onCloseManageViews: () => controller.closeManageViews(),
+      onRenameView: (viewId, name) => controller.renameView(viewId, name),
+      onCopyView: (viewId, name) => controller.copyView(viewId, name),
+      onDeleteView: (viewId) => controller.deleteView(viewId),
+      onRestoreView: (viewId) => controller.restoreView(viewId),
+      onRepairView: (viewId, repair) => controller.repairView(viewId, repair),
+      onResolveViewIssue: (viewId, action) => {
+        if (action === 'adopt-latest' || action === 're-edit') {
+          return controller.resolveViewConflict(viewId, action);
+        }
+        if (action === 'retry') return controller.retryViewWrite(viewId);
+        return controller.dismissViewWriteIssue(viewId);
+      },
+      onSearch: (term) => controller.setSearch(term),
+      onApplyFilter: (viewId, filter) => controller.applyViewFilter(viewId, filter),
+      onApplySort: (viewId, sort) => controller.applyViewSort(viewId, sort),
+      onApplyDisplay: (viewId, patch) => controller.applyViewDisplay(viewId, patch),
+      ...(controller.supportsRecordCreate
+        ? {
+            onCreateRecord: (values: Readonly<Record<string, MutationValue>>) =>
+              controller.createRecord(values),
+            onRetryRecordCreate: (operationId: string) => controller.retryRecordCreate(operationId),
+            onDiscardRecordCreate: (operationId: string) =>
+              controller.discardRecordCreate(operationId),
+            onDismissRecordCreate: (operationId: string) =>
+              controller.dismissRecordCreate(operationId),
+          }
+        : {}),
+      ...(controller.supportsRecordLifecycle
+        ? {
+            onDeleteRecord: async (recordId: string) => {
+              await controller.deleteRecord(recordId);
+            },
+            onUndoDelete: async () => {
+              await controller.undoDelete();
+            },
+            onDismissDeleteNotice: () => controller.dismissDeleteNotice(),
+            onLoadDeletedRecords: () => controller.loadDeletedRecords(),
+            onLoadMoreDeletedRecords: () => controller.loadMoreDeletedRecords(),
+            onRestoreRecord: async (recordId: string) => {
+              await controller.restoreRecord(recordId);
+            },
+          }
+        : {}),
       onLoadMore: () => controller.loadNextPage(),
       onRecordOpen: (record) => void this.showRecordDetail(record, profile, controller),
       onCellEdit: (recordId, fieldId, value) => {
@@ -168,6 +249,7 @@ export class LoomTableView extends ItemView {
         : { onOpenSettings: this.mapContext.openSettings }),
     });
     this.#gridController = controller;
+    this.#gridRenderer = renderer;
     this.#gridUnsubscribe = controller.subscribe((state) => renderer.render(state));
     if (this.invalidations !== null) {
       this.#invalidationUnsubscribe = this.invalidations.subscribe((event) => {
@@ -190,11 +272,15 @@ export class LoomTableView extends ItemView {
     this.#invalidationUnsubscribe?.();
     this.#invalidationUnsubscribe = null;
     this.#mapView?.destroy();
+    this.#gridRenderer = null;
     this.#gridHost = null;
     this.#detailHost = null;
     const client = this.createClient(profile);
     let mapView: MapView | null = null;
     const instance = this.mapContext.createRenderer();
+    const primaryFieldId = navigationState.tables.find(
+      (table) => table.id === view.tableId,
+    )?.primaryFieldId;
     const controller = new MapViewController(client, view, navigationState.fields, {
       renderer: instance.renderer,
       registry: this.mapContext.registry,
@@ -203,6 +289,13 @@ export class LoomTableView extends ItemView {
       viewport: instance.viewport,
       isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
       beforeRecordSelected: () => mapView?.confirmDiscardIfNeeded() ?? true,
+      ...(primaryFieldId === undefined ? {} : { primaryFieldId }),
+      ...(this.#gridController === null
+        ? {}
+        : {
+            saveViewConfig: (viewId: string, patch: ViewUpdatePatch) =>
+              this.#gridController!.updateView(viewId, patch),
+          }),
     });
     const navigation = this.mapNavigation(profile, navigationState, view);
     const provider = providerForView(this.getSettings(), view.id);
@@ -267,7 +360,15 @@ export class LoomTableView extends ItemView {
               fieldId: string,
               value: JsonValue,
               record: LoomTableRecord,
-            ) => this.#gridController!.editCell(recordId, fieldId, value, {}, record),
+              options?: { readonly unset?: boolean },
+            ) =>
+              this.#gridController!.editCell(
+                recordId,
+                fieldId,
+                value,
+                { unset: options?.unset ?? false },
+                record,
+              ),
           }),
       getConflict: (recordId) => this.#gridController?.getConflict(recordId),
       onConflictAction: (recordId, action) =>
@@ -276,8 +377,34 @@ export class LoomTableView extends ItemView {
         this.openLocationInMap(profile, navigationState, recordId, fieldId),
       canOpenLocationInMap: (fieldId) =>
         navigationState.views.some(
-          (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
+          (candidate) =>
+            candidate.type === 'map' &&
+            candidate.deletedAt === undefined &&
+            candidate.config.locationFieldId === fieldId,
         ),
+      ...(this.#gridController === null
+        ? {}
+        : {
+            onApplyFilter: async (viewId: string, filter: FilterNode | undefined) => {
+              const outcome = await this.#gridController!.applyViewFilter(viewId, filter);
+              if (outcome.status === 'saved') await controller.applyViewUpdate(outcome.view);
+              return outcome;
+            },
+          }),
+      locationPreview: this.locationPreviewHandle(),
+      ...(this.#gridController?.supportsRecordCreate === true
+        ? {
+            onCreateRecord: (values: Readonly<Record<string, MutationValue>>) =>
+              this.#gridController!.createRecord(values),
+          }
+        : {}),
+      ...(this.#gridController?.supportsRecordLifecycle === true
+        ? {
+            onDeleteRecord: async (recordId: string) => {
+              await this.#gridController!.deleteRecord(recordId);
+            },
+          }
+        : {}),
       onAttachmentDownload: attachmentDownload,
       canAttachmentDownload: isAttachmentDownloadable,
       onAttachmentOpen: createAttachmentOpenCallback(createObsidianAttachmentOpenHost(this.app)),
@@ -315,6 +442,24 @@ export class LoomTableView extends ItemView {
       );
     }
     this.#mapView.mount();
+    const gridController = this.#gridController;
+    if (gridController !== null) {
+      this.#gridUnsubscribe = gridController.subscribe((state) => {
+        const stillActive = state.views.some(
+          (candidate) => candidate.id === view.id && candidate.deletedAt === undefined,
+        );
+        if (!stillActive) {
+          const next = state.views.find(
+            (candidate) =>
+              candidate.id === state.selectedViewId && candidate.deletedAt === undefined,
+          );
+          if (next?.type === 'map') this.showMap(profile, next, state);
+          else this.renderGrid(profile, gridController);
+          return;
+        }
+        mapView.updateNavigation(this.mapNavigation(profile, state, view));
+      });
+    }
     if (focusRecordId !== undefined) void controller.openRecord(focusRecordId);
   }
 
@@ -330,10 +475,46 @@ export class LoomTableView extends ItemView {
       bases: state.bases,
       tables: state.tables,
       views: state.views,
+      fields: state.fields,
+      pendingViewIntents: state.pendingViewIntents.filter(
+        (intent) => intent.tableId === state.selectedTableId,
+      ),
+      deletedViews: state.deletedViews,
+      deletedViewsStatus: state.deletedViewsStatus,
+      viewWritePending: state.viewWritePending,
+      viewWriteIssues: state.viewWriteIssues,
       selectedWorkspaceId: state.selectedWorkspaceId,
       selectedBaseId: state.selectedBaseId,
       selectedTableId: state.selectedTableId,
       selectedViewId: view.id,
+      onCreateView: async (input) => {
+        const outcome = await controller.createView(input);
+        if (outcome.status === 'created' && outcome.view.type === 'grid') {
+          this.renderGrid(profile, controller);
+        }
+        return outcome;
+      },
+      onRetryViewIntent: async (intentId) => {
+        const outcome = await controller.retryViewIntent(intentId);
+        if (outcome?.status === 'created' && outcome.view.type === 'grid') {
+          this.renderGrid(profile, controller);
+        }
+      },
+      onDismissViewIntent: (intentId) => controller.dismissViewIntent(intentId),
+      onManageViews: () => controller.openManageViews(),
+      onCloseManageViews: () => controller.closeManageViews(),
+      onRenameView: (viewId, name) => controller.renameView(viewId, name),
+      onCopyView: (viewId, name) => controller.copyView(viewId, name),
+      onDeleteView: (viewId) => controller.deleteView(viewId),
+      onRestoreView: (viewId) => controller.restoreView(viewId),
+      onRepairView: (viewId, repair) => controller.repairView(viewId, repair),
+      onResolveViewIssue: (viewId, action) => {
+        if (action === 'adopt-latest' || action === 're-edit') {
+          return controller.resolveViewConflict(viewId, action);
+        }
+        if (action === 'retry') return controller.retryViewWrite(viewId);
+        return controller.dismissViewWriteIssue(viewId);
+      },
       onWorkspaceChange: async (workspaceId) => {
         if (!this.prepareForNavigation()) return;
         await controller.selectWorkspace(workspaceId);
@@ -423,27 +604,56 @@ export class LoomTableView extends ItemView {
       },
     });
     const attachmentDownload = this.createAttachmentDownloadHandler(client);
+    const detailTable = controller.state.tables.find(
+      (candidate) => candidate.id === controller.state.selectedTableId,
+    );
     let detail: HTMLElement;
     detail = createRecordDetail(detailRecord, {
       translate: this.getTranslator(),
       fields: controller.state.fields,
+      ...(detailTable?.primaryFieldId === undefined
+        ? {}
+        : { primaryFieldId: detailTable.primaryFieldId }),
+      navigation: {
+        canNavigate: (recordId, direction) => controller.canNavigateRecord(recordId, direction),
+        onNavigate: async (recordId, direction) => {
+          const target = await controller.navigateRecord(recordId, direction);
+          return target === null ? null : controller.getRecordForDetail(target);
+        },
+      },
       offline: typeof navigator !== 'undefined' && navigator.onLine === false,
       returnFocus: invokingElement,
       focusFallback: () => this.#gridHost?.querySelector<HTMLElement>('.loom-grid-shell') ?? null,
       confirmDiscard: (message) => window.confirm(message),
       callbacks: {
         onClose: () => detail.remove(),
-        onFieldEdit: async (recordId, fieldId, value, sourceRecord) =>
-          controller.editCell(recordId, fieldId, value, {}, sourceRecord),
+        onFieldEdit: async (recordId, fieldId, value, sourceRecord, options) =>
+          controller.editCell(
+            recordId,
+            fieldId,
+            value,
+            { unset: options?.unset ?? false },
+            sourceRecord,
+          ),
         onLocationEdit: (recordId, fieldId, intent, recordValue) =>
           controller.editLocation(recordId, fieldId, intent, recordValue),
         getConflict: (recordId) => controller.getConflict(recordId),
         onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
+        ...(controller.supportsRecordLifecycle
+          ? {
+              onDeleteRecord: async (recordId: string) => {
+                await controller.deleteRecord(recordId);
+              },
+            }
+          : {}),
         onOpenLocationInMap: (recordId, fieldId) =>
           this.openLocationInMap(profile, controller.state, recordId, fieldId),
         canOpenLocationInMap: (fieldId) =>
           controller.state.views.some(
-            (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
+            (candidate) =>
+              candidate.type === 'map' &&
+              candidate.deletedAt === undefined &&
+              candidate.config.locationFieldId === fieldId,
           ),
         onAttachmentDownload: attachmentDownload,
         canAttachmentDownload: isAttachmentDownloadable,
@@ -456,6 +666,7 @@ export class LoomTableView extends ItemView {
         ...(attachmentAdd.retry === undefined ? {} : { onAttachmentAddRetry: attachmentAdd.retry }),
         onAttachmentDetach: attachmentDetach,
       },
+      locationPreview: this.locationPreviewHandle(),
     });
     detailHost.append(detail);
     detail.focus();
@@ -472,6 +683,7 @@ export class LoomTableView extends ItemView {
 
   private prepareForNavigation(): boolean {
     if (!this.confirmDiscardOpenDetail()) return false;
+    this.#locationPreview?.close();
     this.#detailHost?.replaceChildren();
     return true;
   }
@@ -497,6 +709,40 @@ export class LoomTableView extends ItemView {
     }
   }
 
+  private locationPreviewHandle(): LocationPreviewHandle {
+    this.#locationPreview ??= new LocationPreviewController({
+      translate: this.getTranslator(),
+      host: () => this.contentEl,
+      resolveProvider: (request) => {
+        const controller = this.#gridController;
+        const settings = this.getSettings();
+        const match = controller?.state.views.find(
+          (candidate) =>
+            candidate.type === 'map' &&
+            candidate.deletedAt === undefined &&
+            candidate.config.locationFieldId === request.fieldId,
+        );
+        const ref =
+          match === undefined
+            ? settings.mapPresentation.defaultProvider
+            : providerForView(settings, match.id);
+        return this.mapContext.registry.resolve(ref, this.mapContext.credentials);
+      },
+      createRenderer: () => this.mapContext.createRenderer().renderer,
+      isOffline: () => typeof navigator !== 'undefined' && navigator.onLine === false,
+      onOpenInMap: (request: LocationPreviewRequest) => {
+        const controller = this.#gridController;
+        const profile = defaultProfile(this.getSettings());
+        if (controller === null || profile === null) return;
+        this.openLocationInMap(profile, controller.state, request.recordId, request.fieldId);
+      },
+      ...(this.mapContext.openSettings === undefined
+        ? {}
+        : { onOpenSettings: this.mapContext.openSettings }),
+    });
+    return this.#locationPreview;
+  }
+
   private openLocationInMap(
     profile: ConnectionProfile,
     state: GridState,
@@ -505,15 +751,44 @@ export class LoomTableView extends ItemView {
   ): void {
     const controller = this.#gridController;
     if (controller === null) return;
-    const mapView = state.views.find(
-      (candidate) => candidate.type === 'map' && candidate.config.locationFieldId === fieldId,
+    const matches = state.views.filter(
+      (candidate) =>
+        candidate.type === 'map' &&
+        candidate.deletedAt === undefined &&
+        candidate.config.locationFieldId === fieldId,
     );
-    if (mapView?.type === 'map') this.showMap(profile, mapView, controller.state, recordId);
+    if (matches.length === 1 && matches[0]?.type === 'map') {
+      this.showMap(profile, matches[0], controller.state, recordId);
+      return;
+    }
+    const host = this.#detailHost ?? this.contentEl;
+    void chooseMapViewTarget(host, matches, this.getTranslator()).then((choice) => {
+      if (choice.kind === 'cancel') return;
+      if (choice.kind === 'create') {
+        this.openMapViewCreateForm(fieldId);
+        return;
+      }
+      const target = matches.find((candidate) => candidate.id === choice.viewId);
+      if (target?.type === 'map' && this.#gridController !== null) {
+        this.showMap(profile, target, this.#gridController.state, recordId);
+      }
+    });
+  }
+
+  private openMapViewCreateForm(fieldId: string): void {
+    if (this.#mapView !== null) {
+      this.#mapView.openViewCreateForm({ type: 'map', locationFieldId: fieldId });
+      return;
+    }
+    this.#gridRenderer?.openViewCreateForm({ type: 'map', locationFieldId: fieldId });
   }
 
   private disposeAll(): void {
+    this.#locationPreview?.dispose();
+    this.#locationPreview = null;
     this.#mapView?.destroy();
     this.#mapView = null;
+    this.#gridRenderer = null;
     this.#gridUnsubscribe?.();
     this.#gridUnsubscribe = null;
     this.#invalidationUnsubscribe?.();

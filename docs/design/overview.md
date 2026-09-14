@@ -1,5 +1,7 @@
 # LoomTable Obsidian Plugin 概要设计
 
+本文是产品架构背景，目录与 P0 流程是设计示意，不表示功能已全部实现。当前 P1.5 范围与开发顺序见 [实现要求](../p1.5/README.md)。
+
 ## 1. 文档目的
 
 本文定义 LoomTable Obsidian Plugin 的职责、运行边界、主要模块和第一个可用版本的用户流程。实现细节分别记录在 UI、Grid、Field Type 和 Client Interface 文档中。
@@ -105,4 +107,3 @@ src/
 LoomTable Obsidian Plugin 使用 MIT License。第三方字体、地图服务、瓦片和依赖需要单独完成许可证审查。
 
 Map View 的实现合同见 [Map View 与瓦片提供方规范](../ui/map-spec.md)。
-

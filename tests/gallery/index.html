@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>LoomTable development Gallery</title>
+    <!-- Production stylesheet; Obsidian theme variables are absent, so every
+         --loom-* token exercises its documented fallback values. -->
+    <link rel="stylesheet" href="../../styles.css" />
+    <style>
+      /* Gallery chrome only — production selectors and tokens live in styles.css. */
+      body {
+        margin: 0;
+        font-family: var(--loom-font-body);
+        background: var(--loom-bg-primary);
+        color: var(--loom-text-normal);
+      }
+      .loom-gallery-layout {
+        display: grid;
+        grid-template-columns: 18rem 1fr;
+        min-height: 100vh;
+      }
+      #gallery-nav {
+        border-inline-end: 1px solid var(--loom-border);
+        padding: var(--loom-space-3);
+        overflow-y: auto;
+      }
+      .loom-gallery-nav-section h3 {
+        margin: var(--loom-space-3) 0 var(--loom-space-1);
+        font-size: var(--loom-font-ui-smaller);
+        color: var(--loom-text-muted);
+        text-transform: uppercase;
+      }
+      .loom-gallery-nav-item {
+        display: block;
+        width: 100%;
+        text-align: start;
+        padding: var(--loom-space-1) var(--loom-space-2);
+        border: 0;
+        border-radius: var(--loom-radius-sm);
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+      }
+      .loom-gallery-nav-item:hover {
+        background: var(--loom-bg-hover);
+      }
+      .loom-gallery-nav-item[aria-current='true'] {
+        background: var(--loom-accent);
+        color: var(--loom-bg-primary);
+      }
+      #gallery-host {
+        padding: var(--loom-space-4);
+      }
+      .loom-gallery-labeled {
+        margin-block-end: var(--loom-space-4);
+      }
+      .loom-gallery-caption {
+        margin: 0 0 var(--loom-space-2);
+        font-size: var(--loom-font-ui-smaller);
+        color: var(--loom-text-muted);
+      }
+      .loom-gallery-controls .loom-gallery-row .loom-gallery-labeled > div {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--loom-space-2);
+        align-items: center;
+      }
+      .loom-gallery-panels {
+        display: grid;
+        gap: var(--loom-space-4);
+      }
+      .loom-gallery-split {
+        display: grid;
+        grid-template-columns: 1fr 22rem;
+        gap: var(--loom-space-4);
+        align-items: start;
+      }
+      .loom-gallery-widths > .loom-gallery-labeled {
+        border: 1px dashed var(--loom-border);
+        padding: var(--loom-space-2);
+      }
+      .loom-gallery-dark {
+        --background-primary: #1e1e22;
+        --background-secondary: #26262c;
+        --background-secondary-alt: #2e2e34;
+        --background-modifier-hover: #38383f;
+        --background-modifier-form-field: #2a2a30;
+        --background-modifier-error: #4a2020;
+        --background-modifier-border: #44444c;
+        --text-normal: #e8e8ec;
+        --text-muted: #a8a8b3;
+        --text-faint: #85858f;
+        --text-accent: #a78bfa;
+        --text-success: #4ade80;
+        --text-warning: #fbbf24;
+        --text-error: #f87171;
+        --interactive-accent: #8b5cf6;
+        --interactive-normal: #33333a;
+        --interactive-hover: #3d3d45;
+        background: var(--loom-bg-primary);
+      }
+      .loom-gallery-annotated .loom-shell-context,
+      .loom-gallery-annotated .loom-view-tabs,
+      .loom-gallery-annotated .loom-shell-actions,
+      .loom-gallery-annotated .loom-toolbar-start,
+      .loom-gallery-annotated .loom-toolbar-end {
+        position: relative;
+        outline: 1px dashed var(--loom-accent);
+        outline-offset: 3px;
+      }
+      .loom-gallery-annotated .loom-shell-context::after,
+      .loom-gallery-annotated .loom-view-tabs::after,
+      .loom-gallery-annotated .loom-shell-actions::after,
+      .loom-gallery-annotated .loom-toolbar-start::after,
+      .loom-gallery-annotated .loom-toolbar-end::after {
+        position: absolute;
+        inset-block-start: -1.4em;
+        inset-inline-start: 0;
+        color: var(--loom-accent);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+      }
+      .loom-gallery-annotated .loom-shell-context::after {
+        content: 'context';
+      }
+      .loom-gallery-annotated .loom-view-tabs::after {
+        content: 'tabs';
+      }
+      .loom-gallery-annotated .loom-shell-actions::after {
+        content: 'actions';
+      }
+      .loom-gallery-annotated .loom-toolbar-start::after {
+        content: 'start';
+      }
+      .loom-gallery-annotated .loom-toolbar-end::after {
+        content: 'end';
+      }
+      .loom-gallery-detail-frame {
+        position: relative;
+        height: 36rem;
+        border: 1px dashed var(--loom-border);
+        overflow: hidden;
+      }
+      .loom-gallery-fake-map {
+        min-height: 24rem;
+        border: 1px dashed var(--loom-border);
+        background: var(--loom-bg-secondary);
+        padding: var(--loom-space-2);
+      }
+      .loom-gallery-map-controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--loom-space-2);
+        margin-block-end: var(--loom-space-2);
+      }
+      .loom-gallery-fake-map [data-role='map-feature'] {
+        display: inline-block;
+        margin: var(--loom-space-1);
+        padding: var(--loom-space-1) var(--loom-space-2);
+        border-radius: var(--loom-radius-sm);
+        background: var(--loom-control-bg);
+        border: 1px solid var(--loom-border);
+      }
+      .loom-gallery-fake-map [data-role='map-feature'][data-feature-kind='cluster'] {
+        background: var(--loom-accent);
+        color: var(--loom-bg-primary);
+      }
+      @media (max-width: 40rem) {
+        .loom-gallery-layout {
+          grid-template-columns: 1fr;
+        }
+        .loom-gallery-split {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body class="loom-root">
+    <div class="loom-gallery-layout">
+      <nav id="gallery-nav" aria-label="Gallery scenarios"></nav>
+      <main id="gallery-host"></main>
+    </div>
+    <script src="./bundle.js"></script>
+  </body>
+</html>
