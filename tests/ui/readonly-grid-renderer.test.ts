@@ -146,6 +146,7 @@ describe('ReadonlyGridRenderer', () => {
       '.loom-grid-cell[data-field-id="field_name"]',
     );
     firstCell?.click();
+    firstCell?.click();
     const firstEditor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(firstEditor).not.toBeNull();
     firstEditor?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
@@ -155,6 +156,7 @@ describe('ReadonlyGridRenderer', () => {
       container.querySelector('.loom-grid-cell[data-field-id="field_second"]'),
     );
 
+    container.querySelector<HTMLElement>('.loom-grid-cell[data-field-id="field_second"]')?.click();
     container.querySelector<HTMLElement>('.loom-grid-cell[data-field-id="field_second"]')?.click();
     const secondEditor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(secondEditor).not.toBeNull();
@@ -179,6 +181,7 @@ describe('ReadonlyGridRenderer', () => {
 
     renderer.render(createState(1));
     const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.click();
     cell?.click();
     const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(editor).not.toBeNull();
@@ -412,6 +415,7 @@ describe('ReadonlyGridRenderer', () => {
 
     renderer.render(createState(1));
     const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     cell?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(editor).not.toBeNull();
@@ -737,6 +741,7 @@ describe('ReadonlyGridRenderer', () => {
     ).toEqual(['Old (Deleted option)', 'One']);
     expect(cell?.textContent).not.toContain('option_old');
 
+    cell?.click();
     cell?.click();
     const editor = container.querySelector<HTMLSelectElement>('.loom-grid-editor');
     expect(editor?.multiple).toBe(true);
@@ -1715,6 +1720,7 @@ describe('Grid V5 virtualization safety', () => {
       '.loom-grid-cell[data-record-id="record_01"]',
     );
     cell?.click();
+    cell?.click();
     const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(editor).not.toBeNull();
     if (editor === null) return;
@@ -2450,5 +2456,122 @@ describe('search highlight and footer', () => {
     );
     expect(document.activeElement).toBe(cells[1]);
     container.remove();
+  });
+});
+
+function createTwoByTwoState(): GridState {
+  const state = createTwoFieldState();
+  const first = state.records[0];
+  if (first === undefined) throw new Error('Grid fixture is missing.');
+  return {
+    ...state,
+    records: [
+      first,
+      { ...first, id: 'record_02', values: { field_name: 'Record 2', field_second: 'Row 2' } },
+    ],
+  };
+}
+
+describe('Cell selection model', () => {
+  it('selects a Cell on click and enters edit on second click', () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(2));
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_name"][data-record-id="record_01"]',
+    );
+    cell?.click();
+    expect(cell?.classList.contains('is-selected')).toBe(true);
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
+    cell?.click();
+    expect(container.querySelector('.loom-grid-editor')).not.toBeNull();
+  });
+
+  it('extends a rectangular selection with Shift+click', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(createTwoByTwoState());
+    const first = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_name"][data-record-id="record_01"]',
+    );
+    first?.click();
+    const last = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_second"][data-record-id="record_02"]',
+    );
+    last?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    expect(
+      container.querySelectorAll('.loom-grid-cell.is-selected').length,
+    ).toBe(4);
+    expect(
+      container
+        .querySelector('.loom-grid-cell[data-field-id="field_second"][data-record-id="record_01"]')
+        ?.classList.contains('is-selected'),
+    ).toBe(true);
+  });
+
+  it('selects a whole Row via its number and a whole Column via its header', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(createTwoByTwoState());
+    container
+      .querySelector('.loom-grid-row[data-row-index="1"] .loom-grid-index-cell')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const rowSelected = container.querySelectorAll(
+      '.loom-grid-row[data-row-index="1"] .loom-grid-cell.is-selected',
+    ).length;
+    expect(rowSelected).toBe(2);
+
+    container
+      .querySelectorAll<HTMLElement>('.loom-grid-header-cell[data-field-index]')[0]
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(
+      container.querySelectorAll(
+        '.loom-grid-cell[data-field-id="field_name"].is-selected',
+      ).length,
+    ).toBe(2);
+  });
+
+  it('selects all visible Cells with Ctrl+A and copies the range as TSV', async () => {
+    const container = document.createElement('div');
+    const writes: string[] = [];
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      {
+        ...rendererCallbacks(),
+        clipboard: {
+          writeText: (text: string) => { writes.push(text); return Promise.resolve(); },
+          readText: () => Promise.resolve(''),
+        },
+      },
+    );
+
+    renderer.render(createTwoByTwoState());
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_name"][data-record-id="record_01"]',
+    );
+    cell?.focus();
+    cell?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }),
+    );
+    expect(container.querySelectorAll('.loom-grid-cell.is-selected').length).toBe(4);
+    cell?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }),
+    );
+    await vi.waitFor(() => expect(writes.length).toBe(1));
+    expect(writes[0]).toContain('\t');
+    expect(writes[0]).toContain('\n');
   });
 });
