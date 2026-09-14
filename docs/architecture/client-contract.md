@@ -39,14 +39,22 @@ interface LoomTableClient {
     viewId: string,
     request: MapClusterRecordsQueryRequest,
   ): Promise<QueryResult>;
+  getView(viewId: string): Promise<View>;
+  createView(
+    tableId: string,
+    request: CreateViewRequest,
+    idempotencyKey: string,
+  ): Promise<View>;
   updateView(viewId: string, request: UpdateViewRequest): Promise<View>;
+  deleteView(viewId: string, expectedRevision: number): Promise<void>;
+  restoreView(viewId: string, expectedRevision: number): Promise<View>;
 }
 ```
 
 只读 Grid 使用的 `QueryRequest` 将路由所需的 `tableId` 与 Server 的请求体字段分开；Client Adapter 只把请求体中的 `viewId`、`projection`、`filter`、`sort`、`search`、`limit` 和不透明 `cursor` 发送到
 `POST /v1/tables/{tableId}/records/query`。`QueryResult` 必须保留 `items`、`hasMore`、`changeCursor`，并在首个页面保留 `totalCount`；当 `hasMore` 为真时必须有 `nextCursor`，否则不得接受该响应。
 
-当前 main 已交付的 P1 Grid mutation 切片在只读 Grid 基础上仅支持对现有 Record 的单条 `UpdateRecord`。同一 Record 按 FIFO 串行、不同 Record 可并行；Mutation 使用稳定 `clientMutationId` 做有限重试；Conflict UI 提供 use-server 和明确确认后的 overwrite。离线时保持只读，UI 与 controller 均禁止编辑和发送 Mutation。Server transport 可能声明 create/delete/restore 等命令，但当前 Plugin UI/Mutation Queue 不调用它们；逐字段 Conflict merge、离线写入和重启后队列持久化也未交付，均保留为 backlog/设计约束。Workspace → Base → Table → Grid View 导航由 View Controller 驱动，Filter、Sort 和 Cursor 继续由 Server 执行；Plugin 不在缓存页上重算查询语义。
+现有 UpdateRecord 链路支持同 Record FIFO、不同 Record 并行、持久化队列、稳定 clientMutationId 重试和明确 Conflict 恢复。离线不接受新写入。View 管理的 `createView` 携带 `Idempotency-Key`，`updateView`/`deleteView`/`restoreView` 携带 `expectedRevision`；名称在发送前按 Server 规则做 Unicode 规范化（trim、NFC、控制字符与码点长度校验），具体见 [实现要求](../p1.5/README.md)；本文方法表为现有接口背景，实际签名以源码为准。Filter、Sort 和 Cursor 由 Server 执行，Plugin 不在缓存页上重算查询语义。
 
 `checkConnection()` 是只读连接探测：先请求公开的 `/v1/meta` 判断 API 版本、最低 Plugin 版本和迁移状态；兼容后再以当前 Token 请求 `/v1/workspaces`，区分缺少 Token、认证失败、权限不足、网络不可达与 Server 故障。该探测不创建或修改任何 Server 数据。
 
@@ -56,8 +64,8 @@ Schema、Workspace、Base、Table、View 和 Attachment 的管理操作也通过
 
 ## 必须遵守的 Interface 事实
 
-- `query` 使用服务端筛选、排序、分组和游标分页。
-- `query` 返回查询快照的 `changeCursor`，供后续增量刷新使用。
+- `query` 使用服务端筛选、排序和游标分页；Grouping 不在当前合同内。
+- `query` 返回与本页同一数据库快照的 `changeCursor`；普通 Cursor 不保证跨页成员快照。
 - `queryMap` 使用服务端视口查询，返回最多 500 个完整代表视口结果的 Map Point/Map Cluster 与 `changeCursor`；它不通过普通 Record Cursor 下载完整匹配数据集。
 - `summarizeMap(viewId)` 通过独立端点返回精确全局 Summary 和 Data Bounds；首次打开、保存的 Filter 改变、显式“适配全部结果”或已应用 Record Mutation 失效时调用，普通相机移动不调用。
 - Map Point 只含 Record ID、坐标和 Primary Field 文本；`getRecord` 按需加载详情。`queryMapClusterRecords` 只消费 Map Query 返回的短期 Token，Token/Cursor 过期后刷新视口。

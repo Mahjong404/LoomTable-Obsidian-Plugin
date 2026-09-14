@@ -1,6 +1,6 @@
 # LoomTable UI Design System
 
-> 本文档记录 UI Token、CSS 层次和组件实现建议。规范性行为、状态、键盘、触控、可访问性和验收要求以 [LoomTable Interaction HIG](./interaction-hig.md) 为准；实施顺序见 [HIG 落地计划](./interaction-hig-rollout.md)。
+> 本文档记录 UI Token、CSS 层次和组件实现建议。通用交互以 [LoomTable Interaction HIG](./interaction-hig.md) 为准；本期范围、Gallery 与实现顺序见 [P1.5](../p1.5/README.md)。目录和工厂函数示例不代表均已实现，也不要求本期迁移全部 CSS。
 
 ## 目标
 

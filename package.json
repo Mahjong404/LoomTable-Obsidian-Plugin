@@ -13,6 +13,7 @@
     "dev": "node esbuild.config.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "gallery": "node scripts/build-gallery.mjs",
     "lint": "eslint . --cache",
     "test": "vitest",
     "test:run": "vitest run",

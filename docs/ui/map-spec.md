@@ -1,5 +1,7 @@
 # Map View 与瓦片提供方规范
 
+本文保留 Map/Provider 的技术规则；P1.5 实现范围与自动化验证见 [Map 与 Location](../p1.5/map-location.md)。外部 Provider 参考是背景材料，不要求本期访问外部服务、取得 Token 或完成真实设备测试。
+
 ## 1. 范围和已确定决策
 
 P0 提供 LoomTable 自己的 Map View，不依赖用户安装其他 Obsidian 地图插件。
@@ -30,7 +32,7 @@ interface MapViewConfig {
 瓦片提供方属于客户端运行环境，不加入 Server 的 View Config：
 
 - `locationFieldId`、`filter` 和可选的 Default Camera `center + zoom` 由 Server 保存并使用 View Revision 进行并发控制；Filter 由 Server 按共享的递归 `AND`/`OR` 合同执行。
-- 新建 Map View 必须从当前 Table 的 Active Location Field 中选择一个；没有可选 Field 时禁用创建并提供“新建地点字段”入口。已选 Field 后续被删除或不可用时，View 进入 `configuration-required`，要求用户明确重选，不能静默绑定另一个 Field。
+- 新建 Map View 必须从当前 Table 的 Active Location Field 中选择一个；没有可选 Field 时禁用创建并说明原因。P1.5 不提供尚未实现的“新建地点字段”按钮。已选 Field 后续被删除或不可用时，View 进入 `configuration-required`，要求用户明确重选，不能静默绑定另一个 Field。
 - 普通平移、缩放和当前视口是每个 Map View 实例的临时状态，不自动写回 Server。只有用户执行“将当前位置设为默认”时，才完整替换 Map Config 并更新 View Revision。
 - 默认瓦片提供方、每个 View 的本地覆盖、自定义配置档和 Credential 引用保存在 Plugin Data。
 - Credential 值默认只保存在当前会话内存；用户明确启用“记住凭据”后写入 Obsidian SecretStorage，Plugin Data 仍只保存 Secret ID 引用。
@@ -200,7 +202,7 @@ https://tile.openstreetmap.org/{z}/{x}/{y}.png
 - 地图角落始终显示可点击的 `© OpenStreetMap contributors` 和 ODbL 链接。
 - 不提供区域预下载、离线包、后台预取或跨缩放级别批量抓取。
 - 使用浏览器/WebView 正常缓存并遵守服务端 Cache Header；不得默认发送绕过缓存的 Header。
-- 桌面端和移动端发布前都要验证请求身份、Referrer/平台行为、缓存和 Attribution。
+- 请求身份、缓存和 Attribution 的适配逻辑由自动化 adapter 测试覆盖。
 - 该公共服务没有 SLA；故障时显示 Provider 错误，不把 Server 或 Location 标记为故障。
 
 ### 天地图
@@ -222,7 +224,7 @@ https://t{s}.tianditu.gov.cn/{layer}_w/wmts
   &tk={credential:tianditu-token}
 ```
 
-其中 `{layer}` 由预设控制，三个预设使用同一个 `tianditu-token` Credential Placeholder；`{s}` 只能从预设允许的子域列表选择，Credential Placeholder 只在内存中展开。发布前使用用户提供的测试 Token 验证当前端点、权限、Zoom 范围、基础层与注记层组合、Attribution 和服务条款；预设端点不能被视为永久合同。
+其中 `{layer}` 由预设控制，三个预设使用同一个 `tianditu-token` Credential Placeholder；`{s}` 只能从预设允许的子域列表选择，Credential Placeholder 只在内存中展开。配置、权限错误、Zoom 范围、图层组合与 Attribution 使用无凭据 fixture 验证；预设端点不能被视为永久合同。
 
 P0 只启用 `_w` Web Mercator 预设，不启用 `_c` 经纬度瓦片，也不在渲染过程中隐式切换 CRS。
 
@@ -370,15 +372,6 @@ Default Camera 是共享 View Config，临时相机是单个 Plugin 窗口状态
 - Point 点击按 ID 直查详情；终端 Cluster 使用短期 Token 游标分页，过期时刷新视口且不把 Cluster 当作 Record 编辑。
 - 无 Location Field 时禁用创建；已配置 Field 被删除后进入 View 配置修复状态且不自动改选。
 - 缺失/无效坐标与超出 EPSG:3857 纬度的合法坐标分别计入未定位和不可渲染数量。
-
-### 发布前 Live Smoke Test
-
-- Obsidian Desktop 已验证 OSM 加载、`Tiles ready`、Fit all 后的可渲染记录和可见 Attribution。
-- Obsidian Desktop 的 `app://obsidian.md` Origin 已使用同一个浏览器端 Key 验证天地图矢量、影像、地形及相应注记层返回 200 PNG 并成功显示。
-- Android、iOS Obsidian smoke 不在本次已通过范围内。
-- 验证无 Token、无权限 Token、限流和 Provider 暂时不可用。
-- 检查 Network/日志/诊断导出中不存在明文 Token。
-- Live Test 不进入普通 CI 的必过链路，因为公共 Provider 无 SLA 且天地图需要私有 Token。
 
 ## 13. 官方参考
 

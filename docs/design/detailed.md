@@ -1,5 +1,7 @@
 # LoomTable Obsidian Plugin 详细设计
 
+本文保留架构原则和早期设计背景；当前 P1.5 的功能、模块改动与验收以 [实现要求](../p1.5/README.md) 为准。示意目录、类型和后续能力不作为新的待办。
+
 ## 1. 生命周期
 
 ```text
@@ -24,16 +26,7 @@ Plugin 不在 `onload` 中强制连接 Server；连接在用户打开 LoomTable 
 
 ### LoomTableClient
 
-```ts
-interface LoomTableClient {
-  getMeta(): Promise<ServerMeta>;
-  query(request: QueryRequest): Promise<QueryResult>;
-  queryMap(request: MapQueryRequest): Promise<MapQueryResult>;
-  queryMapSummary(request: MapSummaryRequest): Promise<MapSummaryResult>;
-  mutate(request: MutationRequest): Promise<MutationResult>;
-  pullChanges(request: ChangeRequest): Promise<ChangePage>;
-}
-```
+实际方法签名以 `src/client/loomtable-client.ts` 为准；本期要补充的领域方法见 [View Client 要求](../p1.5/view-grid.md)。这里不维护第二份接口签名。
 
 HTTP、认证、重试和错误映射集中在 Client Adapter 中。
 
@@ -125,7 +118,7 @@ Cell Editor
 
 当前 main 已交付的 P1 Grid mutation 切片只为现有 Record 发送单条 `UpdateRecord`。同一 Record 的 Mutation 按 FIFO 串行执行，确保后续编辑使用前一次成功返回的新 Revision；不同 Record 的队列可以并行。Conflict 只暂停发生冲突的 Record 队列，不阻塞其他 Record。
 
-Conflict UI 必须展示本地提交值和服务端当前值，并提供：放弃本地修改、采用服务端值（use-server）、明确确认后覆盖服务端值（overwrite）。覆盖必须形成一次使用当前 Revision 的新 Mutation，不能由网络重试隐式完成。逐字段 Conflict merge、create/delete/restore 不属于当前 Plugin 交付，保留为 backlog/设计约束。
+Conflict UI 必须展示本地提交值和服务端当前值，并提供：放弃本地修改、采用服务端值（use-server）、明确确认后覆盖服务端值（overwrite）。覆盖必须形成一次使用当前 Revision 的新 Mutation，不能由网络重试隐式完成。逐字段合并不在本期；Create/Delete/Restore 按 [P1.5 生命周期](../p1.5/record-lifecycle.md) 扩展。
 
 ## 6. 缓存策略
 
@@ -139,7 +132,7 @@ Conflict UI 必须展示本地提交值和服务端当前值，并提供：放�
 - 缓存键至少包含规范化 `serverOrigin`、API 版本、Actor/连接身份、Table ID、View ID 和等价 Query 指纹。
 - 打开 View、View 重新获得焦点和用户手动刷新时检查变化；可见的活动 View 默认每 30 秒低频轮询，隐藏、休眠或卸载时暂停。
 - Change 命中当前 Table 后，先使受影响的缓存页失效，再按当前 Query 定向重新请求；不能在 Plugin 中重算服务端 Filter 和 Sort。
-- Mutation Queue 当前仅驻留内存，不做重启后持久化；Personal P1 不支持离线写入，也不在重新联网后自动重放本地编辑。
+- UpdateRecord 已有持久化队列/runtime，P1.5 继续复用并兼容扩展。离线不接受新写入；已接收操作恢复使用原始请求身份，具体见 P1.5 生命周期规范。
 
 ## 7. 响应式实现
 
@@ -189,12 +182,12 @@ interface LoomTableViewIdentity {
 - Plugin 保存版本化 OpenAPI 快照并生成 Transport Types；CI 检查生成结果是否漂移。
 - OpenAPI 快照来源记录完整 Server Commit SHA；`api:sync` 是唯一显式更新入口，普通安装、构建和测试不得读取同级 Server 工作树或访问网络。
 - 包管理使用 pnpm 并提交 Lockfile；TypeScript 开启 strict，CI 使用 Node.js 24，统一执行格式、Lint、类型、测试、OpenAPI 漂移和生产构建校验。
-- Plugin Manifest 首版身份固定为 `id=loomtable`、`name=LoomTable`、`version=0.1.0`、`minAppVersion=1.11.5`、`author=Mahjong404`、`isDesktopOnly=false`。
+- Plugin 身份与版本以 `manifest.json` 为准；本期不因整理文档变更版本。
 - 支持多个命名 Connection Profile；每个 Profile 使用稳定本地 ID、规范化 Server Origin 和 SecretStorage 绑定，并且恰有一个默认 Profile。Leaf 身份和所有 Cache Key 必须按 Profile ID 隔离。
 - Record Page Cache 使用 LRU；软上限为 64 MiB 和 256 页，配额不足时主动收缩，包含未提交 Mutation 的页面不得持久化。
 - 所有用户可见字符串使用类型安全消息 Key；首版提供 English 与简体中文，缺失翻译回退 English。
 - `InMemoryLoomTableClient`、OpenAPI Fixtures 和 Component Gallery 为 UI 开发提供无 Server 环境。
-- P0 开发从一开始覆盖 Client 错误映射、View Controller 状态、Field Type 逻辑、Grid 键盘操作和 Obsidian Workspace View Smoke Test。
+- 自动化测试覆盖 Client 错误映射、View Controller 状态、Field Type 逻辑、Grid 键盘操作和宿主生命周期接线。
 
 ## 11. 测试
 
@@ -205,11 +198,10 @@ interface LoomTableViewIdentity {
 - Client HTTP 状态、错误码、Request ID 和重试映射测试。
 - 同一 Record FIFO、不同 Record 并行和 Conflict 暂停队列测试。
 - Grid 键盘和编辑测试。
-- 真实 Obsidian Workspace View Smoke Test。
 - Light/Dark、桌面/平板/手机布局测试。
 - 20k 数据量虚拟化和滚动基准测试。
 - Provider Schema、URL/Origin 校验、Credential 脱敏和缺少配置状态测试。
-- Leaflet 生命周期、Provider 切换、OSM/天地图预设与发布前 Desktop/Android/iOS Live Smoke Test。
+- Leaflet 生命周期、Provider 切换、OSM/天地图预设的无网络 adapter 测试。
 
 ## 12. 后续字段和查询扩展
 
@@ -222,7 +214,7 @@ P0 只注册并实现 Text、LongText、Number、Checkbox、Date、Select、Mult
 - Text 的区域化 Validation Preset，例如手机号和身份证号。
 - Number 的 Currency、Percent 只作为格式配置；Rating、Duration、User 等独立语义类型后续评估。
 
-Filter Builder 已支持递归 `AND`/`OR` Group；每个 Group 至少一个子节点，最大深度为 8。Search 只针对 Primary Field、Text、LongText 和 URL 执行服务端不区分大小写的包含匹配。
+已发布的 Filter 合同支持递归 `AND`/`OR` Group；每个 Group 至少一个子节点，最大深度为 8。客户端 Builder 在 P1.5 实施。Search 只针对 Primary Field、Text、LongText 和 URL 执行服务端不区分大小写的包含匹配。
 
 ## 13. Map View 与 Tile Provider
 

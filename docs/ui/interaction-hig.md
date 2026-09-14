@@ -4,6 +4,8 @@
 
 本文档是 LoomTable Obsidian Plugin 的规范性 UI/UX 文件，定义界面、交互、状态、可访问性、主题适配和组件验收规则。
 
+P1.5 的功能范围和自动化验证方式由 [P1.5 实现要求](../p1.5/README.md) 限定。本文的后续产品示例不自动成为本期任务；不要求真实 Obsidian、设备矩阵、公共 Provider 或截图证据。
+
 本文档适用于：
 
 - Grid/网格视图；
@@ -343,10 +345,10 @@ Grid 只显示摘要：
 
 Detail/Sheet 提供：
 
-- 添加、预览、打开、下载、删除和重试；
+- 按当前合同提供添加、预览、打开、下载、移除记录引用和重试；
 - 文件名、大小、MIME、来源等元数据；
 - Managed Attachment 与 Vault Attachment 的来源区分；
-- 删除确认或 Undo；
+- 移除记录引用前确认；资源级删除/恢复/GC 按 [附件决策](../design/attachment-resource-lifecycle-decision.md) 独立处理；
 - 上传状态和 Record 引用保存状态分开显示。
 
 ## Grid 交互
@@ -466,7 +468,7 @@ Table ID + View ID + Record ID + Field ID
 
 ### 主题适配
 
-至少验收：
+组件测试至少覆盖以下主题变量环境与 fallback；不要求安装真实主题或执行人工设备矩阵：
 
 - Obsidian Native Light；
 - Obsidian Native Dark；

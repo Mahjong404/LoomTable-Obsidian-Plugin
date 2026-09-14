@@ -9,6 +9,7 @@ export default defineConfig(
     'node_modules',
     'openapi/loomtable-server.openapi.yaml',
     'src/generated/transport.ts',
+    'tests/gallery/bundle.js',
   ]),
   {
     languageOptions: {
