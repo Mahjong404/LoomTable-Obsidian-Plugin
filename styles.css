@@ -2812,3 +2812,24 @@
   margin-inline-end: var(--loom-space-1);
   vertical-align: middle;
 }
+
+/* Record detail empty-fields group */
+
+.loom-record-fields-empty {
+  margin-block-start: var(--loom-space-2);
+  border-top: 1px solid var(--loom-grid-border);
+  padding-block-start: var(--loom-space-2);
+}
+
+.loom-record-fields-empty-summary {
+  cursor: pointer;
+  color: var(--loom-text-faint);
+  font-size: var(--loom-font-ui-smaller);
+  border-radius: var(--loom-radius-sm);
+  padding: var(--loom-space-1) var(--loom-space-2);
+}
+
+.loom-record-fields-empty-summary:hover {
+  color: var(--loom-text-normal);
+  background: var(--loom-bg-hover);
+}

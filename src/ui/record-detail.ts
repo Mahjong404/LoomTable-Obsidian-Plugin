@@ -204,6 +204,13 @@ export function createRecordDetail(
     detailStatus.hidden = false;
     detailStatus.textContent = message;
   };
+  const emptyGroup = document.createElement('details');
+  emptyGroup.className = 'loom-record-fields-empty';
+  const emptySummary = document.createElement('summary');
+  emptySummary.className = 'loom-record-fields-empty-summary';
+  const emptyList = document.createElement('dl');
+  emptyList.className = 'loom-record-fields';
+  emptyGroup.append(emptySummary, emptyList);
   let currentRecord = record;
   let previousButton: HTMLButtonElement | null = null;
   let nextButton: HTMLButtonElement | null = null;
@@ -219,15 +226,33 @@ export function createRecordDetail(
     const ordered = [...fields].sort((a, b) =>
       a.id === options.primaryFieldId ? -1 : b.id === options.primaryFieldId ? 1 : 0,
     );
-    values.replaceChildren(
-      ...ordered.flatMap((field) => {
-        const elements = renderField(currentRecord, field, options, root, renderValues, announce);
-        if (field.id === options.primaryFieldId) {
-          for (const element of elements) element.dataset.primary = 'true';
-        }
-        return elements;
-      }),
-    );
+    const nonEmpty: HTMLElement[] = [];
+    const empty: HTMLElement[] = [];
+    let emptyCount = 0;
+    for (const field of ordered) {
+      const elements = renderField(currentRecord, field, options, root, renderValues, announce);
+      if (field.id === options.primaryFieldId) {
+        for (const element of elements) element.dataset.primary = 'true';
+      }
+      const value = currentRecord.values[field.id];
+      const isEmpty =
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (Array.isArray(value) && value.length === 0);
+      if (isEmpty && field.id !== options.primaryFieldId) {
+        emptyCount += 1;
+        empty.push(...elements);
+      } else {
+        nonEmpty.push(...elements);
+      }
+    }
+    values.replaceChildren(...nonEmpty);
+    emptyList.replaceChildren(...empty);
+    emptyGroup.hidden = emptyCount === 0;
+    emptySummary.textContent = options
+      .translate('record.detail.emptyFields')
+      .replace('{count}', String(emptyCount));
     heading.textContent = recordTitle(nextRecord);
     syncNavigation();
   };
@@ -306,7 +331,7 @@ export function createRecordDetail(
   root.append(header);
   renderValues(record);
   ensureButtonLabels(root);
-  root.append(detailStatus, values);
+  root.append(detailStatus, values, emptyGroup);
   const existingConflict = options.callbacks?.getConflict?.(record.id);
   if (existingConflict !== undefined) {
     root.append(renderConflict(record.id, existingConflict, options, root));
