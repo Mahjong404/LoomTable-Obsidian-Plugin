@@ -58,3 +58,7 @@ temp/
 .DS_Store
 Thumbs.db
 Desktop.ini
+
+# Local-only UX review docs (not synced)
+docs/local/
+docs/ui/visual-style-comparison.md

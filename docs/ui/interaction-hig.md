@@ -148,6 +148,7 @@ LoomTable 使用双模式交互：
 
 ### Tooltip
 
+- 图标来源：插件默认图标使用 Lucide 风格 stroke SVG（`src/ui/icons.ts`、`src/ui/field-type-icon.ts`）；仅当 Tabler 明显更适配时采用；未来开放用户自选图标时候选集为 Tabler Icons；
 - 只有图标的操作 MUST 有 Tooltip；
 - Tooltip 不是唯一的可访问名称，元素同时 MUST 有 `aria-label` 或等价语义；
 - Tooltip 应说明动作，不重复整段状态文案；
