@@ -2064,15 +2064,9 @@ export class ReadonlyGridRenderer {
     const lastCol = Math.max(0, (grid?.fields.length ?? 1) - 1);
     return {
       top: Math.min(selection.anchor.rowIndex, selection.head.rowIndex),
-      bottom: Math.min(
-        Math.max(selection.anchor.rowIndex, selection.head.rowIndex),
-        lastRow,
-      ),
+      bottom: Math.min(Math.max(selection.anchor.rowIndex, selection.head.rowIndex), lastRow),
       left: Math.min(selection.anchor.fieldIndex, selection.head.fieldIndex),
-      right: Math.min(
-        Math.max(selection.anchor.fieldIndex, selection.head.fieldIndex),
-        lastCol,
-      ),
+      right: Math.min(Math.max(selection.anchor.fieldIndex, selection.head.fieldIndex), lastCol),
     };
   }
 
@@ -2093,20 +2087,18 @@ export class ReadonlyGridRenderer {
     const rect = this.#selectionRect();
     const lastCol = grid.fields.length - 1;
     const lastRow = grid.state.records.length - 1;
-    grid.viewport
-      .querySelectorAll<HTMLElement>('.loom-grid-cell')
-      .forEach((cell) => {
-        const rowIndex = Number(cell.dataset.rowIndex);
-        const fieldIndex = Number(cell.dataset.fieldIndex);
-        cell.classList.toggle(
-          'is-selected',
-          rect !== null &&
-            rowIndex >= rect.top &&
-            rowIndex <= rect.bottom &&
-            fieldIndex >= rect.left &&
-            fieldIndex <= rect.right,
-        );
-      });
+    grid.viewport.querySelectorAll<HTMLElement>('.loom-grid-cell').forEach((cell) => {
+      const rowIndex = Number(cell.dataset.rowIndex);
+      const fieldIndex = Number(cell.dataset.fieldIndex);
+      cell.classList.toggle(
+        'is-selected',
+        rect !== null &&
+          rowIndex >= rect.top &&
+          rowIndex <= rect.bottom &&
+          fieldIndex >= rect.left &&
+          fieldIndex <= rect.right,
+      );
+    });
     grid.viewport
       .querySelectorAll<HTMLElement>('.loom-grid-row .loom-grid-index-cell')
       .forEach((indexCell) => {
@@ -2134,9 +2126,7 @@ export class ReadonlyGridRenderer {
             rect.bottom === lastRow,
         );
       });
-    const footerCount = this.#container.querySelector<HTMLElement>(
-      '.loom-grid-footer-count',
-    );
+    const footerCount = this.#container.querySelector<HTMLElement>('.loom-grid-footer-count');
     if (footerCount !== null) {
       const base = `${grid.state.records.length} ${this.#translate('grid.rows')}`;
       footerCount.textContent =

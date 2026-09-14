@@ -495,10 +495,7 @@ function attachmentThumbnailUrl(
   attachment: RenderedAttachment,
   options: RenderedFieldValueElementOptions,
 ): string | undefined {
-  if (
-    attachment.state !== 'ready' ||
-    !(attachment.mimeType?.startsWith('image/') ?? false)
-  ) {
+  if (attachment.state !== 'ready' || !(attachment.mimeType?.startsWith('image/') ?? false)) {
     return undefined;
   }
   return options.attachmentThumbnail?.(attachment);

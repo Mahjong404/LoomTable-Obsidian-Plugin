@@ -13,7 +13,7 @@ import { createTranslator } from '../../src/i18n';
 import { ReadonlyGridRenderer, getVirtualRowRange } from '../../src/ui/readonly-grid-renderer';
 import type { GridDisplayPatch } from '../../src/ui/grid-display';
 import type { GridState } from '../../src/ui/grid-view-controller';
-import type { ViewCreateOutcome } from '../../src/ui/view-write-coordinator';
+import type { ViewCreateOutcome, ViewWriteOutcome } from '../../src/ui/view-write-coordinator';
 
 describe('ReadonlyGridRenderer', () => {
   it('renders only the fixed-height viewport window for a large result page', () => {
@@ -2506,9 +2506,7 @@ describe('Cell selection model', () => {
       '.loom-grid-cell[data-field-id="field_second"][data-record-id="record_02"]',
     );
     last?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
-    expect(
-      container.querySelectorAll('.loom-grid-cell.is-selected').length,
-    ).toBe(4);
+    expect(container.querySelectorAll('.loom-grid-cell.is-selected').length).toBe(4);
     expect(
       container
         .querySelector('.loom-grid-cell[data-field-id="field_second"][data-record-id="record_01"]')
@@ -2537,39 +2535,32 @@ describe('Cell selection model', () => {
       .querySelectorAll<HTMLElement>('.loom-grid-header-cell[data-field-index]')[0]
       ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(
-      container.querySelectorAll(
-        '.loom-grid-cell[data-field-id="field_name"].is-selected',
-      ).length,
+      container.querySelectorAll('.loom-grid-cell[data-field-id="field_name"].is-selected').length,
     ).toBe(2);
   });
 
   it('selects all visible Cells with Ctrl+A and copies the range as TSV', async () => {
     const container = document.createElement('div');
     const writes: string[] = [];
-    const renderer = new ReadonlyGridRenderer(
-      container,
-      createTranslator('en'),
-      {
-        ...rendererCallbacks(),
-        clipboard: {
-          writeText: (text: string) => { writes.push(text); return Promise.resolve(); },
-          readText: () => Promise.resolve(''),
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      clipboard: {
+        writeText: (text: string) => {
+          writes.push(text);
+          return Promise.resolve();
         },
+        readText: () => Promise.resolve(''),
       },
-    );
+    });
 
     renderer.render(createTwoByTwoState());
     const cell = container.querySelector<HTMLElement>(
       '.loom-grid-cell[data-field-id="field_name"][data-record-id="record_01"]',
     );
     cell?.focus();
-    cell?.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }),
-    );
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
     expect(container.querySelectorAll('.loom-grid-cell.is-selected').length).toBe(4);
-    cell?.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }),
-    );
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true }));
     await vi.waitFor(() => expect(writes.length).toBe(1));
     expect(writes[0]).toContain('\t');
     expect(writes[0]).toContain('\n');
@@ -2592,9 +2583,7 @@ describe('Undo/redo wiring', () => {
       '.loom-grid-cell[data-field-id="field_name"][data-record-id="record_01"]',
     );
     cell?.focus();
-    cell?.dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }),
-    );
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }));
     expect(onUndo).toHaveBeenCalledTimes(1);
     cell?.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, shiftKey: true, bubbles: true }),
@@ -2621,9 +2610,15 @@ describe('Undo/redo wiring', () => {
     await vi.waitFor(() => expect(onUndo).toHaveBeenCalledTimes(1));
 
     renderer.render({ ...createState(2), canUndo: false, canRedo: false });
-    const disabled = [...container.querySelectorAll<HTMLButtonElement>('.loom-grid-toolbar button')];
-    expect(disabled.find((button) => button.getAttribute('aria-label') === 'Undo')?.disabled).toBe(true);
-    expect(disabled.find((button) => button.getAttribute('aria-label') === 'Redo')?.disabled).toBe(true);
+    const disabled = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-grid-toolbar button'),
+    ];
+    expect(disabled.find((button) => button.getAttribute('aria-label') === 'Undo')?.disabled).toBe(
+      true,
+    );
+    expect(disabled.find((button) => button.getAttribute('aria-label') === 'Redo')?.disabled).toBe(
+      true,
+    );
   });
 });
 
@@ -2634,14 +2629,21 @@ describe('Column drag reorder', () => {
       types: ['text/plain'],
       effectAllowed: 'move',
       dropEffect: 'move',
-      setData: (type: string, value: string) => { store[type] = value; },
+      setData: (type: string, value: string) => {
+        store[type] = value;
+      },
       getData: (type: string) => store[type] ?? '',
     } as unknown as DataTransfer;
   }
 
   it('reorders columnOrder when a header is dropped on another header', async () => {
     const container = document.createElement('div');
-    const onApplyDisplay = vi.fn(async () => ({ status: 'applied' as const }));
+    const onApplyDisplay = vi.fn(
+      async (_viewId: string, _patch: GridDisplayPatch): Promise<ViewWriteOutcome> => ({
+        status: 'saved',
+        view: createTwoByTwoState().views[0] as View,
+      }),
+    );
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
       ...rendererCallbacks(),
       onApplyDisplay,
@@ -2669,9 +2671,6 @@ describe('Column drag reorder', () => {
 
     await vi.waitFor(() => expect(onApplyDisplay).toHaveBeenCalledTimes(1));
     expect(onApplyDisplay.mock.calls[0]?.[0]).toBe('view_01');
-    expect(onApplyDisplay.mock.calls[0]?.[1]?.columnOrder).toEqual([
-      'field_second',
-      'field_name',
-    ]);
+    expect(onApplyDisplay.mock.calls[0]?.[1]?.columnOrder).toEqual(['field_second', 'field_name']);
   });
 });
