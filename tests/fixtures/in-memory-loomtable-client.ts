@@ -6,6 +6,7 @@ import {
   type Base,
   type ChangePage,
   type ConnectionCheckResult,
+  type CreateFieldRequest,
   type CreateViewRequest,
   type Field,
   type InitializeAttachmentRequest,
@@ -26,6 +27,7 @@ import {
   type ResourceListOptions,
   type ServerMeta,
   type Table,
+  type UpdateFieldRequest,
   type UpdateViewRequest,
   type View,
   type Workspace,
@@ -64,22 +66,30 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
     readonly request: MutationRequest;
   }> = [];
   readonly viewCreateKeys: string[] = [];
+  readonly fieldCreateKeys: string[] = [];
   readonly #data: InMemoryGridData;
   readonly #records: LoomTableRecord[];
   readonly #views: View[];
+  readonly #fields: Field[];
   readonly #createIntents = new Map<string, { readonly body: string; readonly view: View }>();
+  readonly #fieldCreateIntents = new Map<
+    string,
+    { readonly body: string; readonly field: Field }
+  >();
   readonly #mutationResults = new Map<
     string,
     { readonly request: MutationRequest; readonly result: MutationResult }
   >();
   #viewSequence = 0;
   #recordSequence = 0;
+  #fieldSequence = 0;
   #clock = 0;
 
   constructor(data: InMemoryGridData) {
     this.#data = data;
     this.#records = [...data.records];
     this.#views = [...data.views];
+    this.#fields = [...data.fields];
   }
 
   async listWorkspaces(): Promise<readonly Workspace[]> {
@@ -96,7 +106,7 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
 
   async listFields(tableId: string, options: ResourceListOptions = {}): Promise<readonly Field[]> {
     const lifecycle = options.lifecycle ?? 'active';
-    return this.#data.fields.filter((field) => {
+    return this.#fields.filter((field) => {
       if (field.tableId !== tableId) return false;
       if (lifecycle === 'all') return true;
       return lifecycle === 'deleted'
@@ -267,6 +277,164 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
     };
     delete (restored as { deletedAt?: string }).deletedAt;
     this.#views[index] = restored;
+    return restored;
+  }
+
+  async createField(
+    tableId: string,
+    request: CreateFieldRequest,
+    idempotencyKey: string,
+  ): Promise<Field> {
+    this.fieldCreateKeys.push(idempotencyKey);
+    const body = JSON.stringify(request);
+    const existing = this.#fieldCreateIntents.get(idempotencyKey);
+    if (existing !== undefined) {
+      if (existing.body !== body) {
+        throw new LoomTableClientError('conflict', {
+          message: 'The Idempotency-Key was already used with a different request.',
+          httpStatus: 409,
+          code: 'IDEMPOTENCY_KEY_REUSED',
+        });
+      }
+      return existing.field;
+    }
+    const table = this.#data.tables.find((candidate) => candidate.id === tableId);
+    const name = normalizeResourceName(request.name);
+    if (table === undefined || !name.ok) {
+      throw new LoomTableClientError('validation', {
+        message: 'The Field could not be created.',
+        httpStatus: 422,
+        code: 'VALIDATION_FAILED',
+      });
+    }
+    this.#fieldSequence += 1;
+    this.#clock += 1;
+    const stamp = new Date(1_800_000_000_000 + this.#clock * 1000).toISOString();
+    const position =
+      Math.max(0, ...this.#fields.filter((f) => f.tableId === tableId).map((f) => f.position)) + 1;
+    const config =
+      request.type === 'select' || request.type === 'multiSelect'
+        ? {
+            options: (
+              request.config as { options: { id?: string; name: string; color: string }[] }
+            ).options.map(
+              (option, index) => ({
+                id: option.id ?? `option_${this.#fieldSequence}_${index}`,
+                name: option.name,
+                color: option.color,
+              }),
+            ),
+            deletedOptions: [],
+          }
+        : structuredClone(request.config);
+    const field = {
+      id: `field_new_${String(this.#fieldSequence).padStart(2, '0')}`,
+      tableId,
+      name: name.name,
+      position,
+      schemaVersion: 1,
+      revision: 1,
+      type: request.type,
+      config,
+    } as Field;
+    this.#fields.push(field);
+    this.#fieldCreateIntents.set(idempotencyKey, { body, field });
+    return field;
+  }
+
+  async updateField(fieldId: string, request: UpdateFieldRequest): Promise<Field> {
+    const field = this.#fields.find((candidate) => candidate.id === fieldId);
+    if (field === undefined) {
+      throw new LoomTableClientError('not-found', {
+        message: 'The Field does not exist.',
+        httpStatus: 404,
+        code: 'NOT_FOUND',
+      });
+    }
+    if (field.revision !== request.expectedRevision || field.type !== request.type) {
+      throw new LoomTableClientError('conflict', {
+        message: 'The Field changed on the Server.',
+        httpStatus: 409,
+        code: 'CONFLICT',
+      });
+    }
+    const index = this.#fields.indexOf(field);
+    const name = request.name === undefined ? field.name : normalizeResourceName(request.name);
+    if (!name || (typeof name !== 'string' && !name.ok)) {
+      throw new LoomTableClientError('validation', {
+        message: 'The Field name is invalid.',
+        httpStatus: 422,
+        code: 'VALIDATION_FAILED',
+      });
+    }
+    const config =
+      request.config === undefined
+        ? field.config
+        : request.type === 'select' || request.type === 'multiSelect'
+          ? {
+              options: (request.config as { options: { id?: string; name: string; color: string }[] })
+                .options.map((option, optionIndex) => ({
+                  id: option.id ?? `option_${this.#fieldSequence}_${optionIndex}`,
+                  name: option.name,
+                  color: option.color,
+                })),
+              deletedOptions: [],
+            }
+          : structuredClone(request.config);
+    const updated: Field = {
+      ...field,
+      name: typeof name === 'string' ? name : name.name,
+      config,
+      revision: field.revision + 1,
+    } as Field;
+    this.#fields[index] = updated;
+    return updated;
+  }
+
+  async deleteField(fieldId: string, expectedRevision: number): Promise<void> {
+    const field = this.#fields.find((candidate) => candidate.id === fieldId);
+    if (field === undefined) {
+      throw new LoomTableClientError('not-found', {
+        message: 'The Field does not exist.',
+        httpStatus: 404,
+        code: 'NOT_FOUND',
+      });
+    }
+    if (field.revision !== expectedRevision) {
+      throw new LoomTableClientError('conflict', {
+        message: 'The Field changed on the Server.',
+        httpStatus: 409,
+        code: 'CONFLICT',
+      });
+    }
+    const index = this.#fields.indexOf(field);
+    this.#fields[index] = {
+      ...field,
+      revision: field.revision + 1,
+      deletedAt: new Date(1_800_000_000_000 + ++this.#clock * 1000).toISOString(),
+    };
+  }
+
+  async restoreField(fieldId: string, expectedRevision: number): Promise<Field> {
+    const field = this.#fields.find((candidate) => candidate.id === fieldId);
+    if (field === undefined) {
+      throw new LoomTableClientError('not-found', {
+        message: 'The Field does not exist.',
+        httpStatus: 404,
+        code: 'NOT_FOUND',
+      });
+    }
+    if (field.revision !== expectedRevision || field.deletedAt === undefined) {
+      throw new LoomTableClientError('conflict', {
+        message: 'The Field changed on the Server.',
+        httpStatus: 409,
+        code: 'CONFLICT',
+      });
+    }
+    const index = this.#fields.indexOf(field);
+    const restored: Field = { ...field, revision: field.revision + 1 };
+    delete (restored as { deletedAt?: string }).deletedAt;
+    this.#fields[index] = restored;
     return restored;
   }
 
