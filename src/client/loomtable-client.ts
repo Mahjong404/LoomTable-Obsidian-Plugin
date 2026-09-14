@@ -217,6 +217,45 @@ export type Field =
       readonly config: AttachmentFieldConfig;
     });
 
+export type SelectOptionColor =
+  | 'gray'
+  | 'red'
+  | 'orange'
+  | 'yellow'
+  | 'green'
+  | 'cyan'
+  | 'blue'
+  | 'purple'
+  | 'pink';
+
+export interface SelectOptionInput {
+  readonly id?: string;
+  readonly name: string;
+  readonly color: SelectOptionColor;
+}
+
+export interface SelectFieldConfigInput {
+  readonly options: readonly SelectOptionInput[];
+}
+
+export type FieldConfigInput =
+  | Readonly<Record<string, never>>
+  | SelectFieldConfigInput
+  | AttachmentFieldConfig;
+
+export interface CreateFieldRequest {
+  readonly name: string;
+  readonly type: Field['type'];
+  readonly config: FieldConfigInput;
+}
+
+export interface UpdateFieldRequest {
+  readonly type: Field['type'];
+  readonly expectedRevision: number;
+  readonly name?: string;
+  readonly config?: FieldConfigInput;
+}
+
 export type JsonValue =
   null | boolean | number | string | readonly JsonValue[] | { readonly [key: string]: JsonValue };
 
@@ -551,6 +590,14 @@ export interface LoomTableClient {
   updateView(viewId: string, request: UpdateViewRequest): Promise<View>;
   deleteView(viewId: string, expectedRevision: number): Promise<void>;
   restoreView(viewId: string, expectedRevision: number): Promise<View>;
+  createField(
+    tableId: string,
+    request: CreateFieldRequest,
+    idempotencyKey: string,
+  ): Promise<Field>;
+  updateField(fieldId: string, request: UpdateFieldRequest): Promise<Field>;
+  deleteField(fieldId: string, expectedRevision: number): Promise<void>;
+  restoreField(fieldId: string, expectedRevision: number): Promise<Field>;
   initializeAttachment(
     request: InitializeAttachmentRequest,
     idempotencyKey: string,

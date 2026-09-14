@@ -17,6 +17,7 @@ import {
   type ConnectionCheckResult,
   type ConflictBody,
   type ConflictDetails,
+  type CreateFieldRequest,
   type CreateViewRequest,
   type DeletedSelectOption,
   type Field,
@@ -52,6 +53,7 @@ import {
   type ServerIncompatibility,
   type ServerMeta,
   type Table,
+  type UpdateFieldRequest,
   type UpdateViewRequest,
   type View,
   type Workspace,
@@ -66,6 +68,8 @@ type TransportMapClusterRecordsQueryRequest =
 type TransportUpdateViewRequest = components['schemas']['UpdateViewRequest'];
 type TransportCreateViewRequest = components['schemas']['CreateViewRequest'];
 type TransportRestoreMetadataRequest = components['schemas']['RestoreMetadataRequest'];
+type TransportCreateFieldRequest = components['schemas']['CreateFieldRequest'];
+type TransportUpdateFieldRequest = components['schemas']['UpdateFieldRequest'];
 
 export interface HttpLoomTableClientConfig {
   readonly serverOrigin: string;
@@ -552,6 +556,126 @@ export class HttpLoomTableClient implements LoomTableClient {
       { method: 'POST', body, retryable: false },
     );
     return decodeView(value);
+  }
+
+  async createField(
+    tableId: string,
+    request: CreateFieldRequest,
+    idempotencyKey: string,
+  ): Promise<Field> {
+    const normalizedTableId = tableId.trim();
+    if (normalizedTableId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Table ID is required to create a Field.',
+      });
+    }
+    const name = normalizeResourceName(request.name);
+    if (!name.ok) {
+      throw new LoomTableClientError('validation', {
+        message: invalidFieldNameMessage(name.reason),
+      });
+    }
+    const normalizedIdempotencyKey = idempotencyKey.trim();
+    if (normalizedIdempotencyKey === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'An Idempotency-Key is required to create a Field.',
+      });
+    }
+    const body = {
+      name: name.name,
+      type: request.type,
+      config: request.config,
+    } as TransportCreateFieldRequest;
+    const value = await this.#requestJson(
+      `/v1/tables/${encodeURIComponent(normalizedTableId)}/fields`,
+      this.#requireAccessToken(),
+      {
+        method: 'POST',
+        body,
+        headers: { 'Idempotency-Key': normalizedIdempotencyKey },
+        retryable: true,
+      },
+    );
+    return decodeField(value);
+  }
+
+  async updateField(fieldId: string, request: UpdateFieldRequest): Promise<Field> {
+    const normalizedFieldId = fieldId.trim();
+    if (normalizedFieldId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Field ID is required to update a Field.',
+      });
+    }
+    if (!isPositiveInteger(request.expectedRevision)) {
+      throw new LoomTableClientError('validation', {
+        message: 'Field expectedRevision must be a positive integer.',
+      });
+    }
+    const name = request.name === undefined ? undefined : normalizeResourceName(request.name);
+    if (name !== undefined && !name.ok) {
+      throw new LoomTableClientError('validation', {
+        message: invalidFieldNameMessage(name.reason),
+      });
+    }
+    if (name === undefined && request.config === undefined) {
+      throw new LoomTableClientError('validation', {
+        message: 'A Field update requires a name or config change.',
+      });
+    }
+    const body = {
+      ...request,
+      ...(name !== undefined && name.ok ? { name: name.name } : {}),
+    } as TransportUpdateFieldRequest;
+    const value = await this.#requestJson(
+      `/v1/fields/${encodeURIComponent(normalizedFieldId)}`,
+      this.#requireAccessToken(),
+      { method: 'PATCH', body, retryable: false },
+    );
+    return decodeField(value);
+  }
+
+  async deleteField(fieldId: string, expectedRevision: number): Promise<void> {
+    const normalizedFieldId = fieldId.trim();
+    if (normalizedFieldId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Field ID is required to delete a Field.',
+      });
+    }
+    if (!isPositiveInteger(expectedRevision)) {
+      throw new LoomTableClientError('validation', {
+        message: 'Field expectedRevision must be a positive integer.',
+      });
+    }
+    await this.#request(
+      `/v1/fields/${encodeURIComponent(normalizedFieldId)}`,
+      this.#requireAccessToken(),
+      {
+        method: 'DELETE',
+        query: { expectedRevision: String(expectedRevision) },
+        retryable: false,
+      },
+    );
+  }
+
+  async restoreField(fieldId: string, expectedRevision: number): Promise<Field> {
+    const normalizedFieldId = fieldId.trim();
+    if (normalizedFieldId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Field ID is required to restore a Field.',
+      });
+    }
+    if (!isPositiveInteger(expectedRevision)) {
+      throw new LoomTableClientError('validation', {
+        message: 'Field expectedRevision must be a positive integer.',
+      });
+    }
+    const body: TransportRestoreMetadataRequest = { expectedRevision };
+    const value = await this.#requestJson(
+      `/v1/fields/${encodeURIComponent(normalizedFieldId)}/restore`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: false },
+    );
+    return decodeField(value);
   }
 
   async initializeAttachment(
@@ -1530,6 +1654,14 @@ function invalidViewNameMessage(reason: 'empty' | 'control-character' | 'too-lon
     return 'A View name cannot contain control characters.';
   }
   return 'A View name must be 200 Unicode code points or fewer.';
+}
+
+function invalidFieldNameMessage(reason: 'empty' | 'control-character' | 'too-long'): string {
+  if (reason === 'empty') return 'A Field name is required.';
+  if (reason === 'control-character') {
+    return 'A Field name cannot contain control characters.';
+  }
+  return 'A Field name must be 200 Unicode code points or fewer.';
 }
 
 function authenticatedHeaders(token: string): Readonly<Record<string, string>> {
