@@ -1,3 +1,4 @@
+import { ensureButtonLabels } from './a11y';
 import type { Translator } from '../i18n';
 
 let confirmationId = 0;
@@ -43,6 +44,7 @@ export function confirmDangerousAction(
     confirm.textContent = translate('common.confirm');
     actions.append(cancel, confirm);
     dialog.append(title, description, actions);
+    ensureButtonLabels(dialog);
     host.append(dialog);
 
     let settled = false;

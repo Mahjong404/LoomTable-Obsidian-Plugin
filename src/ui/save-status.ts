@@ -25,7 +25,6 @@ export function renderSaveStatus(
   element.dataset.status = status;
   element.setAttribute('aria-live', 'polite');
   element.setAttribute('aria-label', message);
-  element.title = message;
   element.textContent = message;
   if (status === 'saved') {
     const timer = window.setTimeout(() => {

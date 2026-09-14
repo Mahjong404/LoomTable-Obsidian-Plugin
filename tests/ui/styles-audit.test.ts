@@ -52,7 +52,7 @@ describe('LoomTable CSS contract', () => {
     expect(styles).toContain("[data-status='conflict']");
     expect(styles).toContain("[data-edit-state='queued']");
     expect(styles).toContain('.loom-grid-cell:focus-visible');
-    expect(styles).toContain('box-shadow: inset 0 0 0 2px var(--loom-focus)');
+    expect(styles).toContain('box-shadow: inset 0 0 0 2px var(--loom-selection-border)');
     expect(styles).toContain('outline: 2px solid var(--loom-focus)');
   });
 
