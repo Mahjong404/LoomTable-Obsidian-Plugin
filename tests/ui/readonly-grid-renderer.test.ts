@@ -2241,3 +2241,150 @@ describe('Grid record lifecycle', () => {
     container.remove();
   });
 });
+
+describe('column menu and field editor', () => {
+  it('renders an add-field header cell that opens the create panel', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onFieldSave = vi.fn();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave,
+    });
+    renderer.render(createState(1));
+
+    const addCell = container.querySelector<HTMLElement>('.loom-grid-add-field');
+    expect(addCell).not.toBeNull();
+    addCell?.querySelector('button')?.click();
+
+    const panel = container.querySelector<HTMLElement>('.loom-field-editor');
+    expect(panel).not.toBeNull();
+    expect(panel?.querySelectorAll('.loom-field-editor-type')).toHaveLength(10);
+    container.remove();
+  });
+
+  it('omits the add-field cell when the client cannot write Fields', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(1));
+
+    expect(container.querySelector('.loom-grid-add-field')).toBeNull();
+    container.remove();
+  });
+
+  it('submits a new Field through the panel create flow', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onFieldSave = vi.fn(async () => undefined);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave,
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+    const name = container.querySelector<HTMLInputElement>('.loom-field-editor-name');
+    expect(name).not.toBeNull();
+    name!.value = 'Notes';
+    const selectType = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-field-editor-type'),
+    ].find((item) => item.dataset.type === 'select');
+    selectType?.click();
+    container.querySelector<HTMLButtonElement>('.loom-field-editor-submit')?.click();
+    await Promise.resolve();
+
+    expect(onFieldSave).toHaveBeenCalledWith(
+      { name: 'Notes', type: 'select', options: [] },
+      { mode: 'create' },
+    );
+    container.remove();
+  });
+
+  it('opens the column menu on header contextmenu with edit/insert/hide/delete', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onFieldSave = vi.fn();
+    const onFieldDelete = vi.fn();
+    const onApplySort = vi.fn();
+    const onApplyDisplay = vi.fn();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave,
+      onFieldDelete,
+      onApplySort,
+      onApplyDisplay,
+    });
+    renderer.render(createTwoFieldState());
+
+    const headers = container.querySelectorAll<HTMLElement>(
+      '.loom-grid-header-cell:not(.loom-grid-index-header):not(.loom-grid-add-field)',
+    );
+    headers[1]?.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, clientX: 8, clientY: 8 }),
+    );
+
+    const labels = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+    ].map((item) => item.textContent);
+    for (const expected of [
+      'Edit field',
+      'Insert field left',
+      'Insert field right',
+      'Sort ascending',
+      'Sort descending',
+      'Hide field',
+      'Delete field',
+    ]) {
+      expect(labels).toContain(expected);
+    }
+    container.remove();
+  });
+
+  it('disables delete on the Primary Field', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+      onFieldDelete: vi.fn(),
+    });
+    renderer.render(createState(1));
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-header-cell:not(.loom-grid-index-header)')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    const danger = container.querySelector<HTMLButtonElement>(
+      '.loom-context-menu-item[data-variant="danger"]',
+    );
+    expect(danger?.disabled).toBe(true);
+    container.remove();
+  });
+
+  it('deletes a Field after the dangerous-action confirmation', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onFieldDelete = vi.fn(async () => undefined);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+      onFieldDelete,
+      confirmDangerousAction: vi.fn(async () => true),
+    });
+    renderer.render(createTwoFieldState());
+
+    const headers = container.querySelectorAll<HTMLElement>(
+      '.loom-grid-header-cell:not(.loom-grid-index-header):not(.loom-grid-add-field)',
+    );
+    headers[1]?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+    container
+      .querySelector<HTMLButtonElement>('.loom-context-menu-item[data-variant="danger"]')
+      ?.click();
+    await vi.waitFor(() => expect(onFieldDelete).toHaveBeenCalled());
+    container.remove();
+  });
+});

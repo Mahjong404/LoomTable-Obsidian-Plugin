@@ -3,8 +3,11 @@ import {
   type Base,
   type ConflictBody,
   type ConflictDetails,
+  type CreateFieldRequest,
   type CreateViewRequest,
   type Field,
+  type FieldConfigInput,
+  type SelectOptionInput,
   type AttachmentRef,
   type FilterNode,
   type GridViewConfig,
@@ -163,6 +166,10 @@ export type GridDataSource = Pick<
       | 'updateView'
       | 'deleteView'
       | 'restoreView'
+      | 'createField'
+      | 'updateField'
+      | 'deleteField'
+      | 'restoreField'
     >
   >;
 
@@ -214,6 +221,96 @@ interface ViewWriteFailure {
 
 function viewWriteFailed(kind: LoomTableClientError['kind'], message: string): ViewWriteFailure {
   return { status: 'failed', kind, error: { message } };
+}
+
+export interface FieldSubmitInput {
+  readonly name: string;
+  readonly type: Field['type'];
+  readonly options?: readonly SelectOptionInput[];
+  readonly maxCount?: number;
+}
+
+export type FieldWriteOutcome =
+  { readonly status: 'written'; readonly field: Field } | ViewWriteFailure;
+
+function fieldWriteFailed(kind: LoomTableClientError['kind'], message: string): ViewWriteFailure {
+  return { status: 'failed', kind, error: { message } };
+}
+
+function isFieldWriteClient(
+  client: GridDataSource,
+): client is GridDataSource &
+  Required<Pick<LoomTableClient, 'createField' | 'updateField' | 'deleteField' | 'restoreField'>> {
+  return (
+    typeof client.createField === 'function' &&
+    typeof client.updateField === 'function' &&
+    typeof client.deleteField === 'function' &&
+    typeof client.restoreField === 'function'
+  );
+}
+
+function fieldConfigFromInput(input: FieldSubmitInput): FieldConfigInput | null {
+  if (input.type === 'select' || input.type === 'multiSelect') {
+    return {
+      options: (input.options ?? [])
+        .filter((option) => option.name.trim() !== '')
+        .map((option) => ({
+          ...(option.id === undefined ? {} : { id: option.id }),
+          name: option.name.trim(),
+          color: option.color,
+        })),
+    };
+  }
+  if (input.type === 'attachment') {
+    const maxCount = input.maxCount ?? 10;
+    if (!Number.isInteger(maxCount) || maxCount < 1 || maxCount > 100) return null;
+    return { maxCount };
+  }
+  return {};
+}
+
+function fieldUpdateConfigFromInput(
+  field: Field,
+  input: { readonly options?: readonly SelectOptionInput[]; readonly maxCount?: number },
+): FieldConfigInput | undefined | null {
+  if (field.type === 'select' || field.type === 'multiSelect') {
+    if (input.options === undefined) return undefined;
+    return {
+      options: input.options
+        .filter((option) => option.name.trim() !== '')
+        .map((option) => ({
+          ...(option.id === undefined ? {} : { id: option.id }),
+          name: option.name.trim(),
+          color: option.color,
+        })),
+    };
+  }
+  if (field.type === 'attachment') {
+    if (input.maxCount === undefined) return undefined;
+    if (!Number.isInteger(input.maxCount) || input.maxCount < 1 || input.maxCount > 100) {
+      return null;
+    }
+    return { maxCount: input.maxCount };
+  }
+  return undefined;
+}
+
+function gridViewMentionsField(view: GridView, fieldId: string): boolean {
+  const config = view.config;
+  return (
+    config.projection.includes(fieldId) ||
+    config.columnOrder.includes(fieldId) ||
+    config.frozenFieldIds.includes(fieldId) ||
+    fieldId in config.columnWidths ||
+    config.sort.some((sort) => sort.fieldId === fieldId) ||
+    filterMentionsField(config.filter, fieldId)
+  );
+}
+
+function filterMentionsField(filter: FilterNode | undefined, fieldId: string): boolean {
+  if (filter === undefined) return false;
+  if (filter.kind === 'rule') return filter.fieldId === fieldId;
+  return filter.children.some((child) => filterMentionsField(child, fieldId));
 }
 
 const INITIAL_STATE: GridState = {
@@ -1304,6 +1401,128 @@ export class GridViewController {
     this.#viewWriteRetries.delete(viewId);
     this.#viewWriteBases.delete(viewId);
     await this.#refreshViewLists();
+  }
+
+  async createField(
+    input: FieldSubmitInput,
+    anchor: { readonly fieldId: string; readonly side: 'left' | 'right' } | null = null,
+  ): Promise<FieldWriteOutcome> {
+    const tableId = this.#state.selectedTableId;
+    if (!isFieldWriteClient(this.#client) || tableId === null) {
+      return fieldWriteFailed('validation', 'Field management is unavailable for this connection.');
+    }
+    if (this.#isOffline()) {
+      return fieldWriteFailed('network', 'Field management is unavailable while offline.');
+    }
+    const config = fieldConfigFromInput(input);
+    if (config === null) {
+      return fieldWriteFailed('validation', 'The Field configuration is invalid.');
+    }
+    let field: Field;
+    try {
+      field = await this.#client.createField(
+        tableId,
+        { name: input.name, type: input.type, config },
+        this.#mutationIdFactory(),
+      );
+    } catch (error) {
+      return fieldWriteFailed(
+        error instanceof LoomTableClientError ? error.kind : 'server',
+        error instanceof Error ? error.message : 'The Field could not be created.',
+      );
+    }
+    const view = this.#state.views.find((candidate) => candidate.id === this.#state.selectedViewId);
+    if (view !== undefined && isGridView(view) && this.#viewWrites !== null) {
+      const config = view.config;
+      const anchorIndex = anchor === null ? -1 : config.columnOrder.indexOf(anchor.fieldId);
+      const insertAt =
+        anchorIndex === -1 || anchor === null
+          ? config.columnOrder.length
+          : anchorIndex + (anchor.side === 'right' ? 1 : 0);
+      const columnOrder = [...config.columnOrder];
+      columnOrder.splice(insertAt, 0, field.id);
+      const outcome = await this.#viewWrites.updateView(view, {
+        config: {
+          ...config,
+          projection: [...config.projection, field.id],
+          columnOrder,
+        },
+      });
+      if (outcome.status === 'saved') {
+        this.#clearViewWriteState(view.id);
+        const views = this.#state.views.map((candidate) =>
+          candidate.id === view.id ? outcome.view : candidate,
+        );
+        this.#publish({ views });
+      }
+    }
+    await this.load();
+    return { status: 'written', field };
+  }
+
+  async updateField(
+    fieldId: string,
+    input: {
+      readonly name?: string;
+      readonly options?: readonly SelectOptionInput[];
+      readonly maxCount?: number;
+    },
+  ): Promise<FieldWriteOutcome> {
+    const field = this.#state.fields.find((candidate) => candidate.id === fieldId);
+    if (!isFieldWriteClient(this.#client) || field === undefined) {
+      return fieldWriteFailed('validation', 'Field management is unavailable for this connection.');
+    }
+    if (this.#isOffline()) {
+      return fieldWriteFailed('network', 'Field management is unavailable while offline.');
+    }
+    const config = fieldUpdateConfigFromInput(field, input);
+    if (config === null) {
+      return fieldWriteFailed('validation', 'The Field configuration is invalid.');
+    }
+    try {
+      const updated = await this.#client.updateField(fieldId, {
+        type: field.type,
+        expectedRevision: field.revision,
+        ...(input.name === undefined ? {} : { name: input.name }),
+        ...(config === undefined ? {} : { config }),
+      });
+      await this.load();
+      return { status: 'written', field: updated };
+    } catch (error) {
+      return fieldWriteFailed(
+        error instanceof LoomTableClientError ? error.kind : 'server',
+        error instanceof Error ? error.message : 'The Field could not be updated.',
+      );
+    }
+  }
+
+  async deleteField(fieldId: string): Promise<FieldWriteOutcome> {
+    const field = this.#state.fields.find((candidate) => candidate.id === fieldId);
+    if (!isFieldWriteClient(this.#client) || field === undefined) {
+      return fieldWriteFailed('validation', 'Field management is unavailable for this connection.');
+    }
+    if (this.#isOffline()) {
+      return fieldWriteFailed('network', 'Field management is unavailable while offline.');
+    }
+    try {
+      await this.#client.deleteField(fieldId, field.revision);
+    } catch (error) {
+      return fieldWriteFailed(
+        error instanceof LoomTableClientError ? error.kind : 'server',
+        error instanceof Error ? error.message : 'The Field could not be deleted.',
+      );
+    }
+    const fields = this.#state.fields.filter((candidate) => candidate.id !== fieldId);
+    if (this.#viewWrites !== null) {
+      for (const view of this.#state.views) {
+        if (view.type !== 'grid' || !gridViewMentionsField(view, fieldId)) continue;
+        const config = repairViewConfig(view, fields, { removeFieldIds: [fieldId] });
+        if (config === null) continue;
+        await this.#viewWrites.updateView(view, { config });
+      }
+    }
+    await this.load();
+    return { status: 'written', field };
   }
 
   async #runViewWrite(viewId: string, run: ViewWriteRun): Promise<ViewWriteOutcome> {

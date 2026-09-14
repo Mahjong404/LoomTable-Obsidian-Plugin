@@ -2790,3 +2790,119 @@ describe('Record navigation', () => {
     expect(controller.canNavigateRecord('record_01', -1)).toBe(false);
   });
 });
+
+describe('Field management', () => {
+  it('creates a Field and inserts it right of the anchor column', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false), [], [createLocationField()]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.createField(
+      { name: 'Notes', type: 'text' },
+      { fieldId: 'field_name', side: 'right' },
+    );
+
+    expect(outcome.status).toBe('written');
+    expect(client.fieldCreateKeys).toHaveLength(1);
+    const view = controller.state.views.find((candidate) => candidate.id === 'view_01');
+    expect(view?.config).toMatchObject({
+      columnOrder: ['field_name', outcome.status === 'written' ? outcome.field.id : ''],
+    });
+    expect(controller.state.fields.some((field) => field.name === 'Notes')).toBe(true);
+  });
+
+  it('creates a Select Field with option colors', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.createField({
+      name: 'Status',
+      type: 'select',
+      options: [
+        { name: 'Todo', color: 'gray' },
+        { name: 'Done', color: 'green' },
+      ],
+    });
+
+    expect(outcome.status).toBe('written');
+    const created = controller.state.fields.find((field) => field.name === 'Status');
+    expect(created?.type).toBe('select');
+    expect(created?.config).toMatchObject({
+      options: [
+        { name: 'Todo', color: 'gray' },
+        { name: 'Done', color: 'green' },
+      ],
+    });
+  });
+
+  it('renames a Field with its current revision', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.updateField('field_name', { name: 'Title' });
+
+    expect(outcome.status).toBe('written');
+    expect(controller.state.fields[0]).toMatchObject({ name: 'Title', revision: 2 });
+  });
+
+  it('deletes a Field and scrubs it from every Grid View config', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(true), [], [createLocationField()]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.deleteField('field_name');
+
+    expect(outcome.status).toBe('written');
+    const view = controller.state.views.find((candidate) => candidate.id === 'view_01');
+    expect(view?.config).toMatchObject({ projection: [], columnOrder: [] });
+    expect(controller.state.fields.some((field) => field.id === 'field_name')).toBe(false);
+    const deleted = await client.listFields('table_01', { lifecycle: 'deleted' });
+    expect(deleted.map((field) => field.id)).toContain('field_name');
+  });
+
+  it('fails Field writes while offline without touching the Server', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { isOffline: () => true });
+    await controller.load();
+
+    const created = await controller.createField({ name: 'X', type: 'text' });
+    const updated = await controller.updateField('field_name', { name: 'Y' });
+    const deleted = await controller.deleteField('field_name');
+
+    for (const outcome of [created, updated, deleted]) {
+      expect(outcome.status).toBe('failed');
+      expect(outcome).toMatchObject({ kind: 'network' });
+    }
+    expect(client.fieldCreateKeys).toHaveLength(0);
+  });
+
+  it('reports Field management as unavailable without a field-capable client', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const limited = {
+      listWorkspaces: client.listWorkspaces.bind(client),
+      listBases: client.listBases.bind(client),
+      listTables: client.listTables.bind(client),
+      listFields: client.listFields.bind(client),
+      listViews: client.listViews.bind(client),
+      query: client.query.bind(client),
+    };
+    const controller = new GridViewController(limited);
+    await controller.load();
+
+    expect((await controller.createField({ name: 'X', type: 'text' })).status).toBe('failed');
+  });
+});

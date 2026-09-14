@@ -15,6 +15,7 @@ import { openContextMenu, type ContextMenuEntry, type ContextMenuItem } from './
 import { createFieldTypeIcon } from './field-type-icon';
 import { createUiIcon, type UiIconName } from './icons';
 import { FilterBuilder } from './filter-builder';
+import { openFieldEditor, type FieldEditorSubmit } from './field-editor-panel';
 import { SortPanel } from './sort-panel';
 import { DisplayPanel } from './display-panel';
 import { createRecordCreateForm, type RecordCreateForm } from './record-create-form';
@@ -53,6 +54,14 @@ import type {
   ViewIssueAction,
   ViewWriteOutcome,
 } from './view-write-coordinator';
+
+export type FieldSaveContext =
+  | {
+      readonly mode: 'create';
+      readonly anchorFieldId?: string;
+      readonly side?: 'left' | 'right';
+    }
+  | { readonly mode: 'edit'; readonly fieldId: string };
 
 export interface GridRendererCallbacks {
   readonly onRefresh: () => void | Promise<void>;
@@ -110,6 +119,11 @@ export interface GridRendererCallbacks {
   readonly onDismissDeleteNotice?: () => void;
   readonly onLoadDeletedRecords?: () => void | Promise<void>;
   readonly onLoadMoreDeletedRecords?: () => void | Promise<void>;
+  readonly onFieldSave?: (
+    input: FieldEditorSubmit,
+    context: FieldSaveContext,
+  ) => void | Promise<unknown>;
+  readonly onFieldDelete?: (fieldId: string) => void | Promise<unknown>;
   readonly onRestoreRecord?: (recordId: string) => void | Promise<void>;
   readonly clipboard?: GridClipboardHost;
 }
@@ -844,7 +858,8 @@ export class ReadonlyGridRenderer {
 
     const header = createElement('div', 'loom-grid-header');
     header.setAttribute('role', 'row');
-    header.style.gridTemplateColumns = columnTemplate;
+    header.style.gridTemplateColumns =
+      this.#callbacks.onFieldSave === undefined ? columnTemplate : `${columnTemplate} 2.5rem`;
     const indexHeader = createGridCell('#', 'loom-grid-header-cell loom-grid-index-header');
     indexHeader.setAttribute('role', 'columnheader');
     indexHeader.setAttribute('aria-colindex', '1');
@@ -894,7 +909,26 @@ export class ReadonlyGridRenderer {
           createTextElement('span', field.name),
         );
       }
+      fieldHeader.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.#openColumnMenu(field, event.clientX, event.clientY);
+      });
       header.append(fieldHeader);
+    }
+    if (this.#callbacks.onFieldSave !== undefined) {
+      const addField = createGridCell('', 'loom-grid-header-cell loom-grid-add-field');
+      addField.setAttribute('role', 'columnheader');
+      const addButton = createElement('button', 'loom-grid-add-field-button');
+      addButton.type = 'button';
+      addButton.setAttribute('aria-label', this.#translate('field.add'));
+      addButton.append(createUiIcon('field-add'));
+      addButton.addEventListener('click', (event) => {
+        const rect = addButton.getBoundingClientRect();
+        this.#openFieldEditorPanel({ mode: 'create' }, rect.left + 4, rect.bottom + 4, addButton);
+      });
+      addField.append(addButton);
+      header.append(addField);
     }
 
     const canvas = createElement('div', 'loom-grid-canvas');
@@ -1329,6 +1363,126 @@ export class ReadonlyGridRenderer {
       y,
       host: this.#container,
       label: this.#translate('grid.menu.label'),
+    });
+  }
+
+  #openColumnMenu(field: Field, x: number, y: number): void {
+    const gridState = this.#virtualGrid?.state;
+    const view = gridState?.views.find((candidate) => candidate.id === gridState.selectedViewId);
+    const table = gridState?.tables.find((candidate) => candidate.id === gridState.selectedTableId);
+    const isPrimary = field.id === table?.primaryFieldId;
+    const items: ContextMenuEntry[] = [];
+    if (this.#callbacks.onFieldSave !== undefined) {
+      items.push(
+        {
+          label: this.#translate('field.menu.edit'),
+          icon: 'menu-edit',
+          action: () =>
+            this.#openFieldEditorPanel({ mode: 'edit', fieldId: field.id }, x, y, undefined, field),
+        },
+        {
+          label: this.#translate('field.menu.insertLeft'),
+          icon: 'col-insert-left',
+          action: () =>
+            this.#openFieldEditorPanel(
+              { mode: 'create', anchorFieldId: field.id, side: 'left' },
+              x,
+              y,
+            ),
+        },
+        {
+          label: this.#translate('field.menu.insertRight'),
+          icon: 'col-insert-right',
+          action: () =>
+            this.#openFieldEditorPanel(
+              { mode: 'create', anchorFieldId: field.id, side: 'right' },
+              x,
+              y,
+            ),
+        },
+      );
+    }
+    const gridConfig = view?.type === 'grid' ? view.config : null;
+    if (view !== undefined && gridConfig !== null && isSortableField(field)) {
+      items.push('separator', {
+        label: this.#translate('field.menu.sortAsc'),
+        icon: 'sort-asc',
+        action: () =>
+          void this.#callbacks.onApplySort?.(view.id, [
+            { fieldId: field.id, direction: 'asc', nulls: 'last' },
+          ]),
+      });
+      items.push({
+        label: this.#translate('field.menu.sortDesc'),
+        icon: 'sort-desc',
+        action: () =>
+          void this.#callbacks.onApplySort?.(view.id, [
+            { fieldId: field.id, direction: 'desc', nulls: 'last' },
+          ]),
+      });
+    }
+    if (
+      view !== undefined &&
+      gridConfig !== null &&
+      this.#callbacks.onApplyDisplay !== undefined &&
+      !isPrimary
+    ) {
+      items.push('separator', {
+        label: this.#translate('field.menu.hide'),
+        icon: 'field-hide',
+        action: () =>
+          void this.#callbacks.onApplyDisplay?.(view.id, {
+            projection: gridConfig.projection.filter((fieldId) => fieldId !== field.id),
+            columnOrder: gridConfig.columnOrder.filter((fieldId) => fieldId !== field.id),
+            columnWidths: gridConfig.columnWidths,
+            frozenFieldIds: gridConfig.frozenFieldIds.filter((fieldId) => fieldId !== field.id),
+            rowHeight: gridConfig.rowHeight,
+          }),
+      });
+    }
+    if (this.#callbacks.onFieldDelete !== undefined) {
+      items.push('separator', {
+        label: this.#translate('field.menu.delete'),
+        icon: 'menu-delete',
+        danger: true,
+        disabled: isPrimary,
+        action: () =>
+          void this.#requestDangerousConfirmation(
+            this.#translate('field.menu.deleteConfirm').replace('{name}', field.name),
+            this.#container,
+          ).then((confirmed) => {
+            if (confirmed) void this.#callbacks.onFieldDelete?.(field.id);
+          }),
+      });
+    }
+    if (items.length === 0) return;
+    openContextMenu({
+      items,
+      x,
+      y,
+      host: this.#container,
+      label: this.#translate('grid.menu.column'),
+    });
+  }
+
+  #openFieldEditorPanel(
+    context: FieldSaveContext,
+    x: number,
+    y: number,
+    trigger?: HTMLElement,
+    field?: Field,
+  ): void {
+    openFieldEditor({
+      mode: context.mode,
+      ...(context.mode === 'edit' && field !== undefined ? { field } : {}),
+      x,
+      y,
+      host: this.#container,
+      translate: this.#translate,
+      ...(trigger === undefined ? {} : { trigger }),
+      onSubmit: async (input) => {
+        await this.#callbacks.onFieldSave?.(input, context);
+      },
     });
   }
 

@@ -40,7 +40,13 @@ export type UiIconName =
   | 'view-manage'
   | 'nav-prev'
   | 'nav-next'
-  | 'detail-close';
+  | 'detail-close'
+  | 'field-add'
+  | 'col-insert-left'
+  | 'col-insert-right'
+  | 'sort-asc'
+  | 'sort-desc'
+  | 'field-hide';
 
 const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
   'view-grid': [
@@ -134,6 +140,44 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
   'detail-close': [
     ['path', { d: 'M18 6 6 18' }],
     ['path', { d: 'M6 6l12 12' }],
+  ],
+  'field-add': [
+    ['path', { d: 'M5 12h14' }],
+    ['path', { d: 'M12 5v14' }],
+  ],
+  'col-insert-left': [
+    ['path', { d: 'M21 3v18' }],
+    ['path', { d: 'M14 12H4' }],
+    ['path', { d: 'm8 8-4 4 4 4' }],
+  ],
+  'col-insert-right': [
+    ['path', { d: 'M3 3v18' }],
+    ['path', { d: 'M10 12h10' }],
+    ['path', { d: 'm16 8 4 4-4 4' }],
+  ],
+  'sort-asc': [
+    ['path', { d: 'M12 19V5' }],
+    ['path', { d: 'm5 12 7-7 7 7' }],
+  ],
+  'sort-desc': [
+    ['path', { d: 'M12 5v14' }],
+    ['path', { d: 'm19 12-7 7-7-7' }],
+  ],
+  'field-hide': [
+    [
+      'path',
+      {
+        d: 'M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49',
+      },
+    ],
+    ['path', { d: 'M14.084 14.158a3 3 0 0 1-4.242-4.242' }],
+    [
+      'path',
+      {
+        d: 'M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143',
+      },
+    ],
+    ['path', { d: 'm2 2 20 20' }],
   ],
   'view-manage': [
     ['line', { x1: '21', x2: '14', y1: '4', y2: '4' }],
