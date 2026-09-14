@@ -1,13 +1,18 @@
 import type {
   ConflictBody,
   ConflictDetails,
+  CreateRecordCommand,
+  DeleteRecordCommand,
   JsonValue,
   LoomTableClientErrorKind,
+  MutationCommand,
   MutationValue,
+  RestoreRecordCommand,
   UpdateRecordCommand,
 } from '../client/loomtable-client';
 
-export const MUTATION_QUEUE_SCHEMA_VERSION = 1 as const;
+export const MUTATION_QUEUE_SCHEMA_VERSION = 2 as const;
+export const MUTATION_QUEUE_SCHEMA_VERSION_V1 = 1 as const;
 export const MAX_MUTATION_QUEUE_ENTRIES = 256 as const;
 export const MAX_MUTATION_QUEUE_BYTES = 1024 * 1024;
 
@@ -29,9 +34,11 @@ const ERROR_KINDS: readonly LoomTableClientErrorKind[] = [
 export type MutationQueueEntryState =
   'queued' | 'sending' | 'auth-paused' | 'terminal' | 'error' | 'conflict';
 
+export type MutationQueueEntryKind = MutationCommand['kind'];
+
 export interface PersistedMutationRequest {
   readonly clientMutationId: string;
-  readonly commands: readonly [UpdateRecordCommand];
+  readonly commands: readonly [MutationCommand];
 }
 
 export interface PersistedMutationQueueError {
@@ -43,11 +50,12 @@ export interface PersistedMutationQueueError {
 }
 
 export interface PersistedMutationQueueEntry {
+  readonly kind: MutationQueueEntryKind;
   readonly tableId: string;
-  readonly recordId: string;
+  readonly recordId?: string;
   readonly clientMutationId: string;
   readonly request: PersistedMutationRequest;
-  readonly expectedRevision: number;
+  readonly expectedRevision?: number;
   readonly state: MutationQueueEntryState;
   readonly attemptCount: number;
   readonly nextAttemptAt?: string;
@@ -57,19 +65,19 @@ export interface PersistedMutationQueueEntry {
   readonly updatedAt: string;
 }
 
-export interface MutationQueueSettingsV1 {
+export interface MutationQueueSettingsV2 {
   readonly schemaVersion: typeof MUTATION_QUEUE_SCHEMA_VERSION;
   readonly entries: readonly PersistedMutationQueueEntry[];
 }
 
-export const DEFAULT_MUTATION_QUEUE_SETTINGS: MutationQueueSettingsV1 = {
+export const DEFAULT_MUTATION_QUEUE_SETTINGS: MutationQueueSettingsV2 = {
   schemaVersion: MUTATION_QUEUE_SCHEMA_VERSION,
   entries: [],
 };
 
 export interface MutationQueueStorePersistence {
   load(): Promise<unknown>;
-  save(value: MutationQueueSettingsV1): Promise<void>;
+  save(value: MutationQueueSettingsV2): Promise<void>;
 }
 
 export class MutationQueueSettingsError extends Error {
@@ -81,7 +89,7 @@ export class MutationQueueSettingsError extends Error {
 
 export class MutationQueueStore {
   readonly #persistence: MutationQueueStorePersistence | undefined;
-  #state: MutationQueueSettingsV1;
+  #state: MutationQueueSettingsV2;
 
   constructor(value: unknown = undefined, persistence?: MutationQueueStorePersistence) {
     this.#state = normalizeMutationQueueSettings(value);
@@ -92,7 +100,7 @@ export class MutationQueueStore {
     return new MutationQueueStore(await persistence.load(), persistence);
   }
 
-  getSnapshot(): MutationQueueSettingsV1 {
+  getSnapshot(): MutationQueueSettingsV2 {
     return normalizeMutationQueueSettings(this.#state, { recoverSending: false });
   }
 
@@ -115,15 +123,21 @@ export class MutationQueueStore {
 export function normalizeMutationQueueSettings(
   value: unknown,
   options: { readonly recoverSending?: boolean } = {},
-): MutationQueueSettingsV1 {
-  if (value === undefined || value === null) return { schemaVersion: 1, entries: [] };
+): MutationQueueSettingsV2 {
+  if (value === undefined || value === null) {
+    return { schemaVersion: MUTATION_QUEUE_SCHEMA_VERSION, entries: [] };
+  }
   const recoverSending = options.recoverSending ?? true;
 
   const root = objectValue(value, 'mutationQueue');
   assertKeys(root, ['schemaVersion', 'entries'], 'mutationQueue');
-  if (root.schemaVersion !== MUTATION_QUEUE_SCHEMA_VERSION) {
+  if (
+    root.schemaVersion !== MUTATION_QUEUE_SCHEMA_VERSION &&
+    root.schemaVersion !== MUTATION_QUEUE_SCHEMA_VERSION_V1
+  ) {
     fail('mutationQueue.schemaVersion', 'unsupported schema version');
   }
+  const v1 = root.schemaVersion === MUTATION_QUEUE_SCHEMA_VERSION_V1;
   if (!Array.isArray(root.entries)) fail('mutationQueue.entries', 'must be an array');
   if (root.entries.length > MAX_MUTATION_QUEUE_ENTRIES) {
     fail('mutationQueue.entries', 'entry count exceeds the supported limit');
@@ -131,7 +145,7 @@ export function normalizeMutationQueueSettings(
 
   const ids = new Set<string>();
   const entries = root.entries.map((candidate, index) => {
-    const entry = parseEntry(candidate, 'mutationQueue.entries[' + index + ']', recoverSending);
+    const entry = parseEntry(candidate, 'mutationQueue.entries[' + index + ']', recoverSending, v1);
     if (ids.has(entry.clientMutationId)) {
       fail(
         'mutationQueue.entries[' + index + '].clientMutationId',
@@ -150,11 +164,13 @@ function parseEntry(
   value: unknown,
   path: string,
   recoverSending: boolean,
+  v1: boolean,
 ): PersistedMutationQueueEntry {
   const raw = objectValue(value, path);
   assertKeys(
     raw,
     [
+      'kind',
       'tableId',
       'recordId',
       'clientMutationId',
@@ -172,20 +188,40 @@ function parseEntry(
   );
 
   const tableId = identifier(raw.tableId, path + '.tableId');
-  const recordId = identifier(raw.recordId, path + '.recordId');
   const clientMutationId = mutationId(raw.clientMutationId, path + '.clientMutationId');
-  const request = parseRequest(raw.request, path + '.request');
+  const request = parseRequest(raw.request, path + '.request', v1);
   if (request.clientMutationId !== clientMutationId) {
     fail(path + '.request.clientMutationId', 'must match the entry clientMutationId');
   }
   const command = request.commands[0];
-  if (command.recordId !== recordId) {
-    fail(path + '.request.commands[0].recordId', 'must match the entry recordId');
+  const kind = v1 ? 'updateRecord' : entryKind(raw.kind, path + '.kind');
+  if (v1 && raw.kind !== undefined && raw.kind !== 'updateRecord') {
+    fail(path + '.kind', 'v1 entries only support updateRecord');
+  }
+  if (command.kind !== kind) {
+    fail(path + '.kind', 'must match the request command kind');
   }
 
-  const expectedRevision = integer(raw.expectedRevision, path + '.expectedRevision', 1);
-  if (command.expectedRevision !== expectedRevision) {
-    fail(path + '.expectedRevision', 'must match the request command revision');
+  let recordId: string | undefined;
+  let expectedRevision: number | undefined;
+  if (kind === 'createRecord') {
+    if (raw.recordId !== undefined) {
+      fail(path + '.recordId', 'is not valid for a createRecord entry');
+    }
+    if (raw.expectedRevision !== undefined) {
+      fail(path + '.expectedRevision', 'is not valid for a createRecord entry');
+    }
+  } else {
+    recordId = identifier(raw.recordId, path + '.recordId');
+    expectedRevision = integer(raw.expectedRevision, path + '.expectedRevision', 1);
+    if (command.kind !== 'createRecord') {
+      if (command.recordId !== recordId) {
+        fail(path + '.request.commands[0].recordId', 'must match the entry recordId');
+      }
+      if (command.expectedRevision !== expectedRevision) {
+        fail(path + '.expectedRevision', 'must match the request command revision');
+      }
+    }
   }
 
   const state = parseState(raw.state, path + '.state', recoverSending);
@@ -221,11 +257,12 @@ function parseEntry(
   }
 
   return {
+    kind,
     tableId,
-    recordId,
+    ...(recordId === undefined ? {} : { recordId }),
     clientMutationId,
     request,
-    expectedRevision,
+    ...(expectedRevision === undefined ? {} : { expectedRevision }),
     state,
     attemptCount,
     ...(nextAttemptAt === undefined ? {} : { nextAttemptAt }),
@@ -236,20 +273,45 @@ function parseEntry(
   };
 }
 
-function parseRequest(value: unknown, path: string): PersistedMutationRequest {
+function entryKind(value: unknown, path: string): MutationQueueEntryKind {
+  if (
+    value === 'createRecord' ||
+    value === 'updateRecord' ||
+    value === 'deleteRecord' ||
+    value === 'restoreRecord'
+  ) {
+    return value;
+  }
+  fail(path, 'must be createRecord, updateRecord, deleteRecord, or restoreRecord');
+}
+
+function parseRequest(value: unknown, path: string, v1: boolean): PersistedMutationRequest {
   const raw = objectValue(value, path);
   assertKeys(raw, ['clientMutationId', 'commands'], path);
   const clientMutationId = mutationId(raw.clientMutationId, path + '.clientMutationId');
   if (!Array.isArray(raw.commands) || raw.commands.length !== 1) {
-    fail(path + '.commands', 'must contain exactly one updateRecord command');
+    fail(path + '.commands', 'must contain exactly one mutation command');
   }
-  const command = parseCommand(raw.commands[0], path + '.commands[0]');
+  const command = parseCommand(raw.commands[0], path + '.commands[0]', v1);
   return { clientMutationId, commands: [command] };
 }
 
-function parseCommand(value: unknown, path: string): UpdateRecordCommand {
+function parseCommand(value: unknown, path: string, v1: boolean): MutationCommand {
   const raw = objectValue(value, path);
-  assertKeys(raw, ['kind', 'recordId', 'expectedRevision', 'set', 'unsetFieldIds'], path);
+  if (v1 || raw.kind === 'updateRecord') return parseUpdateCommand(raw, path, v1);
+  if (raw.kind === 'createRecord') return parseCreateCommand(raw, path);
+  if (raw.kind === 'deleteRecord' || raw.kind === 'restoreRecord') {
+    return parseLifecycleCommand(raw, path);
+  }
+  fail(path + '.kind', 'must be a supported mutation command');
+}
+
+function parseUpdateCommand(
+  raw: Record<string, unknown>,
+  path: string,
+  v1: boolean,
+): UpdateRecordCommand {
+  if (!v1) assertKeys(raw, ['kind', 'recordId', 'expectedRevision', 'set', 'unsetFieldIds'], path);
   if (raw.kind !== 'updateRecord') fail(path + '.kind', 'only updateRecord is supported');
   const recordId = identifier(raw.recordId, path + '.recordId');
   const expectedRevision = integer(raw.expectedRevision, path + '.expectedRevision', 1);
@@ -271,6 +333,30 @@ function parseCommand(value: unknown, path: string): UpdateRecordCommand {
     expectedRevision,
     ...(set === undefined ? {} : { set }),
     ...(unsetFieldIds === undefined ? {} : { unsetFieldIds }),
+  };
+}
+
+function parseCreateCommand(raw: Record<string, unknown>, path: string): CreateRecordCommand {
+  assertKeys(raw, ['kind', 'values'], path);
+  if (raw.kind !== 'createRecord') fail(path + '.kind', 'must be createRecord');
+  return {
+    kind: 'createRecord',
+    values: raw.values === undefined ? {} : values(raw.values, path + '.values', false),
+  };
+}
+
+function parseLifecycleCommand(
+  raw: Record<string, unknown>,
+  path: string,
+): DeleteRecordCommand | RestoreRecordCommand {
+  assertKeys(raw, ['kind', 'recordId', 'expectedRevision'], path);
+  if (raw.kind !== 'deleteRecord' && raw.kind !== 'restoreRecord') {
+    fail(path + '.kind', 'must be deleteRecord or restoreRecord');
+  }
+  return {
+    kind: raw.kind,
+    recordId: identifier(raw.recordId, path + '.recordId'),
+    expectedRevision: integer(raw.expectedRevision, path + '.expectedRevision', 1),
   };
 }
 
@@ -319,8 +405,8 @@ function parseError(value: unknown, path: string): PersistedMutationQueueError {
 function parseConflict(
   value: unknown,
   path: string,
-  recordId: string,
-  expectedRevision: number,
+  recordId: string | undefined,
+  expectedRevision: number | undefined,
   clientMutationId: string,
 ): ConflictDetails {
   const raw = objectValue(value, path);
@@ -344,8 +430,8 @@ function parseConflict(
 function parseConflictBody(
   value: unknown,
   path: string,
-  recordId: string,
-  expectedRevision: number,
+  recordId: string | undefined,
+  expectedRevision: number | undefined,
 ): ConflictBody {
   const raw = objectValue(value, path);
   assertKeys(
@@ -360,10 +446,14 @@ function parseConflictBody(
     ],
     path,
   );
-  if (raw.recordId !== recordId) fail(path + '.recordId', 'must match the entry recordId');
-  if (raw.expectedRevision !== expectedRevision) {
+  if (recordId !== undefined && raw.recordId !== recordId) {
+    fail(path + '.recordId', 'must match the entry recordId');
+  }
+  if (expectedRevision !== undefined && raw.expectedRevision !== expectedRevision) {
     fail(path + '.expectedRevision', 'must match the entry expectedRevision');
   }
+  const conflictRecordId = identifier(raw.recordId, path + '.recordId');
+  const conflictExpectedRevision = integer(raw.expectedRevision, path + '.expectedRevision', 1);
   const currentRevision = integer(raw.currentRevision, path + '.currentRevision', 1);
   const currentValues = values(raw.currentValues, path + '.currentValues', false);
   const submittedSet =
@@ -379,8 +469,8 @@ function parseConflictBody(
     if (overlap !== undefined) fail(path, 'submitted set and unset overlap: ' + overlap);
   }
   return {
-    recordId,
-    expectedRevision,
+    recordId: conflictRecordId,
+    expectedRevision: conflictExpectedRevision,
     currentRevision,
     currentValues,
     ...(submittedSet === undefined ? {} : { submittedSet }),
@@ -476,7 +566,7 @@ function assertKeys(
   }
 }
 
-function assertQueueSize(value: MutationQueueSettingsV1): void {
+function assertQueueSize(value: MutationQueueSettingsV2): void {
   const serialized = JSON.stringify(value);
   if (serialized === undefined) fail('mutationQueue', 'could not be serialized');
   if (new TextEncoder().encode(serialized).byteLength > MAX_MUTATION_QUEUE_BYTES) {

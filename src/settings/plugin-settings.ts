@@ -10,7 +10,7 @@ import {
 import {
   DEFAULT_MUTATION_QUEUE_SETTINGS,
   normalizeMutationQueueSettings,
-  type MutationQueueSettingsV1,
+  type MutationQueueSettingsV2,
 } from './mutation-queue-settings';
 import {
   TIANDITU_CREDENTIAL_BINDING_KEY,
@@ -21,6 +21,11 @@ import {
   type TileCredentialSlot,
   type TileProviderRef,
 } from '../maps/providers/tile-provider-schema';
+import {
+  DEFAULT_VIEW_INTENTS,
+  normalizeViewIntents,
+  type ViewIntentsSettingsV1,
+} from './view-intents';
 
 export const PLUGIN_SETTINGS_SCHEMA_VERSION = 3 as const;
 export const SUPPORTED_LOCALES = ['en', 'zh-CN'] as const;
@@ -41,7 +46,8 @@ export interface PluginSettings {
   connectionProfiles: ConnectionProfile[];
   defaultConnectionProfileId: ConnectionProfileId | null;
   mapPresentation: MapPresentationSettingsV1;
-  mutationQueue: MutationQueueSettingsV1;
+  mutationQueue: MutationQueueSettingsV2;
+  viewIntents: ViewIntentsSettingsV1;
 }
 
 export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
@@ -57,6 +63,7 @@ export const DEFAULT_PLUGIN_SETTINGS: PluginSettings = {
     credentialBindings: {},
   },
   mutationQueue: structuredClone(DEFAULT_MUTATION_QUEUE_SETTINGS),
+  viewIntents: structuredClone(DEFAULT_VIEW_INTENTS),
 };
 
 export function normalizePluginSettings(value: unknown): PluginSettings {
@@ -79,6 +86,7 @@ export function normalizePluginSettings(value: unknown): PluginSettings {
     defaultConnectionProfileId,
     mapPresentation: parseMapPresentation(value.mapPresentation),
     mutationQueue: normalizeMutationQueueSettings(value.mutationQueue),
+    viewIntents: normalizeViewIntents(value.viewIntents),
   };
 }
 
