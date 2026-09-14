@@ -165,7 +165,12 @@ describe('Grid states', () => {
       expect(host.querySelectorAll('.loom-grid-row').length).toBeGreaterThan(0);
     });
     const before = host.querySelectorAll('.loom-grid-row').length;
-    host.querySelector<HTMLButtonElement>('.loom-grid-delete-record')?.click();
+    host
+      .querySelector<HTMLElement>('.loom-grid-index-cell')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    host
+      .querySelector<HTMLButtonElement>('.loom-context-menu-item[data-variant="danger"]')
+      ?.click();
     const dialog = host.querySelector<HTMLElement>('.loom-dangerous-confirmation');
     expect(dialog).not.toBeNull();
     dialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]')?.click();

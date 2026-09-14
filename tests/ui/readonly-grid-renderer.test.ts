@@ -1940,11 +1940,14 @@ describe('Grid record lifecycle', () => {
     });
     renderer.render(createState(2));
 
-    const button = container.querySelector<HTMLButtonElement>(
-      '.loom-grid-delete-record[data-record-id="record_01"]',
-    );
-    expect(button).not.toBeNull();
-    button?.click();
+    container
+      .querySelector<HTMLElement>('.loom-grid-index-cell')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    const danger = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+    ].find((item) => item.dataset.variant === 'danger');
+    expect(danger?.textContent).toContain('Delete Record');
+    danger?.click();
     await vi.waitFor(() => expect(callbacks.onDeleteRecord).toHaveBeenCalledWith('record_01'));
     container.remove();
   });
@@ -1960,7 +1963,10 @@ describe('Grid record lifecycle', () => {
     renderer.render(createState(2));
 
     container
-      .querySelector<HTMLButtonElement>('.loom-grid-delete-record[data-record-id="record_01"]')
+      .querySelector<HTMLElement>('.loom-grid-index-cell')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    container
+      .querySelector<HTMLButtonElement>('.loom-context-menu-item[data-variant="danger"]')
       ?.click();
     await Promise.resolve();
     expect(callbacks.onDeleteRecord).not.toHaveBeenCalled();
@@ -1976,7 +1982,10 @@ describe('Grid record lifecycle', () => {
       rendererCallbacks(),
     );
     renderer.render(createState(2));
-    expect(container.querySelector('.loom-grid-delete-record')).toBeNull();
+    container
+      .querySelector<HTMLElement>('.loom-grid-index-cell')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    expect(container.querySelector('.loom-context-menu-item[data-variant="danger"]')).toBeNull();
 
     const withDelete = new ReadonlyGridRenderer(
       container,
@@ -1984,10 +1993,13 @@ describe('Grid record lifecycle', () => {
       lifecycleCallbacks(),
     );
     withDelete.render(createState(2, { editStatuses: { record_01: 'queued' } }));
-    const button = container.querySelector<HTMLButtonElement>(
-      '.loom-grid-delete-record[data-record-id="record_01"]',
+    container
+      .querySelector<HTMLElement>('.loom-grid-index-cell')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    const danger = container.querySelector<HTMLButtonElement>(
+      '.loom-context-menu-item[data-variant="danger"]',
     );
-    expect(button?.disabled).toBe(true);
+    expect(danger?.disabled).toBe(true);
     container.remove();
   });
 
