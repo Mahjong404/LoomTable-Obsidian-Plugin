@@ -36,6 +36,7 @@ import { countFilterRules, isSortableField, nextHeaderSort } from './view-query-
 import { isEditableField } from './field-value-editor';
 import {
   createRenderedFieldValueElement,
+  type RenderedAttachment,
   defaultFieldRendererRegistry,
 } from './field-renderer-registry';
 import {
@@ -116,6 +117,7 @@ export interface GridRendererCallbacks {
   readonly onDismissRecordCreate?: (operationId: string) => void;
   readonly onDeleteRecord?: (recordId: string) => void | Promise<void>;
   readonly onUndoDelete?: () => void | Promise<void>;
+  readonly attachmentThumbnail?: (attachment: RenderedAttachment) => string | undefined;
   readonly onUndo?: () => void | Promise<void>;
   readonly onRedo?: () => void | Promise<void>;
   readonly onDismissDeleteNotice?: () => void;
@@ -1263,6 +1265,9 @@ export class ReadonlyGridRenderer {
       cell.append(
         createRenderedFieldValueElement(displayValue, {
           compactAttachments: true,
+          ...(this.#callbacks.attachmentThumbnail === undefined
+            ? {}
+            : { attachmentThumbnail: this.#callbacks.attachmentThumbnail }),
           ...(gridState?.search !== undefined && gridState.search !== ''
             ? { highlight: gridState.search }
             : {}),

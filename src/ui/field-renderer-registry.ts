@@ -100,6 +100,7 @@ export type FieldEditorElement = HTMLInputElement | HTMLTextAreaElement | HTMLSe
 
 export interface RenderedFieldValueElementOptions {
   readonly compactAttachments?: boolean;
+  readonly attachmentThumbnail?: (attachment: RenderedAttachment) => string | undefined;
   readonly highlight?: string;
   readonly translate?: Translator;
   readonly attachmentDownloadDisabled?: boolean | ((attachment: RenderedAttachment) => boolean);
@@ -430,6 +431,23 @@ export function createRenderedFieldValueElement(
   }
   if (rendered.attachments !== undefined && rendered.attachments.length > 0) {
     if (options.compactAttachments === true) {
+      const thumbs = rendered.attachments
+        .map((attachment) => attachmentThumbnailUrl(attachment, options))
+        .filter((url): url is string => url !== undefined)
+        .slice(0, 3);
+      if (thumbs.length > 0) {
+        const strip = document.createElement('span');
+        strip.className = 'loom-attachment-thumbs';
+        for (const url of thumbs) {
+          const img = document.createElement('img');
+          img.className = 'loom-attachment-thumb';
+          img.src = url;
+          img.alt = '';
+          img.loading = 'lazy';
+          strip.append(img);
+        }
+        root.append(strip);
+      }
       const summary = document.createElement('span');
       summary.className = 'loom-attachment-summary';
       summary.textContent = rendered.text;
@@ -473,6 +491,19 @@ export function createRenderedFieldValueElement(
   return root;
 }
 
+function attachmentThumbnailUrl(
+  attachment: RenderedAttachment,
+  options: RenderedFieldValueElementOptions,
+): string | undefined {
+  if (
+    attachment.state !== 'ready' ||
+    !(attachment.mimeType?.startsWith('image/') ?? false)
+  ) {
+    return undefined;
+  }
+  return options.attachmentThumbnail?.(attachment);
+}
+
 function createAttachmentElement(
   attachment: RenderedAttachment,
   options: RenderedFieldValueElementOptions,
@@ -481,6 +512,16 @@ function createAttachmentElement(
   card.className = 'loom-attachment-card';
   card.dataset.attachmentState = attachment.state;
   card.setAttribute('role', 'listitem');
+
+  const thumbnailUrl = attachmentThumbnailUrl(attachment, options);
+  if (thumbnailUrl !== undefined) {
+    const img = document.createElement('img');
+    img.className = 'loom-attachment-thumb';
+    img.src = thumbnailUrl;
+    img.alt = '';
+    img.loading = 'lazy';
+    card.append(img);
+  }
 
   const filename = document.createElement('span');
   filename.className = 'loom-attachment-filename';

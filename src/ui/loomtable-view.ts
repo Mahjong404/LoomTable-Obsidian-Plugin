@@ -1,4 +1,4 @@
-import { ItemView, type WorkspaceLeaf } from 'obsidian';
+import { ItemView, TFile, type WorkspaceLeaf } from 'obsidian';
 
 import type {
   FilterNode,
@@ -257,6 +257,7 @@ export class LoomTableView extends ItemView {
       },
       onUndo: () => controller.undo(),
       onRedo: () => controller.redo(),
+      attachmentThumbnail: this.attachmentThumbnail,
       onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
       confirmDiscardAll: () => window.confirm(this.getTranslator()('grid.discardAllConfirm')),
       onRetryEdit: (recordId) => controller.retryEdit(recordId),
@@ -437,6 +438,7 @@ export class LoomTableView extends ItemView {
               : { onAttachmentAddRetry: attachmentAdd.retry }),
           }),
       ...(attachmentDetach === undefined ? {} : { onAttachmentDetach: attachmentDetach }),
+      attachmentThumbnail: this.attachmentThumbnail,
       providers: this.mapContext.registry.list(),
       selectedProvider: provider,
       onProviderChange: async (nextProvider) => {
@@ -681,12 +683,31 @@ export class LoomTableView extends ItemView {
         onAttachmentAdd: attachmentAdd,
         ...(attachmentAdd.retry === undefined ? {} : { onAttachmentAddRetry: attachmentAdd.retry }),
         onAttachmentDetach: attachmentDetach,
+        attachmentThumbnail: this.attachmentThumbnail,
       },
       locationPreview: this.locationPreviewHandle(),
     });
     detailHost.append(detail);
     detail.focus();
   }
+
+  private attachmentThumbnail = (attachment: {
+    readonly state: string;
+    readonly source?: string;
+    readonly vaultPath?: string;
+    readonly mimeType?: string;
+  }): string | undefined => {
+    if (
+      attachment.state !== 'ready' ||
+      attachment.source !== 'vault' ||
+      attachment.vaultPath === undefined ||
+      !(attachment.mimeType?.startsWith('image/') ?? false)
+    ) {
+      return undefined;
+    }
+    const file = this.app.vault.getAbstractFileByPath(attachment.vaultPath);
+    return file instanceof TFile ? this.app.vault.getResourcePath(file) : undefined;
+  };
 
   private createAttachmentDownloadHandler(client: LoomTableClient) {
     const host = createBrowserAttachmentDownloadHost(document);

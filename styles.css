@@ -38,6 +38,7 @@
   --loom-space-4: var(--size-4-4, 16px);
   --loom-font-body: var(--font-interface, var(--font-text, sans-serif));
   --loom-font-ui-smaller: var(--font-ui-smaller, 0.8em);
+  --loom-font-ui-smallest: var(--font-ui-smallest, 0.72em);
   --loom-font-semibold: var(--font-semibold, 600);
   --loom-font-mono: var(--font-monospace, monospace);
   --loom-select-gray: #8a8f98;
@@ -2118,6 +2119,26 @@
 
   .loom-view-tabs {
     flex: 1 1 100%;
+  }
+
+  .loom-detail-host,
+  .loom-map-details:not(:empty) {
+    width: 100%;
+    border-left: none;
+  }
+
+  .loom-detail-host.is-modal,
+  .loom-map-details.is-modal {
+    padding: var(--loom-space-2);
+  }
+
+  .loom-attachment-card .loom-attachment-thumb {
+    width: 1.375rem;
+    height: 1.375rem;
+  }
+
+  .loom-attachment-thumbs .loom-attachment-thumb:nth-child(n + 3) {
+    display: none;
     overflow-x: auto;
     flex-wrap: nowrap;
   }
@@ -2378,7 +2399,7 @@
 .loom-field-editor-options-label {
   margin-bottom: var(--loom-space-1);
   color: var(--loom-text-faint);
-  font-size: var(--font-ui-smallest, 0.72em);
+  font-size: var(--loom-font-ui-smallest);
   letter-spacing: 0.02em;
 }
 
@@ -2765,4 +2786,29 @@
 
 .loom-grid-header-cell.is-drop-target {
   box-shadow: inset 3px 0 0 var(--loom-accent);
+}
+
+/* Attachment thumbnails */
+
+.loom-attachment-thumb {
+  width: 1.375rem;
+  height: 1.375rem;
+  object-fit: cover;
+  border-radius: var(--loom-radius-sm);
+  border: 1px solid var(--loom-grid-border);
+  vertical-align: middle;
+  flex: none;
+}
+
+.loom-attachment-card .loom-attachment-thumb {
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-inline-end: var(--loom-space-1);
+}
+
+.loom-attachment-thumbs {
+  display: inline-flex;
+  gap: 2px;
+  margin-inline-end: var(--loom-space-1);
+  vertical-align: middle;
 }
