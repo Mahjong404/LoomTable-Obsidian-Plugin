@@ -148,3 +148,16 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - U4-B 页签溢出：`#syncTabOverflow`（ResizeObserver 观察 tablist，超出宽度的页签置 `hidden`，选中页签强制可见）+ `.loom-view-tab-overflow`「+N」按钮（aria-haspopup=menu）→ `openContextMenu` 下拉列出隐藏视图（类型图标+名称），点击经 onViewChange 切换并关闭；箭头/Home/End 导航跳过隐藏页签；jsdom/未挂载时（clientWidth=0）不折叠。
 - 测试：renderer +4（刷新指示/空态横幅保留/浮层锚定/新增行模板），table-shell +2（+3 折叠与菜单选中、选中页签强制可见）。
 - 验证：63 文件 796 tests 全绿；lint 0 error；format/typecheck 干净；openapi 无 diff；esbuild 通过；已部署 vault（main.js 586,322B / styles.css 65,578B）；gallery bundle 已重建。
+
+## 2026-XX — UX 跟进 4：刷新跳闪/表头框感/Detail 冻结/点击即编辑（X1–X6）
+
+- X1 刷新跳闪根因：`.loom-grid-loading-note` 按 `status==="loading"` 反复插入/移除 toolbar 右侧组导致布局抖动。修复：加载指示改为常驻 slot，`visibility` 经 `data-active` 切换（有记录时不渲染 `.loom-grid-status` 横幅保持）。
+- X2a 表头"Name 不一样"根因：`.loom-grid-sort` 是裸 `<button>`，吃到 Obsidian 全局 `button{box-shadow,border-radius}` 主题样式呈胶囊框；`#`/`Location` 无按钮故为平。修复：renderer CSS 内所有裸 button（`.loom-grid-sort`/`.loom-grid-open`/`.loom-grid-add-row`/`.loom-grid-add-field-button` 等）统一 `box-shadow:none` 重置。
+- X2b 右侧死区竖条根因：`+` 新建字段列 track 只加在 header 模板（多 2.5rem），rows/canvas 不含 → header 右侧多出一截下方无元素无网格线的悬空区。修复：`+` 列并入统一列模板（header/rows/canvas 同宽），`+` 列下方随填充网格线自然延伸。
+- X3 新增记录行：同为裸 button 无 box-shadow 重置导致"带框按钮"观感；重置后呈平文本行。
+- X4a 页面冻结根因：modal 态 Detail 被 `.remove()` 后 `.loom-detail-host` 空壳留在 DOM；`.loom-detail-host:empty{display:none}` 与 `.is-modal{display:grid}` 同优先级且后者声明在后 → 空遮罩仍 `display:grid` 全屏拦截指针 = 整页冻结。修复：`onClose` 移除 host 前先清 `is-modal`；新增 `.loom-detail-host.is-modal:empty{display:none}` 兜底；modal 遮罩点击（target===host）即关闭。
+- X4b 双 × 歧义：modal 态下 expand 按钮图标换成 `detail-close`（×）与真正关闭撞脸。修复：新增 `detail-collapse` 图标（向内箭头），modal 态用它。
+- X5 点击即编辑：标量字段值容器挂 `.loom-record-field-editable`（role=button、tabindex=0、Enter/Space 激活），点击/键盘直接进编辑；独立「编辑字段」按钮移除；离线态不生成可编辑元素；checkbox 保留独立切换控件；location/attachment 维持专属操作。
+- X6 审计文档：`docs/local/ux-audit-2026-09-15.md`（本地，不入库）。
+- 测试：renderer +2（`+` 列模板三处一致/loading-note data-active），record-detail +2（唯一 close/modal 折叠图标），field-edit 测试改走 `.loom-record-field-editable`。
+- 验证：63 文件 794 tests 全绿；lint 0 error；format/typecheck 干净；openapi 无 diff；已部署 vault（main.js 587,092B / styles.css 66,728B）；gallery bundle 已重建。
