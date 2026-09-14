@@ -6,8 +6,11 @@ import {
   type MutationResult,
   type UpdateRecordCommand,
 } from '../../src/client/loomtable-client';
-import { type MutationQueueSettingsV1 } from '../../src/settings/mutation-queue-settings';
-import { MutationQueueRuntime } from '../../src/ui/mutation-queue-runtime';
+import { type MutationQueueSettingsV2 } from '../../src/settings/mutation-queue-settings';
+import {
+  MutationQueueRuntime,
+  UnavailableMutationQueuePort,
+} from '../../src/ui/mutation-queue-runtime';
 import { type DurableMutationQueueTransport } from '../../src/ui/mutation-queue-scheduler';
 
 const MUTATION_ID = 'mut_0123456789ABCDEFGHJKMNPQRS';
@@ -18,7 +21,7 @@ describe('MutationQueueRuntime', () => {
       schemaVersion: 1,
       entries: [entry({ state: 'sending' })],
     };
-    const saves: MutationQueueSettingsV1[] = [];
+    const saves: MutationQueueSettingsV2[] = [];
     const transport = fakeTransport();
     const runtime = new MutationQueueRuntime({
       load: async () => persisted,
@@ -31,7 +34,7 @@ describe('MutationQueueRuntime', () => {
       isAuthReady: () => true,
     });
 
-    const scheduler = await runtime.start();
+    const scheduler = await requireScheduler(runtime);
 
     expect(scheduler.getSnapshot().entries[0]?.state).toBe('queued');
     expect(saves.at(-1)?.entries[0]?.state).toBe('queued');
@@ -40,7 +43,7 @@ describe('MutationQueueRuntime', () => {
     await runtime.setOnline(true);
 
     expect(transport.mutate).toHaveBeenCalledTimes(1);
-    expect(persisted).toMatchObject({ schemaVersion: 1, entries: [] });
+    expect(persisted).toMatchObject({ schemaVersion: 2, entries: [] });
     runtime.stop();
   });
 
@@ -57,7 +60,7 @@ describe('MutationQueueRuntime', () => {
       isAuthReady: () => false,
     });
 
-    const scheduler = await runtime.start();
+    const scheduler = await requireScheduler(runtime);
 
     await expect(scheduler.enqueue('table_01', request())).rejects.toMatchObject({
       kind: 'validation',
@@ -73,7 +76,7 @@ describe('MutationQueueRuntime', () => {
   });
 
   it('persists a complete request before sending and preserves the returned Record for applied and unchanged results', async () => {
-    const saves: MutationQueueSettingsV1[] = [];
+    const saves: MutationQueueSettingsV2[] = [];
     const returnedRecord = record(2, 'server value');
     const transport = fakeTransport({
       result: {
@@ -92,7 +95,7 @@ describe('MutationQueueRuntime', () => {
       isAuthReady: () => true,
     });
 
-    const scheduler = await runtime.start();
+    const scheduler = await requireScheduler(runtime);
     const result = await scheduler.enqueue('table_01', request());
 
     expect(result.results[0]?.status).toBe('unchanged');
@@ -134,7 +137,7 @@ describe('MutationQueueRuntime', () => {
       isOnline: () => true,
       isAuthReady: () => false,
     });
-    const firstScheduler = await firstRuntime.start();
+    const firstScheduler = await requireScheduler(firstRuntime);
     const firstReady = firstRuntime.setAuthReady(true);
     await vi.waitFor(() => expect(firstRequest).toEqual(request()));
     firstRuntime.stop();
@@ -157,7 +160,41 @@ describe('MutationQueueRuntime', () => {
     secondRuntime.stop();
     void firstScheduler;
   });
+
+  it('preserves corrupt or unknown-version storage, reports recovery failure, and sends nothing', async () => {
+    const stored = { schemaVersion: 99, entries: [] };
+    const transport = fakeTransport();
+    const runtime = new MutationQueueRuntime({
+      load: async () => stored,
+      save: async () => {
+        throw new Error('must not overwrite corrupt storage');
+      },
+      transport,
+      isOnline: () => true,
+      isAuthReady: () => true,
+    });
+
+    const scheduler = await runtime.start();
+
+    expect(scheduler).toBeNull();
+    expect(runtime.recoveryError).toBeInstanceOf(Error);
+    expect(String(runtime.recoveryError)).toMatch(/schema version/);
+    expect(transport.mutate).not.toHaveBeenCalled();
+
+    // Rejected enqueue from an unavailable port must carry the recovery failure.
+    const port = new UnavailableMutationQueuePort(runtime.recoveryError);
+    await expect(port.enqueue('table_01', request())).rejects.toBeInstanceOf(Error);
+    expect(port.getRecordSnapshot('record_01')).toEqual({ state: 'idle', pending: 0 });
+    expect(port.getOperationSnapshot(MUTATION_ID)).toEqual({ state: 'idle', pending: 0 });
+    runtime.stop();
+  });
 });
+
+async function requireScheduler(runtime: MutationQueueRuntime) {
+  const scheduler = await runtime.start();
+  if (scheduler === null) throw new Error('Expected a recovered mutation scheduler.');
+  return scheduler;
+}
 
 function fakeTransport(
   options: {
@@ -214,9 +251,10 @@ function record(revision: number, value: string): LoomTableRecord {
 
 function entry(options: {
   readonly state: 'queued' | 'sending';
-}): MutationQueueSettingsV1['entries'][number] {
+}): MutationQueueSettingsV2['entries'][number] {
   const queuedRequest = request();
   return {
+    kind: 'updateRecord',
     tableId: 'table_01',
     recordId: 'record_01',
     clientMutationId: MUTATION_ID,

@@ -484,6 +484,36 @@ export interface UpdateGridViewRequest {
 
 export type UpdateViewRequest = UpdateMapViewRequest | UpdateGridViewRequest;
 
+export interface CreateGridViewRequest {
+  readonly type: 'grid';
+  readonly name: string;
+  readonly config: GridViewConfig;
+}
+
+export interface CreateMapViewRequest {
+  readonly type: 'map';
+  readonly name: string;
+  readonly config: MapViewConfig;
+}
+
+export type CreateViewRequest = CreateGridViewRequest | CreateMapViewRequest;
+
+export const MAX_RESOURCE_NAME_CODE_POINTS = 200;
+
+export type ResourceNameResult =
+  | { readonly ok: true; readonly name: string }
+  | { readonly ok: false; readonly reason: 'empty' | 'control-character' | 'too-long' };
+
+export function normalizeResourceName(value: string): ResourceNameResult {
+  const name = value.trim().normalize('NFC');
+  if (name === '') return { ok: false, reason: 'empty' };
+  if (/\p{Cc}/u.test(name)) return { ok: false, reason: 'control-character' };
+  if ([...name].length > MAX_RESOURCE_NAME_CODE_POINTS) {
+    return { ok: false, reason: 'too-long' };
+  }
+  return { ok: true, name };
+}
+
 export interface ViewBase {
   readonly id: string;
   readonly tableId: string;
@@ -516,7 +546,11 @@ export interface LoomTableClient {
     viewId: string,
     request: MapClusterRecordsQueryRequest,
   ): Promise<QueryResult>;
+  getView(viewId: string): Promise<View>;
+  createView(tableId: string, request: CreateViewRequest, idempotencyKey: string): Promise<View>;
   updateView(viewId: string, request: UpdateViewRequest): Promise<View>;
+  deleteView(viewId: string, expectedRevision: number): Promise<void>;
+  restoreView(viewId: string, expectedRevision: number): Promise<View>;
   initializeAttachment(
     request: InitializeAttachmentRequest,
     idempotencyKey: string,

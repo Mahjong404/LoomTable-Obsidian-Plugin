@@ -17,6 +17,7 @@ import {
   type ConnectionCheckResult,
   type ConflictBody,
   type ConflictDetails,
+  type CreateViewRequest,
   type DeletedSelectOption,
   type Field,
   type FilterNode,
@@ -40,6 +41,7 @@ import {
   type MutationCommandResult,
   type MutationRequest,
   type MutationResult,
+  normalizeResourceName,
   type QueryRequest,
   type QueryResult,
   type PullChangesRequest,
@@ -62,6 +64,8 @@ type TransportMapQueryRequest = components['schemas']['MapQueryRequest'];
 type TransportMapClusterRecordsQueryRequest =
   components['schemas']['MapClusterRecordsQueryRequest'];
 type TransportUpdateViewRequest = components['schemas']['UpdateViewRequest'];
+type TransportCreateViewRequest = components['schemas']['CreateViewRequest'];
+type TransportRestoreMetadataRequest = components['schemas']['RestoreMetadataRequest'];
 
 export interface HttpLoomTableClientConfig {
   readonly serverOrigin: string;
@@ -421,6 +425,61 @@ export class HttpLoomTableClient implements LoomTableClient {
     return decodeQueryResult(value);
   }
 
+  async getView(viewId: string): Promise<View> {
+    const normalizedViewId = viewId.trim();
+    if (normalizedViewId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A View ID is required to read a View.',
+      });
+    }
+    const value = await this.#requestJson(
+      `/v1/views/${encodeURIComponent(normalizedViewId)}`,
+      this.#requireAccessToken(),
+    );
+    return decodeView(value);
+  }
+
+  async createView(
+    tableId: string,
+    request: CreateViewRequest,
+    idempotencyKey: string,
+  ): Promise<View> {
+    const normalizedTableId = tableId.trim();
+    if (normalizedTableId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Table ID is required to create a View.',
+      });
+    }
+    const name = normalizeResourceName(request.name);
+    if (!name.ok) {
+      throw new LoomTableClientError('validation', {
+        message: invalidViewNameMessage(name.reason),
+      });
+    }
+    const normalizedIdempotencyKey = idempotencyKey.trim();
+    if (normalizedIdempotencyKey === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'An Idempotency-Key is required to create a View.',
+      });
+    }
+    const body = {
+      name: name.name,
+      type: request.type,
+      config: request.config,
+    } as TransportCreateViewRequest;
+    const value = await this.#requestJson(
+      `/v1/tables/${encodeURIComponent(normalizedTableId)}/views`,
+      this.#requireAccessToken(),
+      {
+        method: 'POST',
+        body,
+        headers: { 'Idempotency-Key': normalizedIdempotencyKey },
+        retryable: true,
+      },
+    );
+    return decodeView(value);
+  }
+
   async updateView(viewId: string, request: UpdateViewRequest): Promise<View> {
     const normalizedViewId = viewId.trim();
     if (normalizedViewId === '') {
@@ -433,11 +492,64 @@ export class HttpLoomTableClient implements LoomTableClient {
         message: 'View expectedRevision must be a positive integer.',
       });
     }
-    const body = { ...request } as TransportUpdateViewRequest;
+    const name = request.name === undefined ? undefined : normalizeResourceName(request.name);
+    if (name !== undefined && !name.ok) {
+      throw new LoomTableClientError('validation', {
+        message: invalidViewNameMessage(name.reason),
+      });
+    }
+    const body = {
+      ...request,
+      ...(name !== undefined && name.ok ? { name: name.name } : {}),
+    } as TransportUpdateViewRequest;
     const value = await this.#requestJson(
       `/v1/views/${encodeURIComponent(normalizedViewId)}`,
       this.#requireAccessToken(),
       { method: 'PATCH', body, retryable: false },
+    );
+    return decodeView(value);
+  }
+
+  async deleteView(viewId: string, expectedRevision: number): Promise<void> {
+    const normalizedViewId = viewId.trim();
+    if (normalizedViewId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A View ID is required to delete a View.',
+      });
+    }
+    if (!isPositiveInteger(expectedRevision)) {
+      throw new LoomTableClientError('validation', {
+        message: 'View expectedRevision must be a positive integer.',
+      });
+    }
+    await this.#request(
+      `/v1/views/${encodeURIComponent(normalizedViewId)}`,
+      this.#requireAccessToken(),
+      {
+        method: 'DELETE',
+        query: { expectedRevision: String(expectedRevision) },
+        retryable: false,
+      },
+    );
+  }
+
+  async restoreView(viewId: string, expectedRevision: number): Promise<View> {
+    const normalizedViewId = viewId.trim();
+    if (normalizedViewId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A View ID is required to restore a View.',
+      });
+    }
+    if (!isPositiveInteger(expectedRevision)) {
+      throw new LoomTableClientError('validation', {
+        message: 'View expectedRevision must be a positive integer.',
+      });
+    }
+    const body: TransportRestoreMetadataRequest = { expectedRevision };
+    const value = await this.#requestJson(
+      `/v1/views/${encodeURIComponent(normalizedViewId)}/restore`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: false },
     );
     return decodeView(value);
   }
@@ -1410,6 +1522,14 @@ function invalidResource(resourceName: string): LoomTableClientError {
   return new LoomTableClientError('invalid-response', {
     message: `The LoomTable Server returned an invalid ${resourceName}.`,
   });
+}
+
+function invalidViewNameMessage(reason: 'empty' | 'control-character' | 'too-long'): string {
+  if (reason === 'empty') return 'A View name is required.';
+  if (reason === 'control-character') {
+    return 'A View name cannot contain control characters.';
+  }
+  return 'A View name must be 200 Unicode code points or fewer.';
 }
 
 function authenticatedHeaders(token: string): Readonly<Record<string, string>> {

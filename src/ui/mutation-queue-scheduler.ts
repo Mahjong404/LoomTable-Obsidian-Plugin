@@ -3,15 +3,16 @@ import {
   type LoomTableClientErrorKind,
   type MutationRequest,
   type MutationResult,
+  type MutationCommand,
   type ConflictDetails,
   type ConflictBody,
-  type UpdateRecordCommand,
 } from '../client/loomtable-client';
 import { createMutationId } from './mutation-queue';
 import {
   MutationQueueStore,
+  type MutationQueueEntryKind,
   type MutationQueueEntryState,
-  type MutationQueueSettingsV1,
+  type MutationQueueSettingsV2,
   type PersistedMutationQueueEntry,
   type PersistedMutationQueueError,
 } from '../settings/mutation-queue-settings';
@@ -35,7 +36,10 @@ export interface MutationQueueRecordSnapshot {
 }
 
 export interface MutationQueueSchedulerEvent {
-  readonly recordId: string;
+  readonly operationId: string;
+  readonly kind: MutationQueueEntryKind;
+  readonly tableId?: string;
+  readonly recordId?: string;
   readonly snapshot: MutationQueueRecordSnapshot;
   readonly applied?: {
     readonly entry: PersistedMutationQueueEntry;
@@ -49,8 +53,11 @@ export interface DurableMutationQueuePort {
   enqueue(tableId: string, request: MutationRequest): Promise<MutationResult>;
   subscribe(listener: MutationQueueSchedulerListener): () => void;
   getRecordSnapshot(recordId: string): MutationQueueRecordSnapshot;
+  getOperationSnapshot(clientMutationId: string): MutationQueueRecordSnapshot;
+  retryOperation(clientMutationId: string): Promise<void>;
   resolveConflict(recordId: string, action: 'adopt-server' | 'overwrite'): Promise<void>;
   discardAllForRecord(recordId: string): Promise<void>;
+  discardOperation(clientMutationId: string): Promise<void>;
 }
 
 export interface MutationQueueSchedulerOptions {
@@ -84,7 +91,7 @@ export class MutationQueueScheduler {
     }
   >();
 
-  #state: MutationQueueSettingsV1;
+  #state: MutationQueueSettingsV2;
   #online = false;
   #authReady = false;
   #started = false;
@@ -106,18 +113,33 @@ export class MutationQueueScheduler {
     this.#state = this.#store.getSnapshot();
   }
 
-  getSnapshot(): MutationQueueSettingsV1 {
+  getSnapshot(): MutationQueueSettingsV2 {
     return this.#state;
   }
 
   getRecordSnapshot(recordId: string): MutationQueueRecordSnapshot {
-    return recordSnapshot(this.#state, recordId);
+    return laneSnapshot(this.#state, recordId);
+  }
+
+  getOperationSnapshot(clientMutationId: string): MutationQueueRecordSnapshot {
+    return laneSnapshot(this.#state, clientMutationId);
+  }
+
+  async retryOperation(clientMutationId: string): Promise<void> {
+    const entry = this.#state.entries.find(
+      (candidate) => candidate.clientMutationId === clientMutationId,
+    );
+    if (entry === undefined || (entry.state !== 'queued' && entry.state !== 'error')) return;
+    await this.#updateEntry(clientMutationId, (candidate) =>
+      clearFailure(candidate, 'queued', this.#timestamp(), candidate.attemptCount),
+    );
+    await this.drain();
   }
 
   subscribe(listener: MutationQueueSchedulerListener): () => void {
     this.#listeners.add(listener);
-    for (const recordId of new Set(this.#state.entries.map((entry) => entry.recordId))) {
-      this.#notifyRecord(recordId);
+    for (const lane of new Set(this.#state.entries.map((entry) => laneKeyOf(entry)))) {
+      this.#notifyLane(lane);
     }
     return () => this.#listeners.delete(listener);
   }
@@ -141,20 +163,48 @@ export class MutationQueueScheduler {
     }
 
     const command = request.commands.length === 1 ? request.commands[0] : undefined;
-    if (command?.kind !== 'updateRecord') {
+    if (command === undefined) {
       throw new LoomTableClientError('validation', {
-        message: 'Only a single existing Record update can be queued.',
+        message: 'Only a single Record operation can be queued.',
       });
     }
-    if (!Number.isInteger(command.expectedRevision) || command.expectedRevision < 1) {
+    if (
+      command.kind !== 'createRecord' &&
+      (!Number.isInteger(command.expectedRevision) || command.expectedRevision < 1)
+    ) {
       throw new LoomTableClientError('validation', {
         message: 'A positive Record revision is required before editing a Cell.',
+      });
+    }
+    if (
+      command.kind === 'updateRecord' &&
+      command.set === undefined &&
+      command.unsetFieldIds === undefined
+    ) {
+      throw new LoomTableClientError('validation', {
+        message: 'A Record update must set or unset at least one Field.',
       });
     }
     if (this.#state.entries.some((entry) => entry.clientMutationId === request.clientMutationId)) {
       throw new LoomTableClientError('validation', {
         message: 'This mutation is already present in the durable queue.',
       });
+    }
+    // Lifecycle gate: while a delete is in flight for a Record, no further
+    // update/delete may queue behind it — the Record may not exist afterwards.
+    // Restore is the documented way to reverse a pending lifecycle change.
+    if (command.kind === 'updateRecord' || command.kind === 'deleteRecord') {
+      const deletePending = this.#state.entries.some(
+        (entry) =>
+          entry.recordId === command.recordId &&
+          entry.kind === 'deleteRecord' &&
+          (entry.state === 'queued' || entry.state === 'sending' || entry.state === 'auth-paused'),
+      );
+      if (deletePending) {
+        throw new LoomTableClientError('validation', {
+          message: 'A delete is already pending for this Record.',
+        });
+      }
     }
 
     const now = this.#timestamp();
@@ -163,11 +213,12 @@ export class MutationQueueScheduler {
       commands: [command] as const,
     };
     const entry: PersistedMutationQueueEntry = {
+      kind: command.kind,
       tableId,
-      recordId: command.recordId,
+      ...(command.kind === 'createRecord' ? {} : { recordId: command.recordId }),
       clientMutationId: request.clientMutationId,
       request: persistedRequest,
-      expectedRevision: command.expectedRevision,
+      ...(command.kind === 'createRecord' ? {} : { expectedRevision: command.expectedRevision }),
       state: 'queued',
       attemptCount: 0,
       createdAt: now,
@@ -187,7 +238,20 @@ export class MutationQueueScheduler {
       throw error;
     }
 
-    void this.drain().catch(() => undefined);
+    // If the new entry is its lane's head and the lane is idle, dispatch it
+    // directly — a hung send inside the drain loop must not hold back
+    // unrelated lanes. Otherwise the drain loop reaches it in order.
+    const lane = laneKeyOf(entry);
+    const head = this.#state.entries.find((candidate) => laneKeyOf(candidate) === lane);
+    if (
+      head?.clientMutationId === entry.clientMutationId &&
+      this.#canSend() &&
+      !this.#inFlight.has(lane)
+    ) {
+      void this.#send(entry).catch(() => undefined);
+    } else {
+      void this.drain().catch(() => undefined);
+    }
     return result;
   }
 
@@ -261,6 +325,24 @@ export class MutationQueueScheduler {
     }
   }
 
+  async discardOperation(clientMutationId: string): Promise<void> {
+    const removed = this.#state.entries.filter(
+      (entry) => entry.clientMutationId === clientMutationId,
+    );
+    if (removed.length === 0) return;
+    await this.#updateState((state) => ({
+      ...state,
+      entries: state.entries.filter((entry) => entry.clientMutationId !== clientMutationId),
+    }));
+    const discarded = new MutationQueueDiscardedError();
+    for (const entry of removed) {
+      const waiter = this.#waiters.get(entry.clientMutationId);
+      if (waiter === undefined) continue;
+      this.#waiters.delete(entry.clientMutationId);
+      waiter.reject(discarded);
+    }
+  }
+
   get online(): boolean {
     return this.#online;
   }
@@ -276,7 +358,7 @@ export class MutationQueueScheduler {
     this.#started = true;
     try {
       await this.#persistState();
-      this.#notifyChangedRecords(previous, this.#state);
+      this.#notifyChangedLanes(previous, this.#state);
       await this.drain();
     } catch (error) {
       this.#started = false;
@@ -361,8 +443,9 @@ export class MutationQueueScheduler {
   }
 
   async #send(entry: PersistedMutationQueueEntry): Promise<void> {
-    if (this.#inFlight.has(entry.recordId)) return;
-    this.#inFlight.add(entry.recordId);
+    const lane = laneKeyOf(entry);
+    if (this.#inFlight.has(lane)) return;
+    this.#inFlight.add(lane);
 
     try {
       const current = this.#state.entries.find(
@@ -409,10 +492,13 @@ export class MutationQueueScheduler {
         } catch {
           // A successful mutation must not be requeued because a cache observer failed.
         }
-        this.#notifyRecord(sending.recordId, { entry: sending, result });
+        this.#notifyLane(laneKeyOf(sending), { entry: sending, result });
       }
     } finally {
-      this.#inFlight.delete(entry.recordId);
+      this.#inFlight.delete(lane);
+      // A finished send frees its lane; schedule the next pass so queued
+      // followers (or newly enqueued lanes) are picked up.
+      if (this.#started) void this.#requestDrain();
     }
   }
 
@@ -506,6 +592,7 @@ export class MutationQueueScheduler {
           entrySeen &&
           latestRevision !== undefined &&
           candidate.recordId === entry.recordId &&
+          candidate.recordId !== undefined &&
           candidate.state === 'queued'
         ) {
           entries.push(withExpectedRevision(candidate, latestRevision, updatedAt));
@@ -520,7 +607,7 @@ export class MutationQueueScheduler {
   }
 
   async #updateState(
-    update: (state: MutationQueueSettingsV1) => MutationQueueSettingsV1,
+    update: (state: MutationQueueSettingsV2) => MutationQueueSettingsV2,
   ): Promise<void> {
     const previous = this.#state;
     const next = update(previous);
@@ -531,24 +618,37 @@ export class MutationQueueScheduler {
       this.#state = previous;
       throw error;
     }
-    this.#notifyChangedRecords(previous, next);
+    this.#notifyChangedLanes(previous, next);
   }
 
-  #notifyChangedRecords(previous: MutationQueueSettingsV1, next: MutationQueueSettingsV1): void {
-    const recordIds = new Set([
-      ...previous.entries.map((entry) => entry.recordId),
-      ...next.entries.map((entry) => entry.recordId),
+  #notifyChangedLanes(previous: MutationQueueSettingsV2, next: MutationQueueSettingsV2): void {
+    const lanes = new Set([
+      ...previous.entries.map((entry) => laneKeyOf(entry)),
+      ...next.entries.map((entry) => laneKeyOf(entry)),
     ]);
-    for (const recordId of recordIds) this.#notifyRecord(recordId);
+    for (const lane of lanes) {
+      const previousHead = previous.entries.find((entry) => laneKeyOf(entry) === lane);
+      this.#notifyLane(lane, undefined, previousHead);
+    }
   }
 
-  #notifyRecord(
-    recordId: string,
+  #notifyLane(
+    lane: string,
     applied?: { readonly entry: PersistedMutationQueueEntry; readonly result: MutationResult },
+    removed?: PersistedMutationQueueEntry,
   ): void {
+    const head = this.#state.entries.find((entry) => laneKeyOf(entry) === lane);
+    const appliedEntry = applied?.entry;
+    // When the lane is empty (applied or discarded), fall back to the applied
+    // or just-removed entry so kind/tableId stay accurate.
+    const meta = head ?? appliedEntry ?? removed;
+    const recordId = head?.recordId ?? appliedEntry?.recordId ?? removed?.recordId;
     const event: MutationQueueSchedulerEvent = {
-      recordId,
-      snapshot: recordSnapshot(this.#state, recordId),
+      operationId: appliedEntry?.clientMutationId ?? meta?.clientMutationId ?? lane,
+      kind: meta?.kind ?? 'updateRecord',
+      ...(meta?.tableId === undefined ? {} : { tableId: meta.tableId }),
+      ...(recordId === undefined ? {} : { recordId }),
+      snapshot: laneSnapshot(this.#state, lane),
       ...(applied === undefined ? {} : { applied }),
     };
     for (const listener of this.#listeners) {
@@ -568,7 +668,6 @@ export class MutationQueueScheduler {
       return;
     }
 
-    const head = this.#state.entries.find((entry) => entry.recordId === recordId);
     if (head === undefined || (head.state !== 'terminal' && head.state !== 'conflict')) return;
     const waiter = this.#waiters.get(head.clientMutationId);
     if (waiter === undefined) return;
@@ -589,14 +688,15 @@ export class MutationQueueScheduler {
   #dueRecordHeads(): PersistedMutationQueueEntry[] {
     const heads = new Map<string, PersistedMutationQueueEntry>();
     for (const entry of this.#state.entries) {
-      if (!heads.has(entry.recordId)) heads.set(entry.recordId, entry);
+      const lane = laneKeyOf(entry);
+      if (!heads.has(lane)) heads.set(lane, entry);
     }
 
     const now = this.#now();
     return [...heads.values()].filter(
       (entry) =>
         entry.state === 'queued' &&
-        !this.#inFlight.has(entry.recordId) &&
+        !this.#inFlight.has(laneKeyOf(entry)) &&
         (entry.nextAttemptAt === undefined || Date.parse(entry.nextAttemptAt) <= now),
     );
   }
@@ -607,7 +707,8 @@ export class MutationQueueScheduler {
 
     const heads = new Map<string, PersistedMutationQueueEntry>();
     for (const entry of this.#state.entries) {
-      if (!heads.has(entry.recordId)) heads.set(entry.recordId, entry);
+      const lane = laneKeyOf(entry);
+      if (!heads.has(lane)) heads.set(lane, entry);
     }
 
     const now = this.#now();
@@ -615,7 +716,7 @@ export class MutationQueueScheduler {
       .filter(
         (entry) =>
           entry.state === 'queued' &&
-          !this.#inFlight.has(entry.recordId) &&
+          !this.#inFlight.has(laneKeyOf(entry)) &&
           entry.nextAttemptAt !== undefined,
       )
       .map((entry) => entry.nextAttemptAt)
@@ -662,22 +763,30 @@ function conflictRetryEntry(
   timestamp: string,
 ): PersistedMutationQueueEntry {
   const clientMutationId = freshMutationId(entry.clientMutationId, idFactory);
-  const command: UpdateRecordCommand = {
-    kind: 'updateRecord',
-    recordId: conflict.recordId,
-    expectedRevision: conflict.currentRevision,
-    ...(conflict.submittedSet === undefined ? {} : { set: conflict.submittedSet }),
-    ...(conflict.submittedUnsetFieldIds === undefined
-      ? {}
-      : { unsetFieldIds: conflict.submittedUnsetFieldIds }),
-  };
+  const command: MutationCommand =
+    entry.kind === 'deleteRecord' || entry.kind === 'restoreRecord'
+      ? {
+          kind: entry.kind,
+          recordId: conflict.recordId,
+          expectedRevision: conflict.currentRevision,
+        }
+      : {
+          kind: 'updateRecord',
+          recordId: conflict.recordId,
+          expectedRevision: conflict.currentRevision,
+          ...(conflict.submittedSet === undefined ? {} : { set: conflict.submittedSet }),
+          ...(conflict.submittedUnsetFieldIds === undefined
+            ? {}
+            : { unsetFieldIds: conflict.submittedUnsetFieldIds }),
+        };
   const request = {
     clientMutationId,
     commands: [command] as const,
   };
   return {
+    kind: entry.kind === 'createRecord' ? 'updateRecord' : entry.kind,
     tableId: entry.tableId,
-    recordId: entry.recordId,
+    recordId: conflict.recordId,
     clientMutationId,
     request,
     expectedRevision: conflict.currentRevision,
@@ -698,11 +807,12 @@ function freshMutationId(previous: string, idFactory: () => string): string {
   return candidate;
 }
 
-function recordSnapshot(
-  state: MutationQueueSettingsV1,
-  recordId: string,
-): MutationQueueRecordSnapshot {
-  const entries = state.entries.filter((entry) => entry.recordId === recordId);
+function laneKeyOf(entry: PersistedMutationQueueEntry): string {
+  return entry.recordId ?? entry.clientMutationId;
+}
+
+function laneSnapshot(state: MutationQueueSettingsV2, lane: string): MutationQueueRecordSnapshot {
+  const entries = state.entries.filter((entry) => laneKeyOf(entry) === lane);
   const head = entries[0];
   return head === undefined
     ? { state: 'idle', pending: 0 }
@@ -792,7 +902,13 @@ function withExpectedRevision(
   updatedAt: string | undefined,
 ): PersistedMutationQueueEntry {
   const [command] = entry.request.commands;
-  if (command.kind !== 'updateRecord' || command.recordId !== entry.recordId) return entry;
+  if (
+    command.kind === 'createRecord' ||
+    command.recordId !== entry.recordId ||
+    entry.expectedRevision === undefined
+  ) {
+    return entry;
+  }
 
   return {
     ...entry,
@@ -805,7 +921,7 @@ function withExpectedRevision(
   };
 }
 
-function recoverSending(state: MutationQueueSettingsV1): MutationQueueSettingsV1 {
+function recoverSending(state: MutationQueueSettingsV2): MutationQueueSettingsV2 {
   return {
     ...state,
     entries: state.entries.map((entry) =>
@@ -821,11 +937,12 @@ function clearFailure(
   attemptCount = entry.attemptCount,
 ): PersistedMutationQueueEntry {
   return {
+    kind: entry.kind,
     tableId: entry.tableId,
-    recordId: entry.recordId,
+    ...(entry.recordId === undefined ? {} : { recordId: entry.recordId }),
     clientMutationId: entry.clientMutationId,
     request: entry.request,
-    expectedRevision: entry.expectedRevision,
+    ...(entry.expectedRevision === undefined ? {} : { expectedRevision: entry.expectedRevision }),
     state,
     attemptCount,
     createdAt: entry.createdAt,
@@ -843,11 +960,12 @@ function withFailure(
 ): PersistedMutationQueueEntry {
   const persistedError = toPersistedError(error);
   return {
+    kind: entry.kind,
     tableId: entry.tableId,
-    recordId: entry.recordId,
+    ...(entry.recordId === undefined ? {} : { recordId: entry.recordId }),
     clientMutationId: entry.clientMutationId,
     request: entry.request,
-    expectedRevision: entry.expectedRevision,
+    ...(entry.expectedRevision === undefined ? {} : { expectedRevision: entry.expectedRevision }),
     state,
     attemptCount: entry.attemptCount,
     ...(nextAttemptAt === undefined ? {} : { nextAttemptAt }),

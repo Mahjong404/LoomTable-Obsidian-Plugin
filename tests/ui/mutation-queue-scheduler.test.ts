@@ -15,7 +15,7 @@ import {
 import {
   MutationQueueStore,
   type MutationQueueEntryState,
-  type MutationQueueSettingsV1,
+  type MutationQueueSettingsV2,
   type PersistedMutationQueueEntry,
   type PersistedMutationQueueError,
 } from '../../src/settings/mutation-queue-settings';
@@ -33,7 +33,7 @@ const MUTATION_IDS = [
 
 describe('MutationQueueScheduler', () => {
   it('recovers a persisted sending entry as queued before any scheduling', async () => {
-    const saves: MutationQueueSettingsV1[] = [];
+    const saves: MutationQueueSettingsV2[] = [];
     const store = new MutationQueueStore(
       { schemaVersion: 1, entries: [] },
       {
@@ -141,7 +141,7 @@ describe('MutationQueueScheduler', () => {
   it('keeps one Record FIFO while allowing different Records to run in parallel', async () => {
     const calls: MutationRequest[] = [];
     const releases = new Map<string, () => void>();
-    const saves: MutationQueueSettingsV1[] = [];
+    const saves: MutationQueueSettingsV2[] = [];
     const transport: DurableMutationQueueTransport = {
       mutate: vi.fn(async (_tableId: string, request: MutationRequest): Promise<MutationResult> => {
         calls.push(request);
@@ -576,13 +576,266 @@ describe('MutationQueueScheduler', () => {
     expect(transport.mutate).toHaveBeenCalledTimes(2);
     scheduler.stop();
   });
+
+  it('queues a createRecord operation on its own lane and resolves the new Record', async () => {
+    const transport = fakeTransport();
+    transport.mutate.mockImplementation(async (_tableId, request) =>
+      result(request.clientMutationId, 'record_new', 1),
+    );
+    const { scheduler } = createScheduler([], transport);
+    await startReady(scheduler);
+
+    const events: MutationQueueSchedulerEvent[] = [];
+    scheduler.subscribe((event) => events.push(event));
+
+    const pending = scheduler.enqueue('table_01', {
+      clientMutationId: MUTATION_IDS[0],
+      commands: [{ kind: 'createRecord', values: { field_a: 'draft' } }],
+    });
+    await scheduler.drain();
+
+    await expect(pending).resolves.toMatchObject({ clientMutationId: MUTATION_IDS[0] });
+    expect(transport.mutate).toHaveBeenCalledTimes(1);
+    const sentRequest = transport.mutate.mock.calls[0]?.[1];
+    expect(sentRequest?.commands[0]).toEqual({
+      kind: 'createRecord',
+      values: { field_a: 'draft' },
+    });
+
+    const applied = events.find((event) => event.applied !== undefined);
+    expect(applied).toMatchObject({
+      operationId: MUTATION_IDS[0],
+      kind: 'createRecord',
+    });
+    expect(applied?.recordId).toBeUndefined();
+    expect(scheduler.getOperationSnapshot(MUTATION_IDS[0])).toEqual({
+      state: 'idle',
+      pending: 0,
+    });
+    expect(scheduler.getSnapshot().entries).toHaveLength(0);
+    scheduler.stop();
+  });
+
+  it('runs a createRecord lane in parallel with an existing Record lane', async () => {
+    const calls: string[] = [];
+    const releases = new Map<string, () => void>();
+    const transport: DurableMutationQueueTransport = {
+      mutate(tableId, request) {
+        void tableId;
+        calls.push(request.clientMutationId);
+        return new Promise((resolve) => {
+          releases.set(request.clientMutationId, () =>
+            resolve(
+              result(
+                request.clientMutationId,
+                request.clientMutationId === MUTATION_IDS[1] ? 'record_new' : 'record_01',
+                2,
+              ),
+            ),
+          );
+        });
+      },
+    };
+    const { scheduler } = createScheduler([entry(), createEntry(MUTATION_IDS[1])], transport);
+    await scheduler.setOnline(true);
+    await scheduler.setAuthReady(true);
+    const start = scheduler.start();
+
+    // start() awaits the first drain pass; both independent lanes reach the
+    // transport while their responses are still pending.
+    for (let attempt = 0; attempt < 20 && calls.length < 2; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    expect(calls.sort()).toEqual([MUTATION_IDS[0], MUTATION_IDS[1]].sort());
+
+    releases.get(MUTATION_IDS[0])?.();
+    releases.get(MUTATION_IDS[1])?.();
+    await start;
+    expect(scheduler.getSnapshot().entries).toHaveLength(0);
+    scheduler.stop();
+  });
+
+  it('discardOperation removes a queued createRecord and rejects its waiter', async () => {
+    const transport = fakeTransport();
+    transport.mutate.mockImplementation(async (_tableId, request) =>
+      result(request.clientMutationId, 'record_new', 1),
+    );
+    const { scheduler } = createScheduler([], transport);
+    await scheduler.start();
+    // Keep the operation queued by staying offline.
+    const pending = scheduler
+      .enqueue('table_01', {
+        clientMutationId: MUTATION_IDS[0],
+        commands: [{ kind: 'createRecord', values: {} }],
+      })
+      .catch((error: unknown) => error);
+    await scheduler.setOnline(true);
+    await scheduler.setAuthReady(true);
+    // Flush the first drain so the entry is durably queued before discard.
+    scheduler.stop();
+    await scheduler.start();
+
+    await scheduler.discardOperation(MUTATION_IDS[0]);
+    const outcome = await pending;
+    expect(outcome).toBeInstanceOf(Error);
+    expect(scheduler.getSnapshot().entries).toHaveLength(0);
+    expect(scheduler.getOperationSnapshot(MUTATION_IDS[0])).toEqual({
+      state: 'idle',
+      pending: 0,
+    });
+    scheduler.stop();
+  });
+
+  it('keeps deleteRecord behind queued updates and rebases its expected revision', async () => {
+    const sent: MutationRequest[] = [];
+    const transport: DurableMutationQueueTransport = {
+      mutate: async (_tableId, request) => {
+        sent.push(request);
+        const command = request.commands[0];
+        const recordId =
+          command?.kind === 'createRecord' ? 'record_new' : (command?.recordId ?? '');
+        return result(request.clientMutationId, recordId, 4);
+      },
+    };
+    const { scheduler } = createScheduler([], transport);
+    await startReady(scheduler);
+
+    const updatePending = scheduler.enqueue('table_01', {
+      clientMutationId: MUTATION_IDS[0],
+      commands: [
+        {
+          kind: 'updateRecord',
+          recordId: 'record_01',
+          expectedRevision: 1,
+          set: { field_a: 'first' },
+        },
+      ],
+    });
+    const deletePending = scheduler.enqueue('table_01', {
+      clientMutationId: MUTATION_IDS[1],
+      commands: [{ kind: 'deleteRecord', recordId: 'record_01', expectedRevision: 1 }],
+    });
+    await scheduler.drain();
+
+    expect(sent).toHaveLength(2);
+    const deleteRequest = sent[1];
+    expect(deleteRequest?.commands[0]).toEqual({
+      kind: 'deleteRecord',
+      recordId: 'record_01',
+      expectedRevision: 4,
+    });
+    await expect(updatePending).resolves.toMatchObject({ clientMutationId: MUTATION_IDS[0] });
+    await expect(deletePending).resolves.toMatchObject({ clientMutationId: MUTATION_IDS[1] });
+    scheduler.stop();
+  });
+
+  it('rejects update/delete enqueue while a deleteRecord is pending for the Record', async () => {
+    const transport: DurableMutationQueueTransport = {
+      mutate: vi.fn(() => new Promise<MutationResult>(() => undefined)),
+    };
+    const { scheduler } = createScheduler([], transport);
+    await startReady(scheduler);
+
+    const deletePending = scheduler
+      .enqueue('table_01', {
+        clientMutationId: MUTATION_IDS[0],
+        commands: [{ kind: 'deleteRecord', recordId: 'record_01', expectedRevision: 2 }],
+      })
+      .catch((error: unknown) => error);
+    await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(1));
+
+    await expect(
+      scheduler.enqueue('table_01', {
+        clientMutationId: MUTATION_IDS[1],
+        commands: [
+          {
+            kind: 'updateRecord',
+            recordId: 'record_01',
+            expectedRevision: 2,
+            set: { field_a: 'x' },
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({ kind: 'validation' });
+    await expect(
+      scheduler.enqueue('table_01', {
+        clientMutationId: MUTATION_IDS[2],
+        commands: [{ kind: 'deleteRecord', recordId: 'record_01', expectedRevision: 2 }],
+      }),
+    ).rejects.toMatchObject({ kind: 'validation' });
+    // Other Records remain editable while the gate holds.
+    const otherLane = scheduler.enqueue('table_01', {
+      clientMutationId: MUTATION_IDS[3],
+      commands: [
+        {
+          kind: 'updateRecord',
+          recordId: 'record_02',
+          expectedRevision: 1,
+          set: { field_a: 'y' },
+        },
+      ],
+    });
+    await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2));
+    await scheduler.discardOperation(MUTATION_IDS[0]);
+    await scheduler.discardOperation(MUTATION_IDS[3]);
+    await expect(deletePending).resolves.toBeInstanceOf(Error);
+    await expect(otherLane).rejects.toBeInstanceOf(Error);
+    scheduler.stop();
+  });
+
+  it('retries a delete conflict as the same delete command, never an update', async () => {
+    const conflict: ConflictDetails = {
+      clientMutationId: MUTATION_IDS[0],
+      failedCommandIndex: 0,
+      conflicts: [
+        {
+          recordId: 'record_01',
+          expectedRevision: 1,
+          currentRevision: 4,
+          currentValues: { field_a: 'server' },
+        },
+      ],
+    };
+    const transport = fakeTransport();
+    transport.mutate.mockRejectedValueOnce(
+      new LoomTableClientError(
+        'conflict',
+        { message: 'Conflict.', code: 'CONFLICT', httpStatus: 409 },
+        undefined,
+        conflict,
+      ),
+    );
+    transport.mutate.mockImplementationOnce(async (_tableId, request) => {
+      const command = request.commands[0];
+      if (command?.kind !== 'deleteRecord') throw new Error('Unexpected command.');
+      return result(request.clientMutationId, command.recordId, 5);
+    });
+    const { scheduler } = createScheduler([deleteEntry()], transport);
+
+    await startReady(scheduler);
+    expect(scheduler.getSnapshot().entries[0]?.state).toBe('conflict');
+
+    await scheduler.resolveConflict('record_01', 'overwrite');
+    await vi.waitFor(() => expect(transport.mutate).toHaveBeenCalledTimes(2));
+
+    const retryRequest = transport.mutate.mock.calls[1]?.[1];
+    expect(retryRequest?.clientMutationId).toMatch(/^mut_[0-9A-HJKMNP-TV-Z]{26}$/);
+    expect(retryRequest?.clientMutationId).not.toBe(conflict.clientMutationId);
+    expect(retryRequest?.commands[0]).toMatchObject({
+      kind: 'deleteRecord',
+      recordId: 'record_01',
+      expectedRevision: 4,
+    });
+    expect(scheduler.getSnapshot().entries).toHaveLength(0);
+    scheduler.stop();
+  });
 });
 
 function createScheduler(
   entries: readonly PersistedMutationQueueEntry[],
   transport: DurableMutationQueueTransport,
   now: () => number = () => 0,
-  saves?: MutationQueueSettingsV1[],
+  saves?: MutationQueueSettingsV2[],
 ): { scheduler: MutationQueueScheduler; store: MutationQueueStore } {
   const persistence =
     saves === undefined
@@ -591,13 +844,13 @@ function createScheduler(
           async load() {
             return { schemaVersion: 1, entries };
           },
-          async save(value: MutationQueueSettingsV1): Promise<void> {
+          async save(value: MutationQueueSettingsV2): Promise<void> {
             saves.push(value);
           },
         };
   const store = new MutationQueueStore(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       entries,
     },
     persistence,
@@ -630,6 +883,40 @@ function fakeTransport(): DurableMutationQueueTransport & {
         return result(request.clientMutationId, command.recordId, command.expectedRevision + 1);
       },
     ),
+  };
+}
+
+function deleteEntry(id = MUTATION_IDS[0]): PersistedMutationQueueEntry {
+  return {
+    kind: 'deleteRecord',
+    tableId: 'table_01',
+    recordId: 'record_01',
+    clientMutationId: id,
+    request: {
+      clientMutationId: id,
+      commands: [{ kind: 'deleteRecord', recordId: 'record_01', expectedRevision: 1 }],
+    },
+    expectedRevision: 1,
+    state: 'queued',
+    attemptCount: 0,
+    createdAt: '2026-08-15T00:00:00.000Z',
+    updatedAt: '2026-08-15T00:00:00.000Z',
+  };
+}
+
+function createEntry(id: string): PersistedMutationQueueEntry {
+  return {
+    kind: 'createRecord',
+    tableId: 'table_01',
+    clientMutationId: id,
+    request: {
+      clientMutationId: id,
+      commands: [{ kind: 'createRecord', values: { field_a: 'draft' } }],
+    },
+    state: 'queued',
+    attemptCount: 0,
+    createdAt: '2026-08-15T00:00:00.000Z',
+    updatedAt: '2026-08-15T00:00:00.000Z',
   };
 }
 
@@ -694,6 +981,7 @@ function entry({
     ],
   };
   return {
+    kind: 'updateRecord',
     tableId: 'table_01',
     recordId,
     clientMutationId: id,
