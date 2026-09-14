@@ -473,6 +473,8 @@ export const englishMessages = {
   'view.manage.restore': 'Restore',
   'view.ready': 'LoomTable is ready for Plugin development.',
   'view.tabs': 'Views',
+  'view.overflow': '{count} more Views',
+  'view.overflow.label': 'Show hidden Views',
   'view.title': 'LoomTable',
   'view.type.grid': 'Grid',
   'view.type.map': 'Map',

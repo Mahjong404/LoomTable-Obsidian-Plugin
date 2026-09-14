@@ -444,6 +444,8 @@ export const simplifiedChineseMessages = {
   'view.manage.restore': '恢复',
   'view.ready': 'LoomTable 已准备好开始 Plugin 开发。',
   'view.tabs': '视图',
+  'view.overflow': '还有 {count} 个视图',
+  'view.overflow.label': '显示隐藏的视图',
   'view.title': 'LoomTable',
   'view.type.grid': '网格',
   'view.type.map': '地图',

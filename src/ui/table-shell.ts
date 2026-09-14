@@ -10,6 +10,7 @@ import {
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import { ensureButtonLabels, labelContainer } from './a11y';
+import { openContextMenu } from './context-menu';
 import { createUiIcon } from './icons';
 import { findBrokenViewFieldIds, type ViewConfigRepairInput } from './view-config-repair';
 import type {
@@ -106,6 +107,7 @@ export class TableShell {
   #repairRemovals = new Set<string>();
   #repairLocation = '';
   #manageFormError: string | null = null;
+  #tabObserver: ResizeObserver | null = null;
 
   constructor(
     translate: Translator,
@@ -745,8 +747,25 @@ export class TableShell {
       tab.addEventListener('click', () => void this.#callbacks.onViewChange(view.id));
       tablist.append(tab);
     }
+    const overflowButton = document.createElement('button');
+    overflowButton.type = 'button';
+    overflowButton.className = 'loom-view-tab-overflow';
+    overflowButton.hidden = true;
+    overflowButton.setAttribute('aria-label', this.#translate('view.overflow.label'));
+    overflowButton.setAttribute('aria-haspopup', 'menu');
+    overflowButton.addEventListener('click', () => {
+      this.#openTabOverflowMenu(tablist, overflowButton, state, duplicateNames);
+    });
+    tablist.append(overflowButton);
+    this.#tabObserver?.disconnect();
+    if (typeof ResizeObserver === 'function') {
+      this.#tabObserver = new ResizeObserver(() => this.#syncTabOverflow(tablist));
+      this.#tabObserver.observe(tablist);
+    }
     tablist.addEventListener('keydown', (event) => {
-      const allTabs = [...tablist.querySelectorAll<HTMLElement>('[role="tab"]')];
+      const allTabs = [...tablist.querySelectorAll<HTMLElement>('[role="tab"]')].filter(
+        (tab) => !tab.hidden,
+      );
       const current = allTabs.indexOf(document.activeElement as HTMLElement);
       if (current < 0 || allTabs.length === 0) return;
       let next = -1;
@@ -762,6 +781,66 @@ export class TableShell {
       allTabs[next]?.focus();
     });
     return tablist;
+  }
+
+  #syncTabOverflow(tablist: HTMLElement): void {
+    const overflowButton = tablist.querySelector<HTMLElement>('.loom-view-tab-overflow');
+    if (overflowButton === null) return;
+    const tabs = [...tablist.querySelectorAll<HTMLElement>('[role="tab"]')];
+    for (const tab of tabs) tab.hidden = false;
+    overflowButton.hidden = true;
+    const available = tablist.clientWidth;
+    if (available <= 0) return;
+    const gap = Number.parseFloat(getComputedStyle(tablist).columnGap) || 0;
+    const reserve = (overflowButton.offsetWidth || 44) + gap;
+    let used = 0;
+    const overflowed: HTMLElement[] = [];
+    for (const tab of tabs) {
+      const selected = tab.getAttribute('aria-selected') === 'true';
+      const fits = used + tab.offsetWidth <= available - reserve;
+      if (fits || selected) {
+        used += tab.offsetWidth + gap;
+      } else {
+        tab.hidden = true;
+        tab.tabIndex = -1;
+        overflowed.push(tab);
+      }
+    }
+    if (overflowed.length === 0) return;
+    overflowButton.hidden = false;
+    overflowButton.textContent = `+${overflowed.length}`;
+    overflowButton.dataset.overflowIds = overflowed
+      .map((tab) => tab.dataset.viewId ?? '')
+      .filter(Boolean)
+      .join(',');
+  }
+
+  #openTabOverflowMenu(
+    tablist: HTMLElement,
+    anchor: HTMLElement,
+    state: TableShellState,
+    duplicateNames: ReadonlySet<string>,
+  ): void {
+    const ids = (anchor.dataset.overflowIds ?? '').split(',').filter((id) => id.length > 0);
+    const views = state.views.filter(
+      (view) => view.deletedAt === undefined && ids.includes(view.id),
+    );
+    if (views.length === 0) return;
+    const host = tablist.closest<HTMLElement>('.loom-table-shell') ?? tablist;
+    const rect = anchor.getBoundingClientRect();
+    openContextMenu({
+      items: views.map((view) => ({
+        label:
+          view.name +
+          (duplicateNames.has(view.name) ? ` · ${viewTypeLabel(view, this.#translate)}` : ''),
+        icon: view.type === 'map' ? 'view-map' : 'view-grid',
+        action: () => void this.#callbacks.onViewChange(view.id),
+      })),
+      x: rect.left,
+      y: rect.bottom + 4,
+      host,
+      label: this.#translate('view.overflow.label'),
+    });
   }
 
   #renderIntents(state: TableShellState): HTMLElement | null {
