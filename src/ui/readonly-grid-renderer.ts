@@ -116,6 +116,8 @@ export interface GridRendererCallbacks {
   readonly onDismissRecordCreate?: (operationId: string) => void;
   readonly onDeleteRecord?: (recordId: string) => void | Promise<void>;
   readonly onUndoDelete?: () => void | Promise<void>;
+  readonly onUndo?: () => void | Promise<void>;
+  readonly onRedo?: () => void | Promise<void>;
   readonly onDismissDeleteNotice?: () => void;
   readonly onLoadDeletedRecords?: () => void | Promise<void>;
   readonly onLoadMoreDeletedRecords?: () => void | Promise<void>;
@@ -128,7 +130,7 @@ export interface GridRendererCallbacks {
   readonly clipboard?: GridClipboardHost;
 }
 
-type GridAction = 'refresh' | 'settings';
+type GridAction = 'refresh' | 'settings' | 'undo' | 'redo';
 
 interface GridActionButtonSpec {
   readonly action: GridAction;
@@ -338,6 +340,25 @@ export class ReadonlyGridRenderer {
     }
     const saveStatus = createElement('span', 'loom-save-status');
     renderSaveStatus(saveStatus, state.saveStatus, this.#translate);
+    if (this.#callbacks.onUndo !== undefined || this.#callbacks.onRedo !== undefined) {
+      const undoButton = this.#createActionButton(
+        'undo',
+        'grid.undo',
+        'grid.undo',
+        () => this.#callbacks.onUndo?.(),
+        'tool-undo',
+      );
+      undoButton.disabled = state.canUndo === false;
+      const redoButton = this.#createActionButton(
+        'redo',
+        'grid.redo',
+        'grid.redo',
+        () => this.#callbacks.onRedo?.(),
+        'tool-redo',
+      );
+      redoButton.disabled = state.canRedo === false;
+      end.append(undoButton, redoButton);
+    }
     end.append(count, saveStatus);
     if (this.#callbacks.onCreateRecord !== undefined && state.selectedTableId !== null) {
       const createButton = this.#toggleButton(
@@ -1324,6 +1345,19 @@ export class ReadonlyGridRenderer {
             this.#selectAll();
             return;
           }
+          if (key === 'z' || key === 'y') {
+            if (
+              (key === 'z' && !event.shiftKey && this.#callbacks.onUndo === undefined) ||
+              ((key === 'y' || (key === 'z' && event.shiftKey)) &&
+                this.#callbacks.onRedo === undefined)
+            ) {
+              return;
+            }
+            event.preventDefault();
+            if (key === 'z' && !event.shiftKey) void this.#callbacks.onUndo?.();
+            else void this.#callbacks.onRedo?.();
+            return;
+          }
           if (key === 'c' || key === 'v') {
             event.preventDefault();
             const rect = this.#selectionRect();
@@ -2256,7 +2290,11 @@ export class ReadonlyGridRenderer {
     for (const [element, spec] of this.#actionButtons) {
       const pending = this.#pendingActions.has(spec.action);
       const label = this.#translate(pending ? spec.pendingKey : spec.labelKey);
-      element.disabled = pending || (spec.action === 'refresh' && (offline || loading));
+      element.disabled =
+        pending ||
+        (spec.action === 'refresh' && (offline || loading)) ||
+        (spec.action === 'undo' && state?.canUndo === false) ||
+        (spec.action === 'redo' && state?.canRedo === false);
       element.textContent = label;
       if (spec.icon !== undefined) element.prepend(createUiIcon(spec.icon));
       element.setAttribute('aria-label', label);

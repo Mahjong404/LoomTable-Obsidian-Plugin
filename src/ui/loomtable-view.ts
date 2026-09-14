@@ -255,6 +255,8 @@ export class LoomTableView extends ItemView {
       onCellEdit: (recordId, fieldId, value) => {
         void controller.editCell(recordId, fieldId, value);
       },
+      onUndo: () => controller.undo(),
+      onRedo: () => controller.redo(),
       onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
       confirmDiscardAll: () => window.confirm(this.getTranslator()('grid.discardAllConfirm')),
       onRetryEdit: (recordId) => controller.retryEdit(recordId),

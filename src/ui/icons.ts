@@ -47,9 +47,19 @@ export type UiIconName =
   | 'col-insert-right'
   | 'sort-asc'
   | 'sort-desc'
-  | 'field-hide';
+  | 'field-hide'
+  | 'tool-undo'
+  | 'tool-redo';
 
 const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
+  'tool-undo': [
+    ['path', { d: 'M9 14 4 9l5-5' }],
+    ['path', { d: 'M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11' }],
+  ],
+  'tool-redo': [
+    ['path', { d: 'm15 14 5-5-5-5' }],
+    ['path', { d: 'M20 9H9.5A5.5 5.5 0 0 0 4 14.5a5.5 5.5 0 0 0 5.5 5.5H13' }],
+  ],
   'view-grid': [
     ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }],
     ['path', { d: 'M3 9h18' }],

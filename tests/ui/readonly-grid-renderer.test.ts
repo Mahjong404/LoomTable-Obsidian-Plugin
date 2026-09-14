@@ -2575,3 +2575,54 @@ describe('Cell selection model', () => {
     expect(writes[0]).toContain('\n');
   });
 });
+
+describe('Undo/redo wiring', () => {
+  it('routes Ctrl+Z and Ctrl+Shift+Z to the history callbacks', () => {
+    const container = document.createElement('div');
+    const onUndo = vi.fn();
+    const onRedo = vi.fn();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onUndo,
+      onRedo,
+    });
+
+    renderer.render(createState(2));
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_name"][data-record-id="record_01"]',
+    );
+    cell?.focus();
+    cell?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true }),
+    );
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    cell?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, shiftKey: true, bubbles: true }),
+    );
+    expect(onRedo).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders toolbar undo/redo buttons gated by history availability', async () => {
+    const container = document.createElement('div');
+    const onUndo = vi.fn();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onUndo,
+      onRedo: vi.fn(),
+    });
+
+    renderer.render(createState(2));
+    const buttons = [...container.querySelectorAll<HTMLButtonElement>('.loom-grid-toolbar button')];
+    const undo = buttons.find((button) => button.getAttribute('aria-label') === 'Undo');
+    const redo = buttons.find((button) => button.getAttribute('aria-label') === 'Redo');
+    expect(undo).toBeDefined();
+    expect(redo).toBeDefined();
+    undo?.click();
+    await vi.waitFor(() => expect(onUndo).toHaveBeenCalledTimes(1));
+
+    renderer.render({ ...createState(2), canUndo: false, canRedo: false });
+    const disabled = [...container.querySelectorAll<HTMLButtonElement>('.loom-grid-toolbar button')];
+    expect(disabled.find((button) => button.getAttribute('aria-label') === 'Undo')?.disabled).toBe(true);
+    expect(disabled.find((button) => button.getAttribute('aria-label') === 'Redo')?.disabled).toBe(true);
+  });
+});
