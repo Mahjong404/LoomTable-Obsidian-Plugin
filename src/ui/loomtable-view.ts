@@ -164,6 +164,12 @@ export class LoomTableView extends ItemView {
     gridHost.className = 'loom-grid-host';
     const detailHost = document.createElement('div');
     detailHost.className = 'loom-detail-host';
+    detailHost.addEventListener('pointerdown', (event) => {
+      if (event.target !== detailHost || !detailHost.classList.contains('is-modal')) return;
+      detailHost
+        .querySelector<HTMLElement>('.loom-record-detail')
+        ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
     this.contentEl.append(gridHost, detailHost);
     this.#gridHost = gridHost;
     this.#detailHost = detailHost;
@@ -644,7 +650,10 @@ export class LoomTableView extends ItemView {
       focusFallback: () => this.#gridHost?.querySelector<HTMLElement>('.loom-grid-shell') ?? null,
       confirmDiscard: (message) => window.confirm(message),
       callbacks: {
-        onClose: () => detail.remove(),
+        onClose: () => {
+          detailHost.classList.remove('is-modal');
+          detailHost.replaceChildren();
+        },
         onFieldEdit: async (recordId, fieldId, value, sourceRecord, options) =>
           controller.editCell(
             recordId,

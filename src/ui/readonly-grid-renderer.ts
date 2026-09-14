@@ -364,12 +364,11 @@ export class ReadonlyGridRenderer {
       end.append(undoButton, redoButton);
     }
     end.append(count, saveStatus);
-    if (state.status === 'loading') {
-      const loading = createElement('span', 'loom-grid-loading-note');
-      loading.setAttribute('role', 'status');
-      loading.textContent = this.#translate('grid.loading');
-      end.append(loading);
-    }
+    const loading = createElement('span', 'loom-grid-loading-note');
+    loading.setAttribute('role', 'status');
+    loading.dataset.active = state.status === 'loading' ? 'true' : 'false';
+    loading.textContent = this.#translate('grid.loading');
+    end.append(loading);
     if (this.#callbacks.onCreateRecord !== undefined && state.selectedTableId !== null) {
       const createButton = this.#toggleButton(
         'create',
@@ -879,9 +878,11 @@ export class ReadonlyGridRenderer {
     const fields = columns.ordered;
     const rowHeight = rowHeightPixels(state);
     const lastFrozenId = columns.frozen.at(-1)?.id;
+    const hasAddField = this.#callbacks.onFieldSave !== undefined;
     const columnTemplate = [
       '56px',
       ...fields.map((field) => `${columns.widths.get(field.id) ?? 180}px`),
+      ...(hasAddField ? ['2.5rem'] : []),
     ].join(' ');
 
     const viewport = createElement('div', 'loom-grid-viewport');
@@ -889,12 +890,11 @@ export class ReadonlyGridRenderer {
     viewport.setAttribute('role', 'grid');
     labelContainer(viewport, this.#translate('grid.table'));
     viewport.setAttribute('aria-rowcount', String(state.records.length + 1));
-    viewport.setAttribute('aria-colcount', String(fields.length + 1));
+    viewport.setAttribute('aria-colcount', String(fields.length + (hasAddField ? 2 : 1)));
 
     const header = createElement('div', 'loom-grid-header');
     header.setAttribute('role', 'row');
-    header.style.gridTemplateColumns =
-      this.#callbacks.onFieldSave === undefined ? columnTemplate : `${columnTemplate} 2.5rem`;
+    header.style.gridTemplateColumns = columnTemplate;
     const indexHeader = createGridCell('#', 'loom-grid-header-cell loom-grid-index-header');
     indexHeader.setAttribute('role', 'columnheader');
     indexHeader.setAttribute('aria-colindex', '1');
