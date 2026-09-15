@@ -90,7 +90,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     for (const candidate of FIELD_TYPES) {
       const item = document.createElement('button');
       item.type = 'button';
-      item.className = 'loom-field-editor-type';
+      item.className = 'loom-field-editor-type clickable-icon';
       item.setAttribute('role', 'option');
       item.dataset.type = candidate;
       item.setAttribute('aria-selected', String(candidate === type));
@@ -164,7 +164,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
         row.className = 'loom-field-editor-option-row';
         const swatch = document.createElement('button');
         swatch.type = 'button';
-        swatch.className = 'loom-field-editor-swatch';
+        swatch.className = 'loom-field-editor-swatch clickable-icon';
         swatch.dataset.color = draft.color;
         swatch.setAttribute('aria-label', t('field.option.color'));
         swatch.addEventListener('click', () => openPalette(swatch, index));
@@ -178,7 +178,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
         });
         const remove = document.createElement('button');
         remove.type = 'button';
-        remove.className = 'loom-field-editor-option-remove';
+        remove.className = 'loom-field-editor-option-remove clickable-icon';
         remove.setAttribute('aria-label', t('field.option.remove'));
         remove.append(createUiIcon('menu-clear'));
         remove.addEventListener('click', () => {
@@ -190,7 +190,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
       });
       const addRow = document.createElement('button');
       addRow.type = 'button';
-      addRow.className = 'loom-field-editor-option-add';
+      addRow.className = 'loom-field-editor-option-add clickable-icon';
       addRow.append(createUiIcon('view-add'));
       const addLabel = document.createElement('span');
       addLabel.textContent = t('field.option.add');
@@ -219,7 +219,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
       for (const color of SELECT_OPTION_COLORS) {
         const choice = document.createElement('button');
         choice.type = 'button';
-        choice.className = 'loom-field-editor-swatch';
+        choice.className = 'loom-field-editor-swatch clickable-icon';
         choice.dataset.color = color;
         choice.setAttribute('aria-label', t(`field.color.${color}`));
         choice.addEventListener('click', () => {
