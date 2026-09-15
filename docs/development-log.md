@@ -161,3 +161,11 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - X6 审计文档：`docs/local/ux-audit-2026-09-15.md`（本地，不入库）。
 - 测试：renderer +2（`+` 列模板三处一致/loading-note data-active），record-detail +2（唯一 close/modal 折叠图标），field-edit 测试改走 `.loom-record-field-editable`。
 - 验证：63 文件 794 tests 全绿；lint 0 error；format/typecheck 干净；openapi 无 diff；已部署 vault（main.js 587,092B / styles.css 66,728B）；gallery bundle 已重建。
+
+## 2026-XX — UX 跟进 5：button chrome 豁免类 + 展开图标 hover-only + Detail 字段平铺
+
+- 裸 button 主题泄漏根因：Obsidian 对 `button:not(.clickable-icon)`（0-1-1）施加 `background-color/border/border-radius`，盖过单类组件样式（0-1-0）——上轮 `box-shadow` 重置（0-2-1）生效但背景/边框仍漏。修复：所有无铬控件加官方豁免类 `clickable-icon`（`.loom-grid-sort`/`.loom-grid-open`/`.loom-grid-add-row`/`.loom-grid-add-field-button`/`.loom-record-detail-iconbtn`/`.loom-context-menu-item`/`.loom-view-tab-overflow`/字段编辑器类型项与色板等），`loom-button` 控件保留原生观感。
+- 行展开图标改纯 `:hover` 触发（移除 `:focus-within`，选中行不再残留 ↗）。
+- `+` 新建字段列回退为表头独占单格（行/画布模板不含 +track，下方为统一空白填充），外部表格组件库 式孤立 icon。
+- Detail 移除空字段 `<details>` 折叠组：所有字段平铺可编辑（空值行点击即编辑），`record.detail.emptyFields` 键与 CSS 清理。
+- 验证：63 文件 793 tests 全绿；lint 0 error；format/typecheck 干净；已部署 vault（main.js 586,703B / styles.css 65,931B）；gallery bundle 已重建。
