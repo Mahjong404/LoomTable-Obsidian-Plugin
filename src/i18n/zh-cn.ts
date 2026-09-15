@@ -133,7 +133,6 @@ export const simplifiedChineseMessages = {
   'grid.menu.clear': '清空内容',
   'grid.undo': '撤销',
   'grid.redo': '重做',
-  'record.detail.emptyFields': '{count} 个空字段',
   'grid.selectedCount': '已选 {count} 格',
   'grid.menu.column': '字段操作',
   'field.add': '新建字段',
