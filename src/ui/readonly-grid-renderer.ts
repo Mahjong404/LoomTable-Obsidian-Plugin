@@ -882,7 +882,6 @@ export class ReadonlyGridRenderer {
     const columnTemplate = [
       '56px',
       ...fields.map((field) => `${columns.widths.get(field.id) ?? 180}px`),
-      ...(hasAddField ? ['2.5rem'] : []),
     ].join(' ');
 
     const viewport = createElement('div', 'loom-grid-viewport');
@@ -894,7 +893,7 @@ export class ReadonlyGridRenderer {
 
     const header = createElement('div', 'loom-grid-header');
     header.setAttribute('role', 'row');
-    header.style.gridTemplateColumns = columnTemplate;
+    header.style.gridTemplateColumns = hasAddField ? `${columnTemplate} 2.5rem` : columnTemplate;
     const indexHeader = createGridCell('#', 'loom-grid-header-cell loom-grid-index-header');
     indexHeader.setAttribute('role', 'columnheader');
     indexHeader.setAttribute('aria-colindex', '1');
@@ -951,7 +950,7 @@ export class ReadonlyGridRenderer {
           'aria-sort',
           entry === undefined ? 'none' : entry.direction === 'asc' ? 'ascending' : 'descending',
         );
-        const button = createElement('button', 'loom-grid-sort');
+        const button = createElement('button', 'loom-grid-sort clickable-icon');
         button.type = 'button';
         button.dataset.action = 'header-sort';
         button.dataset.fieldId = field.id;
@@ -992,7 +991,7 @@ export class ReadonlyGridRenderer {
     if (this.#callbacks.onFieldSave !== undefined) {
       const addField = createGridCell('', 'loom-grid-header-cell loom-grid-add-field');
       addField.setAttribute('role', 'columnheader');
-      const addButton = createElement('button', 'loom-grid-add-field-button');
+      const addButton = createElement('button', 'loom-grid-add-field-button clickable-icon');
       addButton.type = 'button';
       addButton.setAttribute('aria-label', this.#translate('field.add'));
       addButton.append(createUiIcon('field-add'));
@@ -1015,7 +1014,7 @@ export class ReadonlyGridRenderer {
       state.selectedTableId !== null &&
       this.#callbacks.onCreateRecord !== undefined
     ) {
-      const addRow = createElement('button', 'loom-grid-add-row');
+      const addRow = createElement('button', 'loom-grid-add-row clickable-icon');
       addRow.type = 'button';
       addRow.dataset.action = 'grid-add-row';
       addRow.style.top = `${state.records.length * rowHeight}px`;
@@ -1247,7 +1246,7 @@ export class ReadonlyGridRenderer {
     rowNumber.className = 'loom-grid-row-number';
     const open = document.createElement('button');
     open.type = 'button';
-    open.className = 'loom-grid-open loom-grid-row-expand';
+    open.className = 'loom-grid-open loom-grid-row-expand clickable-icon';
     open.dataset.recordId = record.id;
     open.setAttribute('aria-label', this.#translate('grid.openDetails'));
     open.append(createUiIcon('menu-open'));

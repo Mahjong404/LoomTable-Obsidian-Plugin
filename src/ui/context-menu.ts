@@ -40,7 +40,7 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     }
     const item = document.createElement('button');
     item.type = 'button';
-    item.className = 'loom-context-menu-item';
+    item.className = 'loom-context-menu-item clickable-icon';
     item.setAttribute('role', 'menuitem');
     if (entry.danger === true) item.dataset.variant = 'danger';
     item.disabled = entry.disabled === true;

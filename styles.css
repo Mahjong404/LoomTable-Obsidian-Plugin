@@ -1300,14 +1300,11 @@
   outline: none;
 }
 
-.loom-grid-row:hover .loom-grid-row-number,
-.loom-grid-row:focus-within .loom-grid-row-number {
+.loom-grid-row:hover .loom-grid-row-number {
   visibility: hidden;
 }
 
-.loom-grid-row:hover .loom-grid-open,
-.loom-grid-row:focus-within .loom-grid-open,
-.loom-grid-open:focus-visible {
+.loom-grid-row:hover .loom-grid-open {
   display: inline-flex;
 }
 
@@ -1689,7 +1686,6 @@
   outline-offset: 1px;
 }
 
-.loom-record-field-edit,
 .loom-location-actions .loom-button,
 .loom-record-fields .loom-attachment-action {
   min-height: 1.625rem;
@@ -2851,10 +2847,6 @@
   outline: none;
 }
 
-.loom-grid-add-row:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--loom-selection-border);
-}
-
 .loom-grid-add-row-index {
   display: flex;
   align-items: center;
@@ -2961,27 +2953,6 @@
   gap: 2px;
   margin-inline-end: var(--loom-space-1);
   vertical-align: middle;
-}
-
-/* Record detail empty-fields group */
-
-.loom-record-fields-empty {
-  margin-block-start: var(--loom-space-2);
-  border-top: 1px solid var(--loom-grid-border);
-  padding-block-start: var(--loom-space-2);
-}
-
-.loom-record-fields-empty-summary {
-  cursor: pointer;
-  color: var(--loom-text-faint);
-  font-size: var(--loom-font-ui-smaller);
-  border-radius: var(--loom-radius-sm);
-  padding: var(--loom-space-1) var(--loom-space-2);
-}
-
-.loom-record-fields-empty-summary:hover {
-  color: var(--loom-text-normal);
-  background: var(--loom-bg-hover);
 }
 
 /* Toolbar refresh indicator (replaces the loading band on refresh) */

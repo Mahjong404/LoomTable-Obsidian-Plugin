@@ -749,7 +749,7 @@ export class TableShell {
     }
     const overflowButton = document.createElement('button');
     overflowButton.type = 'button';
-    overflowButton.className = 'loom-view-tab-overflow';
+    overflowButton.className = 'loom-view-tab-overflow clickable-icon';
     overflowButton.hidden = true;
     overflowButton.setAttribute('aria-label', this.#translate('view.overflow.label'));
     overflowButton.setAttribute('aria-haspopup', 'menu');

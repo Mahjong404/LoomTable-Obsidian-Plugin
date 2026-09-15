@@ -2742,7 +2742,7 @@ describe('refresh indicator and anchored panels', () => {
     expect(note?.dataset.active).toBe('false');
   });
 
-  it('extends the grid template with the add-field column when field save is wired', () => {
+  it('keeps the add-field cell as a header-only lone column', () => {
     const container = document.createElement('div');
     const callbacks = {
       ...rendererCallbacks(),
@@ -2752,8 +2752,11 @@ describe('refresh indicator and anchored panels', () => {
     renderer.render(createState(2));
     const header = container.querySelector<HTMLElement>('.loom-grid-header');
     const row = container.querySelector<HTMLElement>('.loom-grid-row');
-    expect(header?.style.gridTemplateColumns).toBe(row?.style.gridTemplateColumns);
-    expect(header?.style.gridTemplateColumns.endsWith('2.5rem')).toBe(true);
+    expect(header?.style.gridTemplateColumns.endsWith(' 2.5rem')).toBe(true);
+    expect(row?.style.gridTemplateColumns.endsWith('2.5rem')).toBe(false);
+    expect(row?.style.gridTemplateColumns).toBe(
+      header?.style.gridTemplateColumns.replace(/ 2\.5rem$/, ''),
+    );
     expect(container.querySelector('.loom-grid-add-field')).not.toBeNull();
     expect(container.querySelector('.loom-grid-viewport')?.getAttribute('aria-colcount')).toBe('3');
   });
