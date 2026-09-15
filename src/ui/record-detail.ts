@@ -204,13 +204,6 @@ export function createRecordDetail(
     detailStatus.hidden = false;
     detailStatus.textContent = message;
   };
-  const emptyGroup = document.createElement('details');
-  emptyGroup.className = 'loom-record-fields-empty';
-  const emptySummary = document.createElement('summary');
-  emptySummary.className = 'loom-record-fields-empty-summary';
-  const emptyList = document.createElement('dl');
-  emptyList.className = 'loom-record-fields';
-  emptyGroup.append(emptySummary, emptyList);
   let currentRecord = record;
   let previousButton: HTMLButtonElement | null = null;
   let nextButton: HTMLButtonElement | null = null;
@@ -226,33 +219,15 @@ export function createRecordDetail(
     const ordered = [...fields].sort((a, b) =>
       a.id === options.primaryFieldId ? -1 : b.id === options.primaryFieldId ? 1 : 0,
     );
-    const nonEmpty: HTMLElement[] = [];
-    const empty: HTMLElement[] = [];
-    let emptyCount = 0;
+    const rows: HTMLElement[] = [];
     for (const field of ordered) {
       const elements = renderField(currentRecord, field, options, root, renderValues, announce);
       if (field.id === options.primaryFieldId) {
         for (const element of elements) element.dataset.primary = 'true';
       }
-      const value = currentRecord.values[field.id];
-      const isEmpty =
-        value === undefined ||
-        value === null ||
-        value === '' ||
-        (Array.isArray(value) && value.length === 0);
-      if (isEmpty && field.id !== options.primaryFieldId) {
-        emptyCount += 1;
-        empty.push(...elements);
-      } else {
-        nonEmpty.push(...elements);
-      }
+      rows.push(...elements);
     }
-    values.replaceChildren(...nonEmpty);
-    emptyList.replaceChildren(...empty);
-    emptyGroup.hidden = emptyCount === 0;
-    emptySummary.textContent = options
-      .translate('record.detail.emptyFields')
-      .replace('{count}', String(emptyCount));
+    values.replaceChildren(...rows);
     heading.textContent = recordTitle(nextRecord);
     syncNavigation();
   };
@@ -276,15 +251,15 @@ export function createRecordDetail(
     nextButton.dataset.action = 'detail-next';
     nextButton.addEventListener('click', () => void navigate(1));
     previousButton.prepend(createUiIcon('nav-prev'));
-    previousButton.classList.add('loom-record-detail-iconbtn');
+    previousButton.classList.add('loom-record-detail-iconbtn', 'clickable-icon');
     nextButton.prepend(createUiIcon('nav-next'));
-    nextButton.classList.add('loom-record-detail-iconbtn');
+    nextButton.classList.add('loom-record-detail-iconbtn', 'clickable-icon');
     navWrap.append(previousButton, nextButton);
     header.prepend(navWrap);
   }
   if (options.callbacks?.onDeleteRecord !== undefined) {
     const remove = button('');
-    remove.classList.add('loom-record-delete', 'loom-record-detail-iconbtn');
+    remove.classList.add('loom-record-delete', 'loom-record-detail-iconbtn', 'clickable-icon');
     remove.append(createUiIcon('menu-delete'));
     remove.dataset.action = 'detail-delete';
     remove.setAttribute('aria-label', options.translate('record.delete.action'));
@@ -303,7 +278,7 @@ export function createRecordDetail(
     header.append(remove);
   }
   const expand = button('');
-  expand.classList.add('loom-record-detail-iconbtn', 'loom-record-detail-expand');
+  expand.classList.add('loom-record-detail-iconbtn', 'loom-record-detail-expand', 'clickable-icon');
   expand.append(createUiIcon('detail-expand'));
   expand.setAttribute('aria-label', options.translate('record.detail.expand'));
   expand.setAttribute('aria-pressed', 'false');
@@ -321,7 +296,7 @@ export function createRecordDetail(
   header.append(expand);
   if (options.callbacks?.onClose !== undefined) {
     const close = button('');
-    close.classList.add('loom-record-detail-iconbtn');
+    close.classList.add('loom-record-detail-iconbtn', 'clickable-icon');
     close.dataset.action = 'detail-close';
     close.append(createUiIcon('detail-close'));
     close.setAttribute('aria-label', options.translate('common.close'));
@@ -331,7 +306,7 @@ export function createRecordDetail(
   root.append(header);
   renderValues(record);
   ensureButtonLabels(root);
-  root.append(detailStatus, values, emptyGroup);
+  root.append(detailStatus, values);
   const existingConflict = options.callbacks?.getConflict?.(record.id);
   if (existingConflict !== undefined) {
     root.append(renderConflict(record.id, existingConflict, options, root));
