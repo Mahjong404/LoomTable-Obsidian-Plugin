@@ -41,7 +41,7 @@ import type {
 import type { PersistedMutationQueueError } from '../settings/mutation-queue-settings';
 import { createTranslator, type Translator } from '../i18n';
 import type { ViewSaveStatus } from './save-status';
-import { UndoHistory } from './undo-history';
+import { UndoHistory, type UndoEntryMeta } from './undo-history';
 import {
   findBrokenViewFieldIds,
   repairViewConfig,
@@ -137,6 +137,7 @@ export interface GridState {
   readonly deletedRecordsHasMore: boolean;
   readonly deletedRecordsError: LoomTableClientErrorDetails | null;
   readonly lastDeletedRecord: LoomTableRecord | null;
+  readonly historyEntries: readonly UndoEntryMeta[];
   readonly canUndo?: boolean;
   readonly canRedo?: boolean;
 }
@@ -355,6 +356,7 @@ const INITIAL_STATE: GridState = {
   deletedRecordsHasMore: false,
   deletedRecordsError: null,
   lastDeletedRecord: null,
+  historyEntries: [],
 };
 
 export class GridViewController {
@@ -608,7 +610,15 @@ export class GridViewController {
         const hadBefore = fieldId in authoritative.values;
         const beforeValue = authoritative.values[fieldId];
         const afterUnset = options.unset === true;
+        const fieldName = this.#state.fields.find((field) => field.id === fieldId)?.name;
         this.#history.push({
+          meta: {
+            kind: 'edit',
+            recordId,
+            ...(fieldName !== undefined ? { fieldName } : {}),
+            recordTitle: this.#recordTitle(authoritative),
+            at: new Date().toISOString(),
+          },
           undo: async () => {
             await this.editCell(
               recordId,
@@ -716,6 +726,12 @@ export class GridViewController {
       const recordId = record.id;
       const seed = { ...values };
       this.#history.push({
+        meta: {
+          kind: 'create',
+          recordId,
+          recordTitle: this.#recordTitle(record),
+          at: new Date().toISOString(),
+        },
         undo: async () => {
           await this.deleteRecord(recordId);
         },
@@ -799,6 +815,12 @@ export class GridViewController {
     }
     if (!this.#history.isApplying) {
       this.#history.push({
+        meta: {
+          kind: 'delete',
+          recordId,
+          recordTitle: this.#recordTitle(deleted),
+          at: new Date().toISOString(),
+        },
         undo: async () => {
           await this.restoreRecord(recordId);
         },
@@ -854,6 +876,12 @@ export class GridViewController {
     this.#reloadDeletedRecordsIfLoaded();
     if (!this.#history.isApplying) {
       this.#history.push({
+        meta: {
+          kind: 'restore',
+          recordId,
+          recordTitle: this.#recordTitle(restored),
+          at: new Date().toISOString(),
+        },
         undo: async () => {
           await this.deleteRecord(recordId);
         },
@@ -883,7 +911,19 @@ export class GridViewController {
   }
 
   #publishHistory(): void {
-    this.#publish({ canUndo: this.#history.canUndo, canRedo: this.#history.canRedo });
+    this.#publish({
+      canUndo: this.#history.canUndo,
+      canRedo: this.#history.canRedo,
+      historyEntries: this.#history.entries,
+    });
+  }
+
+  #recordTitle(record: LoomTableRecord): string {
+    const table = this.#state.tables.find((candidate) => candidate.id === record.tableId);
+    const value = table === undefined ? undefined : record.values[table.primaryFieldId];
+    if (typeof value === 'string' && value.trim() !== '') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    return this.#translate('grid.untitledRecord');
   }
 
   async undoDelete(): Promise<RecordRestoreOutcome | null> {
@@ -1046,6 +1086,7 @@ export class GridViewController {
       totalCount: null,
       canUndo: false,
       canRedo: false,
+      historyEntries: [],
     });
 
     try {

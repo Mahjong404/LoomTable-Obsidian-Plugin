@@ -1416,6 +1416,7 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     deletedRecordsHasMore: false,
     deletedRecordsError: null,
     lastDeletedRecord: null,
+    historyEntries: [],
     ...update,
   };
 }
@@ -2039,12 +2040,12 @@ describe('Grid record lifecycle', () => {
       }),
     );
 
-    const toggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-recycle"]');
+    const toggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]');
     expect(toggle).not.toBeNull();
     toggle?.click();
     expect(callbacks.onLoadDeletedRecords).toHaveBeenCalledTimes(1);
 
-    const panel = container.querySelector<HTMLElement>('.loom-recycle-panel');
+    const panel = container.querySelector<HTMLElement>('.loom-status-panel');
     expect(panel).not.toBeNull();
     const items = panel?.querySelectorAll<HTMLElement>('.loom-recycle-item') ?? [];
     expect(items).toHaveLength(2);
@@ -2062,13 +2063,13 @@ describe('Grid record lifecycle', () => {
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
 
     renderer.render(createState(1, { deletedRecordsStatus: 'loading' }));
-    container.querySelector<HTMLButtonElement>('[data-action="toggle-recycle"]')?.click();
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
     expect(container.querySelector('.loom-recycle-status')?.textContent).toContain('Loading');
 
     renderer.render(createState(1, { deletedRecordsStatus: 'ready', deletedRecords: [] }));
-    container.querySelector<HTMLButtonElement>('[data-action="toggle-recycle"]')?.click();
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
     await Promise.resolve();
-    container.querySelector<HTMLButtonElement>('[data-action="toggle-recycle"]')?.click();
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
     expect(container.querySelector('.loom-recycle-status')?.textContent).toContain('No deleted');
 
     renderer.render(
@@ -2080,6 +2081,44 @@ describe('Grid record lifecycle', () => {
     expect(container.querySelector('.loom-recycle-status')?.textContent).toContain(
       'could not be loaded',
     );
+    container.remove();
+  });
+
+  it('opens the status panel with change history, refresh, and deleted records', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(
+      createState(1, {
+        historyEntries: [
+          {
+            kind: 'edit',
+            recordId: 'record_01',
+            fieldName: 'Name',
+            recordTitle: 'Record 1',
+            at: '2026-09-15T10:00:00.000Z',
+          },
+          {
+            kind: 'delete',
+            recordId: 'record_02',
+            recordTitle: 'Record 2',
+            at: '2026-09-15T10:01:00.000Z',
+          },
+        ],
+        deletedRecords: [deletedRecord('record_09')],
+        deletedRecordsStatus: 'ready',
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    const panel = container.querySelector<HTMLElement>('.loom-status-panel');
+    expect(panel).not.toBeNull();
+    expect(panel?.querySelectorAll('.loom-change-item')).toHaveLength(2);
+    expect(panel?.querySelector('.loom-change-item-kind')?.textContent).toBe('Edited');
+    expect(panel?.querySelector('[aria-label="Refresh"]')).not.toBeNull();
+    expect(panel?.querySelectorAll('.loom-recycle-item')).toHaveLength(1);
+    expect(callbacks.onLoadDeletedRecords).toHaveBeenCalledTimes(1);
     container.remove();
   });
 
@@ -2212,7 +2251,7 @@ describe('Grid record lifecycle', () => {
       '.loom-grid-add-row[data-action="grid-add-row"]',
     );
     expect(addRow).not.toBeNull();
-    expect(addRow?.textContent).toContain('Add Record');
+    expect(addRow?.getAttribute('aria-label')).toContain('Add Record');
     addRow?.click();
     expect(container.querySelector('.loom-record-create')).not.toBeNull();
     container.remove();
@@ -2606,6 +2645,9 @@ describe('Undo/redo wiring', () => {
     const redo = buttons.find((button) => button.getAttribute('aria-label') === 'Redo');
     expect(undo).toBeDefined();
     expect(redo).toBeDefined();
+    expect(undo?.classList.contains('loom-action-icon')).toBe(true);
+    expect(undo?.textContent).toBe('');
+    expect(undo?.querySelector('.loom-ui-icon')).not.toBeNull();
     undo?.click();
     await vi.waitFor(() => expect(onUndo).toHaveBeenCalledTimes(1));
 
@@ -2687,7 +2729,11 @@ describe('refresh indicator and anchored panels', () => {
     expect(note?.textContent).toBe('Loading Grid records…');
     expect(note?.dataset.active).toBe('true');
     const create = container.querySelector('.loom-grid-record-create');
-    expect(note?.nextElementSibling).toBe(create);
+    expect(create?.parentElement?.classList.contains('loom-toolbar-start')).toBe(true);
+    expect(
+      note?.nextElementSibling instanceof HTMLElement &&
+        note.nextElementSibling.dataset.action === 'toggle-status',
+    ).toBe(true);
     expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
   });
 
@@ -2716,7 +2762,7 @@ describe('refresh indicator and anchored panels', () => {
     expect(container.querySelector('.loom-grid-viewport')).not.toBeNull();
   });
 
-  it('renders the add-record row as a compact index and label row', () => {
+  it('renders the add-record row as a lone index-cell icon', () => {
     const container = document.createElement('div');
     const callbacks = { ...rendererCallbacks(), onCreateRecord: vi.fn() };
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
@@ -2724,7 +2770,8 @@ describe('refresh indicator and anchored panels', () => {
 
     const addRow = container.querySelector<HTMLElement>('.loom-grid-add-row');
     expect(addRow).not.toBeNull();
-    expect(addRow?.style.gridTemplateColumns).toBe('56px auto');
+    expect(addRow?.style.width).toBe('56px');
+    expect(addRow?.querySelector('.loom-grid-add-row-label')).toBeNull();
     addRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(container.querySelector('.loom-record-create')).not.toBeNull();
   });

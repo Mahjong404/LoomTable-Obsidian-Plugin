@@ -1,5 +1,14 @@
+export interface UndoEntryMeta {
+  readonly kind: 'edit' | 'create' | 'delete' | 'restore';
+  readonly recordId: string;
+  readonly fieldName?: string;
+  readonly recordTitle: string;
+  readonly at: string;
+}
+
 export interface UndoCommand {
   readonly label?: string;
+  readonly meta?: UndoEntryMeta;
   undo(): Promise<void>;
   redo(): Promise<void>;
 }
@@ -19,6 +28,15 @@ export class UndoHistory {
 
   get isApplying(): boolean {
     return this.#applying;
+  }
+
+  /** Recorded mutation entries, newest first. */
+  get entries(): readonly UndoEntryMeta[] {
+    const entries: UndoEntryMeta[] = [];
+    for (const command of [...this.#undoStack].reverse()) {
+      if (command.meta !== undefined) entries.push(command.meta);
+    }
+    return entries;
   }
 
   push(command: UndoCommand): void {

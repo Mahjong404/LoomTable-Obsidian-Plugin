@@ -10,6 +10,7 @@ import type {
   View,
 } from '../client/loomtable-client';
 import type { GridConflict, GridState, GridStatus } from './grid-view-controller';
+import type { UndoEntryMeta } from './undo-history';
 import { ensureButtonLabels, labelContainer } from './a11y';
 import { openContextMenu, type ContextMenuEntry, type ContextMenuItem } from './context-menu';
 import { createFieldTypeIcon } from './field-type-icon';
@@ -44,7 +45,7 @@ import {
   serializeCellForClipboard,
   type GridClipboardHost,
 } from './grid-clipboard';
-import { renderSaveStatus } from './save-status';
+import { describeSaveStatus, renderSaveStatus } from './save-status';
 import { confirmDangerousAction } from './dangerous-action-confirmation';
 import { TableShell } from './table-shell';
 import type { ViewConfigRepairInput } from './view-config-repair';
@@ -134,11 +135,32 @@ export interface GridRendererCallbacks {
 
 type GridAction = 'refresh' | 'settings' | 'undo' | 'redo';
 
+const CHANGE_KIND_ICONS: Record<UndoEntryMeta['kind'], UiIconName> = {
+  create: 'tool-create',
+  edit: 'menu-edit',
+  delete: 'menu-delete',
+  restore: 'tool-undo',
+};
+
+const CHANGE_KIND_KEYS: Record<UndoEntryMeta['kind'], MessageKey> = {
+  create: 'record.changes.kind.create',
+  edit: 'record.changes.kind.edit',
+  delete: 'record.changes.kind.delete',
+  restore: 'record.changes.kind.restore',
+};
+
+function formatChangeTime(at: string): string {
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
 interface GridActionButtonSpec {
   readonly action: GridAction;
   readonly labelKey: MessageKey;
   readonly pendingKey: MessageKey;
   readonly icon: UiIconName | undefined;
+  readonly iconOnly?: boolean;
 }
 
 interface VirtualGridRefs {
@@ -175,7 +197,7 @@ export class ReadonlyGridRenderer {
   readonly #pendingActions = new Set<GridAction>();
   readonly #actionButtons = new Map<HTMLButtonElement, GridActionButtonSpec>();
   #focusedAction: GridAction | null = null;
-  #openPanel: 'filter' | 'sort' | 'display' | 'create' | 'recycle' | null = null;
+  #openPanel: 'filter' | 'sort' | 'display' | 'create' | 'status' | null = null;
   #searchDraft: string | null = null;
   #searchError: string | null = null;
   #lastViewId: string | null = null;
@@ -327,6 +349,18 @@ export class ReadonlyGridRenderer {
     const start = createElement('div', 'loom-toolbar-group loom-toolbar-start');
     const end = createElement('div', 'loom-toolbar-group loom-toolbar-end');
     const gridView = selectedGridView(state);
+    if (this.#callbacks.onCreateRecord !== undefined && state.selectedTableId !== null) {
+      const createButton = this.#toggleButton(
+        'create',
+        this.#translate('record.create.add'),
+        state.recordCreateOps.length,
+        'record.create.pendingCount',
+        'tool-create',
+      );
+      createButton.classList.add('loom-grid-record-create');
+      createButton.disabled = state.status === 'offline';
+      start.append(createButton);
+    }
     if (gridView !== null) {
       const divider = createElement('span', 'loom-toolbar-divider');
       divider.setAttribute('aria-hidden', 'true');
@@ -342,8 +376,6 @@ export class ReadonlyGridRenderer {
     } else if (state.records.length > 0) {
       count.textContent = `${state.records.length} ${this.#translate('grid.rows')}`;
     }
-    const saveStatus = createElement('span', 'loom-save-status');
-    renderSaveStatus(saveStatus, state.saveStatus, this.#translate);
     if (this.#callbacks.onUndo !== undefined || this.#callbacks.onRedo !== undefined) {
       const undoButton = this.#createActionButton(
         'undo',
@@ -351,6 +383,7 @@ export class ReadonlyGridRenderer {
         'grid.undo',
         () => this.#callbacks.onUndo?.(),
         'tool-undo',
+        true,
       );
       undoButton.disabled = state.canUndo === false;
       const redoButton = this.#createActionButton(
@@ -359,48 +392,38 @@ export class ReadonlyGridRenderer {
         'grid.redo',
         () => this.#callbacks.onRedo?.(),
         'tool-redo',
+        true,
       );
       redoButton.disabled = state.canRedo === false;
       end.append(undoButton, redoButton);
     }
-    end.append(count, saveStatus);
+    end.append(count);
     const loading = createElement('span', 'loom-grid-loading-note');
     loading.setAttribute('role', 'status');
     loading.dataset.active = state.status === 'loading' ? 'true' : 'false';
     loading.textContent = this.#translate('grid.loading');
     end.append(loading);
-    if (this.#callbacks.onCreateRecord !== undefined && state.selectedTableId !== null) {
-      const createButton = this.#toggleButton(
-        'create',
-        this.#translate('record.create.add'),
-        state.recordCreateOps.length,
-        'record.create.pendingCount',
-        'tool-create',
-      );
-      createButton.classList.add('loom-grid-record-create');
-      createButton.disabled = state.status === 'offline';
-      end.append(createButton);
-    }
-    if (this.#callbacks.onLoadDeletedRecords !== undefined && state.selectedTableId !== null) {
-      end.append(
-        this.#toggleButton(
-          'recycle',
-          this.#translate('record.recycle.action'),
-          state.deletedRecords.length,
-          'record.recycle.count',
-          'tool-recycle',
-        ),
-      );
-    }
-    end.append(
-      this.#createActionButton(
-        'refresh',
-        'grid.refresh',
-        'grid.refreshing',
-        () => this.#callbacks.onRefresh(),
-        'tool-refresh',
-      ),
-    );
+    const statusToggle = createElement('button', 'loom-save-status clickable-icon');
+    statusToggle.type = 'button';
+    statusToggle.dataset.action = 'toggle-status';
+    statusToggle.setAttribute('aria-expanded', this.#openPanel === 'status' ? 'true' : 'false');
+    renderSaveStatus(statusToggle, state.saveStatus, this.#translate);
+    statusToggle.addEventListener('click', () => {
+      const opening = this.#openPanel !== 'status';
+      this.#openPanel = opening ? 'status' : null;
+      if (opening) void this.#callbacks.onLoadDeletedRecords?.();
+      this.#rerenderSelf();
+      if (opening) {
+        this.#container
+          .querySelector<HTMLElement>(
+            '.loom-status-panel button, .loom-status-panel select, .loom-status-panel input',
+          )
+          ?.focus();
+      } else {
+        this.#container.querySelector<HTMLElement>('[data-action="toggle-status"]')?.focus();
+      }
+    });
+    end.append(statusToggle);
     toolbar.append(start, end);
     return toolbar;
   }
@@ -502,7 +525,7 @@ export class ReadonlyGridRenderer {
   }
 
   #toggleButton(
-    panel: 'filter' | 'sort' | 'display' | 'create' | 'recycle',
+    panel: 'filter' | 'sort' | 'display' | 'create',
     label: string,
     activeCount: number,
     activeKey: MessageKey,
@@ -523,7 +546,6 @@ export class ReadonlyGridRenderer {
     button.addEventListener('click', () => {
       const opening = this.#openPanel !== panel;
       this.#openPanel = opening ? panel : null;
-      if (opening && panel === 'recycle') void this.#callbacks.onLoadDeletedRecords?.();
       this.#rerenderSelf();
       if (opening) {
         this.#container
@@ -540,7 +562,7 @@ export class ReadonlyGridRenderer {
 
   #renderQueryPanel(state: GridState): HTMLElement | null {
     if (this.#openPanel === 'create') return this.#renderCreatePanel(state);
-    if (this.#openPanel === 'recycle') return this.#renderRecyclePanel(state);
+    if (this.#openPanel === 'status') return this.#renderStatusPanel(state);
     const view = selectedGridView(state);
     if (view === null || this.#openPanel === null) return null;
     const host = createElement('div', 'loom-query-panel');
@@ -740,10 +762,77 @@ export class ReadonlyGridRenderer {
     return host;
   }
 
-  #renderRecyclePanel(state: GridState): HTMLElement {
-    const host = createElement('div', 'loom-query-panel loom-recycle-panel');
-    host.dataset.panel = 'recycle';
+  #renderStatusPanel(state: GridState): HTMLElement {
+    const host = createElement('div', 'loom-query-panel loom-status-panel');
+    host.dataset.panel = 'status';
+    const header = createElement('div', 'loom-status-panel-header');
+    const statusText = createTextElement(
+      'span',
+      describeSaveStatus(state.saveStatus, this.#translate),
+    );
+    statusText.className = 'loom-status-panel-status';
+    statusText.dataset.status = state.saveStatus;
+    header.append(statusText);
+    if (this.#callbacks.onRefresh !== undefined) {
+      header.append(
+        this.#createActionButton(
+          'refresh',
+          'grid.refresh',
+          'grid.refreshing',
+          () => this.#callbacks.onRefresh(),
+          'tool-refresh',
+          true,
+        ),
+      );
+    }
+    host.append(header);
+    host.append(createTextElement('h3', this.#translate('record.changes.title')));
+    if (state.historyEntries.length === 0) {
+      const empty = createTextElement('p', this.#translate('record.changes.empty'));
+      empty.className = 'loom-change-empty';
+      host.append(empty);
+    } else {
+      const list = createElement('ul', 'loom-change-list');
+      for (const entry of state.historyEntries) {
+        const item = createElement('li', 'loom-change-item');
+        item.dataset.recordId = entry.recordId;
+        item.dataset.kind = entry.kind;
+        item.append(createUiIcon(CHANGE_KIND_ICONS[entry.kind]));
+        const text = createElement('span', 'loom-change-item-text');
+        const title = createTextElement('span', entry.recordTitle);
+        title.className = 'loom-change-item-title';
+        const kindLabel = createTextElement('span', this.#translate(CHANGE_KIND_KEYS[entry.kind]));
+        kindLabel.className = 'loom-change-item-kind';
+        text.append(title, kindLabel);
+        if (entry.fieldName !== undefined) {
+          const field = createTextElement('span', entry.fieldName);
+          field.className = 'loom-change-item-field';
+          text.append(field);
+        }
+        const time = createTextElement('span', formatChangeTime(entry.at));
+        time.className = 'loom-change-item-time';
+        text.append(time);
+        item.append(text);
+        const sync = state.editStatuses[entry.recordId];
+        if (sync === 'conflict' || sync === 'error' || sync === 'terminal') {
+          const syncKey: MessageKey =
+            sync === 'conflict' ? 'record.changes.sync.conflict' : 'record.changes.sync.failed';
+          const chip = createTextElement('span', this.#translate(syncKey));
+          chip.className = 'loom-change-item-sync';
+          chip.dataset.status = sync;
+          item.append(chip);
+        }
+        list.append(item);
+      }
+      host.append(list);
+    }
     host.append(createTextElement('h3', this.#translate('record.recycle.title')));
+    host.append(this.#renderDeletedSection(state));
+    return host;
+  }
+
+  #renderDeletedSection(state: GridState): HTMLElement {
+    const host = createElement('div', 'loom-status-deleted');
     if (state.deletedRecordsStatus === 'loading' || state.deletedRecordsStatus === 'idle') {
       const status = createTextElement('p', this.#translate('record.recycle.loading'));
       status.className = 'loom-recycle-status';
@@ -1019,12 +1108,10 @@ export class ReadonlyGridRenderer {
       addRow.dataset.action = 'grid-add-row';
       addRow.style.top = `${state.records.length * rowHeight}px`;
       addRow.style.height = `${rowHeight}px`;
-      addRow.style.gridTemplateColumns = `${GRID_INDEX_COLUMN_WIDTH}px auto`;
+      addRow.style.width = `${GRID_INDEX_COLUMN_WIDTH}px`;
       const indexCell = createElement('span', 'loom-grid-index-cell loom-grid-add-row-index');
       indexCell.append(createUiIcon('tool-create'));
-      const label = createTextElement('span', this.#translate('record.create.add'));
-      label.classList.add('loom-grid-add-row-label');
-      addRow.append(indexCell, label);
+      addRow.append(indexCell);
       addRow.setAttribute('aria-label', this.#translate('record.create.add'));
       addRow.addEventListener('click', () => {
         this.#openPanel = 'create';
@@ -1850,6 +1937,7 @@ export class ReadonlyGridRenderer {
       deletedRecordsHasMore: false,
       deletedRecordsError: null,
       lastDeletedRecord: null,
+      historyEntries: [],
     };
   }
 
@@ -2314,10 +2402,14 @@ export class ReadonlyGridRenderer {
     pendingKey: MessageKey,
     operation: () => void | Promise<void>,
     icon?: UiIconName,
+    iconOnly = false,
   ): HTMLButtonElement {
-    const element = createElement('button', 'loom-button');
+    const element = createElement(
+      'button',
+      iconOnly ? 'loom-action-icon clickable-icon' : 'loom-button',
+    );
     element.type = 'button';
-    element.textContent = this.#translate(labelKey);
+    element.textContent = iconOnly ? '' : this.#translate(labelKey);
     if (icon !== undefined) element.prepend(createUiIcon(icon));
     element.setAttribute('aria-label', this.#translate(labelKey));
     element.addEventListener('click', () => {
@@ -2326,7 +2418,7 @@ export class ReadonlyGridRenderer {
       element.focus();
       this.#runAction(action, operation);
     });
-    this.#actionButtons.set(element, { action, labelKey, pendingKey, icon });
+    this.#actionButtons.set(element, { action, labelKey, pendingKey, icon, iconOnly });
     return element;
   }
 
@@ -2357,7 +2449,7 @@ export class ReadonlyGridRenderer {
         (spec.action === 'refresh' && (offline || loading)) ||
         (spec.action === 'undo' && state?.canUndo === false) ||
         (spec.action === 'redo' && state?.canRedo === false);
-      element.textContent = label;
+      element.textContent = spec.iconOnly === true ? '' : label;
       if (spec.icon !== undefined) element.prepend(createUiIcon(spec.icon));
       element.setAttribute('aria-label', label);
       if (pending) element.setAttribute('aria-busy', 'true');

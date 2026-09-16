@@ -148,11 +148,11 @@ describe('Grid states', () => {
     ).not.toBeNull();
   });
 
-  it('lists deleted records in the recycle panel with restore affordances', async () => {
+  it('lists deleted records in the status panel with restore affordances', async () => {
     const host = await mount('grid-recycle');
     expect(host.querySelector('.loom-grid-deleted-notice')).not.toBeNull();
-    host.querySelector<HTMLButtonElement>('[data-action="toggle-recycle"]')?.click();
-    const panel = host.querySelector('.loom-recycle-panel');
+    host.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    const panel = host.querySelector('.loom-status-panel');
     expect(panel).not.toBeNull();
     expect(panel?.querySelectorAll('.loom-recycle-item')).toHaveLength(2);
     expect(panel?.querySelectorAll('.loom-recycle-restore')).toHaveLength(2);
