@@ -169,3 +169,12 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - `+` 新建字段列回退为表头独占单格（行/画布模板不含 +track，下方为统一空白填充），外部表格组件库 式孤立 icon。
 - Detail 移除空字段 `<details>` 折叠组：所有字段平铺可编辑（空值行点击即编辑），`record.detail.emptyFields` 键与 CSS 清理。
 - 验证：63 文件 793 tests 全绿；lint 0 error；format/typecheck 干净；已部署 vault（main.js 586,703B / styles.css 65,931B）；gallery bundle 已重建。
+
+## 2026-XX — UX 跟进 6：状态点面板（撤销/重做图标化 + 修改记录 + 已删除记录合并）
+
+- 工具栏重排：「+新增记录」移至最左（toolbar-start）；右侧组 = 撤销|重做（icon-only `.loom-action-icon clickable-icon` 幽灵钮，aria-label 保留）+「N 行」计数 + loading-note + 状态点。
+- 状态点：`.loom-save-status` 由 span 改为 button（`data-action="toggle-status"`、aria-expanded），点击弹出 `.loom-status-panel` 锚定浮层——顶部状态描述+刷新图标钮；「修改记录」区列出会话内数据修改日志（UndoHistory 命令携带 `UndoEntryMeta`：kind create/edit/delete/restore + recordTitle/fieldName/at，`GridState.historyEntries` 发布，最新在前；conflict/error/terminal 显示失败 chip）；「已删除记录」区并入同一面板（原 `toggle-recycle` 独立按钮移除，onLoadDeletedRecords 在开面板时触发）。
+- 语义说明：historyEntries 反映当前可撤销栈（undo 后条目离栈、redo 后回栈），非跨会话审计日志；跨会话删除仍由 deleted-records 查询路径恢复。
+- 「#」列表头居中；新增记录行改为仅 `+` 图标的单格行（56px，无文字标签，aria-label 保留）。
+- 测试：renderer +2（状态面板含历史/刷新/已删除区、icon-only undo/redo 断言），recycle 测试改走 `toggle-status`/`.loom-status-panel`。
+- 验证：63 文件 794 tests 全绿；lint 0 error；format/typecheck 干净；openapi 无 diff；已部署 vault（main.js 590,044B / styles.css 68,261B）；gallery bundle 已重建。
