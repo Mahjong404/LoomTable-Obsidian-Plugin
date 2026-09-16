@@ -215,11 +215,19 @@ export class ReadonlyGridRenderer {
     readonly index: number;
     readonly offset: number;
   } | null = null;
+  #panelDismiss: ((event: PointerEvent) => void) | null = null;
 
   constructor(container: HTMLElement, translate: Translator, callbacks: GridRendererCallbacks) {
     this.#container = container;
     this.#translate = translate;
     this.#callbacks = callbacks;
+    container.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || this.#openPanel === null || event.defaultPrevented) return;
+      const el = event.target instanceof Element ? event.target : null;
+      if (el !== null && el.closest('.loom-grid-editor, .loom-detail-host') !== null) return;
+      event.preventDefault();
+      this.#closePanels();
+    });
     this.#shell = new TableShell(translate, {
       onWorkspaceChange: (workspaceId) => callbacks.onWorkspaceChange(workspaceId),
       onBaseChange: (baseId) => callbacks.onBaseChange(baseId),
@@ -288,7 +296,11 @@ export class ReadonlyGridRenderer {
     root.append(this.#renderNavigation(state), toolbar);
     root.append(this.#renderClipboardNote());
     const queryPanel = this.#renderQueryPanel(state);
-    if (queryPanel !== null) toolbar.append(queryPanel);
+    if (queryPanel !== null) {
+      toolbar.append(queryPanel);
+      this.#anchorQueryPanel(toolbar, queryPanel);
+    }
+    this.#syncPanelDismissal();
     const createOps = this.#renderCreateOps(state);
     if (createOps !== null) root.append(createOps);
     const deleteNotice = this.#renderDeletedNotice(state);
@@ -651,6 +663,37 @@ export class ReadonlyGridRenderer {
     this.#displayPanel = null;
     this.#createForm = null;
     this.#rerenderSelf();
+  }
+
+  #anchorQueryPanel(toolbar: HTMLElement, panel: HTMLElement): void {
+    if (panel.dataset.panel === 'status') {
+      panel.classList.add('loom-query-panel--end');
+      return;
+    }
+    const toggle = toolbar.querySelector<HTMLElement>(
+      `[data-action="toggle-${panel.dataset.panel}"]`,
+    );
+    if (toggle === null) return;
+    const maxLeft = Math.max(0, this.#container.clientWidth - 400 - 8);
+    panel.style.setProperty('--loom-panel-anchor', `${Math.min(toggle.offsetLeft, maxLeft)}px`);
+  }
+
+  #syncPanelDismissal(): void {
+    if (this.#openPanel === null) {
+      if (this.#panelDismiss !== null) {
+        this.#container.ownerDocument.removeEventListener('pointerdown', this.#panelDismiss, true);
+        this.#panelDismiss = null;
+      }
+      return;
+    }
+    if (this.#panelDismiss !== null) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const el = event.target instanceof Element ? event.target : null;
+      if (el !== null && el.closest('.loom-query-panel, .loom-grid-toolbar') !== null) return;
+      this.#closePanels();
+    };
+    this.#container.ownerDocument.addEventListener('pointerdown', onPointerDown, true);
+    this.#panelDismiss = onPointerDown;
   }
 
   #renderCreatePanel(state: GridState): HTMLElement | null {
@@ -1359,15 +1402,18 @@ export class ReadonlyGridRenderer {
       });
       const cell = createGridCell('', 'loom-grid-cell');
       cell.append(
-        createRenderedFieldValueElement(displayValue, {
-          compactAttachments: true,
-          ...(this.#callbacks.attachmentThumbnail === undefined
-            ? {}
-            : { attachmentThumbnail: this.#callbacks.attachmentThumbnail }),
-          ...(gridState?.search !== undefined && gridState.search !== ''
-            ? { highlight: gridState.search }
-            : {}),
-        }),
+        createRenderedFieldValueElement(
+          displayValue.state === 'unset' ? { ...displayValue, text: '' } : displayValue,
+          {
+            compactAttachments: true,
+            ...(this.#callbacks.attachmentThumbnail === undefined
+              ? {}
+              : { attachmentThumbnail: this.#callbacks.attachmentThumbnail }),
+            ...(gridState?.search !== undefined && gridState.search !== ''
+              ? { highlight: gridState.search }
+              : {}),
+          },
+        ),
       );
       cell.setAttribute('role', 'gridcell');
       cell.setAttribute('aria-colindex', String(fieldIndex + 2));

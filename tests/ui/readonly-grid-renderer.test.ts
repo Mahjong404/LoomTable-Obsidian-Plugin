@@ -380,7 +380,11 @@ describe('ReadonlyGridRenderer', () => {
     );
 
     renderer.render(locationState(undefined));
-    expect(container.querySelector('[data-field-id="field_location"]')?.textContent).toBe('Unset');
+    const unsetCell = container.querySelector('[data-field-id="field_location"]');
+    expect(unsetCell?.textContent).toBe('');
+    expect(unsetCell?.querySelector('.loom-field-value')?.getAttribute('data-value-state')).toBe(
+      'unset',
+    );
     renderer.render(locationState({ label: 'No coordinates' }));
     expect(container.querySelector('[data-field-id="field_location"]')?.textContent).toBe(
       'Unlocated',
@@ -2119,6 +2123,67 @@ describe('Grid record lifecycle', () => {
     expect(panel?.querySelector('[aria-label="Refresh"]')).not.toBeNull();
     expect(panel?.querySelectorAll('.loom-recycle-item')).toHaveLength(1);
     expect(callbacks.onLoadDeletedRecords).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
+  it('anchors the status panel to the toolbar end and query panels under their toggle', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter: vi.fn(async () => ({ status: 'saved' }) as never),
+      onLoadDeletedRecords: vi.fn(async () => undefined),
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    const statusPanel = container.querySelector<HTMLElement>('.loom-status-panel');
+    expect(statusPanel?.classList.contains('loom-query-panel--end')).toBe(true);
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')?.click();
+    const filterPanel = container.querySelector<HTMLElement>(
+      '.loom-query-panel[data-panel="filter"]',
+    );
+    expect(filterPanel?.style.getPropertyValue('--loom-panel-anchor')).toBe('0px');
+    container.remove();
+  });
+
+  it('closes an open panel on outside pointerdown and keeps it on inside clicks', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter: vi.fn(async () => ({ status: 'saved' }) as never),
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')?.click();
+    const panel = container.querySelector<HTMLElement>('.loom-query-panel[data-panel="filter"]');
+    expect(panel).not.toBeNull();
+
+    panel?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(container.querySelector('.loom-query-panel[data-panel="filter"]')).not.toBeNull();
+
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(container.querySelector('.loom-query-panel[data-panel="filter"]')).toBeNull();
+    container.remove();
+  });
+
+  it('closes an open panel on Escape and refocuses nothing destructive', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter: vi.fn(async () => ({ status: 'saved' }) as never),
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')?.click();
+    expect(container.querySelector('.loom-query-panel[data-panel="filter"]')).not.toBeNull();
+
+    container.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(container.querySelector('.loom-query-panel[data-panel="filter"]')).toBeNull();
     container.remove();
   });
 

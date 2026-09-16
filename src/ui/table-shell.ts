@@ -108,6 +108,7 @@ export class TableShell {
   #repairLocation = '';
   #manageFormError: string | null = null;
   #tabObserver: ResizeObserver | null = null;
+  #overlayDismiss: ((event: PointerEvent) => void) | null = null;
 
   constructor(
     translate: Translator,
@@ -206,7 +207,44 @@ export class TableShell {
     }
     ensureButtonLabels(root);
     this.#lastRoot = root;
+    this.#syncOverlayDismissal(root);
+    root.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) return;
+      if (!this.#createOpen && !this.#manageOpen) return;
+      event.preventDefault();
+      this.#createOpen = false;
+      this.#manageOpen = false;
+      this.#manageEdit = null;
+      this.#rerender();
+    });
     return root;
+  }
+
+  #syncOverlayDismissal(root: HTMLElement): void {
+    const open = this.#createOpen || this.#manageOpen;
+    if (!open) {
+      if (this.#overlayDismiss !== null) {
+        root.ownerDocument.removeEventListener('pointerdown', this.#overlayDismiss, true);
+        this.#overlayDismiss = null;
+      }
+      return;
+    }
+    if (this.#overlayDismiss !== null) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const el = event.target instanceof Element ? event.target : null;
+      if (
+        el !== null &&
+        el.closest('.loom-view-create-form, .loom-view-manage, .loom-shell-actions') !== null
+      ) {
+        return;
+      }
+      this.#createOpen = false;
+      this.#manageOpen = false;
+      this.#manageEdit = null;
+      this.#rerender();
+    };
+    root.ownerDocument.addEventListener('pointerdown', onPointerDown, true);
+    this.#overlayDismiss = onPointerDown;
   }
 
   #toggleManage(state: TableShellState): void {
