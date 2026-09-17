@@ -27,6 +27,7 @@ export default class LoomTablePlugin extends Plugin {
   private tileProviders!: TileProviderRegistry;
   private mutationQueueRuntime: MutationQueueRuntime | null = null;
   private readonly mutationInvalidations = new MutationInvalidationBus();
+  private statusBarSink: ((text: string | null) => void) | null = null;
 
   override async onload(): Promise<void> {
     this.settings = normalizePluginSettings(await this.loadData());
@@ -125,8 +126,16 @@ export default class LoomTablePlugin extends Plugin {
           },
           mutationScheduler,
           this.mutationInvalidations,
+          this.statusBarSink,
         ),
     );
+
+    const statusBarItem = this.addStatusBarItem();
+    statusBarItem.addClass('loom-status-bar-item', 'is-hidden');
+    this.statusBarSink = (text) => {
+      statusBarItem.toggleClass('is-hidden', text === null);
+      if (text !== null) statusBarItem.setText(text);
+    };
 
     const openView = async (): Promise<void> => this.activateView();
     this.addRibbonIcon(

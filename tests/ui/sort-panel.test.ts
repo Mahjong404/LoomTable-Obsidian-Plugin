@@ -29,15 +29,17 @@ function createPanel(
   initial: readonly SortSpec[],
   callbacks: {
     onApply?: (sort: readonly SortSpec[]) => void | Promise<unknown>;
-    onCancel?: () => void;
   } = {},
 ) {
   return new SortPanel(initial, {
     fields: FIELDS,
     translate: createTranslator('en'),
     onApply: callbacks.onApply ?? vi.fn(),
-    onCancel: callbacks.onCancel ?? vi.fn(),
   });
+}
+
+async function waitForApply(onApply: ReturnType<typeof vi.fn>): Promise<void> {
+  await vi.waitFor(() => expect(onApply).toHaveBeenCalled(), { timeout: 1000 });
 }
 
 function mount(panel: SortPanel): HTMLElement {
@@ -63,8 +65,7 @@ describe('SortPanel', () => {
 
     addSelect!.value = 'field_count';
     host.querySelector<HTMLButtonElement>('[data-action="sort-add"]')?.click();
-    host.querySelector<HTMLButtonElement>('[data-action="sort-apply-all"]')?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalled());
+    await waitForApply(onApply);
     expect(onApply.mock.calls[0]?.[0]).toEqual([
       { fieldId: 'field_count', direction: 'asc', nulls: 'last' },
     ] as const);
@@ -103,9 +104,8 @@ describe('SortPanel', () => {
     rows = [...host.querySelectorAll<HTMLElement>('li[data-sort-index]')];
     expect(rows).toHaveLength(1);
 
-    host.querySelector<HTMLButtonElement>('[data-action="sort-apply-all"]')?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalled());
-    expect(onApply.mock.calls[0]?.[0]).toEqual([
+    await waitForApply(onApply);
+    expect(onApply.mock.calls.at(-1)?.[0]).toEqual([
       { fieldId: 'field_count', direction: 'asc', nulls: 'first' },
     ]);
     host.remove();
@@ -122,7 +122,6 @@ describe('SortPanel', () => {
       fields,
       translate: createTranslator('en'),
       onApply: vi.fn(),
-      onCancel: vi.fn(),
     });
     const host = mount(panel);
     expect(host.querySelector<HTMLButtonElement>('[data-action="sort-add"]')?.disabled).toBe(true);
@@ -147,8 +146,8 @@ describe('SortPanel', () => {
     host
       .querySelector<HTMLButtonElement>('li[data-sort-index="0"] [data-action="sort-remove"]')
       ?.click();
-    host.querySelector<HTMLButtonElement>('[data-action="sort-apply-all"]')?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalledWith([]));
+    await waitForApply(onApply);
+    expect(onApply).toHaveBeenCalledWith([]);
     host.remove();
   });
 
@@ -158,7 +157,6 @@ describe('SortPanel', () => {
       fields: FIELDS,
       translate: createTranslator('en'),
       onApply: vi.fn(),
-      onCancel: vi.fn(),
       onInvalidate,
     });
     const host = document.createElement('div');

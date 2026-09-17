@@ -5,6 +5,7 @@ export interface ContextMenuItem {
   readonly icon?: UiIconName;
   readonly danger?: boolean;
   readonly disabled?: boolean;
+  readonly dataAction?: string;
   readonly action: () => void;
 }
 
@@ -43,6 +44,7 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     item.className = 'loom-context-menu-item clickable-icon';
     item.setAttribute('role', 'menuitem');
     if (entry.danger === true) item.dataset.variant = 'danger';
+    if (entry.dataAction !== undefined) item.dataset.action = entry.dataAction;
     item.disabled = entry.disabled === true;
     if (entry.icon !== undefined) item.append(createUiIcon(entry.icon));
     item.append(createTextSpan(entry.label));

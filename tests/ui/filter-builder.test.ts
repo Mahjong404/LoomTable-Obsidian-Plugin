@@ -47,8 +47,6 @@ function createBuilder(
   initial: FilterNode | undefined,
   callbacks: {
     onApply?: (filter: FilterNode | undefined) => void | Promise<unknown>;
-    onCancel?: () => void;
-    confirmDiscard?: (message: string) => boolean | Promise<boolean>;
     onInvalidate?: () => void;
   } = {},
 ) {
@@ -56,14 +54,16 @@ function createBuilder(
     fields: FIELDS,
     translate: createTranslator('en'),
     onApply: callbacks.onApply ?? vi.fn(),
-    onCancel: callbacks.onCancel ?? vi.fn(),
-    ...(callbacks.confirmDiscard === undefined ? {} : { confirmDiscard: callbacks.confirmDiscard }),
     ...(callbacks.onInvalidate === undefined ? {} : { onInvalidate: callbacks.onInvalidate }),
   });
 }
 
+async function waitForApply(onApply: ReturnType<typeof vi.fn>): Promise<void> {
+  await vi.waitFor(() => expect(onApply).toHaveBeenCalled(), { timeout: 1000 });
+}
+
 describe('FilterBuilder', () => {
-  it('starts empty drafts with an add-rule entry and no Apply until valid', async () => {
+  it('starts empty drafts with an add-rule entry and never applies invalid state', async () => {
     const onApply = vi.fn();
     const builder = createBuilder(undefined, { onApply });
     const host = mount(builder);
@@ -75,12 +75,12 @@ describe('FilterBuilder', () => {
       'select[data-role="filter-field"]',
     );
     expect(fieldSelect?.value).toBe('field_name');
-    const apply = host.querySelector<HTMLButtonElement>('[data-action="filter-apply"]');
-    expect(apply?.disabled).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(onApply).not.toHaveBeenCalled();
     host.remove();
   });
 
-  it('applies a complete draft as a FilterNode tree', async () => {
+  it('applies a complete draft as a FilterNode tree without an apply step', async () => {
     const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
     const builder = createBuilder(undefined, { onApply });
     const host = mount(builder);
@@ -92,10 +92,7 @@ describe('FilterBuilder', () => {
     valueInput.value = '  alpha ';
     valueInput.dispatchEvent(new Event('input', { bubbles: true }));
 
-    const apply = host.querySelector<HTMLButtonElement>('[data-action="filter-apply"]');
-    expect(apply?.disabled).toBe(false);
-    apply?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalled());
+    await waitForApply(onApply);
     const sent = onApply.mock.calls[0]?.[0];
     expect(sent).toEqual({
       kind: 'group',
@@ -121,12 +118,9 @@ describe('FilterBuilder', () => {
       ?.click();
     const emptyGroup = host.querySelector<HTMLElement>('[data-path="1"]');
     expect(emptyGroup?.querySelector('select[data-role="filter-group-op"]')).not.toBeNull();
-    const apply = host.querySelector<HTMLButtonElement>('[data-action="filter-apply"]');
-    expect(apply?.disabled).toBe(true);
     const issue = host.querySelector<HTMLElement>('.loom-filter-issue[data-path="1"]');
     expect(issue).not.toBeNull();
-    apply?.click();
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 400));
     expect(onApply).not.toHaveBeenCalled();
     host.remove();
   });
@@ -142,15 +136,14 @@ describe('FilterBuilder', () => {
     );
     expect(option?.textContent).toContain('Legacy');
     expect(option?.dataset.deleted).toBe('true');
-    const apply = host.querySelector<HTMLButtonElement>('[data-action="filter-apply"]');
-    expect(apply?.disabled).toBe(false);
     host.remove();
   });
 
-  it('omits the value for isEmpty and requires one otherwise', async () => {
+  it('omits the value for isEmpty and applies the change automatically', async () => {
+    const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
     const builder = createBuilder(
       { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
-      {},
+      { onApply },
     );
     const host = mount(builder);
     const operator = host.querySelector<HTMLSelectElement>(
@@ -162,8 +155,12 @@ describe('FilterBuilder', () => {
     expect(
       host.querySelector('input[data-role="filter-value"], select[data-role="filter-value"]'),
     ).toBeNull();
-    const apply = host.querySelector<HTMLButtonElement>('[data-action="filter-apply"]');
-    expect(apply?.disabled).toBe(false);
+    await waitForApply(onApply);
+    expect(onApply.mock.calls[0]?.[0]).toEqual({
+      kind: 'rule',
+      fieldId: 'field_name',
+      operator: 'isEmpty',
+    });
     host.remove();
   });
 
@@ -179,8 +176,8 @@ describe('FilterBuilder', () => {
         '[data-path=""] [data-action="filter-remove"], [data-path="0"] [data-action="filter-remove"]',
       )
       ?.click();
-    host.querySelector<HTMLButtonElement>('[data-action="filter-apply"]')?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalledWith(undefined));
+    await waitForApply(onApply);
+    expect(onApply).toHaveBeenCalledWith(undefined);
     host.remove();
   });
 
@@ -217,18 +214,6 @@ describe('FilterBuilder', () => {
     const rebuilt = builder.render();
     host.append(rebuilt);
     expect(rebuilt.querySelector('[data-path="0"]')).not.toBeNull();
-    host.remove();
-  });
-
-  it('confirms before discarding a dirty draft', async () => {
-    const onCancel = vi.fn();
-    const confirmDiscard = vi.fn(() => true);
-    const builder = createBuilder(undefined, { onCancel, confirmDiscard });
-    const host = mount(builder);
-    host.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
-    host.querySelector<HTMLButtonElement>('[data-action="filter-cancel"]')?.click();
-    await vi.waitFor(() => expect(confirmDiscard).toHaveBeenCalled());
-    await vi.waitFor(() => expect(onCancel).toHaveBeenCalled());
     host.remove();
   });
 });

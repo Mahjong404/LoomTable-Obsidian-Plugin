@@ -183,9 +183,8 @@ export class MapView {
   #navElement: HTMLElement | null = null;
   #filterOpen = false;
   #filterBuilder: FilterBuilder | null = null;
-  #filterRevision = -1;
+  #filterViewId: string | null = null;
   #filterHost: HTMLElement | null = null;
-  #filterToggle: HTMLButtonElement | null = null;
   #createOpen = false;
   #createForm: RecordCreateForm | null = null;
   #createHost: HTMLElement | null = null;
@@ -258,7 +257,6 @@ export class MapView {
         if (this.#lastState !== null) this.#renderFilterPanel(this.#lastState, translate);
       });
       start.append(filterButton);
-      this.#filterToggle = filterButton;
     }
     if (provider !== null) {
       if (start.childElementCount > 0) {
@@ -359,41 +357,21 @@ export class MapView {
       return;
     }
     const view = state.view;
-    if (this.#filterBuilder === null || this.#filterRevision !== view.revision) {
+    // The builder applies changes as they happen; key it by View so a saved
+    // revision bump does not discard an in-flight draft.
+    if (this.#filterBuilder === null || this.#filterViewId !== view.id) {
       this.#filterBuilder = new FilterBuilder(
         view.type === 'map' ? view.config.filter : undefined,
         {
           fields: state.fields.filter((field) => field.deletedAt === undefined),
           translate,
-          onApply: async (filter) => {
-            const outcome = await onApplyFilter(view.id, filter);
-            const saved =
-              typeof outcome === 'object' &&
-              outcome !== null &&
-              (outcome as { status?: string }).status === 'saved';
-            if (saved) {
-              this.#filterOpen = false;
-              this.#filterToggle?.setAttribute('aria-expanded', 'false');
-              this.#filterBuilder = null;
-              if (this.#lastState !== null) this.#renderFilterPanel(this.#lastState, translate);
-            }
-            return outcome;
-          },
-          onCancel: () => {
-            this.#filterOpen = false;
-            this.#filterToggle?.setAttribute('aria-expanded', 'false');
-            this.#filterBuilder = null;
-            this.#renderFilterPanel(state, translate);
-          },
-          ...(this.options.confirmDiscard === undefined
-            ? {}
-            : { confirmDiscard: this.options.confirmDiscard }),
+          onApply: (filter) => onApplyFilter(view.id, filter),
           onInvalidate: () => {
             if (this.#lastState !== null) this.#renderFilterPanel(this.#lastState, translate);
           },
         },
       );
-      this.#filterRevision = view.revision;
+      this.#filterViewId = view.id;
     }
     host.replaceChildren(this.#filterBuilder.render());
   }
@@ -496,7 +474,6 @@ export class MapView {
     this.#navElement = null;
     this.#filterBuilder = null;
     this.#filterHost = null;
-    this.#filterToggle = null;
     this.#filterOpen = false;
     this.#createForm = null;
     this.#createHost = null;

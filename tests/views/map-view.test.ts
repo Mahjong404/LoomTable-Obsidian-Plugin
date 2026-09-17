@@ -1227,7 +1227,7 @@ describe('MapView', () => {
     });
     view.mount();
     view.renderState({
-      ...initialMapViewState(createMapView(), [createLocationField()]),
+      ...initialMapViewState(createMapView(), [createLocationField(), createTextField()]),
       dataStatus: 'ready',
     });
 
@@ -1239,12 +1239,27 @@ describe('MapView', () => {
     expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
 
     container.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
-    const apply = container.querySelector<HTMLButtonElement>('[data-action="filter-apply"]');
-    expect(apply?.disabled).toBe(false);
-    apply?.click();
-    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled());
+    const fieldSelect = container.querySelector<HTMLSelectElement>(
+      'select[data-role="filter-field"]',
+    );
+    if (fieldSelect === null) throw new Error('Filter field select is missing.');
+    fieldSelect.value = 'field_text';
+    fieldSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    const operatorSelect = container.querySelector<HTMLSelectElement>(
+      'select[data-role="filter-operator"]',
+    );
+    if (operatorSelect === null) throw new Error('Filter operator select is missing.');
+    operatorSelect.value = 'is';
+    operatorSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    const valueInput = container.querySelector<HTMLInputElement>('input[data-role="filter-value"]');
+    if (valueInput === null) throw new Error('Filter value input is missing.');
+    valueInput.value = 'x';
+    valueInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled(), { timeout: 1000 });
     expect(onApplyFilter.mock.calls[0]?.[0]).toBe('view_map');
-    await vi.waitFor(() => expect(toggle?.getAttribute('aria-expanded')).toBe('false'));
+    // Immediate mode keeps the panel open after a successful write.
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+    expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
     view.destroy();
   });
 
@@ -1259,14 +1274,29 @@ describe('MapView', () => {
     });
     view.mount();
     view.renderState({
-      ...initialMapViewState(createMapView(), [createLocationField()]),
+      ...initialMapViewState(createMapView(), [createLocationField(), createTextField()]),
       dataStatus: 'ready',
     });
 
     container.querySelector<HTMLButtonElement>('.loom-map-filter-toggle')?.click();
     container.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
-    container.querySelector<HTMLButtonElement>('[data-action="filter-apply"]')?.click();
-    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled());
+    const fieldSelect = container.querySelector<HTMLSelectElement>(
+      'select[data-role="filter-field"]',
+    );
+    if (fieldSelect === null) throw new Error('Filter field select is missing.');
+    fieldSelect.value = 'field_text';
+    fieldSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    const operatorSelect = container.querySelector<HTMLSelectElement>(
+      'select[data-role="filter-operator"]',
+    );
+    if (operatorSelect === null) throw new Error('Filter operator select is missing.');
+    operatorSelect.value = 'is';
+    operatorSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    const valueInput = container.querySelector<HTMLInputElement>('input[data-role="filter-value"]');
+    if (valueInput === null) throw new Error('Filter value input is missing.');
+    valueInput.value = 'x';
+    valueInput.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled(), { timeout: 1000 });
     expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
     view.destroy();
   });
@@ -1355,6 +1385,19 @@ function createLocationField(): Field {
   };
 }
 
+function createTextField(): Field {
+  return {
+    id: 'field_text',
+    tableId: 'table_01',
+    name: 'Notes',
+    position: 1,
+    schemaVersion: 1,
+    revision: 1,
+    type: 'text',
+    config: {},
+  };
+}
+
 function createLocationRecord(id: string, label: string): LoomTableRecord {
   return {
     id,
@@ -1428,14 +1471,10 @@ describe('Map record delete', () => {
       selectedRecord: record,
     });
 
+    container.querySelector<HTMLButtonElement>('[data-action="detail-menu"]')?.click();
     const remove = container.querySelector<HTMLButtonElement>('[data-action="detail-delete"]');
     expect(remove).not.toBeNull();
     remove?.click();
-    const confirm = container.querySelector<HTMLButtonElement>(
-      '.loom-dangerous-confirmation [data-action="confirm"]',
-    );
-    expect(confirm).not.toBeNull();
-    confirm?.click();
     await vi.waitFor(() =>
       expect(onDeleteRecord).toHaveBeenCalledWith(
         'record_01',
@@ -1465,6 +1504,7 @@ describe('Map record delete', () => {
         updatedAt: '',
       },
     });
+    container.querySelector<HTMLButtonElement>('[data-action="detail-menu"]')?.click();
     expect(container.querySelector('[data-action="detail-delete"]')).toBeNull();
     view.destroy();
     container.remove();

@@ -149,9 +149,10 @@ describe('ReadonlyGridRenderer', () => {
     firstCell?.click();
     const firstEditor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(firstEditor).not.toBeNull();
+    firstEditor!.value = 'Renamed Record';
     firstEditor?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }));
 
-    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', 'Record 1');
+    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', 'Renamed Record');
     expect(document.activeElement).toBe(
       container.querySelector('.loom-grid-cell[data-field-id="field_second"]'),
     );
@@ -160,6 +161,7 @@ describe('ReadonlyGridRenderer', () => {
     container.querySelector<HTMLElement>('.loom-grid-cell[data-field-id="field_second"]')?.click();
     const secondEditor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(secondEditor).not.toBeNull();
+    secondEditor!.value = 'Changed Second';
     secondEditor?.dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'Tab',
@@ -168,7 +170,11 @@ describe('ReadonlyGridRenderer', () => {
       }),
     );
 
-    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_second', 'Second value');
+    expect(callbacks.onCellEdit).toHaveBeenCalledWith(
+      'record_01',
+      'field_second',
+      'Changed Second',
+    );
     expect(document.activeElement).toBe(
       container.querySelector('.loom-grid-cell[data-field-id="field_name"]'),
     );
@@ -185,8 +191,10 @@ describe('ReadonlyGridRenderer', () => {
     cell?.click();
     const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(editor).not.toBeNull();
+    editor!.value = 'Edited value';
     editor?.dispatchEvent(new Event('blur', { bubbles: true }));
     await vi.waitFor(() => expect(callbacks.onCellEdit).toHaveBeenCalledTimes(1));
+    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', 'Edited value');
 
     renderer.render(createState(1, { editStatuses: { record_01: 'saving' } }));
     const savingCell = container.querySelector<HTMLElement>(
@@ -194,6 +202,43 @@ describe('ReadonlyGridRenderer', () => {
     );
     savingCell?.click();
     expect(container.querySelector('.loom-grid-editor')).toBeNull();
+  });
+
+  it('skips the commit when the editor value is unchanged', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1));
+    const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.click();
+    cell?.click();
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor).not.toBeNull();
+    editor?.dispatchEvent(new Event('blur', { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(callbacks.onCellEdit).not.toHaveBeenCalled();
+    container.remove();
+  });
+
+  it('enters edit mode on Cell double click and opens the Record from the index cell', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1));
+    const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(container.querySelector('.loom-grid-editor')).not.toBeNull();
+    expect(callbacks.onRecordOpen).not.toHaveBeenCalled();
+
+    renderer.render(createState(1));
+    const indexCell = container.querySelector<HTMLElement>('.loom-grid-index-cell');
+    indexCell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(callbacks.onRecordOpen).toHaveBeenCalledTimes(1);
+    container.remove();
   });
 
   it('confirms Conflict Overwrite before invoking the recovery callback', async () => {
@@ -827,7 +872,7 @@ describe('ReadonlyGridRenderer', () => {
 });
 
 describe('Grid query controls', () => {
-  it('submits Search only on Enter or the Search button, never while typing', async () => {
+  it('submits Search after a typing pause and on Enter immediately', async () => {
     const container = document.createElement('div');
     document.body.append(container);
     const onSearch = vi.fn(async (_term: string) => true);
@@ -837,14 +882,22 @@ describe('Grid query controls', () => {
     });
     renderer.render(createState(1));
 
+    container.querySelector<HTMLButtonElement>('[data-action="search-expand"]')?.click();
     const input = container.querySelector<HTMLInputElement>('input[data-role="grid-search"]');
     if (input === null) throw new Error('Search input is missing.');
     input.value = 'alp';
     input.dispatchEvent(new Event('input', { bubbles: true }));
     expect(onSearch).not.toHaveBeenCalled();
 
+    await vi.waitFor(() => expect(onSearch).toHaveBeenCalledWith('alp'), {
+      timeout: 1000,
+    });
+
+    onSearch.mockClear();
+    input.value = 'alpine';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    await vi.waitFor(() => expect(onSearch).toHaveBeenCalledWith('alp'));
+    await vi.waitFor(() => expect(onSearch).toHaveBeenCalledWith('alpine'));
     container.remove();
   });
 
@@ -875,12 +928,12 @@ describe('Grid query controls', () => {
     });
     renderer.render(createState(1));
 
+    container.querySelector<HTMLButtonElement>('[data-action="search-expand"]')?.click();
     const input = container.querySelector<HTMLInputElement>('input[data-role="grid-search"]');
     if (input === null) throw new Error('Search input is missing.');
     input.value = 'x'.repeat(501);
     input.dispatchEvent(new Event('input', { bubbles: true }));
-    container.querySelector<HTMLButtonElement>('[data-action="search-submit"]')?.click();
-    await vi.waitFor(() => expect(onSearch).toHaveBeenCalled());
+    await vi.waitFor(() => expect(onSearch).toHaveBeenCalled(), { timeout: 1000 });
     await vi.waitFor(() =>
       expect(container.querySelector('.loom-grid-search-error')).not.toBeNull(),
     );
@@ -914,8 +967,7 @@ describe('Grid query controls', () => {
     valueInput.value = 'needle';
     valueInput.dispatchEvent(new Event('input', { bubbles: true }));
 
-    container.querySelector<HTMLButtonElement>('[data-action="filter-apply"]')?.click();
-    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled());
+    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled(), { timeout: 1000 });
     expect(onApplyFilter.mock.calls[0]?.[0]).toBe('view_01');
     expect(onApplyFilter.mock.calls[0]?.[1]).toEqual({
       kind: 'group',
@@ -924,7 +976,8 @@ describe('Grid query controls', () => {
     });
 
     renderer.render(savedState);
-    expect(container.querySelector('.loom-filter-builder')).toBeNull();
+    // Immediate mode keeps the panel open after a successful write.
+    expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
     container.remove();
   });
 
@@ -954,8 +1007,7 @@ describe('Grid query controls', () => {
     if (valueInput === null) throw new Error('Filter value input is missing.');
     valueInput.value = 'x';
     valueInput.dispatchEvent(new Event('input', { bubbles: true }));
-    container.querySelector<HTMLButtonElement>('[data-action="filter-apply"]')?.click();
-    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled());
+    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled(), { timeout: 1000 });
 
     const issueState: GridState = {
       ...state,
@@ -1162,14 +1214,14 @@ describe('Grid query controls', () => {
     width.value = '240';
     width.dispatchEvent(new Event('input', { bubbles: true }));
 
-    container.querySelector<HTMLButtonElement>('[data-action="display-apply"]')?.click();
-    await vi.waitFor(() => expect(onApplyDisplay).toHaveBeenCalled());
-    const patch = onApplyDisplay.mock.calls[0]?.[1];
+    await vi.waitFor(() => expect(onApplyDisplay).toHaveBeenCalled(), { timeout: 1000 });
+    const patch = onApplyDisplay.mock.calls.at(-1)?.[1];
     expect(patch?.columnWidths).toEqual({ field_name: 240 });
     expect(patch?.projection).toEqual(['field_name']);
 
     renderer.render(savedState);
-    expect(container.querySelector('.loom-display-panel')).toBeNull();
+    // Immediate mode keeps the panel open after a successful write.
+    expect(container.querySelector('.loom-display-panel')).not.toBeNull();
     container.remove();
   });
 
@@ -1811,9 +1863,12 @@ describe('Grid record create', () => {
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
     renderer.render(createState(1));
 
-    const button = container.querySelector<HTMLButtonElement>('.loom-grid-record-create');
-    expect(button).not.toBeNull();
-    button?.click();
+    const caret = container.querySelector<HTMLButtonElement>('[data-action="create-menu"]');
+    expect(caret).not.toBeNull();
+    caret?.click();
+    container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item').forEach((item) => {
+      if (item.textContent?.includes('Open create form')) item.click();
+    });
     const form = container.querySelector<HTMLElement>('.loom-record-create');
     expect(form).not.toBeNull();
     const input = container.querySelector<HTMLInputElement>('.loom-record-create-fields input');
@@ -1963,13 +2018,14 @@ describe('Grid record lifecycle', () => {
     container.remove();
   });
 
-  it('does not delete when the confirmation is cancelled', async () => {
+  it('deletes immediately without a confirmation dialog', async () => {
     const container = document.createElement('div');
     document.body.append(container);
     const callbacks = lifecycleCallbacks();
+    const confirmDangerousAction = vi.fn(async () => false);
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
       ...callbacks,
-      confirmDangerousAction: vi.fn(async () => false),
+      confirmDangerousAction,
     });
     renderer.render(createState(2));
 
@@ -1979,8 +2035,10 @@ describe('Grid record lifecycle', () => {
     container
       .querySelector<HTMLButtonElement>('.loom-context-menu-item[data-variant="danger"]')
       ?.click();
+    expect(container.querySelector('.loom-dangerous-confirmation')).toBeNull();
+    expect(confirmDangerousAction).not.toHaveBeenCalled();
     await Promise.resolve();
-    expect(callbacks.onDeleteRecord).not.toHaveBeenCalled();
+    expect(callbacks.onDeleteRecord).toHaveBeenCalledTimes(1);
     container.remove();
   });
 
@@ -2047,6 +2105,7 @@ describe('Grid record lifecycle', () => {
     const toggle = container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]');
     expect(toggle).not.toBeNull();
     toggle?.click();
+    container.querySelector<HTMLButtonElement>('.loom-status-mode[data-mode="deleted"]')?.click();
     expect(callbacks.onLoadDeletedRecords).toHaveBeenCalledTimes(1);
 
     const panel = container.querySelector<HTMLElement>('.loom-status-panel');
@@ -2066,14 +2125,19 @@ describe('Grid record lifecycle', () => {
     const callbacks = lifecycleCallbacks();
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
 
+    const openDeletedMode = (): void => {
+      container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+      container.querySelector<HTMLButtonElement>('.loom-status-mode[data-mode="deleted"]')?.click();
+    };
+
     renderer.render(createState(1, { deletedRecordsStatus: 'loading' }));
-    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    openDeletedMode();
     expect(container.querySelector('.loom-recycle-status')?.textContent).toContain('Loading');
 
     renderer.render(createState(1, { deletedRecordsStatus: 'ready', deletedRecords: [] }));
     container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
     await Promise.resolve();
-    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    openDeletedMode();
     expect(container.querySelector('.loom-recycle-status')?.textContent).toContain('No deleted');
 
     renderer.render(
@@ -2121,8 +2185,98 @@ describe('Grid record lifecycle', () => {
     expect(panel?.querySelectorAll('.loom-change-item')).toHaveLength(2);
     expect(panel?.querySelector('.loom-change-item-kind')?.textContent).toBe('Edited');
     expect(panel?.querySelector('[aria-label="Refresh"]')).not.toBeNull();
-    expect(panel?.querySelectorAll('.loom-recycle-item')).toHaveLength(1);
+    panel?.querySelector<HTMLButtonElement>('.loom-status-mode[data-mode="deleted"]')?.click();
+    const rerendered = container.querySelector<HTMLElement>('.loom-status-panel');
+    expect(rerendered?.querySelectorAll('.loom-recycle-item')).toHaveLength(1);
     expect(callbacks.onLoadDeletedRecords).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
+  it('filters change history by kind and renders value deltas', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      lifecycleCallbacks(),
+    );
+    renderer.render(
+      createState(1, {
+        historyEntries: [
+          {
+            kind: 'edit',
+            recordId: 'record_01',
+            fieldName: 'Name',
+            recordTitle: 'Record 1',
+            before: 'old',
+            after: 'new',
+            at: '2026-09-15T10:00:00.000Z',
+          },
+          {
+            kind: 'delete',
+            recordId: 'record_02',
+            recordTitle: 'Record 2',
+            at: '2026-09-15T10:01:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    const panel = container.querySelector<HTMLElement>('.loom-status-panel');
+    expect(panel?.querySelector('.loom-change-item-delta')?.textContent).toContain('old');
+    expect(panel?.querySelector('.loom-change-item-delta')?.textContent).toContain('new');
+
+    panel?.querySelector<HTMLButtonElement>('.loom-change-filter[data-kind="delete"]')?.click();
+    const rerendered = container.querySelector<HTMLElement>('.loom-status-panel');
+    const items = rerendered?.querySelectorAll<HTMLElement>('.loom-change-item') ?? [];
+    expect(items).toHaveLength(1);
+    expect(items[0]?.dataset.kind).toBe('delete');
+
+    rerendered?.querySelector<HTMLButtonElement>('.loom-change-filter[data-kind="all"]')?.click();
+    expect(
+      container
+        .querySelector<HTMLElement>('.loom-status-panel')
+        ?.querySelectorAll('.loom-change-item'),
+    ).toHaveLength(2);
+    container.remove();
+  });
+
+  it('wires per-entry undo to onUndoTo with the original entry index', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const onUndoTo = vi.fn(async () => undefined);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...callbacks,
+      onUndoTo,
+    });
+    renderer.render(
+      createState(1, {
+        historyEntries: [
+          {
+            kind: 'edit',
+            recordId: 'record_01',
+            fieldName: 'Name',
+            recordTitle: 'Record 1',
+            at: '2026-09-15T10:00:00.000Z',
+          },
+          {
+            kind: 'delete',
+            recordId: 'record_02',
+            recordTitle: 'Record 2',
+            at: '2026-09-15T10:01:00.000Z',
+          },
+        ],
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    const panel = container.querySelector<HTMLElement>('.loom-status-panel');
+    const undoButtons = panel?.querySelectorAll<HTMLButtonElement>('.loom-change-item-undo');
+    expect(undoButtons).toHaveLength(2);
+    undoButtons?.[1]?.click();
+    expect(onUndoTo).toHaveBeenCalledWith(1);
     container.remove();
   });
 
@@ -2145,7 +2299,46 @@ describe('Grid record lifecycle', () => {
     const filterPanel = container.querySelector<HTMLElement>(
       '.loom-query-panel[data-panel="filter"]',
     );
-    expect(filterPanel?.style.getPropertyValue('--loom-panel-anchor')).toBe('0px');
+    // Unmeasurable test DOM leaves the custom property unset so the CSS
+    // default (0) anchors the panel at the toolbar start.
+    expect(filterPanel?.style.getPropertyValue('--loom-panel-anchor')).toBe('');
+    container.remove();
+  });
+
+  it('anchors the query panel to its toggle using post-mount geometry', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter: vi.fn(async () => ({ status: 'saved' }) as never),
+    });
+    renderer.render(createState(1));
+
+    const rect = (left: number, width: number): DOMRect => ({
+      left,
+      right: left + width,
+      width,
+      top: 0,
+      bottom: 0,
+      height: 0,
+      x: left,
+      y: 0,
+      toJSON: () => ({}),
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      if (this.dataset?.action === 'toggle-filter') return rect(320, 90);
+      if (this.classList?.contains('loom-grid-toolbar')) return rect(0, 800);
+      if (this.classList?.contains('loom-query-panel')) return rect(0, 380);
+      return rect(0, 0);
+    });
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')?.click();
+    await vi.waitFor(() => {
+      const panel = container.querySelector<HTMLElement>('.loom-query-panel[data-panel="filter"]');
+      expect(panel?.style.getPropertyValue('--loom-panel-anchor')).toBe('320px');
+    });
+    vi.restoreAllMocks();
     container.remove();
   });
 
@@ -2318,7 +2511,7 @@ describe('Grid record lifecycle', () => {
     expect(addRow).not.toBeNull();
     expect(addRow?.getAttribute('aria-label')).toContain('Add Record');
     addRow?.click();
-    expect(container.querySelector('.loom-record-create')).not.toBeNull();
+    expect(container.querySelector('.loom-grid-draft-row')).not.toBeNull();
     container.remove();
   });
 
@@ -2330,6 +2523,60 @@ describe('Grid record lifecycle', () => {
     });
     renderer.render(createState(2, { hasMore: true, nextCursor: 'cursor_2' }));
     expect(container.querySelector('.loom-grid-add-row')).toBeNull();
+  });
+
+  it('creates a record inline from the draft row on Enter', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const record: LoomTableRecord = {
+      id: 'record_new',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_name: 'Drafted' },
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    const onCreateRecord = vi.fn(async () => record);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createState(1));
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const draftRow = container.querySelector<HTMLElement>('.loom-grid-draft-row');
+    expect(draftRow).not.toBeNull();
+    const editor = draftRow?.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor).not.toBeNull();
+    if (editor === null || editor === undefined) return;
+    editor.value = 'Drafted';
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalledWith({ field_name: 'Drafted' }));
+    container.remove();
+  });
+
+  it('discards the draft row on Escape without creating', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onCreateRecord = vi.fn(async () => ({ id: 'record_new' }) as never);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createState(1));
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const editor = container.querySelector<HTMLElement>('.loom-grid-draft-row .loom-grid-editor');
+    expect(editor).not.toBeNull();
+    editor?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await Promise.resolve();
+    expect(container.querySelector('.loom-grid-draft-row')).toBeNull();
+    expect(onCreateRecord).not.toHaveBeenCalled();
+    container.remove();
   });
 
   it('clears an editable cell value from the context menu', () => {
@@ -2370,6 +2617,37 @@ describe('column menu and field editor', () => {
     const panel = container.querySelector<HTMLElement>('.loom-field-editor');
     expect(panel).not.toBeNull();
     expect(panel?.querySelectorAll('.loom-field-editor-type')).toHaveLength(10);
+    container.remove();
+  });
+
+  it('filters the create-panel type list through the search box', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+    });
+    renderer.render(createState(1));
+    container.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+
+    const panel = container.querySelector<HTMLElement>('.loom-field-editor');
+    expect(panel?.querySelector('.loom-field-editor-type-desc')?.textContent).not.toBe('');
+    const search = panel?.querySelector<HTMLInputElement>('.loom-field-editor-type-search');
+    expect(search).not.toBeNull();
+    search!.value = 'map';
+    search?.dispatchEvent(new Event('input', { bubbles: true }));
+
+    const visible = [
+      ...(panel?.querySelectorAll<HTMLElement>('.loom-field-editor-type') ?? []),
+    ].filter((item) => !item.hidden);
+    expect(visible.map((item) => item.dataset.type)).toEqual(['location']);
+    search!.value = '';
+    search?.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(
+      [...(panel?.querySelectorAll<HTMLElement>('.loom-field-editor-type') ?? [])].filter(
+        (item) => !item.hidden,
+      ),
+    ).toHaveLength(10);
     container.remove();
   });
 
@@ -2794,7 +3072,7 @@ describe('refresh indicator and anchored panels', () => {
     expect(note?.textContent).toBe('Loading Grid records…');
     expect(note?.dataset.active).toBe('true');
     const create = container.querySelector('.loom-grid-record-create');
-    expect(create?.parentElement?.classList.contains('loom-toolbar-start')).toBe(true);
+    expect(create?.closest('.loom-toolbar-start')).not.toBeNull();
     expect(
       note?.nextElementSibling instanceof HTMLElement &&
         note.nextElementSibling.dataset.action === 'toggle-status',
@@ -2838,7 +3116,85 @@ describe('refresh indicator and anchored panels', () => {
     expect(addRow?.style.width).toBe('56px');
     expect(addRow?.querySelector('.loom-grid-add-row-label')).toBeNull();
     addRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    expect(container.querySelector('.loom-record-create')).not.toBeNull();
+    expect(container.querySelector('.loom-grid-draft-row')).not.toBeNull();
+  });
+
+  it('opens the column menu from the always-visible header ellipsis', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onFieldSave = vi.fn(async () => undefined);
+    const onApplyFilter = vi.fn(async () => ({ status: 'saved' }) as never);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave,
+      onApplyFilter,
+    });
+    renderer.render(createState(2));
+
+    const menuButton = container.querySelector<HTMLButtonElement>(
+      '.loom-grid-header-menu[data-action="field-menu"]',
+    );
+    expect(menuButton).not.toBeNull();
+    menuButton?.click();
+    const items = [...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')];
+    const labels = items.map((item) => item.textContent ?? '');
+    expect(labels.some((label) => label.includes('Duplicate field'))).toBe(true);
+    expect(labels.some((label) => label.includes('Filter by this field'))).toBe(true);
+
+    items.find((item) => item.textContent?.includes('Filter by this field'))?.click();
+    const panel = container.querySelector<HTMLElement>('.loom-query-panel[data-panel="filter"]');
+    expect(panel).not.toBeNull();
+    container.remove();
+  });
+
+  it('supports checkbox, Ctrl and Shift row selection from the index cell', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(4));
+
+    const indexCells = () => [
+      ...container.querySelectorAll<HTMLElement>('.loom-grid-row .loom-grid-index-cell'),
+    ];
+    const checks = () => [...container.querySelectorAll<HTMLInputElement>('.loom-grid-row-check')];
+
+    indexCells()[0]?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, clientX: 5, clientY: 5 }),
+    );
+    indexCells()[2]?.dispatchEvent(
+      new MouseEvent('click', {
+        bubbles: true,
+        clientX: 5,
+        clientY: 5,
+        shiftKey: true,
+      }),
+    );
+    expect(checks().filter((input) => input.checked)).toHaveLength(3);
+
+    checks()[1]?.click();
+    expect(checks().filter((input) => input.checked)).toHaveLength(2);
+    expect(container.querySelector('.loom-grid-footer-count')?.textContent).toContain(
+      '2 rows selected',
+    );
+    container.remove();
+  });
+
+  it('shows loaded/total while more rows remain and a plain count when fully loaded', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(2, { totalCount: 5, hasMore: true, nextCursor: 'cursor_01' }));
+    expect(container.querySelector('.loom-grid-count')?.textContent).toBe('2/5 rows');
+
+    renderer.render(createState(2));
+    expect(container.querySelector('.loom-grid-count')?.textContent).toBe('2 rows');
+    container.remove();
   });
 
   it('keeps the refresh note mounted but hidden when idle', () => {

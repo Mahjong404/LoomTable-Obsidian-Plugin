@@ -615,7 +615,10 @@ export class GridViewController {
           meta: {
             kind: 'edit',
             recordId,
+            fieldId,
             ...(fieldName !== undefined ? { fieldName } : {}),
+            before: hadBefore ? beforeValue : undefined,
+            after: afterUnset ? undefined : value,
             recordTitle: this.#recordTitle(authoritative),
             at: new Date().toISOString(),
           },
@@ -906,6 +909,11 @@ export class GridViewController {
     if (await this.#history.undo()) this.#publishHistory();
   }
 
+  async undoUntil(index: number): Promise<void> {
+    await this.#history.undoUntil(index);
+    this.#publishHistory();
+  }
+
   async redo(): Promise<void> {
     if (await this.#history.redo()) this.#publishHistory();
   }
@@ -1073,20 +1081,19 @@ export class GridViewController {
     this.#queue.retryError(recordId);
   }
 
-  async load(): Promise<void> {
+  async load(options?: { preserveRecords?: boolean }): Promise<void> {
     const requestToken = ++this.#requestToken;
-    this.#history.clear();
+    const preserveRecords = options?.preserveRecords === true;
+    if (!preserveRecords) this.#history.clear();
     this.#publish({
       status: 'loading',
       phase: 'navigation',
       emptyReason: null,
       error: null,
-      hasMore: false,
-      nextCursor: null,
-      totalCount: null,
-      canUndo: false,
-      canRedo: false,
-      historyEntries: [],
+      hasMore: preserveRecords ? this.#state.hasMore : false,
+      nextCursor: preserveRecords ? this.#state.nextCursor : null,
+      totalCount: preserveRecords ? this.#state.totalCount : null,
+      ...(preserveRecords ? {} : { canUndo: false, canRedo: false, historyEntries: [] }),
     });
 
     try {
@@ -1188,11 +1195,13 @@ export class GridViewController {
         selectedBaseId: base.id,
         selectedTableId: table.id,
         selectedViewId: view.id,
-        records: [],
-        hasMore: false,
-        nextCursor: null,
-        changeCursor: null,
-        totalCount: null,
+        // Refresh keeps the loaded rows visible while the query re-runs;
+        // clearing them here flashes the full-Grid loading placeholder.
+        records: preserveRecords ? this.#state.records : [],
+        hasMore: preserveRecords ? this.#state.hasMore : false,
+        nextCursor: preserveRecords ? this.#state.nextCursor : null,
+        changeCursor: preserveRecords ? this.#state.changeCursor : null,
+        totalCount: preserveRecords ? this.#state.totalCount : null,
         emptyReason: null,
         error: null,
         deletedViews: [],
@@ -1218,7 +1227,56 @@ export class GridViewController {
   }
 
   async refresh(): Promise<void> {
-    await this.load();
+    // Re-run the full selection pipeline so a View deleted elsewhere falls back
+    // correctly, but keep the current rows mounted to avoid a loading flash.
+    await this.load({ preserveRecords: true });
+  }
+
+  applyExternalMutation(record: LoomTableRecord, changeCursor?: string): void {
+    if (record.tableId !== this.#state.selectedTableId) return;
+    this.#authoritativeRecords.set(record.id, record);
+    if (this.#pendingFor(record.id) === 0) {
+      this.#optimisticRecords.set(record.id, record);
+    }
+    const cursorPatch = changeCursor === undefined ? {} : { changeCursor };
+    const inPage = this.#state.records.some((candidate) => candidate.id === record.id);
+    if (inPage) {
+      if (record.deletedAt !== undefined) {
+        this.#optimisticRecords.delete(record.id);
+        this.#publish({
+          records: this.#state.records.filter((candidate) => candidate.id !== record.id),
+          lastDeletedRecord: record,
+          ...cursorPatch,
+        });
+        this.#reloadDeletedRecordsIfLoaded();
+        return;
+      }
+      this.#publish({
+        records: replaceRecord(
+          this.#state.records,
+          this.#optimisticRecords.get(record.id) ?? record,
+        ),
+        deletedRecords: this.#state.deletedRecords.filter(
+          (candidate) => candidate.id !== record.id,
+        ),
+        ...cursorPatch,
+      });
+      return;
+    }
+    if (record.deletedAt !== undefined) {
+      this.#reloadDeletedRecordsIfLoaded();
+      this.#publish({ ...cursorPatch });
+      return;
+    }
+    // A Record that is not on the current page (external create or a filter
+    // membership change) cannot be patched in place; soft-reload keeps the
+    // existing rows visible while the query is re-run.
+    const view = this.#state.views.find((candidate) => candidate.id === this.#state.selectedViewId);
+    if (view !== undefined && isGridView(view)) {
+      void this.#reloadSelectedViewQuery(view);
+    } else {
+      this.#publish({ ...cursorPatch });
+    }
   }
 
   async selectWorkspace(workspaceId: string): Promise<void> {

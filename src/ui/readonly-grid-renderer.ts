@@ -6,6 +6,7 @@ import type {
   JsonValue,
   LoomTableRecord,
   MutationValue,
+  SelectOptionColor,
   SortSpec,
   View,
 } from '../client/loomtable-client';
@@ -33,8 +34,14 @@ import {
   restoreQueryControlFocus,
   type QueryControlFocus,
 } from './query-focus';
-import { countFilterRules, isSortableField, nextHeaderSort } from './view-query-model';
-import { isEditableField } from './field-value-editor';
+import {
+  countFilterRules,
+  createFilterRule,
+  filterOperatorsForField,
+  isSortableField,
+  nextHeaderSort,
+} from './view-query-model';
+import { isEditableField, normalizeCellValue } from './field-value-editor';
 import {
   createRenderedFieldValueElement,
   type RenderedAttachment,
@@ -121,6 +128,7 @@ export interface GridRendererCallbacks {
   readonly attachmentThumbnail?: (attachment: RenderedAttachment) => string | undefined;
   readonly onUndo?: () => void | Promise<void>;
   readonly onRedo?: () => void | Promise<void>;
+  readonly onUndoTo?: (index: number) => void | Promise<void>;
   readonly onDismissDeleteNotice?: () => void;
   readonly onLoadDeletedRecords?: () => void | Promise<void>;
   readonly onLoadMoreDeletedRecords?: () => void | Promise<void>;
@@ -149,10 +157,18 @@ const CHANGE_KIND_KEYS: Record<UndoEntryMeta['kind'], MessageKey> = {
   restore: 'record.changes.kind.restore',
 };
 
+const DRAFT_RECORD_ID = 'loom:draft-create';
+
 function formatChangeTime(at: string): string {
   const date = new Date(at);
   if (Number.isNaN(date.getTime())) return '';
   return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatChangeValue(value: unknown, translate: Translator): string {
+  if (value === undefined || value === null) return translate('record.changes.unset');
+  const text = typeof value === 'string' ? value : JSON.stringify(value);
+  return text.length > 24 ? `${text.slice(0, 24)}…` : text;
 }
 
 interface GridActionButtonSpec {
@@ -191,6 +207,8 @@ export class ReadonlyGridRenderer {
     readonly anchor: { readonly rowIndex: number; readonly fieldIndex: number };
     readonly head: { readonly rowIndex: number; readonly fieldIndex: number };
   } | null = null;
+  #selectedRows = new Set<number>();
+  #rowAnchorIndex: number | null = null;
   #lastConflictIds = new Set<string>();
   #lastState: GridState | null = null;
   #dismissedEditDraftKey: string | null = null;
@@ -199,15 +217,22 @@ export class ReadonlyGridRenderer {
   #focusedAction: GridAction | null = null;
   #openPanel: 'filter' | 'sort' | 'display' | 'create' | 'status' | null = null;
   #searchDraft: string | null = null;
+  #searchExpanded = false;
+  #searchDebounceTimer: number | null = null;
   #searchError: string | null = null;
+  #draftCreateValues: Record<string, MutationValue> | null = null;
+  #draftRowEl: HTMLElement | null = null;
+  #filterSeedFieldId: string | null = null;
+  #statusPanelMode: 'changes' | 'deleted' = 'changes';
+  #historyFilter: 'all' | UndoEntryMeta['kind'] = 'all';
   #lastViewId: string | null = null;
   #sortFocusFieldId: string | null = null;
   #filterBuilder: FilterBuilder | null = null;
-  #filterBuilderRevision: number | null = null;
+  #filterBuilderViewId: string | null = null;
   #sortPanel: SortPanel | null = null;
-  #sortPanelRevision: number | null = null;
+  #sortPanelViewId: string | null = null;
   #displayPanel: DisplayPanel | null = null;
-  #displayPanelRevision: number | null = null;
+  #displayPanelViewId: string | null = null;
   #createForm: RecordCreateForm | null = null;
   #clipboardNotice: string | null = null;
   #rowHeightAnchor: {
@@ -362,16 +387,58 @@ export class ReadonlyGridRenderer {
     const end = createElement('div', 'loom-toolbar-group loom-toolbar-end');
     const gridView = selectedGridView(state);
     if (this.#callbacks.onCreateRecord !== undefined && state.selectedTableId !== null) {
-      const createButton = this.#toggleButton(
-        'create',
-        this.#translate('record.create.add'),
-        state.recordCreateOps.length,
-        'record.create.pendingCount',
-        'tool-create',
+      const split = createElement('span', 'loom-split-button');
+      const createButton = createElement(
+        'button',
+        'loom-button loom-grid-record-create loom-split-main',
       );
-      createButton.classList.add('loom-grid-record-create');
+      createButton.type = 'button';
+      createButton.dataset.action = 'toggle-create';
+      createButton.append(createUiIcon('tool-create'));
+      createButton.append(createTextElement('span', this.#translate('record.create.add')));
+      if (state.recordCreateOps.length > 0) {
+        const count = createElement('span', 'loom-grid-query-count');
+        count.textContent = this.#translate('record.create.pendingCount').replace(
+          '{count}',
+          String(state.recordCreateOps.length),
+        );
+        createButton.append(count);
+      }
       createButton.disabled = state.status === 'offline';
-      start.append(createButton);
+      createButton.addEventListener('click', () => this.#beginDraftCreate());
+      const caret = createElement('button', 'loom-button loom-split-caret clickable-icon');
+      caret.type = 'button';
+      caret.dataset.action = 'create-menu';
+      caret.setAttribute('aria-label', this.#translate('record.create.menu'));
+      caret.setAttribute('aria-haspopup', 'menu');
+      caret.disabled = createButton.disabled;
+      caret.append(createUiIcon('caret-down'));
+      caret.addEventListener('click', () => {
+        const rect = caret.getBoundingClientRect();
+        openContextMenu({
+          label: this.#translate('record.create.menu'),
+          x: rect.left,
+          y: rect.bottom + 4,
+          host: this.#container,
+          items: [
+            {
+              label: this.#translate('record.create.menu.append'),
+              icon: 'tool-create',
+              action: () => this.#beginDraftCreate(),
+            },
+            {
+              label: this.#translate('record.create.menu.form'),
+              icon: 'menu-open',
+              action: () => {
+                this.#openPanel = 'create';
+                this.#rerenderSelf();
+              },
+            },
+          ],
+        });
+      });
+      split.append(createButton, caret);
+      start.append(split);
     }
     if (gridView !== null) {
       const divider = createElement('span', 'loom-toolbar-divider');
@@ -383,7 +450,10 @@ export class ReadonlyGridRenderer {
       );
     }
     const count = createElement('span', 'loom-grid-count');
-    if (state.totalCount !== null) {
+    if (state.totalCount !== null && state.totalCount > state.records.length) {
+      // Loaded/total keeps partial progress visible while paging continues.
+      count.textContent = `${state.records.length}/${state.totalCount} ${this.#translate('grid.rows')}`;
+    } else if (state.totalCount !== null) {
       count.textContent = `${state.totalCount} ${this.#translate('grid.rows')}`;
     } else if (state.records.length > 0) {
       count.textContent = `${state.records.length} ${this.#translate('grid.rows')}`;
@@ -451,40 +521,81 @@ export class ReadonlyGridRenderer {
 
   #renderSearchControls(state: GridState): HTMLElement {
     const wrap = createElement('div', 'loom-grid-search');
-    const input = document.createElement('input');
-    input.type = 'search';
-    input.dataset.role = 'grid-search';
-    input.setAttribute('aria-label', this.#translate('grid.search.label'));
-    input.placeholder = this.#translate('grid.search.label');
-    input.value = this.#searchDraft ?? state.search;
-    input.addEventListener('input', () => {
-      this.#searchDraft = input.value;
-      this.#searchError = null;
-      const note = wrap.querySelector('.loom-grid-search-error');
-      note?.remove();
-      const clear = wrap.querySelector<HTMLButtonElement>('[data-action="search-clear"]');
-      if (clear !== null) clear.disabled = input.value === '' && state.search === '';
-    });
-    input.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter') return;
-      event.preventDefault();
-      void this.#submitSearch(input.value);
-    });
-    const submit = createElement('button', 'loom-button');
-    submit.type = 'button';
-    submit.dataset.action = 'search-submit';
-    submit.textContent = this.#translate('grid.search.submit');
-    submit.disabled = this.#callbacks.onSearch === undefined;
-    submit.addEventListener('click', () => void this.#submitSearch(input.value));
-    const clear = createElement('button', 'loom-button');
-    clear.type = 'button';
-    clear.dataset.action = 'search-clear';
-    clear.textContent = this.#translate('grid.search.clear');
-    clear.disabled =
-      this.#callbacks.onSearch === undefined ||
-      (state.search === '' && (this.#searchDraft ?? input.value) === '');
-    clear.addEventListener('click', () => void this.#submitSearch(''));
-    wrap.append(input, submit, clear);
+    const term = this.#searchDraft ?? state.search;
+    if (!this.#searchExpanded && term === '') {
+      const toggle = createElement('button', 'clickable-icon loom-grid-search-toggle');
+      toggle.type = 'button';
+      toggle.dataset.action = 'search-expand';
+      toggle.setAttribute('aria-label', this.#translate('grid.search.label'));
+      toggle.setAttribute('title', this.#translate('grid.search.label'));
+      toggle.append(createUiIcon('tool-search'));
+      toggle.disabled = this.#callbacks.onSearch === undefined;
+      toggle.addEventListener('click', () => {
+        this.#searchExpanded = true;
+        this.#rerenderSelf();
+        this.#container.querySelector<HTMLInputElement>('[data-role="grid-search"]')?.focus();
+      });
+      wrap.append(toggle);
+    } else {
+      const input = document.createElement('input');
+      input.type = 'search';
+      input.dataset.role = 'grid-search';
+      input.setAttribute('aria-label', this.#translate('grid.search.label'));
+      input.placeholder = this.#translate('grid.search.label');
+      input.value = term;
+      input.disabled = this.#callbacks.onSearch === undefined;
+      input.addEventListener('input', () => {
+        this.#searchDraft = input.value;
+        this.#searchError = null;
+        const note = wrap.querySelector('.loom-grid-search-error');
+        note?.remove();
+        const clear = wrap.querySelector<HTMLButtonElement>('[data-action="search-clear"]');
+        if (clear !== null) {
+          clear.hidden = input.value === '' && state.search === '';
+        }
+        this.#scheduleSearch(input.value);
+      });
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          this.#flushSearch(input.value);
+          return;
+        }
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        if (input.value === '' && state.search === '') {
+          this.#searchExpanded = false;
+          this.#rerenderSelf();
+        } else {
+          input.value = '';
+          this.#searchDraft = '';
+          this.#flushSearch('');
+        }
+      });
+      input.addEventListener('blur', (event) => {
+        const next = event.relatedTarget;
+        if (next instanceof Node && wrap.contains(next)) return;
+        if (input.value === '' && state.search === '') {
+          this.#searchExpanded = false;
+          this.#rerenderSelf();
+        }
+      });
+      const clear = createElement('button', 'clickable-icon loom-grid-search-clear');
+      clear.type = 'button';
+      clear.dataset.action = 'search-clear';
+      clear.setAttribute('aria-label', this.#translate('grid.search.clear'));
+      clear.setAttribute('title', this.#translate('grid.search.clear'));
+      clear.append(createUiIcon('detail-close'));
+      clear.hidden = term === '';
+      clear.disabled = this.#callbacks.onSearch === undefined;
+      clear.addEventListener('click', () => {
+        this.#flushSearch('');
+        input.value = '';
+        this.#searchDraft = '';
+        input.focus();
+      });
+      wrap.append(input, clear);
+    }
     if (this.#searchError !== null) {
       const note = createElement('p', 'loom-grid-search-error');
       note.setAttribute('role', 'alert');
@@ -492,6 +603,26 @@ export class ReadonlyGridRenderer {
       wrap.append(note);
     }
     return wrap;
+  }
+
+  #scheduleSearch(term: string): void {
+    if (this.#searchDebounceTimer !== null) {
+      window.clearTimeout(this.#searchDebounceTimer);
+    }
+    this.#searchDebounceTimer = Number(
+      window.setTimeout(() => {
+        this.#searchDebounceTimer = null;
+        void this.#submitSearch(term);
+      }, 300),
+    );
+  }
+
+  #flushSearch(term: string): void {
+    if (this.#searchDebounceTimer !== null) {
+      window.clearTimeout(this.#searchDebounceTimer);
+      this.#searchDebounceTimer = null;
+    }
+    void this.#submitSearch(term);
   }
 
   #renderQueryToggles(state: GridState, view: Extract<View, { type: 'grid' }>): HTMLElement {
@@ -582,67 +713,55 @@ export class ReadonlyGridRenderer {
     if (this.#openPanel === 'filter') {
       const onApplyFilter = this.#callbacks.onApplyFilter;
       if (onApplyFilter === undefined) return null;
-      if (this.#filterBuilder === null || this.#filterBuilderRevision !== view.revision) {
-        this.#filterBuilder = new FilterBuilder(view.config.filter, {
+      // Panels apply changes as they happen; the open builder owns its draft,
+      // so it is keyed by View rather than rebuilt on every saved revision.
+      if (this.#filterBuilder === null || this.#filterBuilderViewId !== view.id) {
+        const seedFieldId = this.#filterSeedFieldId;
+        this.#filterSeedFieldId = null;
+        let initial = view.config.filter;
+        const seedField = state.fields.find(
+          (candidate) => candidate.id === seedFieldId && candidate.deletedAt === undefined,
+        );
+        if (seedField !== undefined) {
+          const rule = createFilterRule(seedField);
+          initial =
+            initial !== undefined && initial.kind === 'group'
+              ? { ...initial, children: [...initial.children, rule] }
+              : { kind: 'group', operator: 'and', children: [rule] };
+        }
+        this.#filterBuilder = new FilterBuilder(initial, {
           fields: state.fields.filter((field) => field.deletedAt === undefined),
           translate: this.#translate,
-          onApply: async (filter) => {
-            const outcome = await onApplyFilter(view.id, filter);
-            if (outcome?.status === 'saved') {
-              this.#openPanel = null;
-              this.#filterBuilder = null;
-            }
-            return outcome;
-          },
-          onCancel: () => this.#closePanels(),
-          confirmDiscard: (message) => this.#requestDangerousConfirmation(message, this.#container),
+          onApply: (filter) => onApplyFilter(view.id, filter),
           onInvalidate: () => this.#rerenderSelf(),
         });
-        this.#filterBuilderRevision = view.revision;
+        this.#filterBuilderViewId = view.id;
       }
       host.append(this.#filterBuilder.render());
     } else if (this.#openPanel === 'sort') {
       const onApplySort = this.#callbacks.onApplySort;
       if (onApplySort === undefined) return null;
-      if (this.#sortPanel === null || this.#sortPanelRevision !== view.revision) {
+      if (this.#sortPanel === null || this.#sortPanelViewId !== view.id) {
         this.#sortPanel = new SortPanel(view.config.sort, {
           fields: state.fields.filter((field) => field.deletedAt === undefined),
           translate: this.#translate,
-          onApply: async (sort) => {
-            const outcome = await onApplySort(view.id, sort);
-            if (outcome?.status === 'saved') {
-              this.#openPanel = null;
-              this.#sortPanel = null;
-            }
-            return outcome;
-          },
-          onCancel: () => this.#closePanels(),
-          confirmDiscard: (message) => this.#requestDangerousConfirmation(message, this.#container),
+          onApply: (sort) => onApplySort(view.id, sort),
           onInvalidate: () => this.#rerenderSelf(),
         });
-        this.#sortPanelRevision = view.revision;
+        this.#sortPanelViewId = view.id;
       }
       host.append(this.#sortPanel.render());
     } else if (this.#openPanel === 'display') {
       const onApplyDisplay = this.#callbacks.onApplyDisplay;
       if (onApplyDisplay === undefined) return null;
-      if (this.#displayPanel === null || this.#displayPanelRevision !== view.revision) {
+      if (this.#displayPanel === null || this.#displayPanelViewId !== view.id) {
         this.#displayPanel = new DisplayPanel(view.config, {
           fields: state.fields,
           translate: this.#translate,
-          onApply: async (patch) => {
-            const outcome = await onApplyDisplay(view.id, patch);
-            if (outcome?.status === 'saved') {
-              this.#openPanel = null;
-              this.#displayPanel = null;
-            }
-            return outcome;
-          },
-          onCancel: () => this.#closePanels(),
-          confirmDiscard: (message) => this.#requestDangerousConfirmation(message, this.#container),
+          onApply: (patch) => onApplyDisplay(view.id, patch),
           onInvalidate: () => this.#rerenderSelf(),
         });
-        this.#displayPanelRevision = view.revision;
+        this.#displayPanelViewId = view.id;
       }
       host.append(this.#displayPanel.render());
     }
@@ -670,12 +789,41 @@ export class ReadonlyGridRenderer {
       panel.classList.add('loom-query-panel--end');
       return;
     }
-    const toggle = toolbar.querySelector<HTMLElement>(
-      `[data-action="toggle-${panel.dataset.panel}"]`,
-    );
-    if (toggle === null) return;
-    const maxLeft = Math.max(0, this.#container.clientWidth - 400 - 8);
-    panel.style.setProperty('--loom-panel-anchor', `${Math.min(toggle.offsetLeft, maxLeft)}px`);
+    const measure = (): void => {
+      const toggle = toolbar.querySelector<HTMLElement>(
+        `[data-action="toggle-${panel.dataset.panel}"]`,
+      );
+      if (toggle === null || !panel.isConnected) return;
+      const toggleRect = toggle.getBoundingClientRect();
+      const toolbarRect = toolbar.getBoundingClientRect();
+      if (toolbarRect.width === 0) {
+        // Unmeasurable (detached/hidden host or test DOM): fall back to the
+        // CSS default (toolbar start) rather than leaving a stale offset.
+        panel.style.removeProperty('--loom-panel-anchor');
+        return;
+      }
+      const panelWidth = panel.getBoundingClientRect().width;
+      const maxLeft = Math.max(0, toolbarRect.width - panelWidth - 4);
+      let left = toggleRect.left - toolbarRect.left;
+      if (left + panelWidth > toolbarRect.width - 4) {
+        // Near the right edge the panel flips so its right edge aligns with
+        // the toggle's right edge instead of overflowing the toolbar.
+        left = toggleRect.right - toolbarRect.left - panelWidth;
+      }
+      panel.style.setProperty('--loom-panel-anchor', `${Math.min(Math.max(0, left), maxLeft)}px`);
+    };
+    measure();
+    if (!toolbar.isConnected) {
+      // The panel is appended before the toolbar reaches the document; keep the
+      // CSS default (start edge), then measure once mounted so offset lookups
+      // see real geometry.
+      panel.style.removeProperty('--loom-panel-anchor');
+      const schedule =
+        typeof requestAnimationFrame === 'function'
+          ? requestAnimationFrame
+          : (callback: () => void) => window.setTimeout(callback, 0);
+      schedule(measure);
+    }
   }
 
   #syncPanelDismissal(): void {
@@ -829,14 +977,62 @@ export class ReadonlyGridRenderer {
       );
     }
     host.append(header);
-    host.append(createTextElement('h3', this.#translate('record.changes.title')));
-    if (state.historyEntries.length === 0) {
+    const modes = createElement('div', 'loom-status-panel-modes');
+    modes.setAttribute('role', 'tablist');
+    for (const mode of ['changes', 'deleted'] as const) {
+      const key: MessageKey = mode === 'changes' ? 'record.changes.title' : 'record.recycle.title';
+      const button = createElement('button', 'loom-status-mode clickable-icon');
+      button.type = 'button';
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', this.#statusPanelMode === mode ? 'true' : 'false');
+      button.dataset.mode = mode;
+      button.textContent = this.#translate(key);
+      button.addEventListener('click', () => {
+        this.#statusPanelMode = mode;
+        this.#rerenderSelf();
+      });
+      modes.append(button);
+    }
+    host.append(modes);
+    if (this.#statusPanelMode === 'deleted') {
+      host.append(this.#renderDeletedSection(state));
+      return host;
+    }
+
+    const kinds: readonly ('all' | UndoEntryMeta['kind'])[] = [
+      'all',
+      'edit',
+      'create',
+      'delete',
+      'restore',
+    ];
+    const filters = createElement('div', 'loom-change-filters');
+    for (const kind of kinds) {
+      const chip = createElement('button', 'loom-change-filter clickable-icon');
+      chip.type = 'button';
+      chip.dataset.kind = kind;
+      chip.setAttribute('aria-pressed', this.#historyFilter === kind ? 'true' : 'false');
+      chip.textContent = this.#translate(
+        kind === 'all' ? 'record.changes.filter.all' : CHANGE_KIND_KEYS[kind],
+      );
+      chip.addEventListener('click', () => {
+        this.#historyFilter = kind;
+        this.#rerenderSelf();
+      });
+      filters.append(chip);
+    }
+    host.append(filters);
+
+    const entries = state.historyEntries
+      .map((entry, index) => ({ entry, index }))
+      .filter(({ entry }) => this.#historyFilter === 'all' || entry.kind === this.#historyFilter);
+    if (entries.length === 0) {
       const empty = createTextElement('p', this.#translate('record.changes.empty'));
       empty.className = 'loom-change-empty';
       host.append(empty);
     } else {
       const list = createElement('ul', 'loom-change-list');
-      for (const entry of state.historyEntries) {
+      for (const { entry, index } of entries) {
         const item = createElement('li', 'loom-change-item');
         item.dataset.recordId = entry.recordId;
         item.dataset.kind = entry.kind;
@@ -852,6 +1048,14 @@ export class ReadonlyGridRenderer {
           field.className = 'loom-change-item-field';
           text.append(field);
         }
+        if (entry.kind === 'edit' && (entry.before !== undefined || entry.after !== undefined)) {
+          const delta = createTextElement(
+            'span',
+            `${formatChangeValue(entry.before, this.#translate)} → ${formatChangeValue(entry.after, this.#translate)}`,
+          );
+          delta.className = 'loom-change-item-delta';
+          text.append(delta);
+        }
         const time = createTextElement('span', formatChangeTime(entry.at));
         time.className = 'loom-change-item-time';
         text.append(time);
@@ -865,12 +1069,21 @@ export class ReadonlyGridRenderer {
           chip.dataset.status = sync;
           item.append(chip);
         }
+        if (this.#callbacks.onUndoTo !== undefined) {
+          const undo = createElement('button', 'loom-change-item-undo clickable-icon');
+          undo.type = 'button';
+          undo.dataset.action = 'undo-to';
+          undo.setAttribute('aria-label', this.#translate('record.changes.undoStep'));
+          undo.append(createUiIcon('tool-undo'));
+          undo.addEventListener('click', () => {
+            void this.#callbacks.onUndoTo?.(index);
+          });
+          item.append(undo);
+        }
         list.append(item);
       }
       host.append(list);
     }
-    host.append(createTextElement('h3', this.#translate('record.recycle.title')));
-    host.append(this.#renderDeletedSection(state));
     return host;
   }
 
@@ -963,7 +1176,9 @@ export class ReadonlyGridRenderer {
       this.#rerenderSelf();
       return;
     }
-    this.#searchDraft = null;
+    // Only drop the draft when it is still the term just submitted — typing
+    // that happened while the request was in flight belongs to the user.
+    if (this.#searchDraft === term) this.#searchDraft = null;
     this.#searchError = null;
   }
 
@@ -1113,6 +1328,43 @@ export class ReadonlyGridRenderer {
         indicator.setAttribute('aria-hidden', 'true');
         fieldHeader.replaceChildren(label, indicator);
       }
+      const menuButton = createElement('button', 'loom-grid-header-menu clickable-icon');
+      menuButton.type = 'button';
+      menuButton.dataset.action = 'field-menu';
+      menuButton.setAttribute('aria-label', this.#translate('field.menu.open'));
+      menuButton.setAttribute('aria-haspopup', 'menu');
+      menuButton.append(createUiIcon('menu-ellipsis'));
+      menuButton.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const rect = menuButton.getBoundingClientRect();
+        this.#openColumnMenu(field, rect.left, rect.bottom + 4);
+      });
+      fieldHeader.append(menuButton);
+      if (this.#callbacks.onApplyDisplay !== undefined && gridView !== null) {
+        const resize = createElement('span', 'loom-grid-col-resize');
+        resize.setAttribute('aria-hidden', 'true');
+        resize.addEventListener('pointerdown', (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const startX = event.clientX;
+          const startWidth = columns.widths.get(field.id) ?? GRID_COLUMN_WIDTH_DEFAULT;
+          const onMove = (move: PointerEvent) => {
+            this.#previewColumnWidth(
+              field.id,
+              clampGridColumnWidth(startWidth + move.clientX - startX),
+            );
+          };
+          const onUp = (move: PointerEvent) => {
+            document.removeEventListener('pointermove', onMove);
+            document.removeEventListener('pointerup', onUp);
+            const width = clampGridColumnWidth(startWidth + move.clientX - startX);
+            if (width !== startWidth) this.#commitColumnWidth(field, width);
+          };
+          document.addEventListener('pointermove', onMove);
+          document.addEventListener('pointerup', onUp);
+        });
+        fieldHeader.append(resize);
+      }
       fieldHeader.addEventListener('contextmenu', (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1140,12 +1392,16 @@ export class ReadonlyGridRenderer {
     canvas.style.backgroundImage = gridFillerBackground(columns, fields, rowHeight);
     const rowLayer = createElement('div', 'loom-grid-row-layer');
     canvas.append(rowLayer);
-    if (
+    const canCreate =
       state.status === 'ready' &&
       !state.hasMore &&
       state.selectedTableId !== null &&
-      this.#callbacks.onCreateRecord !== undefined
-    ) {
+      this.#callbacks.onCreateRecord !== undefined;
+    if (canCreate && this.#draftCreateValues !== null) {
+      const draftRow = this.#renderDraftRow(state, fields, rowHeight);
+      canvas.append(draftRow);
+      this.#draftRowEl = draftRow;
+    } else if (canCreate) {
       const addRow = createElement('button', 'loom-grid-add-row clickable-icon');
       addRow.type = 'button';
       addRow.dataset.action = 'grid-add-row';
@@ -1156,10 +1412,7 @@ export class ReadonlyGridRenderer {
       indexCell.append(createUiIcon('tool-create'));
       addRow.append(indexCell);
       addRow.setAttribute('aria-label', this.#translate('record.create.add'));
-      addRow.addEventListener('click', () => {
-        this.#openPanel = 'create';
-        this.#rerenderSelf();
-      });
+      addRow.addEventListener('click', () => this.#beginDraftCreate());
       canvas.append(addRow);
     }
     viewport.append(header, canvas);
@@ -1374,6 +1627,15 @@ export class ReadonlyGridRenderer {
     indexCell.setAttribute('aria-colindex', '1');
     const rowNumber = createTextElement('span', String(rowIndex + 1));
     rowNumber.className = 'loom-grid-row-number';
+    const check = createElement('input', 'loom-grid-row-check');
+    check.type = 'checkbox';
+    check.checked = this.#isRowSelected(rowIndex);
+    check.tabIndex = -1;
+    check.setAttribute('aria-label', this.#translate('grid.selectRow'));
+    check.addEventListener('click', (event) => {
+      event.stopPropagation();
+      this.#toggleRowSelected(rowIndex, event.shiftKey);
+    });
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'loom-grid-open loom-grid-row-expand clickable-icon';
@@ -1384,10 +1646,17 @@ export class ReadonlyGridRenderer {
       event.stopPropagation();
       this.#callbacks.onRecordOpen(record);
     });
-    indexCell.append(rowNumber, open);
+    indexCell.append(rowNumber, check, open);
     indexCell.addEventListener('click', (event) => {
       event.stopPropagation();
-      this.#selectRow(rowIndex);
+      if ((event.target as HTMLElement).closest('input') !== null) return;
+      if (event.shiftKey && this.#rowAnchorIndex !== null) {
+        this.#selectRowRange(this.#rowAnchorIndex, rowIndex);
+      } else if (event.ctrlKey || event.metaKey) {
+        this.#toggleRowSelected(rowIndex);
+      } else {
+        this.#selectRow(rowIndex);
+      }
     });
     indexCell.addEventListener('contextmenu', (event) => {
       event.preventDefault();
@@ -1444,17 +1713,8 @@ export class ReadonlyGridRenderer {
       );
       cell.dataset.valueState = displayValue.state;
       if (editStatus !== undefined) cell.dataset.editState = editStatus;
-      const selectionRect = this.#selectionRect();
       if (this.#isCellSelected(rowIndex, fieldIndex)) cell.classList.add('is-selected');
-      if (
-        selectionRect !== null &&
-        selectionRect.left === 0 &&
-        selectionRect.right === fields.length - 1 &&
-        rowIndex >= selectionRect.top &&
-        rowIndex <= selectionRect.bottom
-      ) {
-        indexCell.classList.add('is-selected');
-      }
+      if (this.#isRowSelected(rowIndex)) indexCell.classList.add('is-selected');
       cell.addEventListener('focus', () => {
         this.#focusedHeaderFieldId = null;
         this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
@@ -1470,6 +1730,12 @@ export class ReadonlyGridRenderer {
           this.#selection.head.fieldIndex === fieldIndex;
         this.#selectCell(rowIndex, fieldIndex, event.shiftKey);
         if (wasActive && !event.shiftKey && isEditableField(field) && canEdit) {
+          this.#beginCellEdit(cell, record, field, rowIndex, fieldIndex);
+        }
+      });
+      cell.addEventListener('dblclick', (event) => {
+        event.stopPropagation();
+        if (isEditableField(field) && canEdit) {
           this.#beginCellEdit(cell, record, field, rowIndex, fieldIndex);
         }
       });
@@ -1548,6 +1814,13 @@ export class ReadonlyGridRenderer {
           }
           return;
         }
+        if (event.key === 'F2') {
+          if (isEditableField(field) && canEdit) {
+            event.preventDefault();
+            this.#beginCellEdit(cell, record, field, rowIndex, fieldIndex);
+          }
+          return;
+        }
         if (event.key === 'Enter') {
           event.preventDefault();
           if (isEditableField(field) && canEdit) {
@@ -1573,7 +1846,10 @@ export class ReadonlyGridRenderer {
       row.append(cell);
     }
 
-    row.addEventListener('dblclick', () => this.#callbacks.onRecordOpen(record));
+    row.addEventListener('dblclick', (event) => {
+      if ((event.target as HTMLElement | null)?.closest('.loom-grid-cell') !== null) return;
+      this.#callbacks.onRecordOpen(record);
+    });
     row.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -1586,6 +1862,223 @@ export class ReadonlyGridRenderer {
       }
     });
     return row;
+  }
+
+  #draftRecord(state: GridState): LoomTableRecord {
+    return {
+      id: DRAFT_RECORD_ID,
+      tableId: state.selectedTableId ?? '',
+      revision: 0,
+      values: this.#draftCreateValues ?? {},
+      createdAt: '',
+      updatedAt: '',
+    };
+  }
+
+  #renderDraftRow(state: GridState, fields: readonly Field[], rowHeight: number): HTMLElement {
+    const draftRecord = this.#draftRecord(state);
+    const rowIndex = state.records.length;
+    const row = createElement('div', 'loom-grid-row loom-grid-draft-row');
+    row.setAttribute('role', 'row');
+    row.setAttribute('aria-rowindex', String(rowIndex + 2));
+    row.style.gridTemplateColumns =
+      this.#virtualGrid?.columnTemplate ?? columnTemplateFor(fields, state);
+    row.style.height = `${rowHeight}px`;
+    row.style.top = `${rowIndex * rowHeight}px`;
+
+    const indexCell = createElement('div', 'loom-grid-index-cell loom-grid-add-row-index');
+    indexCell.setAttribute('role', 'rowheader');
+    indexCell.append(createUiIcon('tool-create'));
+    row.append(indexCell);
+
+    const lastFrozenId = this.#virtualGrid?.columns.frozen.at(-1)?.id;
+    for (const [fieldIndex, field] of fields.entries()) {
+      const displayValue = defaultFieldRendererRegistry.render(
+        field,
+        draftRecord.values[field.id],
+        { translate: this.#translate },
+      );
+      const cell = createGridCell('', 'loom-grid-cell');
+      cell.append(
+        createRenderedFieldValueElement(
+          displayValue.state === 'unset' ? { ...displayValue, text: '' } : displayValue,
+          {
+            compactAttachments: true,
+            ...(this.#callbacks.attachmentThumbnail === undefined
+              ? {}
+              : { attachmentThumbnail: this.#callbacks.attachmentThumbnail }),
+          },
+        ),
+      );
+      cell.setAttribute('role', 'gridcell');
+      cell.setAttribute('aria-colindex', String(fieldIndex + 2));
+      const frozenOffset = this.#virtualGrid?.columns.frozenOffsets.get(field.id);
+      if (frozenOffset !== undefined) {
+        cell.classList.add('loom-grid-frozen');
+        cell.style.left = `${frozenOffset}px`;
+        if (field.id === lastFrozenId) cell.classList.add('loom-grid-frozen-last');
+      }
+      cell.tabIndex = 0;
+      cell.dataset.fieldId = field.id;
+      cell.dataset.fieldIndex = String(fieldIndex);
+      const editable = isEditableField(field);
+      if (editable) {
+        cell.classList.add('loom-grid-editable');
+      } else {
+        cell.setAttribute('aria-readonly', 'true');
+      }
+      cell.addEventListener('click', (event) => {
+        event.stopPropagation();
+        if (editable) this.#beginCellEdit(cell, draftRecord, field, rowIndex, fieldIndex);
+      });
+      cell.addEventListener('keydown', (event) => {
+        event.stopPropagation();
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          this.#cancelDraftCreate();
+          return;
+        }
+        if (event.key === 'Tab') {
+          event.preventDefault();
+          const next = this.#nextEditableFieldIndex(fields, fieldIndex, event.shiftKey ? -1 : 1);
+          if (next !== null) this.#focusDraftCell(next);
+          return;
+        }
+        if (event.key === 'Enter' || event.key === 'F2') {
+          event.preventDefault();
+          if (editable) this.#beginCellEdit(cell, draftRecord, field, rowIndex, fieldIndex);
+          return;
+        }
+        if (
+          event.key.length === 1 &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey &&
+          !event.isComposing &&
+          editable
+        ) {
+          event.preventDefault();
+          this.#beginCellEdit(cell, draftRecord, field, rowIndex, fieldIndex, event.key, false);
+        }
+      });
+      row.append(cell);
+    }
+
+    // Leaving the draft row commits whatever was typed (or quietly discards an
+    // empty draft), matching how other grid tools commit a trailing "+" row.
+    row.addEventListener('focusout', () => {
+      window.setTimeout(() => {
+        const active = this.#draftRowEl;
+        if (this.#draftCreateValues === null || active === null) return;
+        if (active.isConnected && active.contains(document.activeElement)) return;
+        this.#commitDraftCreate();
+      }, 0);
+    });
+    return row;
+  }
+
+  #beginDraftCreate(): void {
+    const state = this.#virtualGrid?.state ?? this.#lastState;
+    if (state === null || this.#callbacks.onCreateRecord === undefined) return;
+    if (state.status !== 'ready' || state.selectedTableId === null) return;
+    if (state.hasMore) {
+      // The trailing draft row only exists at the end of a fully loaded grid;
+      // fall back to the create form while more pages remain unloaded.
+      this.#openPanel = 'create';
+      this.#rerenderSelf();
+      return;
+    }
+    this.#draftCreateValues ??= {};
+    this.render(state);
+    const grid = this.#virtualGrid;
+    if (grid !== null) {
+      grid.viewport.scrollTop = state.records.length * grid.rowHeight;
+      const first = this.#nextEditableFieldIndex(grid.fields, -1, 1);
+      if (first !== null) this.#focusDraftCell(first);
+    }
+  }
+
+  #cancelDraftCreate(): void {
+    if (this.#draftCreateValues === null) return;
+    this.#draftCreateValues = null;
+    this.#draftRowEl = null;
+    this.render(this.#virtualGrid?.state ?? this.#emptyState());
+  }
+
+  #commitDraftCreate(): void {
+    const values = this.#draftCreateValues;
+    if (values === null) return;
+    this.#draftCreateValues = null;
+    this.#draftRowEl = null;
+    this.render(this.#virtualGrid?.state ?? this.#emptyState());
+    const hasValue = Object.values(values).some(
+      (value) => value !== undefined && value !== null && value !== '',
+    );
+    const onCreateRecord = this.#callbacks.onCreateRecord;
+    if (!hasValue || onCreateRecord === undefined) return;
+    void Promise.resolve(onCreateRecord({ ...values })).catch(() => {
+      // Keep the typed draft so a failed create can be retried instead of
+      // silently losing what the user entered.
+      this.#draftCreateValues = values;
+      this.render(this.#virtualGrid?.state ?? this.#emptyState());
+    });
+  }
+
+  #finishDraftCell(
+    fieldId: string,
+    value: MutationValue,
+    fieldIndex: number,
+    moveOffset: number | null,
+  ): void {
+    const values = this.#draftCreateValues;
+    if (values === null) return;
+    values[fieldId] = value;
+    const grid = this.#virtualGrid;
+    const state = grid?.state ?? this.#emptyState();
+    const next =
+      moveOffset === null || grid === null
+        ? null
+        : this.#nextEditableFieldIndex(grid.fields, fieldIndex, moveOffset);
+    this.render(state);
+    if (next !== null) {
+      this.#focusDraftCell(next);
+      return;
+    }
+    if (moveOffset === null) return;
+    if (moveOffset > 0) this.#commitDraftCreate();
+    else this.#focusDraftCell(fieldIndex);
+  }
+
+  #focusDraftCell(fieldIndex: number): void {
+    const row = this.#draftRowEl;
+    const grid = this.#virtualGrid;
+    if (row === null || grid === null) return;
+    const field = grid.fields[fieldIndex];
+    const cell = row.querySelector<HTMLElement>(
+      `.loom-grid-cell[data-field-index="${fieldIndex}"]`,
+    );
+    if (field === undefined || cell === null || !isEditableField(field)) return;
+    this.#beginCellEdit(
+      cell,
+      this.#draftRecord(grid.state),
+      field,
+      grid.state.records.length,
+      fieldIndex,
+    );
+  }
+
+  #nextEditableFieldIndex(
+    fields: readonly Field[],
+    from: number,
+    direction: number,
+  ): number | null {
+    let index = from + direction;
+    while (index >= 0 && index < fields.length) {
+      const field = fields[index];
+      if (field !== undefined && isEditableField(field)) return index;
+      index += direction;
+    }
+    return null;
   }
 
   #openCellContextMenu(
@@ -1678,6 +2171,29 @@ export class ReadonlyGridRenderer {
               y,
             ),
         },
+        {
+          label: this.#translate('field.menu.duplicate'),
+          icon: 'menu-copy',
+          disabled: isPrimary,
+          action: () => {
+            void this.#callbacks.onFieldSave?.(
+              {
+                name: `${field.name} copy`,
+                type: field.type,
+                ...(field.type === 'select' || field.type === 'multiSelect'
+                  ? {
+                      options: field.config.options.map((option) => ({
+                        name: option.name,
+                        color: option.color as SelectOptionColor,
+                      })),
+                    }
+                  : {}),
+                ...(field.type === 'attachment' ? { maxCount: field.config.maxCount } : {}),
+              },
+              { mode: 'create', anchorFieldId: field.id, side: 'right' },
+            );
+          },
+        },
       );
     }
     const gridConfig = view?.type === 'grid' ? view.config : null;
@@ -1697,6 +2213,22 @@ export class ReadonlyGridRenderer {
           void this.#callbacks.onApplySort?.(view.id, [
             { fieldId: field.id, direction: 'desc', nulls: 'last' },
           ]),
+      });
+    }
+    if (
+      view !== undefined &&
+      gridConfig !== null &&
+      this.#callbacks.onApplyFilter !== undefined &&
+      filterOperatorsForField(field).length > 0
+    ) {
+      items.push({
+        label: this.#translate('field.menu.filter'),
+        icon: 'tool-filter',
+        action: () => {
+          this.#filterSeedFieldId = field.id;
+          this.#openPanel = 'filter';
+          this.#rerenderSelf();
+        },
       });
     }
     if (
@@ -1793,13 +2325,9 @@ export class ReadonlyGridRenderer {
       danger: true,
       disabled:
         gridState?.status === 'offline' || editStatus === 'queued' || editStatus === 'saving',
-      action: () =>
-        void this.#requestDangerousConfirmation(
-          this.#translate('record.delete.confirm'),
-          this.#container,
-        ).then((confirmed) => {
-          if (confirmed) void this.#callbacks.onDeleteRecord?.(record.id);
-        }),
+      // Deletion is recoverable through the deleted-records panel and the
+      // undo notice, so it applies immediately without a confirmation step.
+      action: () => void this.#callbacks.onDeleteRecord?.(record.id),
     };
   }
 
@@ -1836,10 +2364,14 @@ export class ReadonlyGridRenderer {
     cell.tabIndex = -1;
     let composing = false;
     let finished = false;
-    const finish = (commit: boolean, moveOffset = 0): void => {
+    const finish = (commit: boolean, moveOffset = 0, advance = false): void => {
       if (finished) return;
       finished = true;
       if (!commit) {
+        if (record.id === DRAFT_RECORD_ID) {
+          this.#cancelDraftCreate();
+          return;
+        }
         this.#dismissedEditDraftKey = editDraftKey(record.id, field.id);
         this.render(this.#virtualGrid?.state ?? this.#emptyState());
         return;
@@ -1850,6 +2382,25 @@ export class ReadonlyGridRenderer {
           : editor instanceof HTMLSelectElement && editor.multiple
             ? [...editor.selectedOptions].map((option) => option.value)
             : editor.value;
+      const normalized = normalizeCellValue(field, value);
+      if (record.id === DRAFT_RECORD_ID) {
+        this.#finishDraftCell(
+          field.id,
+          normalized.ok ? normalized.value : value,
+          fieldIndex,
+          advance ? moveOffset || 1 : null,
+        );
+        return;
+      }
+      if (normalized.ok && jsonEqual(normalized.value, record.values[field.id])) {
+        if (moveOffset !== 0) {
+          const state = this.#virtualGrid?.state ?? this.#emptyState();
+          this.#focusedCellKey = null;
+          this.render(state);
+          this.#focusAdjacentCell(rowIndex, fieldIndex, moveOffset, true);
+        }
+        return;
+      }
       const result = this.#callbacks.onCellEdit?.(record.id, field.id, value);
       if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
       if (moveOffset !== 0) {
@@ -1872,10 +2423,18 @@ export class ReadonlyGridRenderer {
         finish(false);
       } else if (keyboardEvent.key === 'Enter' && !composing && !keyboardEvent.isComposing) {
         keyboardEvent.preventDefault();
-        finish(true);
+        if (keyboardEvent.altKey && editor instanceof HTMLTextAreaElement) {
+          // Alt+Enter inserts a line break inside multiline editors; plain
+          // Enter (and Ctrl/Cmd+Enter) commits the edit.
+          const start = editor.selectionStart;
+          editor.value = `${editor.value.slice(0, start)}\n${editor.value.slice(editor.selectionEnd)}`;
+          editor.selectionStart = editor.selectionEnd = start + 1;
+        } else {
+          finish(true, 0, true);
+        }
       } else if (keyboardEvent.key === 'Tab' && !composing && !keyboardEvent.isComposing) {
         keyboardEvent.preventDefault();
-        finish(true, keyboardEvent.shiftKey ? -1 : 1);
+        finish(true, keyboardEvent.shiftKey ? -1 : 1, true);
       }
     });
     editor.addEventListener('blur', () => {
@@ -2156,6 +2715,7 @@ export class ReadonlyGridRenderer {
         head: { rowIndex, fieldIndex },
       };
     }
+    this.#selectedRows.clear();
     this.#applySelection();
   }
 
@@ -2166,7 +2726,56 @@ export class ReadonlyGridRenderer {
       anchor: { rowIndex, fieldIndex: 0 },
       head: { rowIndex, fieldIndex: grid.fields.length - 1 },
     };
+    this.#selectedRows = new Set([rowIndex]);
+    this.#rowAnchorIndex = rowIndex;
     this.#applySelection();
+  }
+
+  #selectRowRange(from: number, to: number): void {
+    const grid = this.#virtualGrid;
+    if (grid === null || grid.fields.length === 0) return;
+    const top = Math.min(from, to);
+    const bottom = Math.max(from, to);
+    this.#selection = {
+      anchor: { rowIndex: top, fieldIndex: 0 },
+      head: { rowIndex: bottom, fieldIndex: grid.fields.length - 1 },
+    };
+    this.#selectedRows = new Set<number>();
+    for (let index = top; index <= bottom; index += 1) this.#selectedRows.add(index);
+    this.#applySelection();
+  }
+
+  #toggleRowSelected(rowIndex: number, extend = false): void {
+    const grid = this.#virtualGrid;
+    if (grid === null || grid.fields.length === 0) return;
+    if (extend && this.#rowAnchorIndex !== null) {
+      this.#selectRowRange(this.#rowAnchorIndex, rowIndex);
+      return;
+    }
+    const next = new Set(this.#selectedRows);
+    if (next.has(rowIndex)) {
+      next.delete(rowIndex);
+    } else {
+      next.add(rowIndex);
+      this.#rowAnchorIndex = rowIndex;
+    }
+    this.#selectedRows = next;
+    this.#selection = null;
+    this.#applySelection();
+  }
+
+  #isRowSelected(rowIndex: number): boolean {
+    if (this.#selectedRows.has(rowIndex)) return true;
+    const grid = this.#virtualGrid;
+    const rect = this.#selectionRect();
+    return (
+      rect !== null &&
+      grid !== null &&
+      rect.left === 0 &&
+      rect.right === grid.fields.length - 1 &&
+      rowIndex >= rect.top &&
+      rowIndex <= rect.bottom
+    );
   }
 
   #selectColumn(fieldIndex: number): void {
@@ -2176,6 +2785,7 @@ export class ReadonlyGridRenderer {
       anchor: { rowIndex: 0, fieldIndex },
       head: { rowIndex: grid.state.records.length - 1, fieldIndex },
     };
+    this.#selectedRows.clear();
     this.#applySelection();
   }
 
@@ -2191,6 +2801,8 @@ export class ReadonlyGridRenderer {
         fieldIndex: grid.fields.length - 1,
       },
     };
+    this.#selectedRows = new Set(grid.state.records.map((_, index) => index));
+    this.#rowAnchorIndex = 0;
     this.#applySelection();
   }
 
@@ -2214,6 +2826,7 @@ export class ReadonlyGridRenderer {
   }
 
   #isCellSelected(rowIndex: number, fieldIndex: number): boolean {
+    if (this.#selectedRows.has(rowIndex)) return true;
     const rect = this.#selectionRect();
     if (rect === null) return false;
     return (
@@ -2228,18 +2841,18 @@ export class ReadonlyGridRenderer {
     const grid = this.#virtualGrid;
     if (grid === null) return;
     const rect = this.#selectionRect();
-    const lastCol = grid.fields.length - 1;
     const lastRow = grid.state.records.length - 1;
     grid.viewport.querySelectorAll<HTMLElement>('.loom-grid-cell').forEach((cell) => {
       const rowIndex = Number(cell.dataset.rowIndex);
       const fieldIndex = Number(cell.dataset.fieldIndex);
       cell.classList.toggle(
         'is-selected',
-        rect !== null &&
-          rowIndex >= rect.top &&
-          rowIndex <= rect.bottom &&
-          fieldIndex >= rect.left &&
-          fieldIndex <= rect.right,
+        this.#selectedRows.has(rowIndex) ||
+          (rect !== null &&
+            rowIndex >= rect.top &&
+            rowIndex <= rect.bottom &&
+            fieldIndex >= rect.left &&
+            fieldIndex <= rect.right),
       );
     });
     grid.viewport
@@ -2247,14 +2860,10 @@ export class ReadonlyGridRenderer {
       .forEach((indexCell) => {
         const row = indexCell.closest<HTMLElement>('.loom-grid-row');
         const rowIndex = Number(row?.dataset.rowIndex);
-        indexCell.classList.toggle(
-          'is-selected',
-          rect !== null &&
-            rowIndex >= rect.top &&
-            rowIndex <= rect.bottom &&
-            rect.left === 0 &&
-            rect.right === lastCol,
-        );
+        const selected = this.#isRowSelected(rowIndex);
+        indexCell.classList.toggle('is-selected', selected);
+        const check = indexCell.querySelector<HTMLInputElement>('.loom-grid-row-check');
+        if (check !== null) check.checked = selected;
       });
     grid.viewport
       .querySelectorAll<HTMLElement>('.loom-grid-header-cell[data-field-index]')
@@ -2273,9 +2882,11 @@ export class ReadonlyGridRenderer {
     if (footerCount !== null) {
       const base = `${grid.state.records.length} ${this.#translate('grid.rows')}`;
       footerCount.textContent =
-        rect !== null && (rect.bottom - rect.top + 1) * (rect.right - rect.left + 1) > 1
-          ? `${base} · ${this.#translate('grid.selectedCount').replace('{count}', String((rect.bottom - rect.top + 1) * (rect.right - rect.left + 1)))}`
-          : base;
+        this.#selectedRows.size > 1
+          ? `${base} · ${this.#translate('grid.selectedRows').replace('{count}', String(this.#selectedRows.size))}`
+          : rect !== null && (rect.bottom - rect.top + 1) * (rect.right - rect.left + 1) > 1
+            ? `${base} · ${this.#translate('grid.selectedCount').replace('{count}', String((rect.bottom - rect.top + 1) * (rect.right - rect.left + 1)))}`
+            : base;
     }
   }
 
@@ -2330,6 +2941,42 @@ export class ReadonlyGridRenderer {
       projection: config.projection,
       columnOrder: order,
       columnWidths: config.columnWidths,
+      frozenFieldIds: config.frozenFieldIds,
+      rowHeight: config.rowHeight,
+    });
+  }
+
+  #previewColumnWidth(fieldId: string, width: number): void {
+    const grid = this.#virtualGrid;
+    if (grid === null) return;
+    const base = [
+      `${GRID_INDEX_COLUMN_WIDTH}px`,
+      ...grid.fields.map(
+        (field) =>
+          `${field.id === fieldId ? width : (grid.columns.widths.get(field.id) ?? GRID_COLUMN_WIDTH_DEFAULT)}px`,
+      ),
+    ].join(' ');
+    // The header carries the trailing add-field cell; body rows do not.
+    const headerTemplate = this.#callbacks.onFieldSave !== undefined ? `${base} 2.5rem` : base;
+    grid.viewport.querySelectorAll<HTMLElement>('.loom-grid-header').forEach((row) => {
+      row.style.gridTemplateColumns = headerTemplate;
+    });
+    grid.viewport
+      .querySelectorAll<HTMLElement>('.loom-grid-row, .loom-grid-draft-row')
+      .forEach((row) => {
+        row.style.gridTemplateColumns = base;
+      });
+  }
+
+  #commitColumnWidth(field: Field, width: number): void {
+    const state = this.#lastState;
+    const gridView = state === null ? null : selectedGridView(state);
+    if (gridView === null || this.#callbacks.onApplyDisplay === undefined) return;
+    const config = gridView.config;
+    void this.#callbacks.onApplyDisplay(gridView.id, {
+      projection: config.projection,
+      columnOrder: config.columnOrder,
+      columnWidths: { ...config.columnWidths, [field.id]: width },
       frozenFieldIds: config.frozenFieldIds,
       rowHeight: config.rowHeight,
     });
@@ -2586,6 +3233,27 @@ function createGridCell(text: string, className: string): HTMLElement {
 
 function editDraftKey(recordId: string, fieldId: string): string {
   return recordId + '\u0000' + fieldId;
+}
+
+function jsonEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || a === undefined || b === null || b === undefined) {
+    return (a === null || a === undefined) && (b === null || b === undefined);
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((entry, index) => jsonEqual(entry, b[index]));
+  }
+  if (typeof a === 'object' && typeof b === 'object') {
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    return (
+      aKeys.length === bKeys.length &&
+      aKeys.every((key) =>
+        jsonEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
+      )
+    );
+  }
+  return false;
 }
 
 function renderDiagnostic(label: string, details: string): HTMLElement {

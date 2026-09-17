@@ -30,7 +30,9 @@ export type UiIconName =
   | 'menu-clear'
   | 'menu-open'
   | 'menu-delete'
+  | 'menu-ellipsis'
   | 'tool-filter'
+  | 'tool-search'
   | 'tool-sort'
   | 'tool-display'
   | 'tool-create'
@@ -48,6 +50,7 @@ export type UiIconName =
   | 'col-insert-right'
   | 'sort-asc'
   | 'sort-desc'
+  | 'caret-down'
   | 'field-hide'
   | 'tool-undo'
   | 'tool-redo';
@@ -113,7 +116,16 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
     ['line', { x1: '10', x2: '10', y1: '11', y2: '17' }],
     ['line', { x1: '14', x2: '14', y1: '11', y2: '17' }],
   ],
+  'menu-ellipsis': [
+    ['circle', { cx: '12', cy: '12', r: '1' }],
+    ['circle', { cx: '19', cy: '12', r: '1' }],
+    ['circle', { cx: '5', cy: '12', r: '1' }],
+  ],
   'tool-filter': [['path', { d: 'M22 3H2l8 9.46V19l4 2v-8.54z' }]],
+  'tool-search': [
+    ['circle', { cx: '11', cy: '11', r: '8' }],
+    ['path', { d: 'm21 21-4.35-4.35' }],
+  ],
   'tool-sort': [
     ['path', { d: 'm21 16-4 4-4-4' }],
     ['path', { d: 'M17 20V4' }],
@@ -187,6 +199,7 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
     ['path', { d: 'M12 5v14' }],
     ['path', { d: 'm19 12-7 7-7-7' }],
   ],
+  'caret-down': [['path', { d: 'm6 9 6 6 6-6' }]],
   'field-hide': [
     [
       'path',

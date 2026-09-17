@@ -109,6 +109,7 @@ export class TableShell {
   #manageFormError: string | null = null;
   #tabObserver: ResizeObserver | null = null;
   #overlayDismiss: ((event: PointerEvent) => void) | null = null;
+  #contextExpanded = false;
 
   constructor(
     translate: Translator,
@@ -142,6 +143,24 @@ export class TableShell {
     root.setAttribute('role', 'group');
     labelContainer(root, this.#translate('grid.status'));
     const context = createElement('div', 'loom-shell-context');
+    context.classList.toggle('loom-shell-context-open', this.#contextExpanded);
+    const crumb = [
+      state.workspaces.find((item) => item.id === state.selectedWorkspaceId)?.name,
+      state.bases.find((item) => item.id === state.selectedBaseId)?.name,
+      state.tables.find((item) => item.id === state.selectedTableId)?.name,
+    ]
+      .filter((name): name is string => name !== undefined && name !== '')
+      .join(' / ');
+    const contextToggle = createElement('button', 'loom-shell-context-toggle');
+    contextToggle.type = 'button';
+    contextToggle.textContent = crumb;
+    contextToggle.setAttribute('aria-expanded', this.#contextExpanded ? 'true' : 'false');
+    contextToggle.setAttribute('aria-label', this.#translate('grid.context.expand'));
+    contextToggle.addEventListener('click', () => {
+      this.#contextExpanded = !this.#contextExpanded;
+      this.#rerender();
+    });
+    context.append(contextToggle);
     context.append(
       this.#renderSelect(
         'grid.workspace',
@@ -168,8 +187,10 @@ export class TableShell {
       addView.type = 'button';
       addView.className = 'loom-button loom-view-add';
       addView.dataset.shellFocus = 'add-view';
-      addView.textContent = this.#translate('view.add');
       addView.prepend(createUiIcon('view-add'));
+      const addLabel = createElement('span', 'loom-button-label');
+      addLabel.textContent = this.#translate('view.add');
+      addView.append(addLabel);
       addView.setAttribute('aria-label', this.#translate('view.add'));
       addView.addEventListener('click', () => {
         this.#createOpen = true;
@@ -184,8 +205,10 @@ export class TableShell {
       manage.className = 'loom-button loom-view-manage-toggle';
       manage.dataset.action = 'manage-views';
       manage.dataset.shellFocus = 'manage-views';
-      manage.textContent = this.#translate('view.manage');
       manage.prepend(createUiIcon('view-manage'));
+      const manageLabel = createElement('span', 'loom-button-label');
+      manageLabel.textContent = this.#translate('view.manage');
+      manage.append(manageLabel);
       manage.setAttribute('aria-label', this.#translate('view.manage'));
       manage.setAttribute('aria-expanded', this.#manageOpen ? 'true' : 'false');
       manage.addEventListener('click', () => this.#toggleManage(state));

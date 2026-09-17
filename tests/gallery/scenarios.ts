@@ -432,7 +432,6 @@ export const galleryScenarios: readonly GalleryScenario[] = [
         fields: GALLERY_FIELDS,
         translate,
         onApply: () => undefined,
-        onCancel: () => undefined,
       });
       const sortPanel = new SortPanel(
         [{ fieldId: 'field_title', direction: 'asc', nulls: 'last' }] satisfies SortSpec[],
@@ -440,14 +439,12 @@ export const galleryScenarios: readonly GalleryScenario[] = [
           fields: GALLERY_FIELDS,
           translate,
           onApply: () => undefined,
-          onCancel: () => undefined,
         },
       );
       const displayPanel = new DisplayPanel(galleryGridConfig(), {
         fields: GALLERY_FIELDS,
         translate,
         onApply: () => undefined,
-        onCancel: () => undefined,
       });
       const wrap = block(host, 'loom-gallery-panels');
       wrap.append(
@@ -473,7 +470,6 @@ export const galleryScenarios: readonly GalleryScenario[] = [
         fields: GALLERY_FIELDS,
         translate,
         onApply: () => undefined,
-        onCancel: () => undefined,
       });
       host.append(builder.render());
     },

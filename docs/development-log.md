@@ -178,3 +178,14 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - 「#」列表头居中；新增记录行改为仅 `+` 图标的单格行（56px，无文字标签，aria-label 保留）。
 - 测试：renderer +2（状态面板含历史/刷新/已删除区、icon-only undo/redo 断言），recycle 测试改走 `toggle-status`/`.loom-status-panel`。
 - 验证：63 文件 794 tests 全绿；lint 0 error；format/typecheck 干净；openapi 无 diff；已部署 vault（main.js 590,044B / styles.css 68,261B）；gallery bundle 已重建。
+
+## 2026-XX — UX 跟进 7：ux-gap-2026-09-17 二轮审计落地批次 A–F（外部多维表产品/外部表格组件库 对齐）
+
+- **批次 A 闪屏三连修**：`finish(true)` 无变化也提交 → `jsonEqual` 守卫跳过；单元格 click 选中态/dblclick 进入编辑分离（行 dblclick 不再冒泡开详情）；`refresh()` 改走保留记录的 `load({preserveRecords:true})`——加载期不清空 `records`，视图删除回退等完整管线仍生效；外部 mutation 经 `applyExternalMutation` 原位 patch。面板锚定 bug 修复（挂载后 rect 测量差值）+ 右缘翻转 `loom-query-panel--end`；编辑器改覆盖式去胶囊 + 密集控件焦点环内描边。
+- **批次 B 即改即生效**：搜索图标折叠（展开后 300ms 防抖即搜、Enter 立即、Escape 收起）；FilterBuilder/SortPanel/DisplayPanel 三件套去 Apply/Cancel/丢弃确认——变更即防抖提交、builder 按 viewId 缓存防 revision bump 冲掉草稿、面板保持打开；计数 `N/M rows`（部分加载时显示已加载/总数）；删除去确认（grid 右键/详情/Map 详情即删 + `deletedNotice` 撤销条）；底部 `+` 即时插入草稿行（首格即编辑、提交走 onCreateRecord、空值失焦/Escape 取消），顶部 `+ ▾` 分拆钮（即时插入/打开表单）。
+- **批次 C 选择与列操作**：行 hover 复选框+`↗`、Shift/Ctrl 行选集（`#selectedRows` 与矩形选集联合判定）；表头 `⋯` 常显菜单补「复制字段/筛选此字段」（FilterBuilder seed 预设条件）；列宽拖拽柄（`loom-grid-col-resize`、pointer preview、`clampGridColumnWidth`、提交走 onApplyDisplay）；键位 F2 进入编辑、longText Alt+Enter 换行、Ctrl/Cmd+Enter 提交、Escape 取消。
+- **批次 D 历史面板**：`UndoEntryMeta` 扩展 fieldId/before/after，`UndoHistory.undoUntil(index)` 撤销至指定步；状态面板重构为 `changes`/`deleted` 双模式 tab——历史模式含 kind 筛选 chip 行（all/edit/create/delete/restore）、edit 条目显示 `before → after` delta、hover 显示「撤销此步」走 `onUndoTo`→`controller.undoUntil`；deleted 模式保留原有分页恢复。client `pullChanges` 已封装（kind 级，字段级 diff 属 Server 需求）。
+- **批次 E**：详情头部 `⋯` 菜单（复制记录 ID + 删除移入菜单，`ContextMenuItem` 增 `dataAction` 测试钩子）；新增字段面板加类型搜索框（按名称/说明过滤）+ 每类型一句话说明（10 类型 en/zh i18n）。字段类型原地转换合同不可变 → 进 Server 清单。
+- **批次 F 响应式/底栏**：断点体系 ≤1100px 工具栏 label 隐藏（图标+aria-label）、≤760px 面包屑胶囊折叠为 `ws / base / table` 单路径钮（点击展开 selects）、≤560px query/status 面板转底部抽屉（fixed 底浮层）；`touch-action` 分区声明（viewport pan-x pan-y / 编辑器 manipulation / resize 柄 none）；`@media (hover:none)` 选中行常显 ↗+复选框、历史条目撤销钮常显；Obsidian 状态栏 `N/M 行 · 保存态`（main.ts `addStatusBarItem` + view `statusSink` 发布，视图关闭即隐藏）。
+- **Server 清单**：`docs/local/ux-gap-2026-09-17/12-server-requirements.md`（本地不入库）——S1 字段级历史/S2 类型转换/S3 字段 description/S4 distinct 值清单/S5 无筛选总数/S6 聚合统计/S7 记录排序/S8 复制记录。
+- 验证：63 文件 808 tests 全绿；lint 0 error；typecheck/format 干净；openapi 无 diff；esbuild 通过；已部署 vault（main.js 607,120B / styles.css 76,291B）。

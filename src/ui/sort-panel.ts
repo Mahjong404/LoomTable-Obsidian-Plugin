@@ -8,8 +8,6 @@ export interface SortPanelOptions {
   readonly fields: readonly Field[];
   readonly translate: Translator;
   readonly onApply: (sort: readonly SortSpec[]) => void | Promise<unknown>;
-  readonly onCancel: () => void;
-  readonly confirmDiscard?: (message: string) => boolean | Promise<boolean>;
   readonly onInvalidate?: () => void;
 }
 
@@ -17,21 +15,18 @@ export class SortPanel {
   readonly #fields: readonly Field[];
   readonly #translate: Translator;
   readonly #onApply: SortPanelOptions['onApply'];
-  readonly #onCancel: () => void;
-  readonly #confirmDiscard: SortPanelOptions['confirmDiscard'];
   readonly #onInvalidate: (() => void) | undefined;
   #draft: SortSpec[];
-  #dirty = false;
   #root: HTMLElement | null = null;
   #applying = false;
+  #applyQueued = false;
+  #applyTimer: number | null = null;
 
   constructor(initial: readonly SortSpec[], options: SortPanelOptions) {
     this.#draft = initial.map((entry) => ({ ...entry }));
     this.#fields = options.fields;
     this.#translate = options.translate;
     this.#onApply = options.onApply;
-    this.#onCancel = options.onCancel;
-    this.#confirmDiscard = options.confirmDiscard;
     this.#onInvalidate = options.onInvalidate;
   }
 
@@ -79,27 +74,12 @@ export class SortPanel {
       const field = choices.find((candidate) => candidate.id === choice.value);
       if (field === undefined || this.#draft.length >= MAX_SORT_FIELDS) return;
       this.#draft.push(defaultSortFor(field.id));
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     addRow.append(choice, add);
     root.append(addRow);
 
-    const footer = createElement('div', 'loom-sort-actions');
-    const apply = createElement('button', 'loom-button');
-    apply.type = 'button';
-    apply.dataset.action = 'sort-apply-all';
-    apply.textContent = this.#translate('sort.apply');
-    apply.disabled = this.#applying;
-    apply.addEventListener('click', () => void this.#apply());
-    const cancel = createElement('button', 'loom-button');
-    cancel.type = 'button';
-    cancel.dataset.action = 'sort-cancel';
-    cancel.textContent = this.#translate('common.cancel');
-    cancel.disabled = this.#applying;
-    cancel.addEventListener('click', () => void this.#cancel());
-    footer.append(apply, cancel);
-    root.append(footer);
     ensureButtonLabels(root);
     return root;
   }
@@ -127,7 +107,7 @@ export class SortPanel {
     fieldSelect.addEventListener('change', () => {
       entry = { ...entry, fieldId: fieldSelect.value };
       this.#draft[index] = entry;
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     item.append(fieldSelect);
@@ -148,7 +128,7 @@ export class SortPanel {
     direction.addEventListener('change', () => {
       entry = { ...entry, direction: direction.value === 'desc' ? 'desc' : 'asc' };
       this.#draft[index] = entry;
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     item.append(direction);
@@ -169,7 +149,7 @@ export class SortPanel {
     nulls.addEventListener('change', () => {
       entry = { ...entry, nulls: nulls.value === 'first' ? 'first' : 'last' };
       this.#draft[index] = entry;
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     item.append(nulls);
@@ -187,7 +167,7 @@ export class SortPanel {
     );
     const remove = this.#entryButton('sort-remove', 'sort.remove', false, () => {
       this.#draft.splice(index, 1);
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     item.append(up, down, remove);
@@ -214,28 +194,36 @@ export class SortPanel {
     if (target < 0 || target >= this.#draft.length) return;
     const [entry] = this.#draft.splice(index, 1);
     this.#draft.splice(target, 0, entry!);
-    this.#dirty = true;
+    this.#scheduleApply();
     this.#rerender();
+  }
+
+  #scheduleApply(): void {
+    if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
+    this.#applyTimer = window.setTimeout(() => {
+      this.#applyTimer = null;
+      void this.#apply();
+    }, 300);
   }
 
   async #apply(): Promise<void> {
+    if (this.#applying) {
+      this.#applyQueued = true;
+      return;
+    }
+    const sort = [...this.#draft];
     this.#applying = true;
-    this.#rerender();
     try {
-      await this.#onApply([...this.#draft]);
+      await this.#onApply(sort);
     } finally {
       this.#applying = false;
-      this.#rerender();
+      if (this.#applyQueued) {
+        this.#applyQueued = false;
+        void this.#apply();
+      } else {
+        this.#rerender();
+      }
     }
-  }
-
-  async #cancel(): Promise<void> {
-    if (this.#dirty) {
-      const confirmed =
-        (await this.#confirmDiscard?.(this.#translate('sort.discardConfirm'))) ?? false;
-      if (!confirmed) return;
-    }
-    this.#onCancel();
   }
 
   #rerender(): void {

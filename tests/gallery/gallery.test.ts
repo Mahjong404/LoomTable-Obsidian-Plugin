@@ -152,6 +152,7 @@ describe('Grid states', () => {
     const host = await mount('grid-recycle');
     expect(host.querySelector('.loom-grid-deleted-notice')).not.toBeNull();
     host.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    host.querySelector<HTMLButtonElement>('.loom-status-mode[data-mode="deleted"]')?.click();
     const panel = host.querySelector('.loom-status-panel');
     expect(panel).not.toBeNull();
     expect(panel?.querySelectorAll('.loom-recycle-item')).toHaveLength(2);
@@ -171,9 +172,6 @@ describe('Grid states', () => {
     host
       .querySelector<HTMLButtonElement>('.loom-context-menu-item[data-variant="danger"]')
       ?.click();
-    const dialog = host.querySelector<HTMLElement>('.loom-dangerous-confirmation');
-    expect(dialog).not.toBeNull();
-    dialog?.querySelector<HTMLButtonElement>('[data-action="confirm"]')?.click();
     await vi.waitFor(() => {
       expect(host.querySelector('.loom-grid-deleted-notice')).not.toBeNull();
     });
@@ -187,7 +185,10 @@ describe('Grid states', () => {
     await vi.waitFor(() => {
       expect(host.querySelectorAll('.loom-grid-row').length).toBeGreaterThan(0);
     });
-    host.querySelector<HTMLButtonElement>('[data-action="toggle-create"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-action="create-menu"]')?.click();
+    host.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item').forEach((item) => {
+      if (item.textContent?.includes('Open create form')) item.click();
+    });
     const form = host.querySelector<HTMLFormElement>('.loom-record-create');
     expect(form).not.toBeNull();
     const titleInput = host.querySelector<HTMLInputElement>('[data-field-id="field_title"] input');

@@ -138,6 +138,28 @@ describe('TableShell tabs', () => {
     host.remove();
   });
 
+  it('renders a compact context crumb that toggles the selects open', () => {
+    const { shell } = createShell();
+    const host = mount(shell, shellState());
+
+    const toggle = host.querySelector<HTMLButtonElement>('.loom-shell-context-toggle');
+    expect(toggle).not.toBeNull();
+    expect(toggle?.textContent).toBe('Personal / Notes / Projects');
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    expect(
+      host.querySelector('.loom-shell-context')?.classList.contains('loom-shell-context-open'),
+    ).toBe(false);
+
+    toggle?.click();
+    const expanded = host.querySelector('.loom-shell-context');
+    expect(expanded?.classList.contains('loom-shell-context-open')).toBe(true);
+    host.querySelector<HTMLButtonElement>('.loom-shell-context-toggle')?.click();
+    expect(
+      host.querySelector('.loom-shell-context')?.classList.contains('loom-shell-context-open'),
+    ).toBe(false);
+    host.remove();
+  });
+
   it('keeps duplicate View names distinguishable by type and hides deleted Views', () => {
     const { shell } = createShell();
     const host = mount(

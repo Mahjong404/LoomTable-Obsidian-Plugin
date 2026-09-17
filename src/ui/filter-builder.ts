@@ -30,8 +30,6 @@ export interface FilterBuilderOptions {
   readonly fields: readonly Field[];
   readonly translate: Translator;
   readonly onApply: (filter: FilterNode | undefined) => void | Promise<unknown>;
-  readonly onCancel: () => void;
-  readonly confirmDiscard?: (message: string) => boolean | Promise<boolean>;
   readonly onInvalidate?: () => void;
 }
 
@@ -67,14 +65,13 @@ export class FilterBuilder {
   readonly #fields: readonly Field[];
   readonly #translate: Translator;
   readonly #onApply: FilterBuilderOptions['onApply'];
-  readonly #onCancel: () => void;
-  readonly #confirmDiscard: FilterBuilderOptions['confirmDiscard'];
   readonly #onInvalidate: (() => void) | undefined;
-  readonly #applied: FilterNode | undefined;
+  #applied: FilterNode | undefined;
   #draft: FilterNode | undefined;
-  #dirty = false;
   #root: HTMLElement | null = null;
   #applying = false;
+  #applyQueued = false;
+  #applyTimer: number | null = null;
 
   constructor(initial: FilterNode | undefined, options: FilterBuilderOptions) {
     this.#applied = initial;
@@ -82,8 +79,6 @@ export class FilterBuilder {
     this.#fields = options.fields;
     this.#translate = options.translate;
     this.#onApply = options.onApply;
-    this.#onCancel = options.onCancel;
-    this.#confirmDiscard = options.confirmDiscard;
     this.#onInvalidate = options.onInvalidate;
   }
 
@@ -134,16 +129,6 @@ export class FilterBuilder {
     }
 
     const footer = createElement('div', 'loom-filter-actions');
-    const apply = createElement('button', 'loom-button');
-    apply.type = 'button';
-    apply.dataset.action = 'filter-apply';
-    apply.textContent = this.#translate('filter.apply');
-    apply.disabled =
-      this.#applying ||
-      issues.length > 0 ||
-      (this.#draft === undefined && this.#applied === undefined);
-    apply.addEventListener('click', () => void this.#apply());
-    footer.append(apply);
     if (this.#applied !== undefined || this.#draft !== undefined) {
       const clear = createElement('button', 'loom-button');
       clear.type = 'button';
@@ -153,13 +138,6 @@ export class FilterBuilder {
       clear.addEventListener('click', () => void this.#clear());
       footer.append(clear);
     }
-    const cancel = createElement('button', 'loom-button');
-    cancel.type = 'button';
-    cancel.dataset.action = 'filter-cancel';
-    cancel.textContent = this.#translate('common.cancel');
-    cancel.disabled = this.#applying;
-    cancel.addEventListener('click', () => void this.#cancel());
-    footer.append(cancel);
     root.append(footer);
     ensureButtonLabels(root);
     return root;
@@ -188,7 +166,7 @@ export class FilterBuilder {
     operator.addEventListener('change', () => {
       if (this.#draft === undefined) return;
       this.#draft = setFilterGroupOperator(this.#draft, path, operator.value as 'and' | 'or');
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     head.append(operator);
@@ -224,7 +202,7 @@ export class FilterBuilder {
       this.#draft = updateFilterNodeAt(this.#draft, path, (node) =>
         node.kind === 'rule' ? coerceRuleForField(node, field) : node,
       );
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     row.append(fieldSelect);
@@ -247,7 +225,7 @@ export class FilterBuilder {
       this.#draft = updateFilterNodeAt(this.#draft, path, (node) =>
         node.kind === 'rule' ? coerceRuleForOperator(node, operator) : node,
       );
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     row.append(operatorSelect);
@@ -349,7 +327,7 @@ export class FilterBuilder {
         ? { kind: 'rule', fieldId: node.fieldId, operator: node.operator }
         : { kind: 'rule', fieldId: node.fieldId, operator: node.operator, value };
     });
-    this.#dirty = true;
+    this.#scheduleApply();
     this.#rerender();
   }
 
@@ -370,7 +348,7 @@ export class FilterBuilder {
       } else {
         this.#draft = addFilterChild(this.#draft, path, 'rule', field);
       }
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     return button;
@@ -386,7 +364,7 @@ export class FilterBuilder {
       const field = this.#fields.find((candidate) => candidate.deletedAt === undefined);
       if (field === undefined) return;
       this.#draft = addFilterChild(this.#draft, path, 'group', field);
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     return button;
@@ -401,47 +379,71 @@ export class FilterBuilder {
     button.addEventListener('click', () => {
       if (this.#draft === undefined) return;
       this.#draft = removeFilterNodeAt(this.#draft, path);
-      this.#dirty = true;
+      this.#scheduleApply();
       this.#rerender();
     });
     return button;
   }
 
+  #scheduleApply(): void {
+    if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
+    this.#applyTimer = window.setTimeout(() => {
+      this.#applyTimer = null;
+      void this.#apply();
+    }, 300);
+  }
+
   async #apply(): Promise<void> {
+    if (this.#applying) {
+      this.#applyQueued = true;
+      return;
+    }
     const issues = validateFilterDraft(this.#draft, this.#fields);
     if (issues.length > 0) {
       this.#rerender();
       return;
     }
-    if (this.#draft === undefined && this.#applied === undefined) return;
+    const draft = this.#draft;
     this.#applying = true;
-    this.#rerender();
     try {
-      await this.#onApply(this.#draft);
+      const outcome = await this.#onApply(draft);
+      if (
+        outcome === undefined ||
+        (typeof outcome === 'object' &&
+          outcome !== null &&
+          (outcome as { status?: unknown }).status === 'saved')
+      ) {
+        this.#applied = draft;
+      }
     } finally {
       this.#applying = false;
-      this.#rerender();
+      if (this.#applyQueued) {
+        this.#applyQueued = false;
+        void this.#apply();
+      } else {
+        this.#rerender();
+      }
     }
   }
 
   async #clear(): Promise<void> {
+    this.#draft = undefined;
     this.#applying = true;
     this.#rerender();
     try {
-      await this.#onApply(undefined);
+      const outcome = await this.#onApply(undefined);
+      if (
+        outcome === undefined ||
+        (typeof outcome === 'object' &&
+          outcome !== null &&
+          (outcome as { status?: unknown }).status === 'saved')
+      ) {
+        this.#applied = undefined;
+      }
     } finally {
       this.#applying = false;
       this.#rerender();
     }
-  }
-
-  async #cancel(): Promise<void> {
-    if (this.#dirty) {
-      const confirmed =
-        (await this.#confirmDiscard?.(this.#translate('filter.discardConfirm'))) ?? false;
-      if (!confirmed) return;
-    }
-    this.#onCancel();
   }
 
   #rerender(): void {

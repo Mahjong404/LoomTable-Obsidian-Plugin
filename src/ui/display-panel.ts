@@ -17,8 +17,6 @@ export interface DisplayPanelOptions {
   readonly fields: readonly Field[];
   readonly translate: Translator;
   readonly onApply: (patch: GridDisplayPatch) => void | Promise<unknown>;
-  readonly onCancel: () => void;
-  readonly confirmDiscard?: (message: string) => boolean | Promise<boolean>;
   readonly onInvalidate?: () => void;
 }
 
@@ -34,8 +32,6 @@ const ROW_HEIGHTS: readonly GridViewConfig['rowHeight'][] = ['compact', 'standar
 export class DisplayPanel {
   readonly #translate: Translator;
   readonly #onApply: DisplayPanelOptions['onApply'];
-  readonly #onCancel: () => void;
-  readonly #confirmDiscard: DisplayPanelOptions['confirmDiscard'];
   readonly #onInvalidate: (() => void) | undefined;
   readonly #fieldsById: ReadonlyMap<string, Field>;
   #order: string[];
@@ -43,16 +39,15 @@ export class DisplayPanel {
   #widths: Map<string, string>;
   #frozen: Set<string>;
   #rowHeight: GridViewConfig['rowHeight'];
-  #dirty = false;
   #issues: readonly DisplayPatchIssue[] = [];
   #root: HTMLElement | null = null;
   #applying = false;
+  #applyQueued = false;
+  #applyTimer: number | null = null;
 
   constructor(config: GridViewConfig, options: DisplayPanelOptions) {
     this.#translate = options.translate;
     this.#onApply = options.onApply;
-    this.#onCancel = options.onCancel;
-    this.#confirmDiscard = options.confirmDiscard;
     this.#onInvalidate = options.onInvalidate;
 
     const active = options.fields
@@ -122,7 +117,7 @@ export class DisplayPanel {
       radio.addEventListener('change', () => {
         if (radio.checked) {
           this.#rowHeight = value;
-          this.#dirty = true;
+          this.#scheduleApply();
         }
       });
       label.append(radio, createTextElement('span', this.#translate(`display.rowHeight.${value}`)));
@@ -149,21 +144,6 @@ export class DisplayPanel {
       root.append(issueList);
     }
 
-    const actions = createElement('div', 'loom-display-actions');
-    const apply = createElement('button', 'loom-button loom-display-apply');
-    apply.type = 'button';
-    apply.dataset.action = 'display-apply';
-    apply.textContent = this.#translate('display.apply');
-    apply.disabled = this.#applying;
-    apply.addEventListener('click', () => void this.#apply());
-    const cancel = createElement('button', 'loom-button');
-    cancel.type = 'button';
-    cancel.dataset.action = 'display-cancel';
-    cancel.textContent = this.#translate('display.cancel');
-    cancel.disabled = this.#applying;
-    cancel.addEventListener('click', () => void this.#cancel());
-    actions.append(apply, cancel);
-    root.append(actions);
     ensureButtonLabels(root);
     return root;
   }
@@ -183,13 +163,13 @@ export class DisplayPanel {
       this.#translate('display.visible') + ': ' + field.name,
     );
     visibleToggle.addEventListener('change', () => {
-      this.#dirty = true;
       if (visibleToggle.checked) {
         this.#visible.add(field.id);
       } else {
         this.#visible.delete(field.id);
         this.#frozen.delete(field.id);
       }
+      this.#scheduleApply();
       this.#rerender();
     });
     visibleLabel.append(visibleToggle, createTextElement('span', field.name));
@@ -223,9 +203,9 @@ export class DisplayPanel {
     width.setAttribute('aria-label', `${this.#translate('display.width')}: ${field.name}`);
     if (this.#widthIssueFields.has(field.id)) width.setAttribute('aria-invalid', 'true');
     width.addEventListener('input', () => {
-      this.#dirty = true;
       if (width.value.trim() === '') this.#widths.delete(field.id);
       else this.#widths.set(field.id, width.value);
+      this.#scheduleApply();
     });
     controls.append(width);
 
@@ -237,9 +217,9 @@ export class DisplayPanel {
     frozenToggle.disabled = !visible;
     frozenToggle.setAttribute('aria-label', `${this.#translate('display.frozen')}: ${field.name}`);
     frozenToggle.addEventListener('change', () => {
-      this.#dirty = true;
       if (frozenToggle.checked) this.#frozen.add(field.id);
       else this.#frozen.delete(field.id);
+      this.#scheduleApply();
     });
     frozenLabel.append(frozenToggle, createTextElement('span', this.#translate('display.frozen')));
     controls.append(frozenLabel);
@@ -264,7 +244,7 @@ export class DisplayPanel {
     const [moved] = next.splice(index, 1);
     next.splice(target, 0, moved!);
     this.#order = next;
-    this.#dirty = true;
+    this.#scheduleApply();
     this.#rerender();
   }
 
@@ -299,8 +279,19 @@ export class DisplayPanel {
     return { patch, issues: [...issues, ...validateDisplayPatch(patch, fields)] };
   }
 
+  #scheduleApply(): void {
+    if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
+    this.#applyTimer = window.setTimeout(() => {
+      this.#applyTimer = null;
+      void this.#apply();
+    }, 300);
+  }
+
   async #apply(): Promise<void> {
-    if (this.#applying) return;
+    if (this.#applying) {
+      this.#applyQueued = true;
+      return;
+    }
     const { patch, issues } = this.#draftPatch();
     if (issues.length > 0 || patch === null) {
       this.#issues = issues;
@@ -309,22 +300,17 @@ export class DisplayPanel {
     }
     this.#issues = [];
     this.#applying = true;
-    this.#rerender();
     try {
       await this.#onApply(patch);
     } finally {
       this.#applying = false;
-      this.#rerender();
+      if (this.#applyQueued) {
+        this.#applyQueued = false;
+        void this.#apply();
+      } else {
+        this.#rerender();
+      }
     }
-  }
-
-  async #cancel(): Promise<void> {
-    if (this.#dirty) {
-      const confirmed =
-        (await this.#confirmDiscard?.(this.#translate('display.discardConfirm'))) ?? false;
-      if (!confirmed) return;
-    }
-    this.#onCancel();
   }
 
   #rerender(): void {

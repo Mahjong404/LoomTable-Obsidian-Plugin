@@ -40,8 +40,6 @@ function createPanel(
   viewConfig: GridViewConfig,
   callbacks: {
     onApply?: (patch: GridDisplayPatch) => void | Promise<unknown>;
-    onCancel?: () => void;
-    confirmDiscard?: (message: string) => boolean | Promise<boolean>;
     onInvalidate?: () => void;
   } = {},
 ) {
@@ -49,10 +47,12 @@ function createPanel(
     fields: FIELDS,
     translate: createTranslator('en'),
     onApply: callbacks.onApply ?? vi.fn(),
-    onCancel: callbacks.onCancel ?? vi.fn(),
-    ...(callbacks.confirmDiscard === undefined ? {} : { confirmDiscard: callbacks.confirmDiscard }),
     ...(callbacks.onInvalidate === undefined ? {} : { onInvalidate: callbacks.onInvalidate }),
   });
+}
+
+async function waitForApply(onApply: ReturnType<typeof vi.fn>): Promise<void> {
+  await vi.waitFor(() => expect(onApply).toHaveBeenCalled(), { timeout: 1000 });
 }
 
 function mount(panel: DisplayPanel): HTMLElement {
@@ -73,11 +73,15 @@ describe('DisplayPanel', () => {
     const host = mount(panel);
 
     expect(rows(host)).toHaveLength(3);
-    host.querySelector<HTMLButtonElement>('[data-action="display-apply"]')?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalled());
-    const patch = onApply.mock.calls[0]?.[0];
-    expect(patch?.projection).toEqual(['field_a', 'field_b', 'field_c']);
-    expect(patch?.columnOrder).toEqual(['field_a', 'field_b', 'field_c']);
+    host
+      .querySelector<HTMLButtonElement>(
+        'li[data-field-id="field_b"] [data-action="display-move-up"]',
+      )
+      ?.click();
+    await waitForApply(onApply);
+    const patch = onApply.mock.calls.at(-1)?.[0];
+    expect(patch?.projection).toEqual(['field_b', 'field_a', 'field_c']);
+    expect(patch?.columnOrder).toEqual(['field_b', 'field_a', 'field_c']);
     host.remove();
   });
 
@@ -93,13 +97,12 @@ describe('DisplayPanel', () => {
       ?.click();
     expect(rows(host).map((row) => row.dataset.fieldId)).toEqual(['field_b', 'field_a', 'field_c']);
 
-    host.querySelector<HTMLButtonElement>('[data-action="display-apply"]')?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalled());
-    expect(onApply.mock.calls[0]?.[0]?.columnOrder).toEqual(['field_b', 'field_a', 'field_c']);
+    await waitForApply(onApply);
+    expect(onApply.mock.calls.at(-1)?.[0]?.columnOrder).toEqual(['field_b', 'field_a', 'field_c']);
     host.remove();
   });
 
-  it('blocks Apply when every Field is hidden and keeps drafts', async () => {
+  it('never applies when every Field is hidden and reports the issue', async () => {
     const onApply = vi.fn(async (_patch: GridDisplayPatch) => true);
     const panel = createPanel(config(), { onApply });
     const host = mount(panel);
@@ -111,8 +114,7 @@ describe('DisplayPanel', () => {
         )
         ?.click();
     }
-    host.querySelector<HTMLButtonElement>('[data-action="display-apply"]')?.click();
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 400));
     expect(onApply).not.toHaveBeenCalled();
     expect(host.querySelector('.loom-display-issue')).not.toBeNull();
     host.remove();
@@ -130,8 +132,7 @@ describe('DisplayPanel', () => {
     width.value = '40';
     width.dispatchEvent(new Event('input', { bubbles: true }));
 
-    host.querySelector<HTMLButtonElement>('[data-action="display-apply"]')?.click();
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 400));
     expect(onApply).not.toHaveBeenCalled();
     const invalidWidth = host.querySelector<HTMLInputElement>(
       'li[data-field-id="field_a"] input[data-role="display-width"]',
@@ -140,9 +141,8 @@ describe('DisplayPanel', () => {
 
     invalidWidth!.value = '220';
     invalidWidth!.dispatchEvent(new Event('input', { bubbles: true }));
-    host.querySelector<HTMLButtonElement>('[data-action="display-apply"]')?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalled());
-    expect(onApply.mock.calls[0]?.[0]?.columnWidths).toEqual({ field_a: 220 });
+    await waitForApply(onApply);
+    expect(onApply.mock.calls.at(-1)?.[0]?.columnWidths).toEqual({ field_a: 220 });
     host.remove();
   });
 
@@ -159,9 +159,8 @@ describe('DisplayPanel', () => {
     width.value = '';
     width.dispatchEvent(new Event('input', { bubbles: true }));
 
-    host.querySelector<HTMLButtonElement>('[data-action="display-apply"]')?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalled());
-    expect(onApply.mock.calls[0]?.[0]?.columnWidths).toEqual({});
+    await waitForApply(onApply);
+    expect(onApply.mock.calls.at(-1)?.[0]?.columnWidths).toEqual({});
     host.remove();
   });
 
@@ -180,9 +179,8 @@ describe('DisplayPanel', () => {
     );
     expect(frozenToggle?.disabled).toBe(true);
 
-    host.querySelector<HTMLButtonElement>('[data-action="display-apply"]')?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalled());
-    const patch = onApply.mock.calls[0]?.[0];
+    await waitForApply(onApply);
+    const patch = onApply.mock.calls.at(-1)?.[0];
     expect(patch?.frozenFieldIds).toEqual([]);
     expect(patch?.projection).toEqual(['field_b', 'field_c']);
     host.remove();
@@ -197,30 +195,21 @@ describe('DisplayPanel', () => {
       'input[data-role="display-row-height"][value="compact"]',
     );
     radio?.click();
-    host.querySelector<HTMLButtonElement>('[data-action="display-apply"]')?.click();
-    await vi.waitFor(() => expect(onApply).toHaveBeenCalled());
-    expect(onApply.mock.calls[0]?.[0]?.rowHeight).toBe('compact');
+    await waitForApply(onApply);
+    expect(onApply.mock.calls.at(-1)?.[0]?.rowHeight).toBe('compact');
     host.remove();
   });
 
-  it('confirms before discarding a dirty draft and recovers after detach', async () => {
-    const onCancel = vi.fn();
-    const confirmDiscard = vi.fn(() => true);
+  it('recovers through onInvalidate when the root detaches before a rerender', async () => {
     const onInvalidate = vi.fn();
-    const panel = createPanel(config(), { onCancel, confirmDiscard, onInvalidate });
+    const panel = createPanel(config(), { onInvalidate });
     const host = document.createElement('div');
     document.body.append(host);
     const root = panel.render();
     host.append(root);
 
-    root.querySelector<HTMLInputElement>('input[data-role="display-visible"]')?.click();
-    root.querySelector<HTMLButtonElement>('[data-action="display-cancel"]')?.click();
-    await vi.waitFor(() => expect(confirmDiscard).toHaveBeenCalled());
-    await vi.waitFor(() => expect(onCancel).toHaveBeenCalled());
-
-    const current = panel.render();
-    current.remove();
-    current.querySelector<HTMLButtonElement>('[data-action="display-move-down"]')?.click();
+    root.remove();
+    root.querySelector<HTMLButtonElement>('[data-action="display-move-down"]')?.click();
     expect(onInvalidate).toHaveBeenCalled();
     host.remove();
   });

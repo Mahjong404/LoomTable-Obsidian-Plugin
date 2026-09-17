@@ -30,6 +30,7 @@ import {
 } from './attachment-upload';
 
 import { ensureButtonLabels, labelContainer } from './a11y';
+import { openContextMenu, type ContextMenuEntry } from './context-menu';
 import { createFieldTypeIcon } from './field-type-icon';
 import { createUiIcon } from './icons';
 const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
@@ -257,26 +258,55 @@ export function createRecordDetail(
     navWrap.append(previousButton, nextButton);
     header.prepend(navWrap);
   }
-  if (options.callbacks?.onDeleteRecord !== undefined) {
-    const remove = button('');
-    remove.classList.add('loom-record-delete', 'loom-record-detail-iconbtn', 'clickable-icon');
-    remove.append(createUiIcon('menu-delete'));
-    remove.dataset.action = 'detail-delete';
-    remove.setAttribute('aria-label', options.translate('record.delete.action'));
-    remove.addEventListener('click', () => {
-      void requestDangerousConfirmation(
-        options,
-        root,
-        options.translate('record.delete.confirm'),
-        remove,
-      ).then(async (confirmed) => {
-        if (!confirmed || !root.isConnected) return;
-        await options.callbacks?.onDeleteRecord?.(currentRecord.id, currentRecord);
-        if (root.isConnected) closeDetail();
+  const menuButton = button('');
+  menuButton.classList.add('loom-record-detail-iconbtn', 'clickable-icon');
+  menuButton.append(createUiIcon('menu-ellipsis'));
+  menuButton.dataset.action = 'detail-menu';
+  menuButton.setAttribute('aria-label', options.translate('record.menu.action'));
+  menuButton.setAttribute('aria-haspopup', 'menu');
+  menuButton.addEventListener('click', () => {
+    const rect = menuButton.getBoundingClientRect();
+    const items: ContextMenuEntry[] = [
+      {
+        label: options.translate('record.action.copyId'),
+        icon: 'menu-copy',
+        dataAction: 'detail-copy-id',
+        action: () => {
+          const write = navigator.clipboard?.writeText(currentRecord.id);
+          if (write === undefined) {
+            announce(options.translate('grid.clipboard.failed'));
+            return;
+          }
+          void write
+            .then(() => announce(options.translate('grid.clipboard.copied')))
+            .catch(() => announce(options.translate('grid.clipboard.failed')));
+        },
+      },
+    ];
+    if (options.callbacks?.onDeleteRecord !== undefined) {
+      items.push('separator', {
+        label: options.translate('record.delete.action'),
+        icon: 'menu-delete',
+        danger: true,
+        dataAction: 'detail-delete',
+        action: () => {
+          void Promise.resolve(options.callbacks?.onDeleteRecord?.(currentRecord.id, currentRecord))
+            .then(() => {
+              if (root.isConnected) closeDetail();
+            })
+            .catch(() => undefined);
+        },
       });
+    }
+    openContextMenu({
+      items,
+      x: rect.left,
+      y: rect.bottom + 4,
+      host: root,
+      label: options.translate('record.menu.action'),
     });
-    header.append(remove);
-  }
+  });
+  header.append(menuButton);
   const expand = button('');
   expand.classList.add('loom-record-detail-iconbtn', 'loom-record-detail-expand', 'clickable-icon');
   expand.append(createUiIcon('detail-expand'));

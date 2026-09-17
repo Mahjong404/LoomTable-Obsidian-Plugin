@@ -21,6 +21,7 @@ import {
   type MutationInvalidationBus,
 } from './mutation-invalidation';
 import { GridViewController, type GridState } from './grid-view-controller';
+import { describeSaveStatus } from './save-status';
 import { ReadonlyGridRenderer } from './readonly-grid-renderer';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
 import { MapView, type MapViewNavigation } from '../views/map/map-view';
@@ -82,6 +83,7 @@ export class LoomTableView extends ItemView {
     private readonly mapContext: LoomTableMapContext,
     private readonly mutationQueue: DurableMutationQueuePort | null = null,
     private readonly invalidations: MutationInvalidationBus | null = null,
+    private readonly statusSink: ((text: string | null) => void) | null = null,
   ) {
     super(leaf);
   }
@@ -263,6 +265,7 @@ export class LoomTableView extends ItemView {
       },
       onUndo: () => controller.undo(),
       onRedo: () => controller.redo(),
+      onUndoTo: (index) => controller.undoUntil(index),
       attachmentThumbnail: this.attachmentThumbnail,
       onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
       confirmDiscardAll: () => window.confirm(this.getTranslator()('grid.discardAllConfirm')),
@@ -273,10 +276,15 @@ export class LoomTableView extends ItemView {
     });
     this.#gridController = controller;
     this.#gridRenderer = renderer;
-    this.#gridUnsubscribe = controller.subscribe((state) => renderer.render(state));
+    this.#gridUnsubscribe = controller.subscribe((state) => {
+      renderer.render(state);
+      this.#publishStatusBar(state);
+    });
     if (this.invalidations !== null) {
       this.#invalidationUnsubscribe = this.invalidations.subscribe((event) => {
-        if (controller.state.selectedTableId === event.tableId) void controller.refresh();
+        if (controller.state.selectedTableId === event.tableId) {
+          controller.applyExternalMutation(event.record, event.changeCursor);
+        }
       });
     }
     if (controller.state.status === 'idle') void controller.load();
@@ -844,6 +852,19 @@ export class LoomTableView extends ItemView {
     this.#gridClient = null;
     this.#gridHost = null;
     this.#detailHost = null;
+    this.statusSink?.(null);
+  }
+
+  #publishStatusBar(state: GridState): void {
+    if (this.statusSink === null) return;
+    const translate = this.getTranslator();
+    const loaded = String(state.records.length);
+    const total = state.totalCount;
+    const rows =
+      total !== null && total > state.records.length
+        ? `${loaded}/${total} ${translate('grid.rows')}`
+        : `${loaded} ${translate('grid.rows')}`;
+    this.statusSink(`${rows} · ${describeSaveStatus(state.saveStatus, translate)}`);
   }
 }
 

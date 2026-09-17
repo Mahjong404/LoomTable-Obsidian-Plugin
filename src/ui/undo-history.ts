@@ -1,7 +1,10 @@
 export interface UndoEntryMeta {
   readonly kind: 'edit' | 'create' | 'delete' | 'restore';
   readonly recordId: string;
+  readonly fieldId?: string;
   readonly fieldName?: string;
+  readonly before?: unknown;
+  readonly after?: unknown;
   readonly recordTitle: string;
   readonly at: string;
 }
@@ -68,6 +71,19 @@ export class UndoHistory {
     }
     this.#undoStack.push(command);
     return true;
+  }
+
+  /**
+   * Undoes every entry newer than `index` plus the entry itself — the
+   * "undo this step" action in the change-log panel. `index` is in the
+   * newest-first `entries` ordering.
+   */
+  async undoUntil(index: number): Promise<void> {
+    const remaining = this.#undoStack.length - 1 - index;
+    if (remaining < 0) return;
+    while (this.#undoStack.length > remaining) {
+      if (!(await this.undo())) break;
+    }
   }
 
   clear(): void {

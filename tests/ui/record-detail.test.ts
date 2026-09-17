@@ -1183,6 +1183,7 @@ describe('Record Detail delete', () => {
     });
     container.append(detail);
 
+    detail.querySelector<HTMLButtonElement>('[data-action="detail-menu"]')?.click();
     detail.querySelector<HTMLButtonElement>('[data-action="detail-delete"]')?.click();
     await vi.waitFor(() =>
       expect(onDeleteRecord).toHaveBeenCalledWith(
@@ -1195,22 +1196,24 @@ describe('Record Detail delete', () => {
     container.remove();
   });
 
-  it('keeps the Detail open when the confirmation is cancelled or the delete fails', async () => {
+  it('keeps the Detail open when the delete fails', async () => {
     const container = document.createElement('div');
     document.body.append(container);
-    const onDeleteRecord = vi.fn(async () => undefined);
+    const onDeleteRecord = vi.fn(async () => {
+      throw new Error('delete failed');
+    });
     const detail = createRecordDetail(createRecord({ field_name: 'One' }), {
       fields: [textField('field_name', 'Name')],
       translate: createTranslator('en'),
-      confirmDangerousAction: async () => false,
       callbacks: { onDeleteRecord },
     });
     container.append(detail);
 
+    detail.querySelector<HTMLButtonElement>('[data-action="detail-menu"]')?.click();
     detail.querySelector<HTMLButtonElement>('[data-action="detail-delete"]')?.click();
+    await vi.waitFor(() => expect(onDeleteRecord).toHaveBeenCalled());
     await Promise.resolve();
     await Promise.resolve();
-    expect(onDeleteRecord).not.toHaveBeenCalled();
     expect(detail.isConnected).toBe(true);
     container.remove();
   });
@@ -1220,6 +1223,8 @@ describe('Record Detail delete', () => {
       fields: [textField('field_name', 'Name')],
       translate: createTranslator('en'),
     });
+    detail.querySelector<HTMLButtonElement>('[data-action="detail-menu"]')?.click();
+    expect(detail.querySelector('[data-action="detail-copy-id"]')).not.toBeNull();
     expect(detail.querySelector('[data-action="detail-delete"]')).toBeNull();
   });
 });

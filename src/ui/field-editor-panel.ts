@@ -83,10 +83,20 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
   configHost.className = 'loom-field-editor-config';
 
   if (options.mode === 'create') {
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'loom-field-editor-type-search';
+    search.placeholder = t('field.type.search');
+    search.setAttribute('aria-label', t('field.type.search'));
+    panel.append(search);
     const typeList = document.createElement('div');
     typeList.className = 'loom-field-editor-types';
     typeList.setAttribute('role', 'listbox');
     typeList.setAttribute('aria-label', t('field.type.label'));
+    const emptyNote = document.createElement('p');
+    emptyNote.className = 'loom-field-editor-type-empty';
+    emptyNote.textContent = t('field.type.search.empty');
+    emptyNote.hidden = true;
     for (const candidate of FIELD_TYPES) {
       const item = document.createElement('button');
       item.type = 'button';
@@ -95,9 +105,16 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
       item.dataset.type = candidate;
       item.setAttribute('aria-selected', String(candidate === type));
       item.append(createFieldTypeIcon(candidate));
+      const textWrap = document.createElement('span');
+      textWrap.className = 'loom-field-editor-type-text';
       const label = document.createElement('span');
+      label.className = 'loom-field-editor-type-name';
       label.textContent = t(`field.type.${candidate}`);
-      item.append(label);
+      const desc = document.createElement('span');
+      desc.className = 'loom-field-editor-type-desc';
+      desc.textContent = t(`field.type.${candidate}.desc`);
+      textWrap.append(label, desc);
+      item.append(textWrap);
       item.addEventListener('click', () => {
         type = candidate;
         typeList
@@ -107,7 +124,17 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
       });
       typeList.append(item);
     }
-    panel.append(typeList);
+    search.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase();
+      let visible = 0;
+      for (const item of typeList.querySelectorAll<HTMLElement>('.loom-field-editor-type')) {
+        const match = query === '' || (item.textContent ?? '').toLowerCase().includes(query);
+        item.hidden = !match;
+        if (match) visible += 1;
+      }
+      emptyNote.hidden = visible > 0;
+    });
+    panel.append(typeList, emptyNote);
   } else {
     const typeRow = document.createElement('div');
     typeRow.className = 'loom-field-editor-type-fixed';
