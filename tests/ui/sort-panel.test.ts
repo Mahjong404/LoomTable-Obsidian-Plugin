@@ -173,4 +173,42 @@ describe('SortPanel', () => {
     expect(rebuilt.querySelector('li[data-sort-index="0"]')).not.toBeNull();
     host.remove();
   });
+
+  it('shows the manual-sort toggle only when wired and reports changes', () => {
+    const withoutToggle = createPanel([]);
+    const host = mount(withoutToggle);
+    expect(host.querySelector('[data-role="sort-manual"]')).toBeNull();
+    host.remove();
+
+    const onManualSortChange = vi.fn();
+    const panel = new SortPanel([], {
+      fields: FIELDS,
+      translate: createTranslator('en'),
+      onApply: vi.fn(),
+      manualSort: true,
+      onManualSortChange,
+    });
+    const host2 = mount(panel);
+    const toggle = host2.querySelector<HTMLInputElement>('[data-role="sort-manual"]');
+    expect(toggle?.checked).toBe(true);
+    expect(host2.textContent).toContain('Drag row headers');
+
+    toggle!.checked = false;
+    toggle?.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(onManualSortChange).toHaveBeenCalledWith(false);
+    host2.remove();
+  });
+
+  it('explains that an explicit sort overrides manual order', () => {
+    const panel = new SortPanel([{ fieldId: 'field_name', direction: 'asc', nulls: 'last' }], {
+      fields: FIELDS,
+      translate: createTranslator('en'),
+      onApply: vi.fn(),
+      manualSort: true,
+      onManualSortChange: vi.fn(),
+    });
+    const host = mount(panel);
+    expect(host.textContent).toContain('overrides the manual order');
+    host.remove();
+  });
 });

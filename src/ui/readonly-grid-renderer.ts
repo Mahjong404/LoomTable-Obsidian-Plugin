@@ -1,10 +1,11 @@
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import type {
-  Change,
+  AggregateFn,
   ChangeKind,
   ConversionPreview,
   ConvertFieldRequest,
+  DistinctValuesPage,
   Field,
   FilterNode,
   JsonValue,
@@ -120,7 +121,20 @@ export interface GridRendererCallbacks {
     viewId: string,
     filter: FilterNode | undefined,
   ) => Promise<ViewWriteOutcome>;
+  readonly onQueryFieldValues?: (
+    fieldId: string,
+    request: { search?: string; cursor?: string },
+  ) => Promise<DistinctValuesPage>;
+  readonly onSetFieldAggregation?: (
+    fieldId: string,
+    fn: AggregateFn | undefined,
+  ) => void | Promise<unknown>;
   readonly onApplySort?: (viewId: string, sort: readonly SortSpec[]) => Promise<ViewWriteOutcome>;
+  readonly onApplyManualSort?: (viewId: string, enabled: boolean) => Promise<ViewWriteOutcome>;
+  readonly onMoveRecord?: (
+    recordId: string,
+    anchors: { beforeRecordId?: string; afterRecordId?: string },
+  ) => Promise<void>;
   readonly onApplyDisplay?: (viewId: string, patch: GridDisplayPatch) => Promise<ViewWriteOutcome>;
   readonly onCreateRecord?: (
     values: Readonly<Record<string, MutationValue>>,
@@ -129,6 +143,7 @@ export interface GridRendererCallbacks {
   readonly onDiscardRecordCreate?: (operationId: string) => void | Promise<void>;
   readonly onDismissRecordCreate?: (operationId: string) => void;
   readonly onDeleteRecord?: (recordId: string) => void | Promise<void>;
+  readonly onDuplicateRecord?: (recordId: string) => void | Promise<void>;
   readonly onUndoDelete?: () => void | Promise<void>;
   readonly attachmentThumbnail?: (attachment: RenderedAttachment) => string | undefined;
   readonly onUndo?: () => void | Promise<void>;
@@ -272,6 +287,7 @@ export class ReadonlyGridRenderer {
   #filterBuilderViewId: string | null = null;
   #sortPanel: SortPanel | null = null;
   #sortPanelViewId: string | null = null;
+  #sortPanelManual = false;
   #displayPanel: DisplayPanel | null = null;
   #displayPanelViewId: string | null = null;
   #createForm: RecordCreateForm | null = null;
@@ -491,7 +507,14 @@ export class ReadonlyGridRenderer {
       );
     }
     const count = createElement('span', 'loom-grid-count');
-    if (state.totalCount !== null && state.totalCount > state.records.length) {
+    if (
+      state.totalCount !== null &&
+      state.unfilteredTotal !== null &&
+      state.unfilteredTotal > state.totalCount
+    ) {
+      // Filtered/total communicates how many rows the active filter hides.
+      count.textContent = `${state.totalCount}/${state.unfilteredTotal} ${this.#translate('grid.rows')}`;
+    } else if (state.totalCount !== null && state.totalCount > state.records.length) {
       // Loaded/total keeps partial progress visible while paging continues.
       count.textContent = `${state.records.length}/${state.totalCount} ${this.#translate('grid.rows')}`;
     } else if (state.totalCount !== null) {
@@ -770,11 +793,18 @@ export class ReadonlyGridRenderer {
               ? { ...initial, children: [...initial.children, rule] }
               : { kind: 'group', operator: 'and', children: [rule] };
         }
+        const onQueryFieldValues = this.#callbacks.onQueryFieldValues;
         this.#filterBuilder = new FilterBuilder(initial, {
           fields: state.fields.filter((field) => field.deletedAt === undefined),
           translate: this.#translate,
           onApply: (filter) => onApplyFilter(view.id, filter),
           onInvalidate: () => this.#rerenderSelf(),
+          host: this.#container,
+          ...(onQueryFieldValues === undefined
+            ? {}
+            : {
+                loadFieldValues: (fieldId, request) => onQueryFieldValues(fieldId, request),
+              }),
         });
         this.#filterBuilderViewId = view.id;
       }
@@ -782,14 +812,25 @@ export class ReadonlyGridRenderer {
     } else if (this.#openPanel === 'sort') {
       const onApplySort = this.#callbacks.onApplySort;
       if (onApplySort === undefined) return null;
-      if (this.#sortPanel === null || this.#sortPanelViewId !== view.id) {
+      const manualSort = view.config.manualSort === true;
+      const onManualSortChange = this.#callbacks.onApplyManualSort;
+      if (
+        this.#sortPanel === null ||
+        this.#sortPanelViewId !== view.id ||
+        this.#sortPanelManual !== manualSort
+      ) {
         this.#sortPanel = new SortPanel(view.config.sort, {
           fields: state.fields.filter((field) => field.deletedAt === undefined),
           translate: this.#translate,
           onApply: (sort) => onApplySort(view.id, sort),
           onInvalidate: () => this.#rerenderSelf(),
+          manualSort,
+          ...(onManualSortChange === undefined
+            ? {}
+            : { onManualSortChange: (enabled) => onManualSortChange(view.id, enabled) }),
         });
         this.#sortPanelViewId = view.id;
+        this.#sortPanelManual = manualSort;
       }
       host.append(this.#sortPanel.render());
     } else if (this.#openPanel === 'display') {
@@ -1020,7 +1061,6 @@ export class ReadonlyGridRenderer {
       button.dataset.mode = mode;
       const label = this.#translate(key);
       button.setAttribute('aria-label', label);
-      button.title = label;
       button.append(createUiIcon(icon));
       button.addEventListener('click', () => {
         this.#statusPanelMode = mode;
@@ -1031,9 +1071,10 @@ export class ReadonlyGridRenderer {
       });
       modes.append(button);
     }
-    header.append(modes);
+    const actions = createElement('div', 'loom-status-panel-actions');
+    actions.append(modes);
     if (this.#callbacks.onRefresh !== undefined) {
-      header.append(
+      actions.append(
         this.#createActionButton(
           'refresh',
           'grid.refresh',
@@ -1044,6 +1085,7 @@ export class ReadonlyGridRenderer {
         ),
       );
     }
+    header.append(actions);
     host.append(header);
     if (this.#statusPanelMode === 'deleted') {
       host.append(this.#renderDeletedSection(state));
@@ -1568,7 +1610,17 @@ export class ReadonlyGridRenderer {
       addRow.addEventListener('click', () => this.#beginDraftCreate());
       canvas.append(addRow);
     }
+    const aggregateRow =
+      this.#callbacks.onSetFieldAggregation === undefined
+        ? null
+        : this.#renderAggregateRow(
+            state,
+            fields,
+            hasAddField ? `${columnTemplate} 2.5rem` : columnTemplate,
+            rowHeight,
+          );
     viewport.append(header, canvas);
+    if (aggregateRow !== null) viewport.append(aggregateRow);
     const footer = createElement('div', 'loom-grid-footer');
     const footerCount = createElement('span', 'loom-grid-footer-count');
     footerCount.textContent = `${state.records.length} ${this.#translate('grid.rows')}`;
@@ -1601,6 +1653,83 @@ export class ReadonlyGridRenderer {
     }
     wrapper.append(footer);
     return wrapper;
+  }
+
+  #renderAggregateRow(
+    state: GridState,
+    fields: readonly Field[],
+    columnTemplate: string,
+    rowHeight: number,
+  ): HTMLElement {
+    const row = createElement('div', 'loom-grid-aggregate');
+    row.setAttribute('role', 'row');
+    row.style.gridTemplateColumns = columnTemplate;
+    row.style.height = `${rowHeight}px`;
+    const indexCell = createElement('div', 'loom-grid-aggregate-cell loom-grid-index-cell');
+    indexCell.setAttribute('role', 'cell');
+    indexCell.append(createUiIcon('tool-convert'));
+    indexCell.setAttribute('aria-label', this.#translate('grid.aggregate.menu'));
+    row.append(indexCell);
+    for (const field of fields) {
+      row.append(this.#renderAggregateCell(state, field));
+    }
+    const filler = createElement('div', 'loom-grid-aggregate-cell');
+    filler.setAttribute('aria-hidden', 'true');
+    row.append(filler);
+    return row;
+  }
+
+  #renderAggregateCell(state: GridState, field: Field): HTMLElement {
+    const cell = createElement('button', 'loom-grid-aggregate-cell clickable-icon');
+    cell.type = 'button';
+    cell.setAttribute('role', 'cell');
+    cell.dataset.fieldId = field.id;
+    const selected = state.fieldAggregations[field.id];
+    cell.setAttribute(
+      'aria-label',
+      `${field.name}: ${selected === undefined ? this.#translate('grid.aggregate.menu') : this.#aggregateFnLabel(selected)}`,
+    );
+    if (selected === undefined) {
+      cell.dataset.empty = 'true';
+    } else if (state.aggregateStatus === 'loading') {
+      cell.textContent = this.#translate('grid.aggregate.loading');
+    } else if (state.aggregateStatus === 'error') {
+      cell.dataset.status = 'error';
+      cell.textContent = this.#translate('grid.aggregate.error');
+    } else {
+      const value = state.aggregateResults?.[field.id]?.[selected];
+      cell.textContent = `${this.#aggregateFnLabel(selected)} ${formatAggregateValue(value)}`;
+    }
+    cell.addEventListener('click', (event) => {
+      const onSetFieldAggregation = this.#callbacks.onSetFieldAggregation;
+      if (onSetFieldAggregation === undefined) return;
+      const items: ContextMenuEntry[] = [
+        {
+          label: this.#translate('grid.aggregate.none'),
+          dataAction: 'aggregate-none',
+          disabled: selected === undefined,
+          action: () => void onSetFieldAggregation(field.id, undefined),
+        },
+        'separator',
+        ...aggregateFnsForField(field).map((fn): ContextMenuItem => ({
+          label: this.#aggregateFnLabel(fn),
+          dataAction: `aggregate-${fn}`,
+          action: () => void onSetFieldAggregation(field.id, fn),
+        })),
+      ];
+      openContextMenu({
+        items,
+        x: event.clientX,
+        y: event.clientY,
+        host: this.#container,
+        label: this.#translate('grid.aggregate.menu'),
+      });
+    });
+    return cell;
+  }
+
+  #aggregateFnLabel(fn: AggregateFn): string {
+    return this.#translate(`grid.aggregate.${fn}` as MessageKey);
   }
 
   #renderEditError(state: GridState): HTMLElement {
@@ -1816,6 +1945,45 @@ export class ReadonlyGridRenderer {
       event.stopPropagation();
       this.#openRecordContextMenu(record, event.clientX, event.clientY);
     });
+    if (manualOrderEnabled(gridState) && this.#callbacks.onMoveRecord !== undefined) {
+      indexCell.draggable = true;
+      indexCell.addEventListener('dragstart', (event) => {
+        if ((event.target as HTMLElement).closest('input,button') !== null) {
+          event.preventDefault();
+          return;
+        }
+        event.dataTransfer?.setData(RECORD_DRAG_MIME, record.id);
+        if (event.dataTransfer !== null) event.dataTransfer.effectAllowed = 'move';
+        row.classList.add('is-dragging');
+      });
+      indexCell.addEventListener('dragend', () => {
+        row.classList.remove('is-dragging');
+        this.#clearRowDropTargets();
+      });
+      row.addEventListener('dragover', (event) => {
+        if (event.dataTransfer?.types.includes(RECORD_DRAG_MIME) !== true) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        this.#clearRowDropTargets();
+        row.classList.add('is-drop-target');
+      });
+      row.addEventListener('dragleave', () => {
+        row.classList.remove('is-drop-target');
+      });
+      row.addEventListener('drop', (event) => {
+        if (event.dataTransfer?.types.includes(RECORD_DRAG_MIME) !== true) return;
+        event.preventDefault();
+        this.#clearRowDropTargets();
+        const draggedId = event.dataTransfer.getData(RECORD_DRAG_MIME);
+        if (draggedId === '' || draggedId === record.id) return;
+        const rect = row.getBoundingClientRect();
+        const anchors =
+          event.clientY > rect.top + rect.height / 2
+            ? { afterRecordId: record.id }
+            : { beforeRecordId: record.id };
+        void this.#callbacks.onMoveRecord?.(draggedId, anchors);
+      });
+    }
     row.append(indexCell);
 
     for (const [fieldIndex, field] of fields.entries()) {
@@ -2278,6 +2446,9 @@ export class ReadonlyGridRenderer {
         action: () => this.#callbacks.onRecordOpen(record),
       },
     ];
+    if (this.#callbacks.onDuplicateRecord !== undefined) {
+      items.push(this.#recordDuplicateMenuItem(record));
+    }
     if (this.#callbacks.onDeleteRecord !== undefined) {
       items.push(this.#recordDeleteMenuItem(record));
     }
@@ -2488,6 +2659,9 @@ export class ReadonlyGridRenderer {
         action: () => this.#callbacks.onRecordOpen(record),
       },
     ];
+    if (this.#callbacks.onDuplicateRecord !== undefined) {
+      items.push(this.#recordDuplicateMenuItem(record));
+    }
     if (this.#callbacks.onDeleteRecord !== undefined) {
       items.push(this.#recordDeleteMenuItem(record));
     }
@@ -2498,6 +2672,16 @@ export class ReadonlyGridRenderer {
       host: this.#container,
       label: this.#translate('grid.menu.label'),
     });
+  }
+
+  #recordDuplicateMenuItem(record: LoomTableRecord): ContextMenuItem {
+    const gridState = this.#virtualGrid?.state;
+    return {
+      label: this.#translate('record.duplicate.action'),
+      icon: 'menu-duplicate',
+      disabled: gridState?.status === 'offline',
+      action: () => void this.#callbacks.onDuplicateRecord?.(record.id),
+    };
   }
 
   #recordDeleteMenuItem(record: LoomTableRecord): ContextMenuItem {
@@ -2704,6 +2888,7 @@ export class ReadonlyGridRenderer {
       nextCursor: null,
       changeCursor: null,
       totalCount: null,
+      unfilteredTotal: null,
       search: '',
       emptyReason: null,
       error: null,
@@ -2732,6 +2917,9 @@ export class ReadonlyGridRenderer {
       serverHistoryHasMore: false,
       serverHistoryError: null,
       historyEntries: [],
+      fieldAggregations: {},
+      aggregateResults: null,
+      aggregateStatus: 'idle',
     };
   }
 
@@ -3112,6 +3300,12 @@ export class ReadonlyGridRenderer {
     this.#container
       .querySelectorAll('.loom-grid-header-cell.is-drop-target')
       .forEach((cell) => cell.classList.remove('is-drop-target'));
+  }
+
+  #clearRowDropTargets(): void {
+    this.#container
+      .querySelectorAll('.loom-grid-row.is-drop-target')
+      .forEach((row) => row.classList.remove('is-drop-target'));
   }
 
   #moveColumn(fromFieldId: string, toFieldId: string): void {
@@ -3529,4 +3723,24 @@ function deletedRecordTitle(
   if (typeof value === 'string' && value.trim() !== '') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   return translate('grid.untitledRecord');
+}
+
+function aggregateFnsForField(field: Field): readonly AggregateFn[] {
+  if (field.type === 'number') return ['count', 'sum', 'avg', 'min', 'max'];
+  if (field.type === 'date') return ['count', 'min', 'max'];
+  return ['count'];
+}
+
+function formatAggregateValue(value: number | string | null | undefined): string {
+  if (value === null || value === undefined) return '—';
+  if (typeof value === 'string') return value;
+  return Number.isInteger(value) ? String(value) : value.toFixed(2);
+}
+
+const RECORD_DRAG_MIME = 'application/x-loom-record';
+
+function manualOrderEnabled(state: GridState | undefined): boolean {
+  if (state === undefined) return false;
+  const view = selectedGridView(state);
+  return view !== null && view.config.manualSort === true && view.config.sort.length === 0;
 }

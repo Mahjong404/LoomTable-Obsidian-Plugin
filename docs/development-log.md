@@ -200,3 +200,15 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - **UI 修复**：`.loom-grid-editor` 重置 Obsidian 全局 `input` 规则（`height:auto;min-height:0;max-width/max-height:none;font/line-height:inherit`）——覆盖式编辑器真正铺满单元格，去掉"内嵌圆角小框"观感；保留原生控件 appearance。
 - **测试**：field-convert-panel ×3（preview 展示/apply/stale token 重 preview）；controller serverHistory 加载/分页/kind 过滤/失效重查；http changes 契约测试（pullHistory/convert-preview/convert 请求与解码）；renderer 三模式切换/history 渲染/load-more；字段创建流断言更新带 description。
 - **验证**：64 文件 819 tests 全绿；lint 0 error；typecheck/format 干净；api:generate 与快照一致（提交后 api:check 零 diff）；esbuild 通过。
+
+## 2026-XX — Server S4–S8 集成：distinct 值 / 无筛选总数 / 聚合汇总行 / 手动排序拖拽 / 记录复制
+
+- **合同与 client**：`LoomTableClient` 增 `queryFieldValues`（`{limit,filter,search,cursor}` → `DistinctValuesPage{items,emptyCount,nextCursor,hasMore,changeCursor}`）、`duplicateRecord`/`moveRecord`（无 body/锚点 POST → `RecordOrderResult{record,changeCursor}`）、`aggregateRecords`（`{fieldIds,fns,filter}` → 按 field→fn 嵌套结果 + changeCursor）；`QueryResult.unfilteredTotal`、`GridViewConfig.manualSort` 解码保留；fixture 补齐五端点（distinct 统计/search/分页、聚合按 filter 求值、move 锚点交换、duplicate 行复制）。
+- **S5**：控制器查询落地携带 unfilteredTotal（重查重置点保留旧值避免计数闪动）；行计数显示 `N/M 行`（filtered/unfiltered）。
+- **S8**：行右键菜单与 Detail ⋯ 菜单「复制记录」→ `duplicateRecord` 直调（不进 mutation 队列）+ 失效链刷新；`menu-duplicate` 图标。
+- **S4**：`filter-values-popover.ts`——select/multiSelect 值编辑器在有 `queryFieldValues` capability 时打开服务器清单（`display (count)`、`+ N 空值`、300ms 防抖 search、Load more、请求令牌防陈旧、错误重试）；无 capability/离线回退本地 options；deleted 选项保留并标注；FilterBuilder 值区改「选择值」按钮 + 已选摘要。
+- **S6**：外部多维表产品 式底部汇总行——`GridState.fieldAggregations/aggregateResults/aggregateStatus`（会话级不落 View 配置）；per-列菜单按字段类型提供 count（全类型）/sum·avg（number）/min·max（number+date）；查询替换、mutation、外部失效后按当前 Filter 重取；error 态点击重试；sticky 底部 + 冻结列对齐。
+- **S7**：`GridViewConfig.manualSort` 编解码；SortPanel 顶部手动排序开关 + 显式排序覆盖提示；controller `applyViewManualSort`（coordinator 写配置）/`moveRecord`（锚点直调 + 重查，编辑失败表面化）；行索引格 `draggable`（`application/x-loom-record` MIME，dragover 标 `.is-drop-target`，drop 计算 before/after，自身 drop 忽略）；谓词 `manualSort===true && sort.length===0`——显式排序或非手动视图零拖拽行为。
+- **UI 修复**：状态面板三模式 icon 与刷新钮收入 `.loom-status-panel-actions` 统一 `gap: space-1` 等距；模式钮移除 `title`（浏览器 tooltip 与 Obsidian aria-label 提示重复）。
+- **测试**：changes.test +契约（values/query、aggregate、move、duplicate 请求体与解码）；view-management +manualSort 解码；controller +duplicate/move/manualSort/aggregate 生命周期；renderer +计数/汇总行/拖拽门控与锚点/复制菜单；filter-builder +popover 行为；sort-panel +开关。
+- **验证**：64 文件 859 tests 全绿；lint 0 error（584 warning 存量）；typecheck/format:check 干净；api:generate 后 transport 零 diff、openapi 快照零改动；esbuild 通过；已部署 vault（main.js 642,936B / styles.css 82,970B）。

@@ -1450,6 +1450,7 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     nextCursor: null,
     changeCursor: 'change_01',
     totalCount: recordCount,
+    unfilteredTotal: recordCount,
     search: '',
     emptyReason: null,
     error: null,
@@ -1478,6 +1479,9 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     serverHistoryHasMore: false,
     serverHistoryError: null,
     historyEntries: [],
+    fieldAggregations: {},
+    aggregateResults: null,
+    aggregateStatus: 'idle',
     ...update,
   };
 }
@@ -1981,6 +1985,7 @@ describe('Grid record lifecycle', () => {
     return {
       ...rendererCallbacks(),
       onDeleteRecord: vi.fn(async (_recordId: string) => undefined),
+      onDuplicateRecord: vi.fn(async (_recordId: string) => undefined),
       onUndoDelete: vi.fn(async () => undefined),
       onDismissDeleteNotice: vi.fn(),
       onLoadDeletedRecords: vi.fn(async () => undefined),
@@ -2022,6 +2027,25 @@ describe('Grid record lifecycle', () => {
     expect(danger?.textContent).toContain('Delete Record');
     danger?.click();
     await vi.waitFor(() => expect(callbacks.onDeleteRecord).toHaveBeenCalledWith('record_01'));
+    container.remove();
+  });
+
+  it('offers Duplicate Record in the row context menu and forwards the Record id', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(2));
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-index-cell')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    const duplicate = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+    ].find((item) => item.textContent?.includes('Duplicate Record'));
+    expect(duplicate).not.toBeUndefined();
+    duplicate?.click();
+    await vi.waitFor(() => expect(callbacks.onDuplicateRecord).toHaveBeenCalledWith('record_01'));
     container.remove();
   });
 
@@ -3273,6 +3297,18 @@ describe('refresh indicator and anchored panels', () => {
     container.remove();
   });
 
+  it('shows filtered/unfiltered when the active filter hides rows', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(3, { totalCount: 3, unfilteredTotal: 10 }));
+    expect(container.querySelector('.loom-grid-count')?.textContent).toBe('3/10 rows');
+    container.remove();
+  });
+
   it('keeps the refresh note mounted but hidden when idle', () => {
     const container = document.createElement('div');
     const renderer = new ReadonlyGridRenderer(
@@ -3303,5 +3339,252 @@ describe('refresh indicator and anchored panels', () => {
     );
     expect(container.querySelector('.loom-grid-add-field')).not.toBeNull();
     expect(container.querySelector('.loom-grid-viewport')?.getAttribute('aria-colcount')).toBe('3');
+  });
+});
+
+describe('Grid aggregate row', () => {
+  function numericState(update: Partial<GridState> = {}): GridState {
+    const state = createState(1);
+    const view = state.views[0];
+    const record = state.records[0];
+    if (view?.type !== 'grid' || record === undefined) {
+      throw new Error('Grid fixture is missing.');
+    }
+    const numberField: Field = {
+      id: 'field_count',
+      tableId: 'table_01',
+      name: 'Count',
+      position: 1,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'number',
+      config: {},
+    };
+    return {
+      ...state,
+      fields: [...state.fields, numberField],
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            projection: ['field_name', 'field_count'],
+            columnOrder: ['field_name', 'field_count'],
+          },
+        },
+      ],
+      records: [{ ...record, values: { ...record.values, field_count: 4 } }],
+      ...update,
+    };
+  }
+
+  function renderAggregate(state: GridState, container: HTMLElement) {
+    const callbacks = { ...rendererCallbacks(), onSetFieldAggregation: vi.fn() };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(state);
+    return callbacks;
+  }
+
+  it('renders the aggregate row only when the callback is wired', () => {
+    const container = document.createElement('div');
+    const plain = new ReadonlyGridRenderer(container, createTranslator('en'), rendererCallbacks());
+    plain.render(createState(1));
+    expect(container.querySelector('.loom-grid-aggregate')).toBeNull();
+
+    renderAggregate(createState(1), container);
+    const row = container.querySelector<HTMLElement>('.loom-grid-aggregate');
+    expect(row).not.toBeNull();
+    expect(row?.querySelectorAll('.loom-grid-aggregate-cell').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('shows the selected function result per column', () => {
+    const container = document.createElement('div');
+    renderAggregate(
+      numericState({
+        fieldAggregations: { field_count: 'sum' },
+        aggregateResults: { field_count: { sum: 12.5 } },
+        aggregateStatus: 'ready',
+      }),
+      container,
+    );
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-aggregate-cell[data-field-id="field_count"]',
+    );
+    expect(cell?.textContent).toBe('Sum 12.50');
+    const text = container.querySelector<HTMLElement>(
+      '.loom-grid-aggregate-cell[data-field-id="field_name"]',
+    );
+    expect(text?.dataset.empty).toBe('true');
+  });
+
+  it('opens the per-column menu with type-appropriate functions and applies the choice', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = renderAggregate(numericState(), container);
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-aggregate-cell[data-field-id="field_count"]')
+      ?.click();
+    const menu = container.querySelector<HTMLElement>('.loom-context-menu');
+    expect(menu).not.toBeNull();
+    for (const fn of ['count', 'sum', 'avg', 'min', 'max']) {
+      expect(menu?.querySelector(`[data-action="aggregate-${fn}"]`)).not.toBeNull();
+    }
+    menu?.querySelector<HTMLButtonElement>('[data-action="aggregate-sum"]')?.click();
+    expect(callbacks.onSetFieldAggregation).toHaveBeenCalledWith('field_count', 'sum');
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-aggregate-cell[data-field-id="field_name"]')
+      ?.click();
+    const textMenu = container.querySelector<HTMLElement>('.loom-context-menu');
+    expect(textMenu?.querySelector('[data-action="aggregate-count"]')).not.toBeNull();
+    expect(textMenu?.querySelector('[data-action="aggregate-sum"]')).toBeNull();
+    container.remove();
+  });
+
+  it('clears a selection through the None entry', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = renderAggregate(
+      numericState({
+        fieldAggregations: { field_count: 'sum' },
+        aggregateResults: { field_count: { sum: 12.5 } },
+        aggregateStatus: 'ready',
+      }),
+      container,
+    );
+    container
+      .querySelector<HTMLElement>('.loom-grid-aggregate-cell[data-field-id="field_count"]')
+      ?.click();
+    const none = container.querySelector<HTMLButtonElement>(
+      '.loom-context-menu [data-action="aggregate-none"]',
+    );
+    expect(none?.disabled).toBe(false);
+    none?.click();
+    expect(callbacks.onSetFieldAggregation).toHaveBeenCalledWith('field_count', undefined);
+    container.remove();
+  });
+
+  it('keeps the row mounted through loading and error states', () => {
+    const container = document.createElement('div');
+    const selections = {
+      fieldAggregations: { field_count: 'sum' as const },
+    };
+    renderAggregate(numericState({ ...selections, aggregateStatus: 'loading' }), container);
+    expect(
+      container.querySelector<HTMLElement>('.loom-grid-aggregate-cell[data-field-id="field_count"]')
+        ?.textContent,
+    ).toBe('…');
+
+    renderAggregate(numericState({ ...selections, aggregateStatus: 'error' }), container);
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-aggregate-cell[data-field-id="field_count"]',
+    );
+    expect(cell?.dataset.status).toBe('error');
+    expect(cell?.textContent).toBe('Error');
+  });
+});
+
+describe('Record drag reorder', () => {
+  const RECORD_MIME = 'application/x-loom-record';
+
+  function recordTransfer(): DataTransfer {
+    const store: Record<string, string> = {};
+    return {
+      types: [RECORD_MIME],
+      effectAllowed: 'move',
+      dropEffect: 'move',
+      setData: (type: string, value: string) => {
+        store[type] = value;
+      },
+      getData: (type: string) => store[type] ?? '',
+    } as unknown as DataTransfer;
+  }
+
+  function manualViewState(sort: readonly SortSpec[] = []): GridState {
+    const state = createState(3);
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('Grid fixture is missing.');
+    return {
+      ...state,
+      views: [{ ...view, config: { ...view.config, sort, manualSort: true } }],
+    };
+  }
+
+  function dispatchDrag(
+    target: HTMLElement | null | undefined,
+    type: string,
+    transfer: DataTransfer,
+    clientY = 0,
+  ): void {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, clientY });
+    Object.defineProperty(event, 'dataTransfer', { value: transfer });
+    target?.dispatchEvent(event);
+  }
+
+  it('makes index cells draggable only in manual order mode', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onMoveRecord: vi.fn(async () => {}),
+    });
+    renderer.render(manualViewState());
+    expect(container.querySelector<HTMLElement>('.loom-grid-index-cell')?.draggable).toBe(true);
+
+    renderer.render(manualViewState([{ fieldId: 'field_name', direction: 'asc', nulls: 'last' }]));
+    expect(container.querySelector<HTMLElement>('.loom-grid-index-cell')?.draggable).toBe(false);
+
+    renderer.render(createState(3));
+    expect(container.querySelector<HTMLElement>('.loom-grid-index-cell')?.draggable).toBe(false);
+  });
+
+  it('stays inert when the move callback is not wired', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(manualViewState());
+    expect(container.querySelector<HTMLElement>('.loom-grid-index-cell')?.draggable).toBe(false);
+  });
+
+  it('drops before or after the target row by drop position', () => {
+    const container = document.createElement('div');
+    const onMoveRecord = vi.fn(async () => {});
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onMoveRecord,
+    });
+    renderer.render(manualViewState());
+    const rows = container.querySelectorAll<HTMLElement>('.loom-grid-row');
+    const sourceIndex = rows[0]?.querySelector<HTMLElement>('.loom-grid-index-cell');
+    const target = rows[2];
+
+    const transfer = recordTransfer();
+    dispatchDrag(sourceIndex, 'dragstart', transfer);
+    dispatchDrag(target, 'dragover', transfer);
+    expect(target?.classList.contains('is-drop-target')).toBe(true);
+    dispatchDrag(target, 'drop', transfer);
+    expect(onMoveRecord).toHaveBeenCalledWith('record_01', { beforeRecordId: 'record_03' });
+
+    dispatchDrag(sourceIndex, 'dragstart', transfer);
+    dispatchDrag(target, 'drop', transfer, 10);
+    expect(onMoveRecord).toHaveBeenCalledWith('record_01', { afterRecordId: 'record_03' });
+  });
+
+  it('ignores a drop of the dragged row onto itself', () => {
+    const container = document.createElement('div');
+    const onMoveRecord = vi.fn(async () => {});
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onMoveRecord,
+    });
+    renderer.render(manualViewState());
+    const first = container.querySelector<HTMLElement>('.loom-grid-row');
+    const transfer = recordTransfer();
+    dispatchDrag(first?.querySelector<HTMLElement>('.loom-grid-index-cell'), 'dragstart', transfer);
+    dispatchDrag(first, 'drop', transfer);
+    expect(onMoveRecord).not.toHaveBeenCalled();
   });
 });

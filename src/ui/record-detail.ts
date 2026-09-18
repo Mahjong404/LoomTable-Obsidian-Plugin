@@ -88,6 +88,7 @@ export interface RecordDetailCallbacks {
     action: 'use-server' | 'overwrite' | 'discard-all',
   ) => void | Promise<void>;
   readonly onDeleteRecord?: (recordId: string, record: LoomTableRecord) => void | Promise<void>;
+  readonly onDuplicateRecord?: (recordId: string, record: LoomTableRecord) => void | Promise<void>;
 }
 
 export interface RecordConflictView {
@@ -283,6 +284,18 @@ export function createRecordDetail(
         },
       },
     ];
+    if (options.callbacks?.onDuplicateRecord !== undefined) {
+      items.push({
+        label: options.translate('record.duplicate.action'),
+        icon: 'menu-duplicate',
+        dataAction: 'detail-duplicate',
+        action: () => {
+          void Promise.resolve(
+            options.callbacks?.onDuplicateRecord?.(currentRecord.id, currentRecord),
+          ).catch(() => undefined);
+        },
+      });
+    }
     if (options.callbacks?.onDeleteRecord !== undefined) {
       items.push('separator', {
         label: options.translate('record.delete.action'),

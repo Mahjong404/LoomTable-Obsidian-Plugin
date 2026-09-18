@@ -3140,6 +3140,12 @@
   margin-inline-end: 0;
 }
 
+.loom-status-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-1);
+}
+
 .loom-status-panel-modes {
   display: flex;
   gap: var(--loom-space-1);
@@ -3601,4 +3607,183 @@
 
 .loom-convert-apply {
   align-self: flex-end;
+}
+
+.loom-filter-values {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--loom-space-1);
+  width: 14rem;
+  max-height: 18rem;
+  padding: var(--loom-space-2);
+  border: 1px solid var(--loom-grid-line);
+  border-radius: var(--loom-radius-md);
+  background: var(--loom-bg-primary);
+  box-shadow: var(--loom-panel-shadow);
+}
+
+.loom-filter-values-search {
+  width: 100%;
+}
+
+.loom-filter-values-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow-y: auto;
+  min-height: 2rem;
+}
+
+.loom-filter-values-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--loom-space-1);
+  padding: 0.25rem var(--loom-space-1);
+  border: none;
+  border-radius: var(--loom-radius-sm);
+  background: transparent;
+  color: var(--loom-text-normal);
+  font: inherit;
+  font-size: var(--loom-font-ui-small);
+  text-align: left;
+  cursor: pointer;
+}
+
+.loom-filter-values-item:hover {
+  background: var(--loom-bg-secondary);
+}
+
+.loom-filter-values-item[aria-selected='true'] {
+  color: var(--loom-text-accent);
+}
+
+.loom-filter-values-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loom-filter-values-count {
+  flex-shrink: 0;
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
+}
+
+.loom-filter-values-status {
+  margin: 0;
+  padding: var(--loom-space-1);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
+}
+
+.loom-filter-values-error-actions {
+  display: flex;
+  gap: var(--loom-space-1);
+  padding: var(--loom-space-1);
+}
+
+.loom-filter-values-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--loom-space-1);
+  min-height: 1rem;
+}
+
+.loom-filter-values-empty {
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
+}
+
+.loom-filter-value-pick {
+  max-width: 12rem;
+  padding: 0.125rem var(--loom-space-1);
+  border: 1px solid var(--loom-grid-line);
+  border-radius: var(--loom-radius-sm);
+  background: transparent;
+  color: var(--loom-text-normal);
+  font: inherit;
+  font-size: var(--loom-font-ui-smaller);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.loom-filter-value-pick:hover {
+  background: var(--loom-bg-secondary);
+}
+
+.loom-filter-value-pick[data-empty='true'] {
+  color: var(--loom-text-muted);
+}
+
+.loom-grid-aggregate {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  display: grid;
+  background: var(--loom-bg-secondary);
+  border-top: 1px solid var(--loom-grid-line);
+}
+
+.loom-grid-aggregate-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-1);
+  min-width: 0;
+
+  padding: 0 var(--loom-space-1);
+  border: none;
+  border-right: 1px solid var(--loom-grid-line);
+  background: transparent;
+  color: var(--loom-text-muted);
+  font: inherit;
+  font-size: var(--loom-font-ui-smaller);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.loom-grid-aggregate-cell.clickable-icon {
+  cursor: pointer;
+}
+
+.loom-grid-aggregate-cell.clickable-icon:hover {
+  background: var(--loom-bg-hover);
+  color: var(--loom-text-normal);
+}
+
+.loom-grid-aggregate-cell[data-status='error'] {
+  color: var(--loom-text-error);
+}
+
+/* Record drag reorder (manual order) */
+
+.loom-grid-index-cell[draggable='true'] {
+  cursor: grab;
+}
+
+.loom-grid-row.is-dragging {
+  opacity: 0.45;
+}
+
+.loom-grid-row.is-drop-target {
+  box-shadow: inset 0 2px 0 var(--loom-accent);
+}
+
+.loom-sort-manual {
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-1);
+  margin-bottom: var(--loom-space-1);
+  font-size: var(--loom-font-ui-small);
+}
+
+.loom-sort-manual + p {
+  margin: 0 0 var(--loom-space-1);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
 }

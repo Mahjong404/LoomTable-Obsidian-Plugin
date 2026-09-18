@@ -44,7 +44,12 @@ import {
   type MutationResult,
   normalizeResourceName,
   type QueryRequest,
+  type AggregateRequest,
+  type AggregateResult,
+  type DistinctValuesPage,
+  type DistinctValuesRequest,
   type QueryResult,
+  type RecordOrderResult,
   type ConversionMode,
   type ConversionModeStats,
   type ConversionPreview,
@@ -441,6 +446,83 @@ export class HttpLoomTableClient implements LoomTableClient {
       this.#requireAccessToken(),
     );
     return decodeRecord(value);
+  }
+
+  async duplicateRecord(tableId: string, recordId: string): Promise<RecordOrderResult> {
+    const path = recordOrderPath(tableId, recordId, 'duplicate');
+    const value = await this.#requestJson(path, this.#requireAccessToken(), {
+      method: 'POST',
+      retryable: false,
+    });
+    return decodeRecordOrderResult(value);
+  }
+
+  async moveRecord(
+    tableId: string,
+    recordId: string,
+    request: { beforeRecordId?: string; afterRecordId?: string },
+  ): Promise<RecordOrderResult> {
+    const path = recordOrderPath(tableId, recordId, 'move');
+    const body: { beforeRecordId?: string; afterRecordId?: string } = {};
+    if (request.beforeRecordId !== undefined) body.beforeRecordId = request.beforeRecordId;
+    if (request.afterRecordId !== undefined) body.afterRecordId = request.afterRecordId;
+    const value = await this.#requestJson(path, this.#requireAccessToken(), {
+      method: 'POST',
+      body,
+      retryable: false,
+    });
+    return decodeRecordOrderResult(value);
+  }
+
+  async queryFieldValues(
+    tableId: string,
+    fieldId: string,
+    request: DistinctValuesRequest = {},
+  ): Promise<DistinctValuesPage> {
+    const normalizedTableId = tableId.trim();
+    const normalizedFieldId = fieldId.trim();
+    if (normalizedTableId === '' || normalizedFieldId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Table ID and Field ID are required.',
+      });
+    }
+    const body: components['schemas']['DistinctValuesRequest'] = {
+      limit: request.limit ?? 100,
+      ...(request.filter === undefined ? {} : { filter: toTransportFilter(request.filter) }),
+      ...(request.search === undefined ? {} : { search: request.search }),
+      ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
+    };
+    const value = await this.#requestJson(
+      `/v1/tables/${encodeURIComponent(normalizedTableId)}/fields/${encodeURIComponent(normalizedFieldId)}/values/query`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: false },
+    );
+    return decodeDistinctValuesPage(value);
+  }
+
+  async aggregateRecords(tableId: string, request: AggregateRequest): Promise<AggregateResult> {
+    const normalizedTableId = tableId.trim();
+    if (normalizedTableId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Table ID is required.',
+      });
+    }
+    if (request.fieldIds.length === 0 || request.fns.length === 0) {
+      throw new LoomTableClientError('validation', {
+        message: 'At least one Field and one aggregate function are required.',
+      });
+    }
+    const body: components['schemas']['AggregateRequest'] = {
+      fieldIds: [...request.fieldIds],
+      fns: [...request.fns],
+      ...(request.filter === undefined ? {} : { filter: toTransportFilter(request.filter) }),
+    };
+    const value = await this.#requestJson(
+      `/v1/tables/${encodeURIComponent(normalizedTableId)}/records/aggregate`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: false },
+    );
+    return decodeAggregateResult(value);
   }
 
   async queryMap(viewId: string, request: MapQueryRequest): Promise<MapQueryResult> {
@@ -1005,6 +1087,7 @@ function decodeQueryResult(value: unknown): QueryResult {
     typeof value.changeCursor !== 'string' ||
     !isOptionalString(value.nextCursor) ||
     !isOptionalNonNegativeInteger(value.totalCount) ||
+    !isOptionalNonNegativeInteger(value.unfilteredTotal) ||
     (value.hasMore && value.nextCursor === undefined) ||
     (!value.hasMore && value.nextCursor !== undefined)
   ) {
@@ -1019,6 +1102,7 @@ function decodeQueryResult(value: unknown): QueryResult {
       changeCursor: value.changeCursor,
       ...(value.nextCursor === undefined ? {} : { nextCursor: value.nextCursor }),
       ...(value.totalCount === undefined ? {} : { totalCount: value.totalCount }),
+      ...(value.unfilteredTotal === undefined ? {} : { unfilteredTotal: value.unfilteredTotal }),
     };
   } catch (error) {
     if (error instanceof LoomTableClientError) throw error;
@@ -1440,6 +1524,87 @@ function validateMapQueryRequest(request: MapQueryRequest): void {
   }
 }
 
+function recordOrderPath(tableId: string, recordId: string, action: 'duplicate' | 'move'): string {
+  const normalizedTableId = tableId.trim();
+  const normalizedRecordId = recordId.trim();
+  if (normalizedTableId === '' || normalizedRecordId === '') {
+    throw new LoomTableClientError('validation', {
+      message: 'A Table ID and Record ID are required.',
+    });
+  }
+  return `/v1/tables/${encodeURIComponent(normalizedTableId)}/records/${encodeURIComponent(normalizedRecordId)}/${action}`;
+}
+
+function decodeDistinctValuesPage(value: unknown): DistinctValuesPage {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.items) ||
+    !isNonNegativeInteger(value.emptyCount) ||
+    typeof value.hasMore !== 'boolean' ||
+    typeof value.changeCursor !== 'string' ||
+    !isOptionalString(value.nextCursor) ||
+    (value.hasMore && value.nextCursor === undefined) ||
+    (!value.hasMore && value.nextCursor !== undefined)
+  ) {
+    throw invalidResource('distinct values page');
+  }
+  const items = value.items.map((item) => {
+    if (
+      !isRecord(item) ||
+      (typeof item.value !== 'string' &&
+        typeof item.value !== 'number' &&
+        typeof item.value !== 'boolean') ||
+      !isPositiveInteger(item.count) ||
+      !isOptionalString(item.display)
+    ) {
+      throw invalidResource('distinct values page');
+    }
+    return {
+      value: item.value,
+      count: item.count,
+      ...(item.display === undefined ? {} : { display: item.display }),
+    };
+  });
+  return {
+    items,
+    emptyCount: value.emptyCount,
+    hasMore: value.hasMore,
+    changeCursor: value.changeCursor,
+    ...(value.nextCursor === undefined ? {} : { nextCursor: value.nextCursor }),
+  };
+}
+
+function decodeAggregateResult(value: unknown): AggregateResult {
+  if (!isRecord(value) || !isRecord(value.results) || typeof value.changeCursor !== 'string') {
+    throw invalidResource('aggregate result');
+  }
+  const results: Record<string, Record<string, number | string | null>> = {};
+  for (const [fieldId, fns] of Object.entries(value.results)) {
+    if (!isRecord(fns)) throw invalidResource('aggregate result');
+    const decoded: Record<string, number | string | null> = {};
+    for (const [fn, result] of Object.entries(fns)) {
+      if (result !== null && typeof result !== 'number' && typeof result !== 'string') {
+        throw invalidResource('aggregate result');
+      }
+      decoded[fn] = result;
+    }
+    results[fieldId] = decoded;
+  }
+  return { results, changeCursor: value.changeCursor };
+}
+
+function decodeRecordOrderResult(value: unknown): RecordOrderResult {
+  if (!isRecord(value) || typeof value.changeCursor !== 'string') {
+    throw invalidResource('record order result');
+  }
+  try {
+    return { record: decodeRecord(value.record), changeCursor: value.changeCursor };
+  } catch (error) {
+    if (error instanceof LoomTableClientError) throw error;
+    throw invalidResource('record order result');
+  }
+}
+
 function decodeRecord(value: unknown): LoomTableRecord {
   if (!isRecord(value)) throw invalidResource('record');
   const values = decodeRecordValues(value.values);
@@ -1744,7 +1909,8 @@ function decodeGridViewConfig(value: Record<string, unknown>): GridViewConfig | 
     !isNumberRecord(value.columnWidths) ||
     !isStringArray(value.frozenFieldIds) ||
     !isRowHeight(value.rowHeight) ||
-    !Array.isArray(value.sort)
+    !Array.isArray(value.sort) ||
+    (value.manualSort !== undefined && typeof value.manualSort !== 'boolean')
   ) {
     return null;
   }
@@ -1764,6 +1930,7 @@ function decodeGridViewConfig(value: Record<string, unknown>): GridViewConfig | 
     rowHeight: value.rowHeight,
     ...(filter === undefined || filter === null ? {} : { filter }),
     sort,
+    ...(value.manualSort === undefined ? {} : { manualSort: value.manualSort }),
   };
 }
 

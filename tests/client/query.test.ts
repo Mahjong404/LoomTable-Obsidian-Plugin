@@ -20,6 +20,7 @@ describe('HttpLoomTableClient record query', () => {
         hasMore: true,
         changeCursor: 'change_01',
         totalCount: 10,
+        unfilteredTotal: 24,
       }),
     ]);
     const client = createClient(transport);
@@ -51,6 +52,7 @@ describe('HttpLoomTableClient record query', () => {
       hasMore: true,
       changeCursor: 'change_01',
       totalCount: 10,
+      unfilteredTotal: 24,
     });
 
     expect(transport).toHaveBeenCalledWith({

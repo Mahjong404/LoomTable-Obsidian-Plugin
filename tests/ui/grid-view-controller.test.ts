@@ -1614,6 +1614,58 @@ describe('GridViewController query controls', () => {
     expect(client.queryRequests.at(-1)).not.toHaveProperty('sort');
   });
 
+  it('saves manualSort through the View write path and clears it', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    await expect(controller.applyViewManualSort('view_01', true)).resolves.toMatchObject({
+      status: 'saved',
+    });
+    expect(selectedConfig(controller).manualSort).toBe(true);
+
+    await expect(controller.applyViewManualSort('view_01', false)).resolves.toMatchObject({
+      status: 'saved',
+    });
+    expect(selectedConfig(controller)).not.toHaveProperty('manualSort');
+  });
+
+  it('moves a Record through the order endpoint and re-queries', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), { ...createGridConfig(false), manualSort: true }),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    const queriesBefore = client.queryRequests.length;
+
+    await controller.moveRecord('record_01', { afterRecordId: 'record_03' });
+
+    expect(client.queryRequests.length).toBeGreaterThan(queriesBefore);
+    expect(controller.state.records.map((record) => record.id)).toEqual([
+      'record_02',
+      'record_03',
+      'record_01',
+    ]);
+  });
+
+  it('publishes an edit error when the Record move fails', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    vi.spyOn(client, 'moveRecord').mockRejectedValueOnce(
+      new LoomTableClientError('network', { message: 'offline' }),
+    );
+
+    await expect(controller.moveRecord('record_01', {})).rejects.toMatchObject({
+      kind: 'validation',
+    });
+    expect(controller.state.editError?.message).toBe('The Record could not be moved.');
+  });
+
   it('rejects an invalid Filter draft without a View write', async () => {
     const client = new InMemoryLoomTableClient(
       createData(createRecords(1), createGridConfig(false)),
@@ -1844,6 +1896,141 @@ describe('GridViewController query controls', () => {
       'record_02',
       'record_03',
     ]);
+  });
+
+  it('queries distinct Field values with the active View filter', async () => {
+    const statusField: Field = {
+      id: 'field_status',
+      tableId: 'table_01',
+      name: 'Status',
+      position: 1,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'select',
+      config: {
+        options: [
+          { id: 'opt_a', name: 'Alpha', color: 'blue' },
+          { id: 'opt_b', name: 'Beta', color: 'red' },
+        ],
+        deletedOptions: [],
+      },
+    };
+    const records: LoomTableRecord[] = [
+      {
+        id: 'record_01',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'alpha', field_status: 'opt_a' },
+        createdAt: '2026-08-18T00:00:00Z',
+        updatedAt: '2026-08-18T00:00:00Z',
+      },
+      {
+        id: 'record_02',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'beta', field_status: 'opt_b' },
+        createdAt: '2026-08-18T00:00:00Z',
+        updatedAt: '2026-08-18T00:00:00Z',
+      },
+    ];
+    const client = new InMemoryLoomTableClient(
+      createData(records, createGridConfig(true), [], [statusField]),
+    );
+    const controller = new GridViewController(client, { pageSize: 10 });
+    await controller.load();
+
+    const page = await controller.queryFieldValues('field_status', { search: 'al' });
+
+    expect(client.fieldValueRequests[0]).toEqual({
+      tableId: 'table_01',
+      fieldId: 'field_status',
+      request: {
+        filter: {
+          kind: 'rule',
+          fieldId: 'field_name',
+          operator: 'contains',
+          value: 'a',
+        },
+        search: 'al',
+      },
+    });
+    expect(page.items.map((item) => item.display ?? String(item.value))).toContain('Alpha');
+  });
+
+  it('rejects distinct values when the source lacks the capability', async () => {
+    const source = failingSource(
+      createData([], createGridConfig(false)),
+      new LoomTableClientError('network', { message: 'offline' }),
+    );
+    const controller = new GridViewController(source);
+    await expect(controller.queryFieldValues('field_status')).rejects.toMatchObject({
+      kind: 'validation',
+    });
+  });
+
+  it('aggregates the selected Field with the active View filter', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(true)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    controller.setFieldAggregation('field_name', 'count');
+    await vi.waitFor(() => expect(controller.state.aggregateStatus).toBe('ready'));
+
+    expect(controller.state.fieldAggregations).toEqual({ field_name: 'count' });
+    expect(client.aggregateRequests).toHaveLength(1);
+    expect(client.aggregateRequests[0]).toEqual({
+      tableId: 'table_01',
+      request: {
+        fieldIds: ['field_name'],
+        fns: ['count'],
+        filter: { kind: 'rule', fieldId: 'field_name', operator: 'contains', value: 'a' },
+      },
+    });
+    expect(controller.state.aggregateResults?.['field_name']?.['count']).toBe(3);
+  });
+
+  it('clears the aggregate state when the last selection is removed', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    controller.setFieldAggregation('field_name', 'count');
+    await vi.waitFor(() => expect(controller.state.aggregateStatus).toBe('ready'));
+
+    controller.setFieldAggregation('field_name', undefined);
+
+    expect(controller.state.fieldAggregations).toEqual({});
+    expect(controller.state.aggregateStatus).toBe('idle');
+    expect(controller.state.aggregateResults).toBeNull();
+  });
+
+  it('refreshes loaded aggregations after the query re-runs', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    controller.setFieldAggregation('field_name', 'count');
+    await vi.waitFor(() => expect(controller.state.aggregateStatus).toBe('ready'));
+    expect(client.aggregateRequests).toHaveLength(1);
+
+    await controller.setSearch('record');
+    await vi.waitFor(() => expect(client.aggregateRequests).toHaveLength(2));
+  });
+
+  it('stays idle when the source cannot aggregate', async () => {
+    const source = failingSource(
+      createData(createRecords(1), createGridConfig(false)),
+      new LoomTableClientError('network', { message: 'offline' }),
+    );
+    const controller = new GridViewController(source);
+    controller.setFieldAggregation('field_name', 'count');
+
+    expect(controller.state.aggregateStatus).toBe('idle');
+    expect(controller.state.aggregateResults).toBeNull();
   });
 });
 
@@ -2470,7 +2657,7 @@ describe('Record create', () => {
 describe('Record lifecycle', () => {
   function createLifecycleController(
     records: readonly LoomTableRecord[] = createRecords(3),
-    options: { readonly sequence?: number } = {},
+    options: { readonly sequence?: number; readonly offline?: boolean } = {},
   ) {
     let sequence = options.sequence ?? 0;
     const client = new InMemoryLoomTableClient(createData(records, createGridConfig(false)));
@@ -2481,7 +2668,7 @@ describe('Record lifecycle', () => {
     const controller = new GridViewController(client, {
       mutationQueue: scheduler,
       mutationIdFactory: () => `mut_${String(++sequence).padStart(26, '0')}`,
-      isOffline: () => false,
+      isOffline: () => options.offline === true,
     });
     return { client, scheduler, controller };
   }
@@ -2514,6 +2701,31 @@ describe('Record lifecycle', () => {
     expect(controller.state.records.some((record) => record.id === 'record_01')).toBe(false);
     expect(controller.state.lastDeletedRecord?.id).toBe('record_01');
     expect(controller.state.records).toHaveLength(2);
+    scheduler.stop();
+  });
+
+  it('duplicates a Record and reloads the query so the copy appears', async () => {
+    const { scheduler, controller } = createLifecycleController();
+    await startLifecycle(scheduler, controller);
+
+    const copy = await controller.duplicateRecord('record_01');
+
+    expect(copy.id).not.toBe('record_01');
+    expect(copy.values).toEqual({ field_name: 'Record 1' });
+    expect(controller.state.records.some((record) => record.id === copy.id)).toBe(true);
+    scheduler.stop();
+  });
+
+  it('rejects duplication while offline', async () => {
+    const { scheduler, controller } = createLifecycleController(createRecords(3), {
+      offline: true,
+    });
+    await startLifecycle(scheduler, controller);
+
+    await expect(controller.duplicateRecord('record_01')).rejects.toMatchObject({
+      kind: 'validation',
+    });
+    expect(controller.state.editError).not.toBeNull();
     scheduler.stop();
   });
 

@@ -9,6 +9,8 @@ export interface SortPanelOptions {
   readonly translate: Translator;
   readonly onApply: (sort: readonly SortSpec[]) => void | Promise<unknown>;
   readonly onInvalidate?: () => void;
+  readonly manualSort?: boolean;
+  readonly onManualSortChange?: (enabled: boolean) => void | Promise<unknown>;
 }
 
 export class SortPanel {
@@ -16,6 +18,8 @@ export class SortPanel {
   readonly #translate: Translator;
   readonly #onApply: SortPanelOptions['onApply'];
   readonly #onInvalidate: (() => void) | undefined;
+  readonly #manualSort: boolean;
+  readonly #onManualSortChange: SortPanelOptions['onManualSortChange'];
   #draft: SortSpec[];
   #root: HTMLElement | null = null;
   #applying = false;
@@ -28,6 +32,8 @@ export class SortPanel {
     this.#translate = options.translate;
     this.#onApply = options.onApply;
     this.#onInvalidate = options.onInvalidate;
+    this.#manualSort = options.manualSort === true;
+    this.#onManualSortChange = options.onManualSortChange;
   }
 
   render(): HTMLElement {
@@ -39,6 +45,25 @@ export class SortPanel {
     const root = createElement('div', 'loom-sort-panel');
     root.setAttribute('role', 'form');
     labelContainer(root, this.#translate('sort.title'));
+
+    if (this.#onManualSortChange !== undefined) {
+      const manualRow = createElement('label', 'loom-sort-manual');
+      const toggle = document.createElement('input');
+      toggle.type = 'checkbox';
+      toggle.dataset.role = 'sort-manual';
+      toggle.checked = this.#manualSort;
+      toggle.addEventListener('change', () => {
+        void this.#onManualSortChange?.(toggle.checked);
+      });
+      manualRow.append(toggle, createTextElement('span', this.#translate('sort.manual')));
+      root.append(manualRow);
+      root.append(
+        createTextElement(
+          'p',
+          this.#translate(this.#draft.length === 0 ? 'sort.manual.drag' : 'sort.manual.hint'),
+        ),
+      );
+    }
 
     const sortable = this.#fields.filter(
       (field) => field.deletedAt === undefined && isSortableField(field),

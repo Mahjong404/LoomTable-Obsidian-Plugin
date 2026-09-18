@@ -1,5 +1,7 @@
 import {
   LoomTableClientError,
+  type AggregateFn,
+  type AggregateValue,
   type Base,
   type ConflictBody,
   type ConflictDetails,
@@ -13,6 +15,7 @@ import {
   type ChangeKind,
   type ConversionPreview,
   type ConversionResult,
+  type DistinctValuesPage,
   type ConvertFieldRequest,
   type FilterNode,
   type GridViewConfig,
@@ -121,6 +124,7 @@ export interface GridState {
   readonly nextCursor: string | null;
   readonly changeCursor: string | null;
   readonly totalCount: number | null;
+  readonly unfilteredTotal: number | null;
   readonly search: string;
   readonly emptyReason: GridEmptyReason | null;
   readonly error: LoomTableClientErrorDetails | null;
@@ -151,6 +155,11 @@ export interface GridState {
   readonly historyEntries: readonly UndoEntryMeta[];
   readonly canUndo?: boolean;
   readonly canRedo?: boolean;
+  readonly fieldAggregations: Readonly<Record<string, AggregateFn>>;
+  readonly aggregateResults: Readonly<
+    Record<string, Readonly<Record<string, AggregateValue>>>
+  > | null;
+  readonly aggregateStatus: 'idle' | 'loading' | 'ready' | 'error';
 }
 
 export type RecordDeleteGate = 'ok' | 'draft' | 'pending' | 'offline' | 'unavailable';
@@ -188,6 +197,10 @@ export type GridDataSource = Pick<
       | 'pullHistory'
       | 'previewFieldConversion'
       | 'convertField'
+      | 'duplicateRecord'
+      | 'moveRecord'
+      | 'queryFieldValues'
+      | 'aggregateRecords'
     >
   >;
 
@@ -349,6 +362,7 @@ const INITIAL_STATE: GridState = {
   nextCursor: null,
   changeCursor: null,
   totalCount: null,
+  unfilteredTotal: null,
   search: '',
   emptyReason: null,
   error: null,
@@ -377,6 +391,9 @@ const INITIAL_STATE: GridState = {
   serverHistoryHasMore: false,
   serverHistoryError: null,
   historyEntries: [],
+  fieldAggregations: {},
+  aggregateResults: null,
+  aggregateStatus: 'idle',
 };
 
 export class GridViewController {
@@ -404,6 +421,7 @@ export class GridViewController {
   #selection: GridSelection = {};
   #requestToken = 0;
   #loadingMoreToken: number | null = null;
+  #aggregateToken = 0;
   #searchTerm = '';
   #searchViewId: string | null = null;
 
@@ -856,6 +874,81 @@ export class GridViewController {
     return deleted;
   }
 
+  async duplicateRecord(recordId: string): Promise<LoomTableRecord> {
+    const duplicateRecord = this.#client.duplicateRecord?.bind(this.#client);
+    const tableId = this.#state.selectedTableId;
+    if (duplicateRecord === undefined || tableId === null) {
+      throw this.#publishEditFailure(this.#translate('record.duplicate.blocked.unavailable'));
+    }
+    if (this.#isOffline() || this.#state.status === 'offline') {
+      throw this.#publishEditFailure(this.#translate('record.duplicate.blocked.offline'));
+    }
+    const result = await duplicateRecord(tableId, recordId);
+    const view = this.#state.views.find((candidate) => candidate.id === this.#state.selectedViewId);
+    if (view !== undefined && isGridView(view)) {
+      await this.#reloadSelectedViewQuery(view);
+    }
+    return result.record;
+  }
+
+  async queryFieldValues(
+    fieldId: string,
+    request: { search?: string; cursor?: string } = {},
+  ): Promise<DistinctValuesPage> {
+    const queryFieldValues = this.#client.queryFieldValues?.bind(this.#client);
+    const tableId = this.#state.selectedTableId;
+    if (queryFieldValues === undefined || tableId === null) {
+      throw new LoomTableClientError('validation', {
+        message: 'Distinct values are unavailable for this connection.',
+      });
+    }
+    const view = this.#state.views.find((candidate) => candidate.id === this.#state.selectedViewId);
+    const filter = view?.type === 'grid' ? view.config.filter : undefined;
+    return queryFieldValues(tableId, fieldId, {
+      ...(filter === undefined ? {} : { filter }),
+      ...(request.search === undefined ? {} : { search: request.search }),
+      ...(request.cursor === undefined ? {} : { cursor: request.cursor }),
+    });
+  }
+
+  setFieldAggregation(fieldId: string, fn: AggregateFn | undefined): void {
+    const selections = { ...this.#state.fieldAggregations };
+    if (fn === undefined) delete selections[fieldId];
+    else selections[fieldId] = fn;
+    this.#publish({ fieldAggregations: selections });
+    this.#refreshAggregates();
+  }
+
+  #refreshAggregates(): void {
+    const aggregateRecords = this.#client.aggregateRecords?.bind(this.#client);
+    const tableId = this.#state.selectedTableId;
+    const selections = this.#state.fieldAggregations;
+    const fieldIds = Object.keys(selections);
+    if (aggregateRecords === undefined || tableId === null || fieldIds.length === 0) {
+      ++this.#aggregateToken;
+      this.#publish({ aggregateResults: null, aggregateStatus: 'idle' });
+      return;
+    }
+    const view = this.#state.views.find((candidate) => candidate.id === this.#state.selectedViewId);
+    const filter = view?.type === 'grid' ? view.config.filter : undefined;
+    const fns = [...new Set(Object.values(selections))];
+    const token = ++this.#aggregateToken;
+    this.#publish({ aggregateStatus: 'loading' });
+    void aggregateRecords(tableId, {
+      fieldIds,
+      fns,
+      ...(filter === undefined ? {} : { filter }),
+    })
+      .then((result) => {
+        if (token !== this.#aggregateToken) return;
+        this.#publish({ aggregateResults: result.results, aggregateStatus: 'ready' });
+      })
+      .catch(() => {
+        if (token !== this.#aggregateToken) return;
+        this.#publish({ aggregateStatus: 'error' });
+      });
+  }
+
   async restoreRecord(recordId: string): Promise<RecordRestoreOutcome> {
     const tableId = this.#state.selectedTableId;
     const queue = this.#durableQueue;
@@ -898,6 +991,7 @@ export class GridViewController {
     });
     this.#reloadDeletedRecordsIfLoaded();
     this.#reloadServerHistoryIfLoaded();
+    this.#refreshAggregates();
     if (!this.#history.isApplying) {
       this.#history.push({
         meta: {
@@ -1159,6 +1253,7 @@ export class GridViewController {
       hasMore: preserveRecords ? this.#state.hasMore : false,
       nextCursor: preserveRecords ? this.#state.nextCursor : null,
       totalCount: preserveRecords ? this.#state.totalCount : null,
+      unfilteredTotal: preserveRecords ? this.#state.unfilteredTotal : null,
       ...(preserveRecords ? {} : { canUndo: false, canRedo: false, historyEntries: [] }),
     });
 
@@ -1268,6 +1363,7 @@ export class GridViewController {
         nextCursor: preserveRecords ? this.#state.nextCursor : null,
         changeCursor: preserveRecords ? this.#state.changeCursor : null,
         totalCount: preserveRecords ? this.#state.totalCount : null,
+        unfilteredTotal: preserveRecords ? this.#state.unfilteredTotal : null,
         emptyReason: null,
         error: null,
         deletedViews: [],
@@ -1321,6 +1417,7 @@ export class GridViewController {
         });
         this.#reloadDeletedRecordsIfLoaded();
         this.#reloadServerHistoryIfLoaded();
+        this.#refreshAggregates();
         return;
       }
       this.#publish({
@@ -1338,6 +1435,7 @@ export class GridViewController {
     if (record.deletedAt !== undefined) {
       this.#reloadDeletedRecordsIfLoaded();
       this.#reloadServerHistoryIfLoaded();
+      this.#refreshAggregates();
       this.#publish({ ...cursorPatch });
       return;
     }
@@ -1559,6 +1657,43 @@ export class GridViewController {
         config: { ...view.config, sort: sort.map((entry) => ({ ...entry })) },
       });
     });
+  }
+
+  async applyViewManualSort(viewId: string, enabled: boolean): Promise<ViewWriteOutcome> {
+    return this.#runViewWrite(viewId, (view, writes) => {
+      if (view.type !== 'grid') {
+        return Promise.resolve(
+          viewWriteFailed('validation', 'Manual sorting can only be saved on a Grid View.'),
+        );
+      }
+      const config: { -readonly [K in keyof GridViewConfig]: GridViewConfig[K] } = {
+        ...view.config,
+      };
+      if (enabled) config.manualSort = true;
+      else delete config.manualSort;
+      return writes.updateView(view, { config });
+    });
+  }
+
+  async moveRecord(
+    recordId: string,
+    anchors: { beforeRecordId?: string; afterRecordId?: string },
+  ): Promise<void> {
+    const moveRecord = this.#client.moveRecord?.bind(this.#client);
+    const tableId = this.#state.selectedTableId;
+    if (moveRecord === undefined || tableId === null) {
+      throw this.#publishEditFailure(this.#translate('record.move.failed'));
+    }
+    try {
+      const result = await moveRecord(tableId, recordId, anchors);
+      this.#authoritativeRecords.set(recordId, result.record);
+    } catch {
+      throw this.#publishEditFailure(this.#translate('record.move.failed'));
+    }
+    const view = this.#state.views.find((candidate) => candidate.id === this.#state.selectedViewId);
+    if (view !== undefined && isGridView(view)) {
+      await this.#reloadSelectedViewQuery(view);
+    }
   }
 
   async applyViewDisplay(viewId: string, patch: GridDisplayPatch): Promise<ViewWriteOutcome> {
@@ -1974,6 +2109,8 @@ export class GridViewController {
       hasMore: false,
       nextCursor: null,
       totalCount: null,
+      // unfilteredTotal is filter-independent; keep it so the counter doesn't flash.
+      unfilteredTotal: this.#state.unfilteredTotal,
     });
     try {
       await this.#loadQuery(requestToken, view.tableId, view, undefined, true);
@@ -2085,9 +2222,11 @@ export class GridViewController {
       nextCursor: result.nextCursor ?? null,
       changeCursor: result.changeCursor,
       totalCount: result.totalCount ?? this.#state.totalCount,
+      unfilteredTotal: result.unfilteredTotal ?? this.#state.unfilteredTotal,
       emptyReason,
       error: null,
     });
+    if (replace) this.#refreshAggregates();
   }
 
   #pendingFor(recordId: string): number {
@@ -2123,6 +2262,7 @@ export class GridViewController {
       });
       this.#reloadDeletedRecordsIfLoaded();
       this.#reloadServerHistoryIfLoaded();
+      this.#refreshAggregates();
       return;
     }
     this.#publish({
@@ -2134,6 +2274,7 @@ export class GridViewController {
       deletedRecords: this.#state.deletedRecords.filter((candidate) => candidate.id !== recordId),
     });
     this.#reloadServerHistoryIfLoaded();
+    this.#refreshAggregates();
   }
 
   #handleDurableQueueEvent(event: MutationQueueSchedulerEvent): void {
@@ -2330,6 +2471,7 @@ export class GridViewController {
       nextCursor: null,
       changeCursor: null,
       totalCount: 0,
+      unfilteredTotal: 0,
       emptyReason,
       error: null,
       deletedViews: [],

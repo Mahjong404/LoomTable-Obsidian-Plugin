@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Field, FilterGroup, FilterNode } from '../../src/client/loomtable-client';
+import type {
+  DistinctValuesPage,
+  Field,
+  FilterGroup,
+  FilterNode,
+} from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
 import { FilterBuilder } from '../../src/ui/filter-builder';
 
@@ -48,6 +53,11 @@ function createBuilder(
   callbacks: {
     onApply?: (filter: FilterNode | undefined) => void | Promise<unknown>;
     onInvalidate?: () => void;
+    host?: HTMLElement;
+    loadFieldValues?: (
+      fieldId: string,
+      request: { search?: string; cursor?: string },
+    ) => Promise<DistinctValuesPage>;
   } = {},
 ) {
   return new FilterBuilder(initial, {
@@ -55,6 +65,10 @@ function createBuilder(
     translate: createTranslator('en'),
     onApply: callbacks.onApply ?? vi.fn(),
     ...(callbacks.onInvalidate === undefined ? {} : { onInvalidate: callbacks.onInvalidate }),
+    ...(callbacks.host === undefined ? {} : { host: callbacks.host }),
+    ...(callbacks.loadFieldValues === undefined
+      ? {}
+      : { loadFieldValues: callbacks.loadFieldValues }),
   });
 }
 
@@ -215,5 +229,159 @@ describe('FilterBuilder', () => {
     host.append(rebuilt);
     expect(rebuilt.querySelector('[data-path="0"]')).not.toBeNull();
     host.remove();
+  });
+
+  describe('distinct Field values', () => {
+    const page = (
+      items: { value: string; display?: string; count: number }[],
+      extra: Partial<DistinctValuesPage> = {},
+    ): DistinctValuesPage => ({
+      items,
+      emptyCount: 0,
+      hasMore: false,
+      changeCursor: 'change_01',
+      ...extra,
+    });
+
+    function openPicker(host: HTMLElement): void {
+      host.querySelector<HTMLButtonElement>('button.loom-filter-value-pick')?.click();
+    }
+
+    function popover(): HTMLElement | null {
+      return document.body.querySelector<HTMLElement>('.loom-filter-values');
+    }
+
+    it('picks a Server value with counts and applies it', async () => {
+      const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
+      const loadFieldValues = vi.fn(async () =>
+        page([
+          { value: 'opt_a', display: 'Alpha', count: 4 },
+          { value: 'opt_b', display: 'Beta', count: 2 },
+        ]),
+      );
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is', value: 'opt_a' },
+        { onApply, host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+
+      const pick = host.querySelector<HTMLButtonElement>('button.loom-filter-value-pick');
+      expect(pick?.textContent).toBe('Alpha');
+      openPicker(host);
+
+      await vi.waitFor(() => {
+        expect(popover()?.querySelectorAll('.loom-filter-values-item')).toHaveLength(2);
+      });
+      expect(loadFieldValues).toHaveBeenCalledWith('field_status', {});
+      expect(popover()?.textContent).toContain('Alpha');
+      expect(popover()?.textContent).toContain('4');
+
+      popover()?.querySelectorAll<HTMLButtonElement>('.loom-filter-values-item')[1]?.click();
+      await waitForApply(onApply);
+      expect(onApply.mock.calls[0]?.[0]).toEqual({
+        kind: 'rule',
+        fieldId: 'field_status',
+        operator: 'is',
+        value: 'opt_b',
+      });
+      host.remove();
+      popover()?.remove();
+    });
+
+    it('debounces the search box and reloads with the term', async () => {
+      const loadFieldValues = vi.fn(async (_fieldId: string, request: { search?: string }) =>
+        page(request.search === 'alp' ? [{ value: 'opt_a', display: 'Alpha', count: 1 }] : []),
+      );
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+        { host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+      await vi.waitFor(() => expect(loadFieldValues).toHaveBeenCalledTimes(1));
+
+      const search = popover()?.querySelector<HTMLInputElement>('.loom-filter-values-search');
+      if (search === null || search === undefined) throw new Error('search missing');
+      search.value = 'alp';
+      search.dispatchEvent(new Event('input', { bubbles: true }));
+
+      await vi.waitFor(
+        () => {
+          expect(loadFieldValues).toHaveBeenCalledWith('field_status', { search: 'alp' });
+        },
+        { timeout: 1000 },
+      );
+      host.remove();
+      popover()?.remove();
+    });
+
+    it('appends the next page through Load more', async () => {
+      const loadFieldValues = vi
+        .fn()
+        .mockResolvedValueOnce(
+          page([{ value: 'opt_a', display: 'Alpha', count: 4 }], {
+            hasMore: true,
+            nextCursor: 'values_01',
+          }),
+        )
+        .mockResolvedValueOnce(
+          page([{ value: 'opt_b', display: 'Beta', count: 2 }], { hasMore: false }),
+        );
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+        { host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+      await vi.waitFor(() =>
+        expect(popover()?.querySelectorAll('.loom-filter-values-item')).toHaveLength(1),
+      );
+
+      popover()?.querySelector<HTMLButtonElement>('[data-action="load-more"]')?.click();
+      await vi.waitFor(() => {
+        expect(loadFieldValues).toHaveBeenCalledWith('field_status', {
+          cursor: 'values_01',
+        });
+        expect(popover()?.querySelectorAll('.loom-filter-values-item')).toHaveLength(2);
+      });
+      host.remove();
+      popover()?.remove();
+    });
+
+    it('falls back to the local option list after a load error', async () => {
+      const loadFieldValues = vi.fn(async () => {
+        throw new Error('offline');
+      });
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is', value: 'opt_a' },
+        { host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+      await vi.waitFor(() =>
+        expect(popover()?.querySelector('[data-status="filter.values.error"]')).not.toBeNull(),
+      );
+
+      popover()?.querySelector<HTMLButtonElement>('[data-action="use-local"]')?.click();
+      await vi.waitFor(() => {
+        expect(host.querySelector('select[data-role="filter-value"]')).not.toBeNull();
+      });
+      const select = host.querySelector<HTMLSelectElement>('select[data-role="filter-value"]');
+      expect(select?.value).toBe('opt_a');
+      host.remove();
+    });
+
+    it('marks a deleted option on the pick button', () => {
+      const loadFieldValues = vi.fn(async () => page([]));
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is', value: 'opt_old' },
+        { host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      const pick = host.querySelector<HTMLButtonElement>('button.loom-filter-value-pick');
+      expect(pick?.textContent).toContain('Legacy');
+      expect(pick?.textContent).toContain('(deleted)');
+      host.remove();
+    });
   });
 });

@@ -337,6 +337,7 @@ export function createGalleryState(update: Partial<GridState> = {}): GridState {
     nextCursor: null,
     changeCursor: 'change_01',
     totalCount: GALLERY_RECORDS.length,
+    unfilteredTotal: GALLERY_RECORDS.length,
     search: '',
     emptyReason: null,
     error: null,
@@ -365,6 +366,9 @@ export function createGalleryState(update: Partial<GridState> = {}): GridState {
     serverHistoryHasMore: false,
     serverHistoryError: null,
     historyEntries: [],
+    fieldAggregations: {},
+    aggregateResults: null,
+    aggregateStatus: 'idle',
     ...update,
   };
 }

@@ -268,6 +268,23 @@ describe('HttpLoomTableClient View management', () => {
     });
   });
 
+  it('decodes manualSort on a Grid View config', async () => {
+    const transport = queuedTransport([
+      jsonResponse(200, { ...GRID_VIEW, config: { ...GRID_CONFIG, manualSort: true } }),
+    ]);
+    const view = await createClient(transport).getView('view_grid');
+    expect(view).toMatchObject({ config: { manualSort: true } });
+  });
+
+  it('rejects a non-boolean manualSort in the Grid config', async () => {
+    const transport = queuedTransport([
+      jsonResponse(200, { ...GRID_VIEW, config: { ...GRID_CONFIG, manualSort: 'yes' } }),
+    ]);
+    await expect(createClient(transport).getView('view_grid')).rejects.toMatchObject({
+      kind: 'invalid-response',
+    });
+  });
+
   it('rejects malformed View payloads instead of decoding partial data', async () => {
     const transport = queuedTransport([jsonResponse(200, { id: 'view_grid' })]);
     const client = createClient(transport);

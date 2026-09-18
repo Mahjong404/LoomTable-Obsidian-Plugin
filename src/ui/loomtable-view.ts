@@ -215,7 +215,11 @@ export class LoomTableView extends ItemView {
       },
       onSearch: (term) => controller.setSearch(term),
       onApplyFilter: (viewId, filter) => controller.applyViewFilter(viewId, filter),
+      onQueryFieldValues: (fieldId, request) => controller.queryFieldValues(fieldId, request),
+      onSetFieldAggregation: (fieldId, fn) => controller.setFieldAggregation(fieldId, fn),
       onApplySort: (viewId, sort) => controller.applyViewSort(viewId, sort),
+      onApplyManualSort: (viewId, enabled) => controller.applyViewManualSort(viewId, enabled),
+      onMoveRecord: (recordId, anchors) => controller.moveRecord(recordId, anchors),
       onApplyDisplay: (viewId, patch) => controller.applyViewDisplay(viewId, patch),
       onFieldSave: (input, context) =>
         context.mode === 'edit'
@@ -247,6 +251,9 @@ export class LoomTableView extends ItemView {
         ? {
             onDeleteRecord: async (recordId: string) => {
               await controller.deleteRecord(recordId);
+            },
+            onDuplicateRecord: async (recordId: string) => {
+              await controller.duplicateRecord(recordId);
             },
             onUndoDelete: async () => {
               await controller.undoDelete();
@@ -440,6 +447,9 @@ export class LoomTableView extends ItemView {
         ? {
             onDeleteRecord: async (recordId: string) => {
               await this.#gridController!.deleteRecord(recordId);
+            },
+            onDuplicateRecord: async (recordId: string) => {
+              await this.#gridController!.duplicateRecord(recordId);
             },
           }
         : {}),
@@ -686,6 +696,9 @@ export class LoomTableView extends ItemView {
               onDeleteRecord: async (recordId: string) => {
                 await controller.deleteRecord(recordId);
               },
+              onDuplicateRecord: async (recordId: string) => {
+                await controller.duplicateRecord(recordId);
+              },
             }
           : {}),
         onOpenLocationInMap: (recordId, fieldId) =>
@@ -867,10 +880,13 @@ export class LoomTableView extends ItemView {
     const translate = this.getTranslator();
     const loaded = String(state.records.length);
     const total = state.totalCount;
+    const unfiltered = state.unfilteredTotal;
     const rows =
-      total !== null && total > state.records.length
-        ? `${loaded}/${total} ${translate('grid.rows')}`
-        : `${loaded} ${translate('grid.rows')}`;
+      total !== null && unfiltered !== null && unfiltered > total
+        ? `${total}/${unfiltered} ${translate('grid.rows')}`
+        : total !== null && total > state.records.length
+          ? `${loaded}/${total} ${translate('grid.rows')}`
+          : `${loaded} ${translate('grid.rows')}`;
     this.statusSink(`${rows} · ${describeSaveStatus(state.saveStatus, translate)}`);
   }
 }

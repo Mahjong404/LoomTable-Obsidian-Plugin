@@ -320,6 +320,229 @@ describe('HttpLoomTableClient field conversion contract', () => {
   });
 });
 
+describe('HttpLoomTableClient record order contract', () => {
+  const record = {
+    id: 'record_02',
+    tableId: 'table/01',
+    revision: 1,
+    values: { field_name: 'Copy' },
+    createdAt: '2026-08-18T00:00:00Z',
+    updatedAt: '2026-08-18T00:00:00Z',
+  };
+
+  it('posts duplicate with no body and decodes the record order result', async () => {
+    const transport = queuedTransport([jsonResponse(200, { record, changeCursor: 'change_09' })]);
+
+    await expect(createClient(transport).duplicateRecord('table/01', 'record_01')).resolves.toEqual(
+      { record, changeCursor: 'change_09' },
+    );
+
+    expect(transport).toHaveBeenCalledWith({
+      url: 'https://loom.example/v1/tables/table%2F01/records/record_01/duplicate',
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: 'Bearer token',
+      },
+    });
+  });
+
+  it('posts move with the supplied anchors', async () => {
+    const transport = queuedTransport([jsonResponse(200, { record, changeCursor: 'change_10' })]);
+
+    await expect(
+      createClient(transport).moveRecord('table/01', 'record_01', {
+        beforeRecordId: 'record_02',
+        afterRecordId: 'record_03',
+      }),
+    ).resolves.toEqual({ record, changeCursor: 'change_10' });
+
+    expect(transport).toHaveBeenCalledWith({
+      url: 'https://loom.example/v1/tables/table%2F01/records/record_01/move',
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ beforeRecordId: 'record_02', afterRecordId: 'record_03' }),
+    });
+  });
+});
+
+describe('HttpLoomTableClient distinct values contract', () => {
+  it('posts the field values query with filter, search, cursor, and limit', async () => {
+    const transport = queuedTransport([
+      jsonResponse(200, {
+        items: [
+          { value: 'opt_a', display: 'Alpha', count: 4 },
+          { value: 'opt_b', display: 'Beta', count: 2 },
+        ],
+        emptyCount: 1,
+        nextCursor: 'values_02',
+        hasMore: true,
+        changeCursor: 'change_20',
+      }),
+    ]);
+
+    await expect(
+      createClient(transport).queryFieldValues('table/01', 'field_status', {
+        filter: {
+          kind: 'rule',
+          fieldId: 'field_name',
+          operator: 'contains',
+          value: 'a',
+        },
+        search: 'al',
+        cursor: 'values_01',
+        limit: 50,
+      }),
+    ).resolves.toEqual({
+      items: [
+        { value: 'opt_a', display: 'Alpha', count: 4 },
+        { value: 'opt_b', display: 'Beta', count: 2 },
+      ],
+      emptyCount: 1,
+      nextCursor: 'values_02',
+      hasMore: true,
+      changeCursor: 'change_20',
+    });
+
+    expect(transport).toHaveBeenCalledWith({
+      url: 'https://loom.example/v1/tables/table%2F01/fields/field_status/values/query',
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        limit: 50,
+        filter: {
+          kind: 'rule',
+          fieldId: 'field_name',
+          operator: 'contains',
+          value: 'a',
+        },
+        search: 'al',
+        cursor: 'values_01',
+      }),
+    });
+  });
+
+  it('defaults the limit and omits absent request fields', async () => {
+    const transport = queuedTransport([
+      jsonResponse(200, {
+        items: [],
+        emptyCount: 0,
+        hasMore: false,
+        changeCursor: 'change_21',
+      }),
+    ]);
+
+    await expect(
+      createClient(transport).queryFieldValues('table/01', 'field_status'),
+    ).resolves.toEqual({
+      items: [],
+      emptyCount: 0,
+      hasMore: false,
+      changeCursor: 'change_21',
+    });
+
+    expect(transport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: JSON.stringify({ limit: 100 }),
+      }),
+    );
+  });
+
+  it('rejects a malformed distinct values page', async () => {
+    const transport = queuedTransport([
+      jsonResponse(200, { items: [{ value: 'opt_a', count: 'four' }] }),
+    ]);
+
+    await expect(
+      createClient(transport).queryFieldValues('table/01', 'field_status'),
+    ).rejects.toMatchObject({ kind: 'invalid-response' });
+  });
+
+  it('rejects an empty Table or Field ID before requesting', async () => {
+    const transport = queuedTransport([]);
+    await expect(
+      createClient(transport).queryFieldValues(' ', 'field_status'),
+    ).rejects.toMatchObject({ kind: 'validation' });
+    expect(transport).not.toHaveBeenCalled();
+  });
+});
+
+describe('HttpLoomTableClient aggregate contract', () => {
+  it('posts fieldIds and fns with the optional filter and decodes results', async () => {
+    const transport = queuedTransport([
+      jsonResponse(200, {
+        results: {
+          field_count: { count: 3, sum: 12.5, avg: 4.17, min: 1, max: 8 },
+          field_due: { count: 2, min: '2026-01-01', max: '2026-02-01' },
+          field_name: { count: 3, sum: null },
+        },
+        changeCursor: 'change_30',
+      }),
+    ]);
+
+    await expect(
+      createClient(transport).aggregateRecords('table/01', {
+        fieldIds: ['field_count', 'field_due', 'field_name'],
+        fns: ['count', 'sum', 'avg', 'min', 'max'],
+        filter: { kind: 'rule', fieldId: 'field_name', operator: 'contains', value: 'a' },
+      }),
+    ).resolves.toEqual({
+      results: {
+        field_count: { count: 3, sum: 12.5, avg: 4.17, min: 1, max: 8 },
+        field_due: { count: 2, min: '2026-01-01', max: '2026-02-01' },
+        field_name: { count: 3, sum: null },
+      },
+      changeCursor: 'change_30',
+    });
+
+    expect(transport).toHaveBeenCalledWith({
+      url: 'https://loom.example/v1/tables/table%2F01/records/aggregate',
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: 'Bearer token',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        fieldIds: ['field_count', 'field_due', 'field_name'],
+        fns: ['count', 'sum', 'avg', 'min', 'max'],
+        filter: { kind: 'rule', fieldId: 'field_name', operator: 'contains', value: 'a' },
+      }),
+    });
+  });
+
+  it('rejects an empty Field or function selection before requesting', async () => {
+    const transport = queuedTransport([]);
+    await expect(
+      createClient(transport).aggregateRecords('table/01', { fieldIds: [], fns: ['count'] }),
+    ).rejects.toMatchObject({ kind: 'validation' });
+    await expect(
+      createClient(transport).aggregateRecords('table/01', { fieldIds: ['f1'], fns: [] }),
+    ).rejects.toMatchObject({ kind: 'validation' });
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed aggregate result', async () => {
+    const transport = queuedTransport([
+      jsonResponse(200, { results: { field_count: { count: { nested: true } } } }),
+    ]);
+    await expect(
+      createClient(transport).aggregateRecords('table/01', {
+        fieldIds: ['field_count'],
+        fns: ['count'],
+      }),
+    ).rejects.toMatchObject({ kind: 'invalid-response' });
+  });
+});
+
 function createClient(transport: HttpTransport): HttpLoomTableClient {
   return new HttpLoomTableClient(
     {

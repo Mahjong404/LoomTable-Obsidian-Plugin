@@ -1,6 +1,9 @@
 import {
   LoomTableClientError,
   normalizeResourceName,
+  type AggregateFn,
+  type AggregateRequest,
+  type AggregateResult,
   type Attachment,
   type AttachmentDownload,
   type Base,
@@ -14,6 +17,7 @@ import {
   type Field,
   type HistoryPage,
   type InitializeAttachmentRequest,
+  type JsonValue,
   type LoomTableClient,
   type LoomTableRecord,
   type LocationValue,
@@ -28,7 +32,11 @@ import {
   type MutationResult,
   type PullHistoryRequest,
   type QueryRequest,
+  type DistinctValue,
+  type DistinctValuesPage,
+  type DistinctValuesRequest,
   type QueryResult,
+  type RecordOrderResult,
   type ResourceListOptions,
   type ServerMeta,
   type Table,
@@ -72,6 +80,15 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
   }> = [];
   readonly viewCreateKeys: string[] = [];
   readonly fieldCreateKeys: string[] = [];
+  readonly fieldValueRequests: Array<{
+    readonly tableId: string;
+    readonly fieldId: string;
+    readonly request: DistinctValuesRequest;
+  }> = [];
+  readonly aggregateRequests: Array<{
+    readonly tableId: string;
+    readonly request: AggregateRequest;
+  }> = [];
   readonly #data: InMemoryGridData;
   readonly #records: LoomTableRecord[];
   readonly #views: View[];
@@ -460,7 +477,14 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
       hasMore,
       changeCursor: 'change_01',
       ...(hasMore ? { nextCursor: encodeCursor(nextOffset) } : {}),
-      ...(request.cursor === undefined ? { totalCount: records.length } : {}),
+      ...(request.cursor === undefined
+        ? {
+            totalCount: records.length,
+            unfilteredTotal: this.#records.filter(
+              (record) => record.tableId === request.tableId && record.deletedAt === undefined,
+            ).length,
+          }
+        : {}),
     };
   }
 
@@ -474,6 +498,195 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
       });
     }
     return record;
+  }
+
+  async duplicateRecord(tableId: string, recordId: string): Promise<RecordOrderResult> {
+    const source = this.#records.find(
+      (record) => record.id === recordId && record.tableId === tableId,
+    );
+    if (source === undefined || source.deletedAt !== undefined) {
+      throw new LoomTableClientError('not-found', {
+        message: 'The Record does not exist.',
+        httpStatus: 404,
+        code: 'NOT_FOUND',
+      });
+    }
+    this.#recordSequence += 1;
+    const copy: LoomTableRecord = {
+      ...source,
+      id: `record_dup_${String(this.#recordSequence).padStart(2, '0')}`,
+      revision: 1,
+      values: { ...source.values },
+      createdAt: new Date(1_800_000_000_000 + ++this.#clock * 1000).toISOString(),
+      updatedAt: new Date(1_800_000_000_000 + ++this.#clock * 1000).toISOString(),
+    };
+    delete (copy as { deletedAt?: string }).deletedAt;
+    this.#records.push(copy);
+    return { record: copy, changeCursor: 'change_01' };
+  }
+
+  async moveRecord(
+    tableId: string,
+    recordId: string,
+    request: { beforeRecordId?: string; afterRecordId?: string },
+  ): Promise<RecordOrderResult> {
+    const index = this.#records.findIndex(
+      (record) => record.id === recordId && record.tableId === tableId,
+    );
+    const record = this.#records[index];
+    if (record === undefined || record.deletedAt !== undefined) {
+      throw new LoomTableClientError('not-found', {
+        message: 'The Record does not exist.',
+        httpStatus: 404,
+        code: 'NOT_FOUND',
+      });
+    }
+    this.#records.splice(index, 1);
+    let target = this.#records.length;
+    if (request.afterRecordId !== undefined) {
+      const anchor = this.#records.findIndex(
+        (candidate) => candidate.id === request.afterRecordId && candidate.tableId === tableId,
+      );
+      if (anchor >= 0) target = anchor + 1;
+    } else if (request.beforeRecordId !== undefined) {
+      const anchor = this.#records.findIndex(
+        (candidate) => candidate.id === request.beforeRecordId && candidate.tableId === tableId,
+      );
+      if (anchor >= 0) target = anchor;
+    }
+    this.#records.splice(target, 0, record);
+    return { record, changeCursor: 'change_01' };
+  }
+
+  async queryFieldValues(
+    tableId: string,
+    fieldId: string,
+    request: DistinctValuesRequest = {},
+  ): Promise<DistinctValuesPage> {
+    this.fieldValueRequests.push({ tableId, fieldId, request });
+    const field = this.#fields.find(
+      (candidate) => candidate.id === fieldId && candidate.tableId === tableId,
+    );
+    if (field === undefined || field.deletedAt !== undefined) {
+      throw new LoomTableClientError('not-found', {
+        message: 'The Field does not exist.',
+        httpStatus: 404,
+        code: 'NOT_FOUND',
+      });
+    }
+    if (field.type === 'location' || field.type === 'attachment') {
+      throw new LoomTableClientError('validation', {
+        message: 'Distinct values are unsupported for this Field type.',
+        httpStatus: 422,
+        code: 'UNSUPPORTED_FIELD_TYPE',
+      });
+    }
+    const active = this.#records.filter(
+      (record) => record.tableId === tableId && record.deletedAt === undefined,
+    );
+    const counts = new Map<string, { value: string | number | boolean; count: number }>();
+    let emptyCount = 0;
+    for (const record of active) {
+      const raw = record.values[fieldId];
+      const parts =
+        field.type === 'multiSelect' && Array.isArray(raw)
+          ? raw.filter((item): item is string => typeof item === 'string')
+          : [raw];
+      const present = parts.filter(
+        (item): item is string | number | boolean =>
+          typeof item === 'string' || typeof item === 'number' || typeof item === 'boolean',
+      );
+      if (
+        raw === undefined ||
+        raw === null ||
+        raw === '' ||
+        (Array.isArray(raw) && present.length === 0)
+      ) {
+        emptyCount += 1;
+        continue;
+      }
+      for (const item of present) {
+        const key = `${typeof item}:${String(item)}`;
+        const entry = counts.get(key);
+        if (entry === undefined) counts.set(key, { value: item, count: 1 });
+        else counts.set(key, { value: item, count: entry.count + 1 });
+      }
+    }
+    const displayFor = (value: string | number | boolean): string | undefined => {
+      if (field.type !== 'select' && field.type !== 'multiSelect') return undefined;
+      return (
+        field.config.options.find((option) => option.id === value)?.name ??
+        field.config.deletedOptions.find((option) => option.id === value)?.name
+      );
+    };
+    const rankFor = (value: string | number | boolean): number => {
+      if (field.type !== 'select' && field.type !== 'multiSelect') return 0;
+      const index = field.config.options.findIndex((option) => option.id === value);
+      return index === -1 ? Number.MAX_SAFE_INTEGER : index;
+    };
+    let items: DistinctValue[] = [...counts.values()]
+      .map((entry) => {
+        const display = displayFor(entry.value);
+        return {
+          value: entry.value,
+          count: entry.count,
+          ...(display === undefined ? {} : { display }),
+        };
+      })
+      .sort((a, b) => {
+        const rank = rankFor(a.value) - rankFor(b.value);
+        if (rank !== 0) return rank;
+        if (typeof a.value === 'number' && typeof b.value === 'number') {
+          return a.value - b.value;
+        }
+        return String(a.value).localeCompare(String(b.value));
+      });
+    const search = request.search?.trim().toLowerCase();
+    if (search !== undefined && search !== '') {
+      items = items.filter((item) =>
+        (item.display ?? String(item.value)).toLowerCase().includes(search),
+      );
+    }
+    const offset = decodeCursor(request.cursor);
+    const limit = request.limit ?? 100;
+    const page = items.slice(offset, offset + limit);
+    const nextOffset = offset + page.length;
+    const hasMore = nextOffset < items.length;
+    return {
+      items: page,
+      emptyCount,
+      hasMore,
+      changeCursor: 'change_01',
+      ...(hasMore ? { nextCursor: encodeCursor(nextOffset) } : {}),
+    };
+  }
+
+  async aggregateRecords(tableId: string, request: AggregateRequest): Promise<AggregateResult> {
+    this.aggregateRequests.push({ tableId, request });
+    const active = this.#records.filter(
+      (record) => record.tableId === tableId && record.deletedAt === undefined,
+    );
+    const results: Record<string, Record<string, number | string | null>> = {};
+    for (const fieldId of request.fieldIds) {
+      const field = this.#fields.find(
+        (candidate) => candidate.id === fieldId && candidate.tableId === tableId,
+      );
+      const values = active
+        .map((record) => record.values[fieldId])
+        .filter(
+          (value): value is Exclude<JsonValue, null | undefined> =>
+            value !== undefined &&
+            value !== null &&
+            value !== '' &&
+            !(Array.isArray(value) && value.length === 0),
+        );
+      const entry: Record<string, number | string | null> = {};
+      for (const fn of request.fns) {
+        entry[fn] = aggregateValue(fn, field, values);
+      }
+      results[fieldId] = entry;
+    }
+    return { results, changeCursor: 'change_01' };
   }
 
   async mutate(tableId: string, request: MutationRequest): Promise<MutationResult> {
@@ -812,6 +1025,31 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
   async downloadAttachmentContent(_attachmentId: string): Promise<AttachmentDownload> {
     throw unsupported();
   }
+}
+
+function aggregateValue(
+  fn: AggregateFn,
+  field: Field | undefined,
+  values: readonly Exclude<JsonValue, null | undefined>[],
+): number | string | null {
+  if (fn === 'count') return values.length;
+  if (field?.type === 'number') {
+    const numbers = values.filter((value): value is number => typeof value === 'number');
+    if (numbers.length === 0) return null;
+    if (fn === 'sum') return numbers.reduce((total, value) => total + value, 0);
+    if (fn === 'avg') return numbers.reduce((total, value) => total + value, 0) / numbers.length;
+    if (fn === 'min') return Math.min(...numbers);
+    if (fn === 'max') return Math.max(...numbers);
+    return null;
+  }
+  if (field?.type === 'date') {
+    const dates = values.filter((value): value is string => typeof value === 'string');
+    if (dates.length === 0) return null;
+    if (fn === 'min') return dates.reduce((a, b) => (a <= b ? a : b));
+    if (fn === 'max') return dates.reduce((a, b) => (a >= b ? a : b));
+    return null;
+  }
+  return null;
 }
 
 function unsupported(): LoomTableClientError {

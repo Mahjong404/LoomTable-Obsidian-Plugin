@@ -1,4 +1,5 @@
 import type {
+  DistinctValuesPage,
   Field,
   FilterGroup,
   FilterNode,
@@ -8,6 +9,7 @@ import type {
 } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
+import { openFilterValuesPopover } from './filter-values-popover';
 import {
   addFilterChild,
   coerceRuleForField,
@@ -31,6 +33,11 @@ export interface FilterBuilderOptions {
   readonly translate: Translator;
   readonly onApply: (filter: FilterNode | undefined) => void | Promise<unknown>;
   readonly onInvalidate?: () => void;
+  readonly host?: HTMLElement;
+  readonly loadFieldValues?: (
+    fieldId: string,
+    request: { search?: string; cursor?: string },
+  ) => Promise<DistinctValuesPage>;
 }
 
 const ISSUE_KEYS: Record<FilterIssueReason, MessageKey> = {
@@ -66,12 +73,15 @@ export class FilterBuilder {
   readonly #translate: Translator;
   readonly #onApply: FilterBuilderOptions['onApply'];
   readonly #onInvalidate: (() => void) | undefined;
+  readonly #host: HTMLElement | undefined;
+  readonly #loadFieldValues: FilterBuilderOptions['loadFieldValues'];
   #applied: FilterNode | undefined;
   #draft: FilterNode | undefined;
   #root: HTMLElement | null = null;
   #applying = false;
   #applyQueued = false;
   #applyTimer: number | null = null;
+  readonly #localValueFields = new Set<string>();
 
   constructor(initial: FilterNode | undefined, options: FilterBuilderOptions) {
     this.#applied = initial;
@@ -80,6 +90,8 @@ export class FilterBuilder {
     this.#translate = options.translate;
     this.#onApply = options.onApply;
     this.#onInvalidate = options.onInvalidate;
+    this.#host = options.host;
+    this.#loadFieldValues = options.loadFieldValues;
   }
 
   render(): HTMLElement {
@@ -241,6 +253,34 @@ export class FilterBuilder {
 
   #valueControl(field: Field, rule: FilterRule, path: FilterPath): HTMLElement {
     if (field.type === 'select' || field.type === 'multiSelect') {
+      const load = this.#loadFieldValues;
+      if (load !== undefined && this.#host !== undefined && !this.#localValueFields.has(field.id)) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'loom-filter-value-pick clickable-icon';
+        button.dataset.role = 'filter-value';
+        button.setAttribute('aria-label', this.#translate('filter.value'));
+        button.dataset.empty = rule.value === undefined ? 'true' : 'false';
+        button.textContent = this.#optionLabel(field, rule.value);
+        const host = this.#host;
+        button.addEventListener('click', (event) => {
+          openFilterValuesPopover({
+            field,
+            selected: rule.value,
+            x: event.clientX,
+            y: event.clientY,
+            host,
+            translate: this.#translate,
+            load: (request) => load(field.id, request),
+            onPick: (value) => this.#setRuleValue(path, value),
+            onFallback: () => {
+              this.#localValueFields.add(field.id);
+              this.#rerender();
+            },
+          });
+        });
+        return button;
+      }
       const select = document.createElement('select');
       select.dataset.role = 'filter-value';
       select.setAttribute('aria-label', this.#translate('filter.value'));
@@ -309,6 +349,22 @@ export class FilterBuilder {
       this.#setRuleValue(path, input.value);
     });
     return input;
+  }
+
+  #optionLabel(field: Field, value: unknown): string {
+    if (
+      typeof value !== 'string' ||
+      value === '' ||
+      (field.type !== 'select' && field.type !== 'multiSelect')
+    ) {
+      return this.#translate('filter.valuePlaceholder');
+    }
+    const active = field.config.options.find((candidate) => candidate.id === value);
+    if (active !== undefined) return active.name;
+    const deleted = field.config.deletedOptions.find((candidate) => candidate.id === value);
+    return deleted === undefined
+      ? this.#translate('filter.valuePlaceholder')
+      : `${deleted.name} ${this.#translate('filter.option.deleted')}`;
   }
 
   #optionElement(id: string, name: string, deleted: boolean): HTMLOptionElement {

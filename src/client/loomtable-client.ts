@@ -297,6 +297,7 @@ export interface GridViewConfig {
   readonly rowHeight: 'compact' | 'standard' | 'comfortable';
   readonly filter?: FilterNode;
   readonly sort: readonly SortSpec[];
+  readonly manualSort?: boolean;
 }
 
 export interface QueryRequest {
@@ -327,6 +328,48 @@ export interface QueryResult {
   readonly hasMore: boolean;
   readonly changeCursor: string;
   readonly totalCount?: number;
+  readonly unfilteredTotal?: number;
+}
+
+export interface RecordOrderResult {
+  readonly record: LoomTableRecord;
+  readonly changeCursor: string;
+}
+
+export interface DistinctValue {
+  readonly value: string | number | boolean;
+  readonly display?: string;
+  readonly count: number;
+}
+
+export interface DistinctValuesPage {
+  readonly items: readonly DistinctValue[];
+  readonly emptyCount: number;
+  readonly nextCursor?: string;
+  readonly hasMore: boolean;
+  readonly changeCursor: string;
+}
+
+export interface DistinctValuesRequest {
+  readonly filter?: FilterNode;
+  readonly search?: string;
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
+export type AggregateFn = 'count' | 'sum' | 'avg' | 'min' | 'max';
+
+export interface AggregateRequest {
+  readonly filter?: FilterNode;
+  readonly fieldIds: readonly string[];
+  readonly fns: readonly AggregateFn[];
+}
+
+export type AggregateValue = number | string | null;
+
+export interface AggregateResult {
+  readonly results: Readonly<Record<string, Readonly<Record<string, AggregateValue>>>>;
+  readonly changeCursor: string;
 }
 
 export type ChangeKind =
@@ -637,8 +680,20 @@ export interface LoomTableClient {
   pullHistory(tableId: string, request?: PullHistoryRequest): Promise<HistoryPage>;
   previewFieldConversion(fieldId: string, type: Field['type']): Promise<ConversionPreview>;
   convertField(fieldId: string, request: ConvertFieldRequest): Promise<ConversionResult>;
+  queryFieldValues(
+    tableId: string,
+    fieldId: string,
+    request?: DistinctValuesRequest,
+  ): Promise<DistinctValuesPage>;
+  aggregateRecords(tableId: string, request: AggregateRequest): Promise<AggregateResult>;
   mutate(tableId: string, request: MutationRequest): Promise<MutationResult>;
   getRecord(recordId: string): Promise<LoomTableRecord>;
+  duplicateRecord(tableId: string, recordId: string): Promise<RecordOrderResult>;
+  moveRecord(
+    tableId: string,
+    recordId: string,
+    request: { beforeRecordId?: string; afterRecordId?: string },
+  ): Promise<RecordOrderResult>;
   queryMap(viewId: string, request: MapQueryRequest): Promise<MapQueryResult>;
   summarizeMap(viewId: string): Promise<MapSummaryResult>;
   queryMapClusterRecords(

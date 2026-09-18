@@ -57,7 +57,8 @@ export type UiIconName =
   | 'tool-ops'
   | 'tool-history'
   | 'tool-trash'
-  | 'tool-convert';
+  | 'tool-convert'
+  | 'menu-duplicate';
 
 const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
   'tool-undo': [
@@ -93,6 +94,12 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
     ['path', { d: 'M4 7h16' }],
     ['path', { d: 'm16 21 4-4-4-4' }],
     ['path', { d: 'M20 17H4' }],
+  ],
+  'menu-duplicate': [
+    ['rect', { width: '13', height: '13', x: '8', y: '8', rx: '2' }],
+    ['path', { d: 'M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3' }],
+    ['path', { d: 'M14.5 12v5' }],
+    ['path', { d: 'M12 14.5h5' }],
   ],
   'view-grid': [
     ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }],
