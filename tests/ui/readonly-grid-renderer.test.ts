@@ -1472,6 +1472,11 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     deletedRecordsHasMore: false,
     deletedRecordsError: null,
     lastDeletedRecord: null,
+    serverHistory: [],
+    serverHistoryStatus: 'idle',
+    serverHistoryNextCursor: null,
+    serverHistoryHasMore: false,
+    serverHistoryError: null,
     historyEntries: [],
     ...update,
   };
@@ -1980,6 +1985,8 @@ describe('Grid record lifecycle', () => {
       onDismissDeleteNotice: vi.fn(),
       onLoadDeletedRecords: vi.fn(async () => undefined),
       onLoadMoreDeletedRecords: vi.fn(async () => undefined),
+      onLoadServerHistory: vi.fn(async (_kind?: string) => undefined),
+      onLoadMoreServerHistory: vi.fn(async (_kind?: string) => undefined),
       onRestoreRecord: vi.fn(async (_recordId: string) => undefined),
     };
   }
@@ -2189,6 +2196,75 @@ describe('Grid record lifecycle', () => {
     const rerendered = container.querySelector<HTMLElement>('.loom-status-panel');
     expect(rerendered?.querySelectorAll('.loom-recycle-item')).toHaveLength(1);
     expect(callbacks.onLoadDeletedRecords).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
+  it('renders Server history entries with field diffs and loads on demand', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(
+      createState(1, {
+        serverHistoryStatus: 'ready',
+        serverHistoryHasMore: true,
+        serverHistory: [
+          {
+            id: 'ch_1',
+            kind: 'recordUpdated',
+            tableId: 'table_01',
+            recordId: 'record_01',
+            revision: 3,
+            occurredAt: '2026-09-20T10:00:00Z',
+            primaryFieldText: 'Alpha',
+            fields: [{ fieldId: 'field_name', before: 'A', after: 'Alpha' }],
+          },
+          {
+            id: 'ch_2',
+            kind: 'recordCreated',
+            tableId: 'table_01',
+            recordId: 'record_02',
+            revision: 1,
+            occurredAt: '2026-09-20T09:00:00Z',
+            primaryFieldText: 'Beta',
+          },
+        ],
+      }),
+    );
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    container.querySelector<HTMLButtonElement>('.loom-status-mode[data-mode="history"]')?.click();
+    expect(callbacks.onLoadServerHistory).not.toHaveBeenCalled();
+
+    const panel = container.querySelector<HTMLElement>('.loom-status-panel');
+    const items = panel?.querySelectorAll<HTMLElement>('.loom-change-item') ?? [];
+    expect(items).toHaveLength(2);
+    expect(items[0]?.querySelector('.loom-change-item-title')?.textContent).toBe('Alpha');
+    expect(items[0]?.querySelector('.loom-change-item-kind')?.textContent).toBe('Edited');
+    expect(items[0]?.querySelector('.loom-change-item-delta')?.textContent).toContain(
+      'Name: A → Alpha',
+    );
+    expect(items[1]?.querySelector('.loom-change-item-kind')?.textContent).toBe('Created');
+    expect(items[0]?.querySelector('.loom-change-item-undo')).toBeNull();
+
+    panel?.querySelector<HTMLButtonElement>('.loom-recycle-load-more')?.click();
+    expect(callbacks.onLoadMoreServerHistory).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
+  it('requests Server history when opening the tab while it is idle', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(1, { serverHistoryStatus: 'idle' }));
+
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+    container.querySelector<HTMLButtonElement>('.loom-status-mode[data-mode="history"]')?.click();
+    expect(callbacks.onLoadServerHistory).toHaveBeenCalledTimes(1);
+
+    const panel = container.querySelector<HTMLElement>('.loom-status-panel');
+    expect(panel?.querySelector('.loom-recycle-status')?.textContent).toContain('No history');
     container.remove();
   });
 
@@ -2687,7 +2763,7 @@ describe('column menu and field editor', () => {
     await Promise.resolve();
 
     expect(onFieldSave).toHaveBeenCalledWith(
-      { name: 'Notes', type: 'select', options: [] },
+      { name: 'Notes', type: 'select', options: [], description: '' },
       { mode: 'create' },
     );
     container.remove();

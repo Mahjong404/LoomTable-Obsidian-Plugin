@@ -359,6 +359,11 @@ export function createGalleryState(update: Partial<GridState> = {}): GridState {
     deletedRecordsHasMore: false,
     deletedRecordsError: null,
     lastDeletedRecord: null,
+    serverHistory: [],
+    serverHistoryStatus: 'idle',
+    serverHistoryNextCursor: null,
+    serverHistoryHasMore: false,
+    serverHistoryError: null,
     historyEntries: [],
     ...update,
   };

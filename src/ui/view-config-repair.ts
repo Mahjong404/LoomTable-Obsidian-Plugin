@@ -5,6 +5,7 @@ import type {
   MapViewConfig,
   View,
 } from '../client/loomtable-client';
+import { filterOperatorsForField, isSortableField } from './view-query-model';
 
 export interface ViewConfigFieldIssues {
   readonly queryFieldIds: readonly string[];
@@ -126,6 +127,38 @@ export function repairViewConfig(
     ...(view.config.zoom === undefined ? {} : { zoom: view.config.zoom }),
   };
   return repaired;
+}
+
+/**
+ * After an in-place type conversion the Field still exists, but Filter rules
+ * whose operator is invalid for the new type and Sorts on a non-sortable type
+ * must be dropped. Returns null when nothing needs to change.
+ */
+export function repairGridConfigForFieldType(
+  config: GridViewConfig,
+  field: Field,
+): GridViewConfig | null {
+  const operators = new Set(filterOperatorsForField(field));
+  const prune = (node: FilterNode | undefined): FilterNode | undefined => {
+    if (node === undefined) return undefined;
+    if (node.kind === 'rule') {
+      return node.fieldId === field.id && !operators.has(node.operator) ? undefined : node;
+    }
+    const children = node.children
+      .map((child) => prune(child))
+      .filter((child): child is FilterNode => child !== undefined);
+    return children.length === 0 ? undefined : { ...node, children };
+  };
+  const filter = prune(config.filter);
+  const filterChanged =
+    (config.filter === undefined) !== (filter === undefined) ||
+    JSON.stringify(config.filter) !== JSON.stringify(filter);
+  const sort = isSortableField(field)
+    ? config.sort
+    : config.sort.filter((entry) => entry.fieldId !== field.id);
+  const sortChanged = sort.length !== config.sort.length;
+  if (!filterChanged && !sortChanged) return null;
+  return { ...config, sort, ...(filter === undefined ? {} : { filter }) };
 }
 
 function removeFilterFieldIds(

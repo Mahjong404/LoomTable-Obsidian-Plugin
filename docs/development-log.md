@@ -189,3 +189,14 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - **批次 F 响应式/底栏**：断点体系 ≤1100px 工具栏 label 隐藏（图标+aria-label）、≤760px 面包屑胶囊折叠为 `ws / base / table` 单路径钮（点击展开 selects）、≤560px query/status 面板转底部抽屉（fixed 底浮层）；`touch-action` 分区声明（viewport pan-x pan-y / 编辑器 manipulation / resize 柄 none）；`@media (hover:none)` 选中行常显 ↗+复选框、历史条目撤销钮常显；Obsidian 状态栏 `N/M 行 · 保存态`（main.ts `addStatusBarItem` + view `statusSink` 发布，视图关闭即隐藏）。
 - **Server 清单**：`docs/local/ux-gap-2026-09-17/12-server-requirements.md`（本地不入库）——S1 字段级历史/S2 类型转换/S3 字段 description/S4 distinct 值清单/S5 无筛选总数/S6 聚合统计/S7 记录排序/S8 复制记录。
 - 验证：63 文件 808 tests 全绿；lint 0 error；typecheck/format 干净；openapi 无 diff；esbuild 通过；已部署 vault（main.js 607,120B / styles.css 76,291B）。
+
+## 2026-XX — Server S1–S3 集成：历史流 / 字段类型转换 / 字段说明 + 状态面板三模式 icon
+
+- **合同同步**：固定 OpenAPI 快照升级至 Server `d4d2656`（用户批准，覆盖此前"合同冻结"约定；`openapi/source.json` 已记录）；`api:generate` 重生成 `transport.ts`（convert-preview/convert、history、values/query、aggregate、move、duplicate 端点与新 schema）。
+- **client**：`LoomTableClient` 增 `pullHistory`/`previewFieldConversion`/`convertField`；`Field.description`（S3）；`ChangeKind` 增 `recordMoved`，`Change` 增 `fields[]{fieldId,before,after}`/`primaryFieldText`；`UpdateFieldRequest` 放行 description；fixture 补齐三方法。
+- **S1 历史流**：`GridState.serverHistory*` 状态族；controller `loadServerHistory`（kind 过滤透传 cursor 绑定）/`loadMoreServerHistory`/`#reloadServerHistoryIfLoaded`（mutation 应用、删除/恢复、视图失效后自动重查已加载历史）；状态面板头部重构为 `[保存态] [ops][history][deleted] [刷新]`——三个 icon-only `role="tab"` 模式钮（tool-ops/tool-history/tool-trash，aria-label+title 保留），默认 ops 操作记录；history 模式只读显示 recordTitle·fieldName·before→after·时间+kind chip 筛选与 Load more。
+- **S2 类型转换**：`field-convert-panel.ts` popover——列头 ⋯「修改字段类型」→ 目标类型选择 → `convert-preview`（supported/modes/ok/lossy/lost/empty 统计 + 有损警告）→ `convert`（previewToken+expectedRevision+mode）；`INVALID_PREVIEW_TOKEN`/`CONVERT_PREVIEW_STALE` 自动重拉 preview 一次；成功后 `repairGridConfigForFieldType` 清理失效 Filter/Sort 引用并经 coordinator 保存；primary/deleted 字段不出菜单项。
+- **S3 字段说明**：`FieldEditorSubmit.description` 贯穿创建/编辑表单（空串→null 清空语义），`decodeField` 解析，列头 tooltip 显示。
+- **UI 修复**：`.loom-grid-editor` 重置 Obsidian 全局 `input` 规则（`height:auto;min-height:0;max-width/max-height:none;font/line-height:inherit`）——覆盖式编辑器真正铺满单元格，去掉"内嵌圆角小框"观感；保留原生控件 appearance。
+- **测试**：field-convert-panel ×3（preview 展示/apply/stale token 重 preview）；controller serverHistory 加载/分页/kind 过滤/失效重查；http changes 契约测试（pullHistory/convert-preview/convert 请求与解码）；renderer 三模式切换/history 渲染/load-more；字段创建流断言更新带 description。
+- **验证**：64 文件 819 tests 全绿；lint 0 error；typecheck/format 干净；api:generate 与快照一致（提交后 api:check 零 diff）；esbuild 通过。

@@ -2608,6 +2608,89 @@ describe('Record lifecycle', () => {
     scheduler.stop();
   });
 
+  it('loads Server history pages and appends with the active kind filter', async () => {
+    const { client, scheduler, controller } = createLifecycleController();
+    await startLifecycle(scheduler, controller);
+    client.historyPages.push(
+      {
+        items: [
+          {
+            id: 'ch_1',
+            kind: 'recordUpdated',
+            tableId: 'table_01',
+            recordId: 'record_01',
+            revision: 3,
+            occurredAt: '2026-09-20T10:00:00Z',
+            primaryFieldText: 'Alpha',
+            fields: [{ fieldId: 'field_name', before: 'A', after: 'Alpha' }],
+          },
+          {
+            id: 'ch_2',
+            kind: 'recordCreated',
+            tableId: 'table_01',
+            recordId: 'record_02',
+            revision: 1,
+            occurredAt: '2026-09-20T09:00:00Z',
+          },
+        ],
+        hasMore: true,
+        nextCursor: 'hist_02',
+        changeCursor: 'change_02',
+      },
+      {
+        items: [
+          {
+            id: 'ch_3',
+            kind: 'recordUpdated',
+            tableId: 'table_01',
+            recordId: 'record_03',
+            revision: 5,
+            occurredAt: '2026-09-20T08:00:00Z',
+          },
+        ],
+        hasMore: false,
+        changeCursor: 'change_03',
+      },
+    );
+
+    await controller.loadServerHistory({ kind: 'recordUpdated' });
+    expect(client.historyRequests[0]?.kind).toBe('recordUpdated');
+    expect(typeof client.historyRequests[0]?.limit).toBe('number');
+    expect(controller.state.serverHistory.map((change) => change.id)).toEqual(['ch_1', 'ch_2']);
+    expect(controller.state.serverHistoryStatus).toBe('ready');
+    expect(controller.state.serverHistoryHasMore).toBe(true);
+
+    await controller.loadMoreServerHistory('recordUpdated');
+    expect(client.historyRequests[1]).toMatchObject({
+      kind: 'recordUpdated',
+      cursor: 'hist_02',
+    });
+    expect(controller.state.serverHistory.map((change) => change.id)).toEqual([
+      'ch_1',
+      'ch_2',
+      'ch_3',
+    ]);
+    expect(controller.state.serverHistoryHasMore).toBe(false);
+    scheduler.stop();
+  });
+
+  it('reloads Server history after an applied mutation when it was loaded', async () => {
+    const { client, scheduler, controller } = createLifecycleController();
+    await startLifecycle(scheduler, controller);
+    await controller.loadServerHistory();
+    expect(client.historyRequests).toHaveLength(1);
+    client.historyPages.push({
+      items: [],
+      hasMore: false,
+      changeCursor: 'change_03',
+    });
+
+    void controller.editCell('record_01', 'field_name', 'changed');
+    await scheduler.drain();
+    await vi.waitFor(() => expect(client.historyRequests.length).toBeGreaterThan(1));
+    scheduler.stop();
+  });
+
   it('removes a restored Record from the recycle list', async () => {
     const { client, scheduler, controller } = createLifecycleController();
     await startLifecycle(scheduler, controller);

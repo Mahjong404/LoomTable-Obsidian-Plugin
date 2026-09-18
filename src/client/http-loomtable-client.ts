@@ -45,7 +45,15 @@ import {
   normalizeResourceName,
   type QueryRequest,
   type QueryResult,
+  type ConversionMode,
+  type ConversionModeStats,
+  type ConversionPreview,
+  type ConversionResult,
+  type ConvertFieldRequest,
+  type FieldChange,
+  type HistoryPage,
   type PullChangesRequest,
+  type PullHistoryRequest,
   type ResourceListOptions,
   type SelectFieldConfig,
   type SelectOption,
@@ -314,6 +322,81 @@ export class HttpLoomTableClient implements LoomTableClient {
       },
     );
     return decodeChangePage(value);
+  }
+
+  async pullHistory(tableId: string, request: PullHistoryRequest = {}): Promise<HistoryPage> {
+    const normalizedTableId = tableId.trim();
+    if (normalizedTableId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Table ID is required to pull History.',
+      });
+    }
+    const limit = request.limit ?? DEFAULT_CHANGE_PAGE_LIMIT;
+    if (!isPositiveInteger(limit) || limit > 500) {
+      throw new LoomTableClientError('validation', {
+        message: 'History page limit must be an integer between 1 and 500.',
+      });
+    }
+    const value = await this.#requestJson(
+      `/v1/tables/${encodeURIComponent(normalizedTableId)}/history`,
+      this.#requireAccessToken(),
+      {
+        query: {
+          recordId: request.recordId,
+          kind: request.kind,
+          fieldId: request.fieldId,
+          actorId: request.actorId,
+          since: request.since,
+          until: request.until,
+          cursor: request.cursor,
+          limit: String(limit),
+        },
+        retryable: true,
+      },
+    );
+    return decodeHistoryPage(value);
+  }
+
+  async previewFieldConversion(fieldId: string, type: Field['type']): Promise<ConversionPreview> {
+    const normalizedFieldId = fieldId.trim();
+    if (normalizedFieldId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Field ID is required to preview a conversion.',
+      });
+    }
+    const body: components['schemas']['ConvertFieldPreviewRequest'] = { type };
+    const value = await this.#requestJson(
+      `/v1/fields/${encodeURIComponent(normalizedFieldId)}/convert-preview`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: false },
+    );
+    return decodeConversionPreview(value);
+  }
+
+  async convertField(fieldId: string, request: ConvertFieldRequest): Promise<ConversionResult> {
+    const normalizedFieldId = fieldId.trim();
+    if (normalizedFieldId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A Field ID is required to convert a Field.',
+      });
+    }
+    if (!isPositiveInteger(request.expectedRevision)) {
+      throw new LoomTableClientError('validation', {
+        message: 'Field expectedRevision must be a positive integer.',
+      });
+    }
+    if (request.mode.trim() === '' || request.previewToken.trim() === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A conversion requires a mode and previewToken.',
+      });
+    }
+    const body: components['schemas']['ConvertFieldRequest'] = request;
+    const value = await this.#requestJson(
+      `/v1/fields/${encodeURIComponent(normalizedFieldId)}/convert`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: false },
+    );
+    return decodeConversionResult(value);
   }
 
   async mutate(tableId: string, request: MutationRequest): Promise<MutationResult> {
@@ -617,9 +700,9 @@ export class HttpLoomTableClient implements LoomTableClient {
         message: invalidFieldNameMessage(name.reason),
       });
     }
-    if (name === undefined && request.config === undefined) {
+    if (name === undefined && request.config === undefined && request.description === undefined) {
       throw new LoomTableClientError('validation', {
-        message: 'A Field update requires a name or config change.',
+        message: 'A Field update requires a name, config, or description change.',
       });
     }
     const body = {
@@ -975,8 +1058,13 @@ function decodeChange(value: unknown): Change {
     !isOptionalString(value.objectId) ||
     !isPositiveInteger(value.revision) ||
     !isOptionalString(value.actorId) ||
-    typeof value.occurredAt !== 'string'
+    typeof value.occurredAt !== 'string' ||
+    !isOptionalString(value.primaryFieldText)
   ) {
+    throw invalidResource('change');
+  }
+  const fields = value.fields === undefined ? undefined : decodeFieldChanges(value.fields);
+  if (value.fields !== undefined && fields === undefined) {
     throw invalidResource('change');
   }
   return {
@@ -988,7 +1076,24 @@ function decodeChange(value: unknown): Change {
     ...(value.recordId === undefined ? {} : { recordId: value.recordId }),
     ...(value.objectId === undefined ? {} : { objectId: value.objectId }),
     ...(value.actorId === undefined ? {} : { actorId: value.actorId }),
+    ...(fields === undefined ? {} : { fields }),
+    ...(value.primaryFieldText === undefined ? {} : { primaryFieldText: value.primaryFieldText }),
   };
+}
+
+function decodeFieldChanges(value: unknown): readonly FieldChange[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: FieldChange[] = [];
+  for (const item of value) {
+    if (!isRecord(item) || typeof item.fieldId !== 'string') return undefined;
+    const change: { fieldId: string; before?: JsonValue; after?: JsonValue } = {
+      fieldId: item.fieldId,
+    };
+    if (item.before !== undefined) change.before = item.before as JsonValue;
+    if (item.after !== undefined) change.after = item.after as JsonValue;
+    out.push(change);
+  }
+  return out;
 }
 
 function isChangeKind(value: unknown): value is Change['kind'] {
@@ -997,9 +1102,116 @@ function isChangeKind(value: unknown): value is Change['kind'] {
     value === 'recordUpdated' ||
     value === 'recordDeleted' ||
     value === 'recordRestored' ||
+    value === 'recordMoved' ||
     value === 'schemaChanged' ||
     value === 'viewChanged'
   );
+}
+
+function decodeHistoryPage(value: unknown): HistoryPage {
+  if (
+    !isRecord(value) ||
+    !Array.isArray(value.items) ||
+    !isOptionalString(value.nextCursor) ||
+    typeof value.hasMore !== 'boolean' ||
+    typeof value.changeCursor !== 'string'
+  ) {
+    throw invalidResource('history page');
+  }
+  try {
+    return {
+      items: value.items.map(decodeChange),
+      hasMore: value.hasMore,
+      changeCursor: value.changeCursor,
+      ...(value.nextCursor === undefined ? {} : { nextCursor: value.nextCursor }),
+    };
+  } catch (error) {
+    if (error instanceof LoomTableClientError) throw error;
+    throw invalidResource('history page');
+  }
+}
+
+function decodeConversionModeStats(value: unknown): ConversionModeStats | null {
+  if (
+    !isRecord(value) ||
+    !isNonNegativeInteger(value.ok) ||
+    !isNonNegativeInteger(value.lossy) ||
+    !isNonNegativeInteger(value.lost) ||
+    !isNonNegativeInteger(value.empty) ||
+    !(value.distinctValues === undefined || isNonNegativeInteger(value.distinctValues)) ||
+    !(value.newOptions === undefined || isNonNegativeInteger(value.newOptions))
+  ) {
+    return null;
+  }
+  return {
+    ok: value.ok,
+    lossy: value.lossy,
+    lost: value.lost,
+    empty: value.empty,
+    ...(value.distinctValues === undefined ? {} : { distinctValues: value.distinctValues }),
+    ...(value.newOptions === undefined ? {} : { newOptions: value.newOptions }),
+  };
+}
+
+function decodeConversionMode(value: unknown): ConversionMode | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    typeof value.label !== 'string' ||
+    !(value.disabled === undefined || typeof value.disabled === 'boolean') ||
+    !isOptionalString(value.reason)
+  ) {
+    return null;
+  }
+  const stats = decodeConversionModeStats(value.stats);
+  if (stats === null) return null;
+  return {
+    id: value.id,
+    label: value.label,
+    stats,
+    ...(value.disabled === undefined ? {} : { disabled: value.disabled }),
+    ...(value.reason === undefined ? {} : { reason: value.reason }),
+  };
+}
+
+function decodeConversionPreview(value: unknown): ConversionPreview {
+  if (
+    !isRecord(value) ||
+    typeof value.supported !== 'boolean' ||
+    !isOptionalString(value.reason) ||
+    !isNonNegativeInteger(value.totalRecords) ||
+    !isOptionalString(value.previewToken)
+  ) {
+    throw invalidResource('conversion preview');
+  }
+  const modes =
+    value.modes === undefined
+      ? undefined
+      : Array.isArray(value.modes)
+        ? value.modes.map(decodeConversionMode)
+        : undefined;
+  if (modes === undefined && value.modes !== undefined) {
+    throw invalidResource('conversion preview');
+  }
+  if (modes !== undefined && modes.some((mode) => mode === null)) {
+    throw invalidResource('conversion preview');
+  }
+  return {
+    supported: value.supported,
+    totalRecords: value.totalRecords,
+    ...(value.reason === undefined ? {} : { reason: value.reason }),
+    ...(modes === undefined ? {} : { modes: modes as readonly ConversionMode[] }),
+    ...(value.previewToken === undefined ? {} : { previewToken: value.previewToken }),
+  };
+}
+
+function decodeConversionResult(value: unknown): ConversionResult {
+  if (!isRecord(value) || !isRecord(value.field)) {
+    throw invalidResource('conversion result');
+  }
+  const stats = decodeConversionModeStats(value.stats);
+  if (stats === null) throw invalidResource('conversion result');
+  return { field: decodeField(value.field), stats };
 }
 
 function decodeMutationResult(value: unknown): MutationResult {
@@ -1357,6 +1569,7 @@ function decodeField(value: unknown): Field {
     !isPositiveInteger(value.schemaVersion) ||
     !isPositiveInteger(value.revision) ||
     !isOptionalString(value.deletedAt) ||
+    !isOptionalString(value.description) ||
     typeof value.type !== 'string' ||
     !isRecord(value.config)
   ) {
@@ -1371,6 +1584,7 @@ function decodeField(value: unknown): Field {
     schemaVersion: value.schemaVersion,
     revision: value.revision,
     ...(value.deletedAt === undefined ? {} : { deletedAt: value.deletedAt }),
+    ...(value.description === undefined ? {} : { description: value.description }),
   };
 
   if (EMPTY_FIELD_TYPES.has(value.type)) {

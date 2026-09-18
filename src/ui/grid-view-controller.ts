@@ -9,6 +9,11 @@ import {
   type FieldConfigInput,
   type SelectOptionInput,
   type AttachmentRef,
+  type Change,
+  type ChangeKind,
+  type ConversionPreview,
+  type ConversionResult,
+  type ConvertFieldRequest,
   type FilterNode,
   type GridViewConfig,
   type LoomTableClient,
@@ -44,6 +49,7 @@ import type { ViewSaveStatus } from './save-status';
 import { UndoHistory, type UndoEntryMeta } from './undo-history';
 import {
   findBrokenViewFieldIds,
+  repairGridConfigForFieldType,
   repairViewConfig,
   type ViewConfigRepairInput,
 } from './view-config-repair';
@@ -137,6 +143,11 @@ export interface GridState {
   readonly deletedRecordsHasMore: boolean;
   readonly deletedRecordsError: LoomTableClientErrorDetails | null;
   readonly lastDeletedRecord: LoomTableRecord | null;
+  readonly serverHistory: readonly Change[];
+  readonly serverHistoryStatus: 'idle' | 'loading' | 'ready' | 'error';
+  readonly serverHistoryNextCursor: string | null;
+  readonly serverHistoryHasMore: boolean;
+  readonly serverHistoryError: LoomTableClientErrorDetails | null;
   readonly historyEntries: readonly UndoEntryMeta[];
   readonly canUndo?: boolean;
   readonly canRedo?: boolean;
@@ -174,6 +185,9 @@ export type GridDataSource = Pick<
       | 'updateField'
       | 'deleteField'
       | 'restoreField'
+      | 'pullHistory'
+      | 'previewFieldConversion'
+      | 'convertField'
     >
   >;
 
@@ -232,6 +246,7 @@ export interface FieldSubmitInput {
   readonly type: Field['type'];
   readonly options?: readonly SelectOptionInput[];
   readonly maxCount?: number;
+  readonly description?: string;
 }
 
 export type FieldWriteOutcome =
@@ -356,6 +371,11 @@ const INITIAL_STATE: GridState = {
   deletedRecordsHasMore: false,
   deletedRecordsError: null,
   lastDeletedRecord: null,
+  serverHistory: [],
+  serverHistoryStatus: 'idle',
+  serverHistoryNextCursor: null,
+  serverHistoryHasMore: false,
+  serverHistoryError: null,
   historyEntries: [],
 };
 
@@ -877,6 +897,7 @@ export class GridViewController {
       deletedRecords: this.#state.deletedRecords.filter((record) => record.id !== recordId),
     });
     this.#reloadDeletedRecordsIfLoaded();
+    this.#reloadServerHistoryIfLoaded();
     if (!this.#history.isApplying) {
       this.#history.push({
         meta: {
@@ -979,6 +1000,51 @@ export class GridViewController {
     const cursor = this.#state.deletedRecordsNextCursor;
     if (cursor === null || !this.#state.deletedRecordsHasMore) return;
     await this.loadDeletedRecords({ cursor });
+  }
+
+  async loadServerHistory(options?: {
+    readonly kind?: ChangeKind;
+    readonly cursor?: string;
+  }): Promise<void> {
+    const tableId = this.#state.selectedTableId;
+    if (tableId === null || this.#client.pullHistory === undefined) return;
+    this.#publish({ serverHistoryStatus: 'loading', serverHistoryError: null });
+    try {
+      const result = await this.#client.pullHistory(tableId, {
+        limit: this.#pageSize,
+        ...(options?.kind === undefined ? {} : { kind: options.kind }),
+        ...(options?.cursor === undefined ? {} : { cursor: options.cursor }),
+      });
+      this.#publish({
+        serverHistory:
+          options?.cursor === undefined
+            ? [...result.items]
+            : [...this.#state.serverHistory, ...result.items],
+        serverHistoryStatus: 'ready',
+        serverHistoryNextCursor: result.nextCursor ?? null,
+        serverHistoryHasMore: result.hasMore,
+      });
+    } catch (error) {
+      this.#publish({
+        serverHistoryStatus: 'error',
+        serverHistoryError: asClientError(error).details,
+      });
+    }
+  }
+
+  async loadMoreServerHistory(kind?: ChangeKind): Promise<void> {
+    const cursor = this.#state.serverHistoryNextCursor;
+    if (cursor === null || !this.#state.serverHistoryHasMore) return;
+    await this.loadServerHistory({
+      ...(kind === undefined ? {} : { kind }),
+      cursor,
+    });
+  }
+
+  #reloadServerHistoryIfLoaded(): void {
+    if (this.#state.serverHistoryStatus !== 'idle') {
+      void this.loadServerHistory();
+    }
   }
 
   #clearDeleteNotice(recordId: string): void {
@@ -1215,6 +1281,11 @@ export class GridViewController {
         deletedRecordsNextCursor: null,
         deletedRecordsHasMore: false,
         deletedRecordsError: null,
+        serverHistory: [],
+        serverHistoryStatus: 'idle',
+        serverHistoryNextCursor: null,
+        serverHistoryHasMore: false,
+        serverHistoryError: null,
         lastDeletedRecord:
           this.#state.lastDeletedRecord?.tableId === table.id
             ? this.#state.lastDeletedRecord
@@ -1249,6 +1320,7 @@ export class GridViewController {
           ...cursorPatch,
         });
         this.#reloadDeletedRecordsIfLoaded();
+        this.#reloadServerHistoryIfLoaded();
         return;
       }
       this.#publish({
@@ -1265,6 +1337,7 @@ export class GridViewController {
     }
     if (record.deletedAt !== undefined) {
       this.#reloadDeletedRecordsIfLoaded();
+      this.#reloadServerHistoryIfLoaded();
       this.#publish({ ...cursorPatch });
       return;
     }
@@ -1602,7 +1675,14 @@ export class GridViewController {
     try {
       field = await this.#client.createField(
         tableId,
-        { name: input.name, type: input.type, config },
+        {
+          name: input.name,
+          type: input.type,
+          config,
+          ...(input.description === undefined || input.description.trim() === ''
+            ? {}
+            : { description: input.description }),
+        },
         this.#mutationIdFactory(),
       );
     } catch (error) {
@@ -1646,6 +1726,7 @@ export class GridViewController {
       readonly name?: string;
       readonly options?: readonly SelectOptionInput[];
       readonly maxCount?: number;
+      readonly description?: string;
     },
   ): Promise<FieldWriteOutcome> {
     const field = this.#state.fields.find((candidate) => candidate.id === fieldId);
@@ -1665,6 +1746,9 @@ export class GridViewController {
         expectedRevision: field.revision,
         ...(input.name === undefined ? {} : { name: input.name }),
         ...(config === undefined ? {} : { config }),
+        ...(input.description === undefined
+          ? {}
+          : { description: input.description.trim() === '' ? null : input.description }),
       });
       await this.load();
       return { status: 'written', field: updated };
@@ -1674,6 +1758,41 @@ export class GridViewController {
         error instanceof Error ? error.message : 'The Field could not be updated.',
       );
     }
+  }
+
+  async previewFieldConversion(fieldId: string, type: Field['type']): Promise<ConversionPreview> {
+    if (this.#client.previewFieldConversion === undefined) {
+      throw new LoomTableClientError('validation', {
+        message: 'Field conversion is unavailable for this connection.',
+      });
+    }
+    return this.#client.previewFieldConversion(fieldId, type);
+  }
+
+  async convertField(fieldId: string, request: ConvertFieldRequest): Promise<ConversionResult> {
+    if (this.#client.convertField === undefined) {
+      throw new LoomTableClientError('validation', {
+        message: 'Field conversion is unavailable for this connection.',
+      });
+    }
+    const result = await this.#client.convertField(fieldId, request);
+    const fields = this.#state.fields.map((field) => (field.id === fieldId ? result.field : field));
+    this.#publish({ fields });
+    if (this.#viewWrites !== null) {
+      for (const view of this.#state.views) {
+        if (view.type !== 'grid') continue;
+        const config = repairGridConfigForFieldType(view.config, result.field);
+        if (config === null) continue;
+        try {
+          await this.#viewWrites.updateView(view, { config });
+        } catch {
+          // A failed repair leaves the stale rules in place; the next query
+          // surfaces them through the normal view-config issue path.
+        }
+      }
+    }
+    await this.refresh();
+    return result;
   }
 
   async deleteField(fieldId: string): Promise<FieldWriteOutcome> {
@@ -2003,6 +2122,7 @@ export class GridViewController {
         lastDeletedRecord: record,
       });
       this.#reloadDeletedRecordsIfLoaded();
+      this.#reloadServerHistoryIfLoaded();
       return;
     }
     this.#publish({
@@ -2013,6 +2133,7 @@ export class GridViewController {
       ...(this.#state.lastDeletedRecord?.id === recordId ? { lastDeletedRecord: null } : {}),
       deletedRecords: this.#state.deletedRecords.filter((candidate) => candidate.id !== recordId),
     });
+    this.#reloadServerHistoryIfLoaded();
   }
 
   #handleDurableQueueEvent(event: MutationQueueSchedulerEvent): void {

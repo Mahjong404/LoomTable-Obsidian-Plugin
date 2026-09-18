@@ -33,6 +33,7 @@ export interface FieldEditorSubmit {
   readonly type: Field['type'];
   readonly options?: readonly SelectOptionInput[];
   readonly maxCount?: number;
+  readonly description?: string;
 }
 
 export interface FieldEditorOptions {
@@ -77,6 +78,14 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
   nameInput.setAttribute('aria-label', t('field.name.label'));
   nameInput.value = options.field?.name ?? '';
   panel.append(nameInput);
+
+  const descInput = document.createElement('input');
+  descInput.type = 'text';
+  descInput.className = 'loom-field-editor-name loom-field-editor-desc';
+  descInput.placeholder = t('field.desc.placeholder');
+  descInput.setAttribute('aria-label', t('field.desc.label'));
+  descInput.value = options.field?.description ?? '';
+  panel.append(descInput);
 
   let type: Field['type'] = options.field?.type ?? options.defaultType ?? 'text';
   const configHost = document.createElement('div');
@@ -294,6 +303,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     const input: FieldEditorSubmit = {
       name,
       type,
+      description: descInput.value.trim(),
       ...(type === 'select' || type === 'multiSelect'
         ? {
             options: optionDrafts

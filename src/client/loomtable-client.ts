@@ -130,6 +130,7 @@ export interface FieldBase {
   readonly position: number;
   readonly schemaVersion: number;
   readonly revision: number;
+  readonly description?: string;
   readonly deletedAt?: string;
 }
 
@@ -237,6 +238,7 @@ export interface CreateFieldRequest {
   readonly name: string;
   readonly type: Field['type'];
   readonly config: FieldConfigInput;
+  readonly description?: string;
 }
 
 export interface UpdateFieldRequest {
@@ -244,6 +246,7 @@ export interface UpdateFieldRequest {
   readonly expectedRevision: number;
   readonly name?: string;
   readonly config?: FieldConfigInput;
+  readonly description?: string | null;
 }
 
 export type JsonValue =
@@ -331,8 +334,15 @@ export type ChangeKind =
   | 'recordUpdated'
   | 'recordDeleted'
   | 'recordRestored'
+  | 'recordMoved'
   | 'schemaChanged'
   | 'viewChanged';
+
+export interface FieldChange {
+  readonly fieldId: string;
+  readonly before?: JsonValue;
+  readonly after?: JsonValue;
+}
 
 export interface Change {
   readonly id: string;
@@ -343,6 +353,63 @@ export interface Change {
   readonly revision: number;
   readonly actorId?: string;
   readonly occurredAt: string;
+  readonly fields?: readonly FieldChange[];
+  readonly primaryFieldText?: string;
+}
+
+export interface PullHistoryRequest {
+  readonly recordId?: string;
+  readonly kind?: ChangeKind;
+  readonly fieldId?: string;
+  readonly actorId?: string;
+  readonly since?: string;
+  readonly until?: string;
+  readonly cursor?: string;
+  readonly limit?: number;
+}
+
+export interface HistoryPage {
+  readonly items: readonly Change[];
+  readonly nextCursor?: string;
+  readonly hasMore: boolean;
+  readonly changeCursor: string;
+}
+
+export interface ConversionModeStats {
+  readonly ok: number;
+  readonly lossy: number;
+  readonly lost: number;
+  readonly empty: number;
+  readonly distinctValues?: number;
+  readonly newOptions?: number;
+}
+
+export interface ConversionMode {
+  readonly id: string;
+  readonly label: string;
+  readonly disabled?: boolean;
+  readonly reason?: string;
+  readonly stats: ConversionModeStats;
+}
+
+export interface ConversionPreview {
+  readonly supported: boolean;
+  readonly reason?: string;
+  readonly totalRecords: number;
+  readonly modes?: readonly ConversionMode[];
+  readonly previewToken?: string;
+}
+
+export interface ConvertFieldRequest {
+  readonly type: Field['type'];
+  readonly mode: string;
+  readonly expectedRevision: number;
+  readonly previewToken: string;
+}
+
+export interface ConversionResult {
+  readonly field: Field;
+  readonly stats: ConversionModeStats;
 }
 
 export interface PullChangesRequest {
@@ -567,6 +634,9 @@ export interface LoomTableClient {
   listViews(tableId: string, options?: ResourceListOptions): Promise<readonly View[]>;
   query(request: QueryRequest): Promise<QueryResult>;
   pullChanges(tableId: string, request?: PullChangesRequest): Promise<ChangePage>;
+  pullHistory(tableId: string, request?: PullHistoryRequest): Promise<HistoryPage>;
+  previewFieldConversion(fieldId: string, type: Field['type']): Promise<ConversionPreview>;
+  convertField(fieldId: string, request: ConvertFieldRequest): Promise<ConversionResult>;
   mutate(tableId: string, request: MutationRequest): Promise<MutationResult>;
   getRecord(recordId: string): Promise<LoomTableRecord>;
   queryMap(viewId: string, request: MapQueryRequest): Promise<MapQueryResult>;

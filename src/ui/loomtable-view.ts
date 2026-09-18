@@ -223,6 +223,7 @@ export class LoomTableView extends ItemView {
               name: input.name,
               ...(input.options === undefined ? {} : { options: input.options }),
               ...(input.maxCount === undefined ? {} : { maxCount: input.maxCount }),
+              ...(input.description === undefined ? {} : { description: input.description }),
             })
           : controller.createField(
               input,
@@ -253,6 +254,12 @@ export class LoomTableView extends ItemView {
             onDismissDeleteNotice: () => controller.dismissDeleteNotice(),
             onLoadDeletedRecords: () => controller.loadDeletedRecords(),
             onLoadMoreDeletedRecords: () => controller.loadMoreDeletedRecords(),
+            onLoadServerHistory: (kind) =>
+              controller.loadServerHistory(kind === undefined ? {} : { kind }),
+            onLoadMoreServerHistory: (kind) => controller.loadMoreServerHistory(kind),
+            onConversionPreview: (fieldId, type) =>
+              controller.previewFieldConversion(fieldId, type),
+            onConvertField: (fieldId, request) => controller.convertField(fieldId, request),
             onRestoreRecord: async (recordId: string) => {
               await controller.restoreRecord(recordId);
             },

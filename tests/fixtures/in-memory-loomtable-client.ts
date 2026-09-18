@@ -6,9 +6,13 @@ import {
   type Base,
   type ChangePage,
   type ConnectionCheckResult,
+  type ConversionPreview,
+  type ConversionResult,
+  type ConvertFieldRequest,
   type CreateFieldRequest,
   type CreateViewRequest,
   type Field,
+  type HistoryPage,
   type InitializeAttachmentRequest,
   type LoomTableClient,
   type LoomTableRecord,
@@ -22,6 +26,7 @@ import {
   type MapSummaryResult,
   type MutationRequest,
   type MutationResult,
+  type PullHistoryRequest,
   type QueryRequest,
   type QueryResult,
   type ResourceListOptions,
@@ -625,6 +630,67 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
 
   async pullChanges(): Promise<ChangePage> {
     return { items: [], nextCursor: 'change_02', hasMore: false };
+  }
+
+  readonly historyRequests: PullHistoryRequest[] = [];
+  readonly historyPages: HistoryPage[] = [];
+  readonly previewRequests: Array<{
+    readonly fieldId: string;
+    readonly type: Field['type'];
+  }> = [];
+  readonly conversionPreviews: ConversionPreview[] = [];
+  readonly convertRequests: Array<{
+    readonly fieldId: string;
+    readonly request: ConvertFieldRequest;
+  }> = [];
+  readonly conversionResults: ConversionResult[] = [];
+
+  async pullHistory(_tableId: string, request: PullHistoryRequest = {}): Promise<HistoryPage> {
+    this.historyRequests.push(request);
+    return (
+      this.historyPages.shift() ?? {
+        items: [],
+        hasMore: false,
+        changeCursor: 'change_02',
+      }
+    );
+  }
+
+  async previewFieldConversion(fieldId: string, type: Field['type']): Promise<ConversionPreview> {
+    this.previewRequests.push({ fieldId, type });
+    return (
+      this.conversionPreviews.shift() ?? {
+        supported: false,
+        reason: 'Conversion is not supported.',
+        totalRecords: 0,
+      }
+    );
+  }
+
+  async convertField(fieldId: string, request: ConvertFieldRequest): Promise<ConversionResult> {
+    this.convertRequests.push({ fieldId, request });
+    const queued = this.conversionResults.shift();
+    if (queued !== undefined) return queued;
+    const index = this.#fields.findIndex((field) => field.id === fieldId);
+    if (index < 0) {
+      throw new LoomTableClientError('not-found', {
+        message: 'The Field does not exist.',
+        httpStatus: 404,
+        code: 'NOT_FOUND',
+      });
+    }
+    const field = this.#fields[index]!;
+    const updated = {
+      ...field,
+      type: request.type,
+      revision: field.revision + 1,
+      config: {},
+    } as Field;
+    this.#fields[index] = updated;
+    return {
+      field: updated,
+      stats: { ok: 0, lossy: 0, lost: 0, empty: 0 },
+    };
   }
 
   async summarizeMap(viewId: string): Promise<MapSummaryResult> {

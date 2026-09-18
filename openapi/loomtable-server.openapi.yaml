@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: LoomTable Server API
-  version: 0.1.0
+  version: 0.2.0
   description: |
     LoomTable Server 的初版 REST API 合同。
     Server 是 Workspace、Base、Table、Field、View、Record 和 Managed Attachment 元数据的事实来源。
@@ -683,6 +683,134 @@ paths:
         default:
           $ref: '#/components/responses/ErrorResponse'
 
+  /v1/fields/{fieldId}/convert-preview:
+    parameters:
+      - $ref: '#/components/parameters/FieldId'
+    post:
+      tags: [Fields]
+      operationId: previewFieldConversion
+      description: Dry-runs a Field type conversion. Reports whether the source/target type pair is supported, which conversion modes are available, and per-mode value statistics. Statistics and the later rewrite cover every record in the Table, including records in the recycle state. A primary Field never supports conversion. The returned previewToken binds the Field revision and value statistics and must be echoed by convertField.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertFieldPreviewRequest'
+      responses:
+        '200':
+          description: Conversion compatibility and per-mode statistics
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversionPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/fields/{fieldId}/convert:
+    parameters:
+      - $ref: '#/components/parameters/FieldId'
+    post:
+      tags: [Fields]
+      operationId: convertField
+      description: Atomically converts a Field to a new type and rewrites every record value with the selected mode. Empty values stay empty; lost values are removed. The Field revision increments and a schemaChanged Change is emitted; record revisions are unchanged. Fails with INVALID_PREVIEW_TOKEN when the token does not decode or targets another Field or type, CONVERT_PREVIEW_STALE when the Field revision or value statistics drifted after the preview, UNSUPPORTED_CONVERSION for unsupported type pairs, UNSUPPORTED_FIELD_TYPE for unknown types, and INVALID_STATE_TRANSITION for deleted or primary Fields.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConvertFieldRequest'
+      responses:
+        '200':
+          description: Field converted and record values rewritten
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConversionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/RevisionConflict'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/tables/{tableId}/fields/{fieldId}/values/query:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+      - $ref: '#/components/parameters/FieldId'
+    post:
+      tags: [Records]
+      operationId: queryFieldValues
+      description: Returns the distinct values of a Field together with their occurrence counts over active Records matching the optional filter. Rule nodes targeting the requested Field are removed from the filter so its own value list stays complete. select and multiSelect values are ordered by configured option rank; other types sort by value. location and attachment Fields return 422 UNSUPPORTED_FIELD_TYPE.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DistinctValuesRequest'
+      responses:
+        '200':
+          description: A cursor page of distinct values with counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DistinctValuesPage'
+        '400':
+          description: Invalid request or cursor bound to a different values query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: Cursor has expired and the client must restart from the first page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          description: Filter is invalid or the Field type cannot be enumerated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
   /v1/tables/{tableId}/views:
     parameters:
       - $ref: '#/components/parameters/TableId'
@@ -1071,6 +1199,117 @@ paths:
         default:
           $ref: '#/components/responses/ErrorResponse'
 
+  /v1/tables/{tableId}/records/aggregate:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    post:
+      tags: [Records]
+      operationId: aggregateRecords
+      description: Aggregates active Records matching the optional filter. Each requested Field returns one result object keyed by the requested function names. count is the number of Records with a non-empty value. sum and avg apply to number Fields only and return null otherwise. min and max return numbers for number Fields, YYYY-MM-DD strings for date Fields, and null otherwise. Results share one read-only transaction snapshot with changeCursor.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AggregateRequest'
+      responses:
+        '200':
+          description: Per-Field aggregation results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AggregateResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          description: fieldIds, fns, or filter is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/tables/{tableId}/records/{recordId}/move:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+      - $ref: '#/components/parameters/RecordId'
+    post:
+      tags: [Records]
+      operationId: moveRecord
+      description: Repositions an active Record in the Table's persistent manual order. Positions use midpoint spacing so a move updates one row. Supplying both beforeRecordId and afterRecordId places the Record strictly between them; only afterRecordId places it directly after that Record; only beforeRecordId places it directly before; omitting both moves it to the end. Emits a recordMoved Change; the Record revision is unchanged because position is ordering metadata, not a value.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveRecordRequest'
+      responses:
+        '200':
+          description: Record moved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordOrderResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          description: Anchor Record is foreign, unknown, deleted, or ordered after beforeRecordId
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/tables/{tableId}/records/{recordId}/duplicate:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+      - $ref: '#/components/parameters/RecordId'
+    post:
+      tags: [Records]
+      operationId: duplicateRecord
+      description: Creates a new Record at the end of the Table's manual order with the same values as the source Record. Managed attachment entries reference the same Attachment; binary content is not copied. Emits a recordCreated Change for the new Record.
+      responses:
+        '200':
+          description: Duplicated Record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordOrderResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
   /v1/tables/{tableId}/records/mutate:
     parameters:
       - $ref: '#/components/parameters/TableId'
@@ -1162,6 +1401,82 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ChangePage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/CursorExpired'
+        default:
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/tables/{tableId}/history:
+    parameters:
+      - $ref: '#/components/parameters/TableId'
+    get:
+      tags: [Changes]
+      operationId: pullHistory
+      description: Time-descending archived history of Table Changes with field-level diffs. Without a cursor the first page starts at the newest retained Change; pagination follows nextCursor until hasMore is false. The cursor binds to the actor, table, and the complete filter set; changing filters requires a fresh first page. Change retention still applies; a cursor reaching below the retention watermark returns CURSOR_EXPIRED.
+      parameters:
+        - name: recordId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/RecordId'
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [recordCreated, recordUpdated, recordDeleted, recordRestored, recordMoved, schemaChanged, viewChanged]
+        - name: fieldId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/FieldId'
+        - name: actorId
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/ActorId'
+        - name: since
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+            description: Inclusive lower bound on occurredAt.
+        - name: until
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+            description: Inclusive upper bound on occurredAt.
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        '200':
+          description: History page in descending change order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoryPage'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1502,6 +1817,11 @@ components:
       maxLength: 200
       description: The Server trims leading/trailing Unicode whitespace, normalizes to NFC, rejects control characters, then enforces 1–200 Unicode code points. Sibling names need not be unique; IDs are authoritative.
 
+    FieldDescription:
+      type: string
+      maxLength: 200
+      description: Optional human-readable Field description. The Server trims leading/trailing Unicode whitespace, normalizes to NFC, rejects control characters, then enforces 0–200 Unicode code points; an empty normalized result clears the description. Omitted in responses when unset.
+
     WorkspaceId:
       type: string
       pattern: '^ws_[0-9A-HJKMNP-TV-Z]{26}$'
@@ -1672,6 +1992,7 @@ components:
         id: { $ref: '#/components/schemas/FieldId' }
         tableId: { $ref: '#/components/schemas/TableId' }
         name: { $ref: '#/components/schemas/ResourceName' }
+        description: { $ref: '#/components/schemas/FieldDescription' }
         position:
           type: integer
           minimum: 0
@@ -2050,6 +2371,105 @@ components:
           type: integer
           minimum: 1
 
+    ConvertFieldPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [text, longText, number, checkbox, date, select, multiSelect, url, location, attachment]
+
+    ConversionModeStats:
+      type: object
+      required: [ok, lossy, lost, empty]
+      properties:
+        ok:
+          type: integer
+          minimum: 0
+          description: Non-empty values that convert without data loss.
+        lossy:
+          type: integer
+          minimum: 0
+          description: Non-empty values that survive in a reduced form, such as a multi-option value keeping only its first option.
+        lost:
+          type: integer
+          minimum: 0
+          description: Non-empty values that cannot be represented in the target type and are removed.
+        empty:
+          type: integer
+          minimum: 0
+          description: Records without a value; they stay empty.
+        distinctValues:
+          type: integer
+          minimum: 0
+          description: Distinct source values that become select options. Present only for option-creating modes.
+        newOptions:
+          type: integer
+          minimum: 0
+          description: Options the conversion creates. Present only for option-creating modes.
+
+    ConversionMode:
+      type: object
+      required: [id, label, stats]
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        disabled:
+          type: boolean
+          description: The mode is offered but cannot run, for example when distinct values exceed the 500 option limit.
+        reason:
+          type: string
+        stats:
+          $ref: '#/components/schemas/ConversionModeStats'
+
+    ConversionPreview:
+      type: object
+      required: [supported, totalRecords]
+      properties:
+        supported:
+          type: boolean
+        reason:
+          type: string
+          description: Present when supported is false.
+        totalRecords:
+          type: integer
+          minimum: 0
+        modes:
+          type: array
+          items:
+            $ref: '#/components/schemas/ConversionMode'
+        previewToken:
+          type: string
+
+    ConvertFieldRequest:
+      type: object
+      additionalProperties: false
+      required: [type, mode, expectedRevision, previewToken]
+      properties:
+        type:
+          type: string
+          enum: [text, longText, number, checkbox, date, select, multiSelect, url, location, attachment]
+        mode:
+          type: string
+          description: One of the mode ids returned by previewFieldConversion.
+        expectedRevision:
+          type: integer
+          minimum: 1
+        previewToken:
+          type: string
+
+    ConversionResult:
+      type: object
+      required: [field, stats]
+      properties:
+        field:
+          $ref: '#/components/schemas/Field'
+        stats:
+          $ref: '#/components/schemas/ConversionModeStats'
+
     CreateFieldRequest:
       description: Strict type-discriminated Field creation request. The parent Table ID comes only from the route.
       oneOf:
@@ -2082,6 +2502,7 @@ components:
       required: [name]
       properties:
         name: { $ref: '#/components/schemas/ResourceName' }
+        description: { $ref: '#/components/schemas/FieldDescription' }
 
     CreateTextFieldRequest:
       allOf:
@@ -2184,7 +2605,7 @@ components:
       unevaluatedProperties: false
 
     UpdateFieldRequest:
-      description: Strict type-discriminated top-level PATCH. Type is immutable and must be echoed; omitted name or config is preserved, while a supplied config completely replaces the old config. expectedRevision is checked first; an identical normalized result returns the current Field without a Revision or Change.
+      description: Strict type-discriminated top-level PATCH. Type is immutable and must be echoed; omitted name, config, or description is preserved, while a supplied config completely replaces the old config and a supplied description (including null) replaces the current description. expectedRevision is checked first; an identical normalized result returns the current Field without a Revision or Change.
       oneOf:
         - $ref: '#/components/schemas/UpdateTextFieldRequest'
         - $ref: '#/components/schemas/UpdateLongTextFieldRequest'
@@ -2216,8 +2637,14 @@ components:
       anyOf:
         - required: [name]
         - required: [config]
+        - required: [description]
       properties:
         name: { $ref: '#/components/schemas/ResourceName' }
+        description:
+          anyOf:
+            - $ref: '#/components/schemas/FieldDescription'
+            - type: 'null'
+          description: Omitted preserves the current description; null or an empty normalized string clears it.
         type:
           type: string
           enum: [text, longText, number, checkbox, date, select, multiSelect, url, location, attachment]
@@ -2518,6 +2945,9 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SortSpec'
+        manualSort:
+          type: boolean
+          description: When true and sort is empty, queries order Records by their persistent manual position instead of createdAt. An explicit sort always takes precedence.
 
     MapViewConfig:
       type: object
@@ -2886,6 +3316,124 @@ components:
           format: int64
           minimum: 0
           description: Exact number of Records matching the equivalent query, read in the same transaction as items and changeCursor. Returned only on the first page, when no cursor was supplied.
+        unfilteredTotal:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Exact number of active Records in the Table ignoring filter and search, read in the same transaction as items and changeCursor. Returned only on the first page, when no cursor was supplied.
+
+    DistinctValuesRequest:
+      type: object
+      additionalProperties: false
+      description: Rule nodes that target the requested Field are removed from filter before evaluation so a Field value list is never emptied by its own selection.
+      properties:
+        filter:
+          $ref: '#/components/schemas/FilterNode'
+        search:
+          type: string
+          maxLength: 500
+          description: Folded contains match against the emitted value text (the option name for select and multiSelect Fields).
+        cursor:
+          type: string
+          description: Authenticated opaque cursor for the next page of values, bound to this Field, filter, search, and the Field schema revision.
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 100
+
+    DistinctValue:
+      type: object
+      additionalProperties: false
+      required: [value, count]
+      properties:
+        value:
+          description: The distinct stored value. Option ID for select and multiSelect Fields, number for number Fields, boolean for checkbox Fields, string otherwise.
+        display:
+          type: string
+          description: Human-readable label. Option name for select and multiSelect Fields; an example stored value for text-like Fields whose value is folded.
+        count:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Number of matching Records carrying this value.
+
+    DistinctValuesPage:
+      type: object
+      additionalProperties: false
+      required: [items, emptyCount, hasMore, changeCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DistinctValue'
+        emptyCount:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Number of matching Records with an empty value for this Field, read in the same transaction as items.
+        nextCursor:
+          type: string
+        hasMore:
+          type: boolean
+        changeCursor:
+          type: string
+
+    AggregateRequest:
+      type: object
+      additionalProperties: false
+      required: [fieldIds, fns]
+      properties:
+        filter:
+          $ref: '#/components/schemas/FilterNode'
+        fieldIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/FieldId'
+        fns:
+          type: array
+          minItems: 1
+          maxItems: 5
+          uniqueItems: true
+          items:
+            type: string
+            enum: [count, sum, avg, min, max]
+
+    AggregateResult:
+      type: object
+      additionalProperties: false
+      required: [results, changeCursor]
+      properties:
+        results:
+          type: object
+          description: Per-Field results keyed by Field ID. count is the number of matching Records with a non-empty value. sum and avg are numbers for number Fields and null otherwise. min and max are numbers for number Fields, YYYY-MM-DD strings for date Fields, and null otherwise.
+          additionalProperties:
+            type: object
+            additionalProperties: true
+        changeCursor:
+          type: string
+
+    MoveRecordRequest:
+      type: object
+      additionalProperties: false
+      description: Omitting both anchors moves the Record to the end of the Table's manual order.
+      properties:
+        beforeRecordId:
+          $ref: '#/components/schemas/RecordId'
+        afterRecordId:
+          $ref: '#/components/schemas/RecordId'
+
+    RecordOrderResult:
+      type: object
+      additionalProperties: false
+      required: [record, changeCursor]
+      properties:
+        record:
+          $ref: '#/components/schemas/Record'
+        changeCursor:
+          type: string
 
     MutationRequest:
       type: object
@@ -3059,6 +3607,17 @@ components:
           description: Table-scoped opaque Change Cursor. The current default retention is 30 days; without a cursor the server returns the current tail and an empty page.
         hasMore: { type: boolean }
 
+    FieldChange:
+      type: object
+      description: Field-level diff entry for a recordUpdated Change. A missing before member means the value was unset; a missing after member means the value became unset. An explicit null marks a cleared value.
+      required: [fieldId]
+      properties:
+        fieldId: { $ref: '#/components/schemas/FieldId' }
+        before:
+          description: Canonical cell value before the change.
+        after:
+          description: Canonical cell value after the change.
+
     Change:
       type: object
       required: [id, kind, tableId, revision, occurredAt]
@@ -3066,7 +3625,7 @@ components:
         id: { $ref: '#/components/schemas/ChangeId' }
         kind:
           type: string
-          enum: [recordCreated, recordUpdated, recordDeleted, recordRestored, schemaChanged, viewChanged]
+          enum: [recordCreated, recordUpdated, recordDeleted, recordRestored, recordMoved, schemaChanged, viewChanged]
         tableId: { $ref: '#/components/schemas/TableId' }
         recordId: { $ref: '#/components/schemas/RecordId' }
         objectId:
@@ -3078,6 +3637,30 @@ components:
         revision: { type: integer }
         actorId: { $ref: '#/components/schemas/ActorId' }
         occurredAt: { type: string, format: date-time }
+        fields:
+          type: array
+          description: Field-level diff applied by a recordUpdated change. Omitted for other change kinds and for changes recorded before field diffs existed.
+          items:
+            $ref: '#/components/schemas/FieldChange'
+        primaryFieldText:
+          type: string
+          description: Display text of the Record's primary Field at the time of the change. Present on Record-scoped changes when the primary value is non-empty.
+
+    HistoryPage:
+      type: object
+      required: [items, hasMore, changeCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Change'
+        nextCursor:
+          type: string
+          description: Opaque history cursor bound to the actor, table, and filter set. Omitted when hasMore is false.
+        hasMore: { type: boolean }
+        changeCursor:
+          type: string
+          description: Table-scoped opaque Change Cursor captured when the page was read, for aligning with pullChanges.
 
     InitializeAttachmentRequest:
       type: object
@@ -3099,7 +3682,7 @@ components:
 
     ErrorResponse:
       type: object
-      description: Standard error envelope. HTTP status mapping is 400 BAD_REQUEST or INVALID_CURSOR, 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND, 409 CONFLICT or IDEMPOTENCY_KEY_REUSED, 410 CURSOR_EXPIRED or QUERY_SNAPSHOT_EXPIRED, 413 PAYLOAD_TOO_LARGE, 415 UNSUPPORTED_MEDIA_TYPE, 422 VALIDATION_ERROR, RESOURCE_LIMIT_EXCEEDED, INVALID_STATE_TRANSITION, UNSUPPORTED_SORT, UNSUPPORTED_OPERATOR, or VIEW_CONFIGURATION_REQUIRED, 501 CAPABILITY_NOT_ENABLED, 503 readiness/dependency failure, and 500 INTERNAL_ERROR. Cursor errors never expose decoded token contents.
+      description: Standard error envelope. HTTP status mapping is 400 BAD_REQUEST, INVALID_CURSOR, or INVALID_PREVIEW_TOKEN, 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND, 409 CONFLICT, IDEMPOTENCY_KEY_REUSED, or CONVERT_PREVIEW_STALE, 410 CURSOR_EXPIRED or QUERY_SNAPSHOT_EXPIRED, 413 PAYLOAD_TOO_LARGE, 415 UNSUPPORTED_MEDIA_TYPE, 422 VALIDATION_ERROR, RESOURCE_LIMIT_EXCEEDED, INVALID_STATE_TRANSITION, UNSUPPORTED_SORT, UNSUPPORTED_OPERATOR, UNSUPPORTED_FIELD_TYPE, UNSUPPORTED_CONVERSION, or VIEW_CONFIGURATION_REQUIRED, 501 CAPABILITY_NOT_ENABLED, 503 readiness/dependency failure, and 500 INTERNAL_ERROR. Cursor errors never expose decoded token contents.
       required: [error]
       properties:
         error:

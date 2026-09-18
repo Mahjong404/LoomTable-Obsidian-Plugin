@@ -229,6 +229,64 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/fields/{fieldId}/convert-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fieldId: components["parameters"]["FieldId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Dry-runs a Field type conversion. Reports whether the source/target type pair is supported, which conversion modes are available, and per-mode value statistics. Statistics and the later rewrite cover every record in the Table, including records in the recycle state. A primary Field never supports conversion. The returned previewToken binds the Field revision and value statistics and must be echoed by convertField. */
+        post: operations["previewFieldConversion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/fields/{fieldId}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fieldId: components["parameters"]["FieldId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Atomically converts a Field to a new type and rewrites every record value with the selected mode. Empty values stay empty; lost values are removed. The Field revision increments and a schemaChanged Change is emitted; record revisions are unchanged. Fails with INVALID_PREVIEW_TOKEN when the token does not decode or targets another Field or type, CONVERT_PREVIEW_STALE when the Field revision or value statistics drifted after the preview, UNSUPPORTED_CONVERSION for unsupported type pairs, UNSUPPORTED_FIELD_TYPE for unknown types, and INVALID_STATE_TRANSITION for deleted or primary Fields. */
+        post: operations["convertField"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tables/{tableId}/fields/{fieldId}/values/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+                fieldId: components["parameters"]["FieldId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Returns the distinct values of a Field together with their occurrence counts over active Records matching the optional filter. Rule nodes targeting the requested Field are removed from the filter so its own value list stays complete. select and multiSelect values are ordered by configured option rank; other types sort by value. location and attachment Fields return 422 UNSUPPORTED_FIELD_TYPE. */
+        post: operations["queryFieldValues"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tables/{tableId}/views": {
         parameters: {
             query?: never;
@@ -379,6 +437,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/tables/{tableId}/records/aggregate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Aggregates active Records matching the optional filter. Each requested Field returns one result object keyed by the requested function names. count is the number of Records with a non-empty value. sum and avg apply to number Fields only and return null otherwise. min and max return numbers for number Fields, YYYY-MM-DD strings for date Fields, and null otherwise. Results share one read-only transaction snapshot with changeCursor. */
+        post: operations["aggregateRecords"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tables/{tableId}/records/{recordId}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+                recordId: components["parameters"]["RecordId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Repositions an active Record in the Table's persistent manual order. Positions use midpoint spacing so a move updates one row. Supplying both beforeRecordId and afterRecordId places the Record strictly between them; only afterRecordId places it directly after that Record; only beforeRecordId places it directly before; omitting both moves it to the end. Emits a recordMoved Change; the Record revision is unchanged because position is ordering metadata, not a value. */
+        post: operations["moveRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tables/{tableId}/records/{recordId}/duplicate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+                recordId: components["parameters"]["RecordId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Creates a new Record at the end of the Table's manual order with the same values as the source Record. Managed attachment entries reference the same Attachment; binary content is not copied. Emits a recordCreated Change for the new Record. */
+        post: operations["duplicateRecord"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/tables/{tableId}/records/mutate": {
         parameters: {
             query?: never;
@@ -407,6 +524,25 @@ export interface paths {
             cookie?: never;
         };
         get: operations["pullChanges"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/tables/{tableId}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        /** @description Time-descending archived history of Table Changes with field-level diffs. Without a cursor the first page starts at the newest retained Change; pagination follows nextCursor until hasMore is false. The cursor binds to the actor, table, and the complete filter set; changing filters requires a fresh first page. Change retention still applies; a cursor reaching below the retention watermark returns CURSOR_EXPIRED. */
+        get: operations["pullHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -479,6 +615,8 @@ export interface components {
         LifecycleScope: "active" | "deleted" | "all";
         /** @description The Server trims leading/trailing Unicode whitespace, normalizes to NFC, rejects control characters, then enforces 1–200 Unicode code points. Sibling names need not be unique; IDs are authoritative. */
         ResourceName: string;
+        /** @description Optional human-readable Field description. The Server trims leading/trailing Unicode whitespace, normalizes to NFC, rejects control characters, then enforces 0–200 Unicode code points; an empty normalized result clears the description. Omitted in responses when unset. */
+        FieldDescription: string;
         WorkspaceId: string;
         BaseId: string;
         TableId: string;
@@ -560,6 +698,7 @@ export interface components {
             id: components["schemas"]["FieldId"];
             tableId: components["schemas"]["TableId"];
             name: components["schemas"]["ResourceName"];
+            description?: components["schemas"]["FieldDescription"];
             position: number;
             schemaVersion: number;
             revision: number;
@@ -809,10 +948,57 @@ export interface components {
         RestoreMetadataRequest: {
             expectedRevision: number;
         };
+        ConvertFieldPreviewRequest: {
+            /** @enum {string} */
+            type: "text" | "longText" | "number" | "checkbox" | "date" | "select" | "multiSelect" | "url" | "location" | "attachment";
+        };
+        ConversionModeStats: {
+            /** @description Non-empty values that convert without data loss. */
+            ok: number;
+            /** @description Non-empty values that survive in a reduced form, such as a multi-option value keeping only its first option. */
+            lossy: number;
+            /** @description Non-empty values that cannot be represented in the target type and are removed. */
+            lost: number;
+            /** @description Records without a value; they stay empty. */
+            empty: number;
+            /** @description Distinct source values that become select options. Present only for option-creating modes. */
+            distinctValues?: number;
+            /** @description Options the conversion creates. Present only for option-creating modes. */
+            newOptions?: number;
+        };
+        ConversionMode: {
+            id: string;
+            label: string;
+            /** @description The mode is offered but cannot run, for example when distinct values exceed the 500 option limit. */
+            disabled?: boolean;
+            reason?: string;
+            stats: components["schemas"]["ConversionModeStats"];
+        };
+        ConversionPreview: {
+            supported: boolean;
+            /** @description Present when supported is false. */
+            reason?: string;
+            totalRecords: number;
+            modes?: components["schemas"]["ConversionMode"][];
+            previewToken?: string;
+        };
+        ConvertFieldRequest: {
+            /** @enum {string} */
+            type: "text" | "longText" | "number" | "checkbox" | "date" | "select" | "multiSelect" | "url" | "location" | "attachment";
+            /** @description One of the mode ids returned by previewFieldConversion. */
+            mode: string;
+            expectedRevision: number;
+            previewToken: string;
+        };
+        ConversionResult: {
+            field: components["schemas"]["Field"];
+            stats: components["schemas"]["ConversionModeStats"];
+        };
         /** @description Strict type-discriminated Field creation request. The parent Table ID comes only from the route. */
         CreateFieldRequest: components["schemas"]["CreateTextFieldRequest"] | components["schemas"]["CreateLongTextFieldRequest"] | components["schemas"]["CreateNumberFieldRequest"] | components["schemas"]["CreateCheckboxFieldRequest"] | components["schemas"]["CreateDateFieldRequest"] | components["schemas"]["CreateSelectFieldRequest"] | components["schemas"]["CreateMultiSelectFieldRequest"] | components["schemas"]["CreateURLFieldRequest"] | components["schemas"]["CreateLocationFieldRequest"] | components["schemas"]["CreateAttachmentFieldRequest"];
         CreateFieldBase: {
             name: components["schemas"]["ResourceName"];
+            description?: components["schemas"]["FieldDescription"];
         };
         CreateTextFieldRequest: components["schemas"]["CreateFieldBase"] & {
             /** @constant */
@@ -924,14 +1110,16 @@ export interface components {
              */
             type: "attachment";
         };
-        /** @description Strict type-discriminated top-level PATCH. Type is immutable and must be echoed; omitted name or config is preserved, while a supplied config completely replaces the old config. expectedRevision is checked first; an identical normalized result returns the current Field without a Revision or Change. */
+        /** @description Strict type-discriminated top-level PATCH. Type is immutable and must be echoed; omitted name, config, or description is preserved, while a supplied config completely replaces the old config and a supplied description (including null) replaces the current description. expectedRevision is checked first; an identical normalized result returns the current Field without a Revision or Change. */
         UpdateFieldRequest: components["schemas"]["UpdateTextFieldRequest"] | components["schemas"]["UpdateLongTextFieldRequest"] | components["schemas"]["UpdateNumberFieldRequest"] | components["schemas"]["UpdateCheckboxFieldRequest"] | components["schemas"]["UpdateDateFieldRequest"] | components["schemas"]["UpdateSelectFieldRequest"] | components["schemas"]["UpdateMultiSelectFieldRequest"] | components["schemas"]["UpdateURLFieldRequest"] | components["schemas"]["UpdateLocationFieldRequest"] | components["schemas"]["UpdateAttachmentFieldRequest"];
         UpdateFieldBase: {
             name?: components["schemas"]["ResourceName"];
+            /** @description Omitted preserves the current description; null or an empty normalized string clears it. */
+            description?: components["schemas"]["FieldDescription"] | null;
             /** @enum {string} */
             type: "text" | "longText" | "number" | "checkbox" | "date" | "select" | "multiSelect" | "url" | "location" | "attachment";
             expectedRevision: number;
-        } | unknown | unknown;
+        } | unknown | unknown | unknown;
         UpdateTextFieldRequest: components["schemas"]["UpdateFieldBase"] & {
             /** @constant */
             type?: "text";
@@ -1139,6 +1327,8 @@ export interface components {
             rowHeight: "compact" | "standard" | "comfortable";
             filter?: components["schemas"]["FilterNode"];
             sort: components["schemas"]["SortSpec"][];
+            /** @description When true and sort is empty, queries order Records by their persistent manual position instead of createdAt. An explicit sort always takes precedence. */
+            manualSort?: boolean;
         };
         /** @description P0 Map configuration for an active Location Field in the same Table. Center and zoom are an explicitly saved Default Camera, not a client's temporary viewport. Tile provider selection and credentials are client-local and never appear here. */
         MapViewConfig: {
@@ -1297,7 +1487,67 @@ export interface components {
              * @description Exact number of Records matching the equivalent query, read in the same transaction as items and changeCursor. Returned only on the first page, when no cursor was supplied.
              */
             totalCount?: number;
+            /**
+             * Format: int64
+             * @description Exact number of active Records in the Table ignoring filter and search, read in the same transaction as items and changeCursor. Returned only on the first page, when no cursor was supplied.
+             */
+            unfilteredTotal?: number;
         } & (unknown & unknown);
+        /** @description Rule nodes that target the requested Field are removed from filter before evaluation so a Field value list is never emptied by its own selection. */
+        DistinctValuesRequest: {
+            filter?: components["schemas"]["FilterNode"];
+            /** @description Folded contains match against the emitted value text (the option name for select and multiSelect Fields). */
+            search?: string;
+            /** @description Authenticated opaque cursor for the next page of values, bound to this Field, filter, search, and the Field schema revision. */
+            cursor?: string;
+            /** @default 100 */
+            limit: number;
+        };
+        DistinctValue: {
+            /** @description The distinct stored value. Option ID for select and multiSelect Fields, number for number Fields, boolean for checkbox Fields, string otherwise. */
+            value: unknown;
+            /** @description Human-readable label. Option name for select and multiSelect Fields; an example stored value for text-like Fields whose value is folded. */
+            display?: string;
+            /**
+             * Format: int64
+             * @description Number of matching Records carrying this value.
+             */
+            count: number;
+        };
+        DistinctValuesPage: {
+            items: components["schemas"]["DistinctValue"][];
+            /**
+             * Format: int64
+             * @description Number of matching Records with an empty value for this Field, read in the same transaction as items.
+             */
+            emptyCount: number;
+            nextCursor?: string;
+            hasMore: boolean;
+            changeCursor: string;
+        };
+        AggregateRequest: {
+            filter?: components["schemas"]["FilterNode"];
+            fieldIds: components["schemas"]["FieldId"][];
+            fns: ("count" | "sum" | "avg" | "min" | "max")[];
+        };
+        AggregateResult: {
+            /** @description Per-Field results keyed by Field ID. count is the number of matching Records with a non-empty value. sum and avg are numbers for number Fields and null otherwise. min and max are numbers for number Fields, YYYY-MM-DD strings for date Fields, and null otherwise. */
+            results: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
+            };
+            changeCursor: string;
+        };
+        /** @description Omitting both anchors moves the Record to the end of the Table's manual order. */
+        MoveRecordRequest: {
+            beforeRecordId?: components["schemas"]["RecordId"];
+            afterRecordId?: components["schemas"]["RecordId"];
+        };
+        RecordOrderResult: {
+            record: components["schemas"]["Record"];
+            changeCursor: string;
+        };
         /** @description All commands are applied atomically in one transaction. If any command fails, the whole request rolls back. Reusing clientMutationId returns the first result without applying the mutation again. A request cannot contain more than one command targeting the same existing Record; violations return 422. The JSON body is limited to 8 MiB. */
         MutationRequest: {
             /** @description Unique with actorId. Reusing it with the same request body returns the historical result; a different body returns 409 IDEMPOTENCY_KEY_REUSED. P0 retains results for 30 days. */
@@ -1377,10 +1627,18 @@ export interface components {
             nextCursor: string;
             hasMore: boolean;
         };
+        /** @description Field-level diff entry for a recordUpdated Change. A missing before member means the value was unset; a missing after member means the value became unset. An explicit null marks a cleared value. */
+        FieldChange: {
+            fieldId: components["schemas"]["FieldId"];
+            /** @description Canonical cell value before the change. */
+            before?: unknown;
+            /** @description Canonical cell value after the change. */
+            after?: unknown;
+        };
         Change: {
             id: components["schemas"]["ChangeId"];
             /** @enum {string} */
-            kind: "recordCreated" | "recordUpdated" | "recordDeleted" | "recordRestored" | "schemaChanged" | "viewChanged";
+            kind: "recordCreated" | "recordUpdated" | "recordDeleted" | "recordRestored" | "recordMoved" | "schemaChanged" | "viewChanged";
             tableId: components["schemas"]["TableId"];
             recordId?: components["schemas"]["RecordId"];
             /** @description Field, View, Table, or other schema object ID for non-Record changes. */
@@ -1389,6 +1647,18 @@ export interface components {
             actorId?: components["schemas"]["ActorId"];
             /** Format: date-time */
             occurredAt: string;
+            /** @description Field-level diff applied by a recordUpdated change. Omitted for other change kinds and for changes recorded before field diffs existed. */
+            fields?: components["schemas"]["FieldChange"][];
+            /** @description Display text of the Record's primary Field at the time of the change. Present on Record-scoped changes when the primary value is non-empty. */
+            primaryFieldText?: string;
+        };
+        HistoryPage: {
+            items: components["schemas"]["Change"][];
+            /** @description Opaque history cursor bound to the actor, table, and filter set. Omitted when hasMore is false. */
+            nextCursor?: string;
+            hasMore: boolean;
+            /** @description Table-scoped opaque Change Cursor captured when the page was read, for aligning with pullChanges. */
+            changeCursor: string;
         };
         /** @description Managed attachments start as pending and require a subsequent binary PUT; Vault attachments are ready immediately and require a relative vaultPath. The Idempotency-Key header is required by the operation. */
         InitializeAttachmentRequest: {
@@ -1400,7 +1670,7 @@ export interface components {
             /** @description Required for vault attachments; must be a relative Vault path without dot, parent, or empty path members. */
             vaultPath?: string;
         };
-        /** @description Standard error envelope. HTTP status mapping is 400 BAD_REQUEST or INVALID_CURSOR, 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND, 409 CONFLICT or IDEMPOTENCY_KEY_REUSED, 410 CURSOR_EXPIRED or QUERY_SNAPSHOT_EXPIRED, 413 PAYLOAD_TOO_LARGE, 415 UNSUPPORTED_MEDIA_TYPE, 422 VALIDATION_ERROR, RESOURCE_LIMIT_EXCEEDED, INVALID_STATE_TRANSITION, UNSUPPORTED_SORT, UNSUPPORTED_OPERATOR, or VIEW_CONFIGURATION_REQUIRED, 501 CAPABILITY_NOT_ENABLED, 503 readiness/dependency failure, and 500 INTERNAL_ERROR. Cursor errors never expose decoded token contents. */
+        /** @description Standard error envelope. HTTP status mapping is 400 BAD_REQUEST, INVALID_CURSOR, or INVALID_PREVIEW_TOKEN, 401 UNAUTHENTICATED, 403 FORBIDDEN, 404 NOT_FOUND, 409 CONFLICT, IDEMPOTENCY_KEY_REUSED, or CONVERT_PREVIEW_STALE, 410 CURSOR_EXPIRED or QUERY_SNAPSHOT_EXPIRED, 413 PAYLOAD_TOO_LARGE, 415 UNSUPPORTED_MEDIA_TYPE, 422 VALIDATION_ERROR, RESOURCE_LIMIT_EXCEEDED, INVALID_STATE_TRANSITION, UNSUPPORTED_SORT, UNSUPPORTED_OPERATOR, UNSUPPORTED_FIELD_TYPE, UNSUPPORTED_CONVERSION, or VIEW_CONFIGURATION_REQUIRED, 501 CAPABILITY_NOT_ENABLED, 503 readiness/dependency failure, and 500 INTERNAL_ERROR. Cursor errors never expose decoded token contents. */
         ErrorResponse: {
             error: components["schemas"]["ErrorBody"];
         };
@@ -2282,6 +2552,135 @@ export interface operations {
             default: components["responses"]["ErrorResponse"];
         };
     };
+    previewFieldConversion: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fieldId: components["parameters"]["FieldId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConvertFieldPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Conversion compatibility and per-mode statistics */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    convertField: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                fieldId: components["parameters"]["FieldId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConvertFieldRequest"];
+            };
+        };
+        responses: {
+            /** @description Field converted and record values rewritten */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConversionResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    queryFieldValues: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+                fieldId: components["parameters"]["FieldId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DistinctValuesRequest"];
+            };
+        };
+        responses: {
+            /** @description A cursor page of distinct values with counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DistinctValuesPage"];
+                };
+            };
+            /** @description Invalid request or cursor bound to a different values query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description Cursor has expired and the client must restart from the first page */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /** @description Filter is invalid or the Field type cannot be enumerated */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
     listViews: {
         parameters: {
             query?: {
@@ -2709,6 +3108,120 @@ export interface operations {
             default: components["responses"]["ErrorResponse"];
         };
     };
+    aggregateRecords: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AggregateRequest"];
+            };
+        };
+        responses: {
+            /** @description Per-Field aggregation results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AggregateResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /** @description fieldIds, fns, or filter is invalid */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    moveRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+                recordId: components["parameters"]["RecordId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MoveRecordRequest"];
+            };
+        };
+        responses: {
+            /** @description Record moved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOrderResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            /** @description Anchor Record is foreign, unknown, deleted, or ordered after beforeRecordId */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    duplicateRecord: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+                recordId: components["parameters"]["RecordId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Duplicated Record */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOrderResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
     mutateRecords: {
         parameters: {
             query?: never;
@@ -2813,6 +3326,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChangePage"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            410: components["responses"]["CursorExpired"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    pullHistory: {
+        parameters: {
+            query?: {
+                recordId?: components["schemas"]["RecordId"];
+                kind?: "recordCreated" | "recordUpdated" | "recordDeleted" | "recordRestored" | "recordMoved" | "schemaChanged" | "viewChanged";
+                fieldId?: components["schemas"]["FieldId"];
+                actorId?: components["schemas"]["ActorId"];
+                since?: string;
+                until?: string;
+                cursor?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                tableId: components["parameters"]["TableId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description History page in descending change order */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryPage"];
                 };
             };
             400: components["responses"]["BadRequest"];

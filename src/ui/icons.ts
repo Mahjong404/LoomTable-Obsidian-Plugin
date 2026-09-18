@@ -53,7 +53,11 @@ export type UiIconName =
   | 'caret-down'
   | 'field-hide'
   | 'tool-undo'
-  | 'tool-redo';
+  | 'tool-redo'
+  | 'tool-ops'
+  | 'tool-history'
+  | 'tool-trash'
+  | 'tool-convert';
 
 const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
   'tool-undo': [
@@ -63,6 +67,32 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
   'tool-redo': [
     ['path', { d: 'm15 14 5-5-5-5' }],
     ['path', { d: 'M20 9H9.5A5.5 5.5 0 0 0 4 14.5a5.5 5.5 0 0 0 5.5 5.5H13' }],
+  ],
+  'tool-ops': [
+    ['path', { d: 'M8 6h13' }],
+    ['path', { d: 'M8 12h13' }],
+    ['path', { d: 'M8 18h13' }],
+    ['path', { d: 'M3.5 6h.01' }],
+    ['path', { d: 'M3.5 12h.01' }],
+    ['path', { d: 'M3.5 18h.01' }],
+  ],
+  'tool-history': [
+    ['path', { d: 'M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8' }],
+    ['path', { d: 'M3 3v5h5' }],
+    ['path', { d: 'M12 7v5l4 2' }],
+  ],
+  'tool-trash': [
+    ['path', { d: 'M3 6h18' }],
+    ['path', { d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' }],
+    ['path', { d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' }],
+    ['path', { d: 'M10 11v6' }],
+    ['path', { d: 'M14 11v6' }],
+  ],
+  'tool-convert': [
+    ['path', { d: 'M8 3 4 7l4 4' }],
+    ['path', { d: 'M4 7h16' }],
+    ['path', { d: 'm16 21 4-4-4-4' }],
+    ['path', { d: 'M20 17H4' }],
   ],
   'view-grid': [
     ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }],

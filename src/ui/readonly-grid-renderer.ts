@@ -1,6 +1,10 @@
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import type {
+  Change,
+  ChangeKind,
+  ConversionPreview,
+  ConvertFieldRequest,
   Field,
   FilterNode,
   JsonValue,
@@ -18,6 +22,7 @@ import { createFieldTypeIcon } from './field-type-icon';
 import { createUiIcon, type UiIconName } from './icons';
 import { FilterBuilder } from './filter-builder';
 import { openFieldEditor, type FieldEditorSubmit } from './field-editor-panel';
+import { openFieldConverter } from './field-convert-panel';
 import { SortPanel } from './sort-panel';
 import { DisplayPanel } from './display-panel';
 import { createRecordCreateForm, type RecordCreateForm } from './record-create-form';
@@ -132,11 +137,18 @@ export interface GridRendererCallbacks {
   readonly onDismissDeleteNotice?: () => void;
   readonly onLoadDeletedRecords?: () => void | Promise<void>;
   readonly onLoadMoreDeletedRecords?: () => void | Promise<void>;
+  readonly onLoadServerHistory?: (kind?: ChangeKind) => void | Promise<void>;
+  readonly onLoadMoreServerHistory?: (kind?: ChangeKind) => void | Promise<void>;
   readonly onFieldSave?: (
     input: FieldEditorSubmit,
     context: FieldSaveContext,
   ) => void | Promise<unknown>;
   readonly onFieldDelete?: (fieldId: string) => void | Promise<unknown>;
+  readonly onConversionPreview?: (
+    fieldId: string,
+    type: Field['type'],
+  ) => Promise<ConversionPreview>;
+  readonly onConvertField?: (fieldId: string, request: ConvertFieldRequest) => Promise<unknown>;
   readonly onRestoreRecord?: (recordId: string) => void | Promise<void>;
   readonly clipboard?: GridClipboardHost;
 }
@@ -156,6 +168,34 @@ const CHANGE_KIND_KEYS: Record<UndoEntryMeta['kind'], MessageKey> = {
   delete: 'record.changes.kind.delete',
   restore: 'record.changes.kind.restore',
 };
+
+const SERVER_KIND_ICONS: Record<ChangeKind, UiIconName> = {
+  recordCreated: 'tool-create',
+  recordUpdated: 'menu-edit',
+  recordDeleted: 'menu-delete',
+  recordRestored: 'tool-undo',
+  recordMoved: 'nav-next',
+  schemaChanged: 'tool-display',
+  viewChanged: 'view-grid',
+};
+
+const SERVER_KIND_KEYS: Record<ChangeKind, MessageKey> = {
+  recordCreated: 'record.changes.kind.create',
+  recordUpdated: 'record.changes.kind.edit',
+  recordDeleted: 'record.changes.kind.delete',
+  recordRestored: 'record.changes.kind.restore',
+  recordMoved: 'record.history.kind.moved',
+  schemaChanged: 'record.history.kind.schema',
+  viewChanged: 'record.history.kind.view',
+};
+
+const SERVER_HISTORY_FILTERS: readonly ('all' | ChangeKind)[] = [
+  'all',
+  'recordUpdated',
+  'recordCreated',
+  'recordDeleted',
+  'recordRestored',
+];
 
 const DRAFT_RECORD_ID = 'loom:draft-create';
 
@@ -223,7 +263,8 @@ export class ReadonlyGridRenderer {
   #draftCreateValues: Record<string, MutationValue> | null = null;
   #draftRowEl: HTMLElement | null = null;
   #filterSeedFieldId: string | null = null;
-  #statusPanelMode: 'changes' | 'deleted' = 'changes';
+  #statusPanelMode: 'ops' | 'history' | 'deleted' = 'ops';
+  #serverHistoryFilter: 'all' | ChangeKind = 'all';
   #historyFilter: 'all' | UndoEntryMeta['kind'] = 'all';
   #lastViewId: string | null = null;
   #sortFocusFieldId: string | null = null;
@@ -964,6 +1005,33 @@ export class ReadonlyGridRenderer {
     statusText.className = 'loom-status-panel-status';
     statusText.dataset.status = state.saveStatus;
     header.append(statusText);
+    const modes = createElement('div', 'loom-status-panel-modes');
+    modes.setAttribute('role', 'tablist');
+    const modeDefs = [
+      ['ops', 'record.ops.title', 'tool-ops'],
+      ['history', 'record.history.title', 'tool-history'],
+      ['deleted', 'record.recycle.title', 'tool-trash'],
+    ] as const;
+    for (const [mode, key, icon] of modeDefs) {
+      const button = createElement('button', 'loom-status-mode loom-action-icon clickable-icon');
+      button.type = 'button';
+      button.setAttribute('role', 'tab');
+      button.setAttribute('aria-selected', this.#statusPanelMode === mode ? 'true' : 'false');
+      button.dataset.mode = mode;
+      const label = this.#translate(key);
+      button.setAttribute('aria-label', label);
+      button.title = label;
+      button.append(createUiIcon(icon));
+      button.addEventListener('click', () => {
+        this.#statusPanelMode = mode;
+        if (mode === 'history' && this.#lastState?.serverHistoryStatus === 'idle') {
+          void this.#callbacks.onLoadServerHistory?.();
+        }
+        this.#rerenderSelf();
+      });
+      modes.append(button);
+    }
+    header.append(modes);
     if (this.#callbacks.onRefresh !== undefined) {
       header.append(
         this.#createActionButton(
@@ -977,25 +1045,12 @@ export class ReadonlyGridRenderer {
       );
     }
     host.append(header);
-    const modes = createElement('div', 'loom-status-panel-modes');
-    modes.setAttribute('role', 'tablist');
-    for (const mode of ['changes', 'deleted'] as const) {
-      const key: MessageKey = mode === 'changes' ? 'record.changes.title' : 'record.recycle.title';
-      const button = createElement('button', 'loom-status-mode clickable-icon');
-      button.type = 'button';
-      button.setAttribute('role', 'tab');
-      button.setAttribute('aria-selected', this.#statusPanelMode === mode ? 'true' : 'false');
-      button.dataset.mode = mode;
-      button.textContent = this.#translate(key);
-      button.addEventListener('click', () => {
-        this.#statusPanelMode = mode;
-        this.#rerenderSelf();
-      });
-      modes.append(button);
-    }
-    host.append(modes);
     if (this.#statusPanelMode === 'deleted') {
       host.append(this.#renderDeletedSection(state));
+      return host;
+    }
+    if (this.#statusPanelMode === 'history') {
+      host.append(this.#renderHistorySection(state));
       return host;
     }
 
@@ -1083,6 +1138,101 @@ export class ReadonlyGridRenderer {
         list.append(item);
       }
       host.append(list);
+    }
+    return host;
+  }
+
+  #renderHistorySection(state: GridState): HTMLElement {
+    const host = createElement('div', 'loom-status-history');
+    const filters = createElement('div', 'loom-change-filters');
+    for (const kind of SERVER_HISTORY_FILTERS) {
+      const chip = createElement('button', 'loom-change-filter clickable-icon');
+      chip.type = 'button';
+      chip.dataset.kind = kind;
+      chip.setAttribute('aria-pressed', this.#serverHistoryFilter === kind ? 'true' : 'false');
+      chip.textContent = this.#translate(
+        kind === 'all' ? 'record.changes.filter.all' : SERVER_KIND_KEYS[kind],
+      );
+      chip.addEventListener('click', () => {
+        if (this.#serverHistoryFilter === kind) return;
+        this.#serverHistoryFilter = kind;
+        void this.#callbacks.onLoadServerHistory?.(kind === 'all' ? undefined : kind);
+      });
+      filters.append(chip);
+    }
+    host.append(filters);
+
+    if (state.serverHistoryStatus === 'loading' && state.serverHistory.length === 0) {
+      const status = createTextElement('p', this.#translate('record.history.loading'));
+      status.className = 'loom-recycle-status';
+      host.append(status);
+      return host;
+    }
+    if (state.serverHistoryStatus === 'error' && state.serverHistory.length === 0) {
+      const status = createTextElement('p', this.#translate('record.history.error'));
+      status.className = 'loom-recycle-status';
+      host.append(status);
+      return host;
+    }
+    if (state.serverHistory.length === 0) {
+      const status = createTextElement('p', this.#translate('record.history.empty'));
+      status.className = 'loom-recycle-status';
+      host.append(status);
+      return host;
+    }
+
+    const list = createElement('ul', 'loom-change-list');
+    for (const change of state.serverHistory) {
+      const item = createElement('li', 'loom-change-item');
+      item.dataset.kind = change.kind;
+      if (change.recordId !== undefined) item.dataset.recordId = change.recordId;
+      item.append(createUiIcon(SERVER_KIND_ICONS[change.kind]));
+      const text = createElement('span', 'loom-change-item-text');
+      const title = createTextElement(
+        'span',
+        change.primaryFieldText ?? change.recordId ?? change.objectId ?? change.kind,
+      );
+      title.className = 'loom-change-item-title';
+      const kindLabel = createTextElement('span', this.#translate(SERVER_KIND_KEYS[change.kind]));
+      kindLabel.className = 'loom-change-item-kind';
+      text.append(title, kindLabel);
+      for (const fieldChange of change.fields ?? []) {
+        const field = state.fields.find((candidate) => candidate.id === fieldChange.fieldId);
+        const delta = createTextElement(
+          'span',
+          `${field?.name ?? fieldChange.fieldId}: ${formatChangeValue(fieldChange.before, this.#translate)} → ${formatChangeValue(fieldChange.after, this.#translate)}`,
+        );
+        delta.className = 'loom-change-item-delta';
+        text.append(delta);
+      }
+      const meta = createTextElement(
+        'span',
+        [formatChangeTime(change.occurredAt), change.actorId]
+          .filter((part) => part !== undefined && part !== '')
+          .join(' · '),
+      );
+      meta.className = 'loom-change-item-time';
+      text.append(meta);
+      item.append(text);
+      list.append(item);
+    }
+    host.append(list);
+
+    if (state.serverHistoryStatus === 'loading') {
+      const status = createTextElement('p', this.#translate('record.history.loading'));
+      status.className = 'loom-recycle-status';
+      host.append(status);
+    } else if (
+      state.serverHistoryHasMore &&
+      this.#callbacks.onLoadMoreServerHistory !== undefined
+    ) {
+      host.append(
+        this.#createOpButton('loom-recycle-load-more', 'record.history.loadMore', () =>
+          this.#callbacks.onLoadMoreServerHistory?.(
+            this.#serverHistoryFilter === 'all' ? undefined : this.#serverHistoryFilter,
+          ),
+        ),
+      );
     }
     return host;
   }
@@ -1247,6 +1397,9 @@ export class ReadonlyGridRenderer {
     header.append(indexHeader);
     for (const [fieldIndex, field] of fields.entries()) {
       const fieldHeader = createGridCell(field.name, 'loom-grid-header-cell');
+      if (field.description !== undefined && field.description !== '') {
+        fieldHeader.title = `${field.name}: ${field.description}`;
+      }
       fieldHeader.setAttribute('role', 'columnheader');
       fieldHeader.setAttribute('aria-colindex', String(fieldIndex + 2));
       fieldHeader.dataset.fieldIndex = String(fieldIndex);
@@ -2151,6 +2304,17 @@ export class ReadonlyGridRenderer {
           action: () =>
             this.#openFieldEditorPanel({ mode: 'edit', fieldId: field.id }, x, y, undefined, field),
         },
+        ...(this.#callbacks.onConversionPreview !== undefined &&
+        this.#callbacks.onConvertField !== undefined
+          ? [
+              {
+                label: this.#translate('field.convert.title'),
+                icon: 'tool-convert' as const,
+                disabled: isPrimary,
+                action: () => this.#openConvertPanel(field, x, y),
+              },
+            ]
+          : []),
         {
           label: this.#translate('field.menu.insertLeft'),
           icon: 'col-insert-left',
@@ -2293,6 +2457,26 @@ export class ReadonlyGridRenderer {
       onSubmit: async (input) => {
         await this.#callbacks.onFieldSave?.(input, context);
       },
+    });
+  }
+
+  #openConvertPanel(field: Field, x: number, y: number): void {
+    if (
+      this.#callbacks.onConversionPreview === undefined ||
+      this.#callbacks.onConvertField === undefined
+    ) {
+      return;
+    }
+    const onPreview = this.#callbacks.onConversionPreview;
+    const onConvert = this.#callbacks.onConvertField;
+    openFieldConverter({
+      field,
+      x,
+      y,
+      host: this.#container,
+      translate: this.#translate,
+      onPreview: (fieldId, type) => onPreview(fieldId, type),
+      onConvert: (fieldId, request) => onConvert(fieldId, request),
     });
   }
 
@@ -2542,6 +2726,11 @@ export class ReadonlyGridRenderer {
       deletedRecordsHasMore: false,
       deletedRecordsError: null,
       lastDeletedRecord: null,
+      serverHistory: [],
+      serverHistoryStatus: 'idle',
+      serverHistoryNextCursor: null,
+      serverHistoryHasMore: false,
+      serverHistoryError: null,
       historyEntries: [],
     };
   }
