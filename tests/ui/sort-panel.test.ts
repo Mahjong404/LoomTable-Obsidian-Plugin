@@ -199,6 +199,45 @@ describe('SortPanel', () => {
     host2.remove();
   });
 
+  it('reverts the manual-sort toggle when the write fails', async () => {
+    const onManualSortChange = vi.fn(async () => ({ status: 'failed' as const }));
+    const panel = new SortPanel([], {
+      fields: FIELDS,
+      translate: createTranslator('en'),
+      onApply: vi.fn(),
+      manualSort: false,
+      onManualSortChange,
+    });
+    const host = mount(panel);
+    const toggle = host.querySelector<HTMLInputElement>('[data-role="sort-manual"]');
+    expect(toggle?.checked).toBe(false);
+
+    toggle!.checked = true;
+    toggle?.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(toggle?.checked).toBe(false));
+    expect(toggle?.disabled).toBe(false);
+    host.remove();
+  });
+
+  it('keeps the manual-sort toggle after a saved write', async () => {
+    const onManualSortChange = vi.fn(async () => ({ status: 'saved' as const }));
+    const panel = new SortPanel([], {
+      fields: FIELDS,
+      translate: createTranslator('en'),
+      onApply: vi.fn(),
+      manualSort: false,
+      onManualSortChange,
+    });
+    const host = mount(panel);
+    const toggle = host.querySelector<HTMLInputElement>('[data-role="sort-manual"]');
+    toggle!.checked = true;
+    toggle?.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.waitFor(() => expect(onManualSortChange).toHaveBeenCalledWith(true));
+    await Promise.resolve();
+    expect(toggle?.checked).toBe(true);
+    host.remove();
+  });
+
   it('explains that an explicit sort overrides manual order', () => {
     const panel = new SortPanel([{ fieldId: 'field_name', direction: 'asc', nulls: 'last' }], {
       fields: FIELDS,

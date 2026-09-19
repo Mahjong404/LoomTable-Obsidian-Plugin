@@ -53,7 +53,23 @@ export class SortPanel {
       toggle.dataset.role = 'sort-manual';
       toggle.checked = this.#manualSort;
       toggle.addEventListener('change', () => {
-        void this.#onManualSortChange?.(toggle.checked);
+        const requested = toggle.checked;
+        toggle.disabled = true;
+        void Promise.resolve(this.#onManualSortChange?.(requested))
+          .then((outcome) => {
+            const failed =
+              typeof outcome === 'object' &&
+              outcome !== null &&
+              'status' in outcome &&
+              (outcome as { status: string }).status !== 'saved';
+            if (failed) toggle.checked = !requested;
+          })
+          .catch(() => {
+            toggle.checked = !requested;
+          })
+          .finally(() => {
+            toggle.disabled = false;
+          });
       });
       manualRow.append(toggle, createTextElement('span', this.#translate('sort.manual')));
       root.append(manualRow);
