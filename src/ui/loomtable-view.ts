@@ -256,12 +256,23 @@ export class LoomTableView extends ItemView {
             },
             onDuplicateRecord: async (recordId: string) => {
               await controller.duplicateRecord(recordId);
+              renderer.showToast({
+                kind: 'success',
+                text: this.getTranslator()('record.duplicate.done'),
+              });
             },
             onInsertRecordBelow: async (recordId: string) => {
               await controller.insertRecordBelow(recordId);
             },
             onUndoDelete: async () => {
-              await controller.undoDelete();
+              try {
+                await controller.undoDelete();
+              } catch {
+                renderer.showToast({
+                  kind: 'error',
+                  text: this.getTranslator()('toast.undoFailed'),
+                });
+              }
             },
             onDismissDeleteNotice: () => controller.dismissDeleteNotice(),
             onLoadDeletedRecords: () => controller.loadDeletedRecords(),
@@ -282,9 +293,27 @@ export class LoomTableView extends ItemView {
       onCellEdit: (recordId, fieldId, value) => {
         void controller.editCell(recordId, fieldId, value);
       },
-      onUndo: () => controller.undo(),
-      onRedo: () => controller.redo(),
-      onUndoTo: (index) => controller.undoUntil(index),
+      onUndo: async () => {
+        try {
+          await controller.undo();
+        } catch {
+          renderer.showToast({ kind: 'error', text: this.getTranslator()('toast.undoFailed') });
+        }
+      },
+      onRedo: async () => {
+        try {
+          await controller.redo();
+        } catch {
+          renderer.showToast({ kind: 'error', text: this.getTranslator()('toast.redoFailed') });
+        }
+      },
+      onUndoTo: async (index) => {
+        try {
+          await controller.undoUntil(index);
+        } catch {
+          renderer.showToast({ kind: 'error', text: this.getTranslator()('toast.undoFailed') });
+        }
+      },
       attachmentThumbnail: this.attachmentThumbnail,
       onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
       confirmDiscardAll: () => window.confirm(this.getTranslator()('grid.discardAllConfirm')),

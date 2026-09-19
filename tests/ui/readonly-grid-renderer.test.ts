@@ -540,6 +540,58 @@ describe('ReadonlyGridRenderer', () => {
     );
   });
 
+  it('raises an error toast with a Resolve action when a new conflict appears', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    const conflicted = createState(1, {
+      conflicts: [
+        {
+          recordId: 'record_01',
+          clientMutationId: 'mutation_01',
+          failedCommandIndex: 0,
+          expectedRevision: 1,
+          currentRevision: 2,
+          currentValues: { field_name: 'Server value' },
+          message: 'Revision conflict.',
+        },
+      ],
+    });
+
+    renderer.render(conflicted);
+    const toast = container.querySelector<HTMLElement>('.loom-toast--error');
+    expect(toast?.textContent).toContain('sync conflict');
+    const resolve = toast?.querySelector<HTMLButtonElement>('.loom-toast-action');
+    expect(resolve?.textContent).toBe('Resolve');
+    resolve?.click();
+    expect(container.querySelector('.loom-toast--error')).toBeNull();
+    expect(document.activeElement).toBe(container.querySelector('.loom-grid-conflicts'));
+
+    // The same conflict set must not re-toast on the next render.
+    renderer.render(conflicted);
+    expect(container.querySelector('.loom-toast--error')).toBeNull();
+    container.remove();
+  });
+
+  it('survives re-renders so a toast stays visible while state churns', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(1));
+    renderer.showToast({ kind: 'info', text: 'Sticky note' });
+    renderer.render(createState(2));
+    expect(container.querySelector('.loom-toast-text')?.textContent).toBe('Sticky note');
+    container.remove();
+  });
+
   it('shows Server and local values with explicit conflict actions', async () => {
     const container = document.createElement('div');
     document.body.append(container);

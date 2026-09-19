@@ -113,6 +113,7 @@
 }
 
 .loom-grid-shell {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--loom-space-3);
@@ -3864,4 +3865,56 @@
 
 .loom-number-format-row input[type='checkbox'] {
   margin: 0;
+}
+
+.loom-toast-stack {
+  position: absolute;
+  right: var(--loom-space-3);
+  bottom: var(--loom-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--loom-space-2);
+  z-index: 60;
+  pointer-events: none;
+}
+
+.loom-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-2);
+  max-width: 22rem;
+  padding: var(--loom-space-2) var(--loom-space-3);
+  border: 1px solid var(--loom-grid-line-strong);
+  border-radius: var(--loom-radius-md);
+  background: var(--loom-bg-primary);
+  color: var(--loom-text-normal);
+  box-shadow: var(--loom-panel-shadow);
+  font-size: var(--loom-font-ui-small);
+  pointer-events: auto;
+}
+
+.loom-toast--success {
+  border-color: var(--loom-text-success);
+}
+
+.loom-toast--error {
+  border-color: var(--loom-text-error);
+}
+
+.loom-toast-text {
+  flex: 1;
+}
+
+.loom-toast-action {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid var(--loom-grid-line-strong);
+  border-radius: var(--loom-radius-sm);
+  background: transparent;
+  color: var(--loom-text-accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.loom-toast-dismiss {
+  color: var(--loom-text-muted);
 }

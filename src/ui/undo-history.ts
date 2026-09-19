@@ -53,6 +53,9 @@ export class UndoHistory {
     this.#applying = true;
     try {
       await command.undo();
+    } catch (error) {
+      this.#undoStack.push(command);
+      throw error;
     } finally {
       this.#applying = false;
     }
@@ -66,6 +69,9 @@ export class UndoHistory {
     this.#applying = true;
     try {
       await command.redo();
+    } catch (error) {
+      this.#redoStack.push(command);
+      throw error;
     } finally {
       this.#applying = false;
     }

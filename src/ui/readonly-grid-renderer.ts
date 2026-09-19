@@ -25,6 +25,7 @@ import { FilterBuilder } from './filter-builder';
 import { openFieldEditor, type FieldEditorSubmit } from './field-editor-panel';
 import { openFieldConverter } from './field-convert-panel';
 import { openNumberFormatPanel } from './number-format-panel';
+import { createToastStack, pushToast, type ToastOptions } from './toast';
 import { SortPanel } from './sort-panel';
 import { DisplayPanel } from './display-panel';
 import { createRecordCreateForm, type RecordCreateForm } from './record-create-form';
@@ -269,6 +270,7 @@ export class ReadonlyGridRenderer {
   #rowAnchorIndex: number | null = null;
   #lastConflictIds = new Set<string>();
   #lastState: GridState | null = null;
+  readonly #toastStack: HTMLElement = createToastStack();
   #dismissedEditDraftKey: string | null = null;
   readonly #pendingActions = new Set<GridAction>();
   readonly #actionButtons = new Map<HTMLButtonElement, GridActionButtonSpec>();
@@ -340,6 +342,11 @@ export class ReadonlyGridRenderer {
             onResolveViewIssue: callbacks.onResolveViewIssue,
           }),
     });
+  }
+
+  /** Shows a transient toast anchored to the Grid; survives re-renders. */
+  showToast(options: ToastOptions): () => void {
+    return pushToast(this.#toastStack, options, this.#translate);
   }
 
   render(state: GridState): void {
@@ -420,10 +427,19 @@ export class ReadonlyGridRenderer {
     );
     this.#lastConflictIds = conflictIds;
     ensureButtonLabels(root);
+    root.append(this.#toastStack);
     this.#container.replaceChildren(root);
     this.#restoreRowHeightAnchor();
     this.#syncActionButtons();
     if (hasNewConflict) {
+      this.showToast({
+        kind: 'error',
+        text: this.#translate('toast.conflict'),
+        action: {
+          label: this.#translate('toast.conflict.resolve'),
+          run: () => this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus(),
+        },
+      });
       this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus();
     } else if (this.#restoreFailedEditDraft(state)) {
       return;
