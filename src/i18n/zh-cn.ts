@@ -360,6 +360,7 @@ export const simplifiedChineseMessages = {
   'record.duplicate.action': '复制记录',
   'record.duplicate.blocked.offline': '离线状态。重新连接后再复制此记录。',
   'record.duplicate.blocked.unavailable': '当前连接不支持复制记录。',
+  'record.insertBelow.action': '在下方新增行',
   'record.move.failed': '无法移动该记录。',
   'record.recycle.action': '已删除记录',
   'record.recycle.title': '已删除记录',

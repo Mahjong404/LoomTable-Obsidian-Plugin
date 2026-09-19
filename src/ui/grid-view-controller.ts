@@ -909,6 +909,17 @@ export class GridViewController {
     return result.record;
   }
 
+  async insertRecordBelow(recordId: string): Promise<LoomTableRecord> {
+    const created = await this.createRecord({});
+    try {
+      await this.moveRecord(created.id, { afterRecordId: recordId });
+    } catch {
+      // The Record was created at the end of the manual order; a failed
+      // move leaves it there where undo history can still remove it.
+    }
+    return created;
+  }
+
   async queryFieldValues(
     fieldId: string,
     request: { search?: string; cursor?: string } = {},

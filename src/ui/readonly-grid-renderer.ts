@@ -146,6 +146,7 @@ export interface GridRendererCallbacks {
   readonly onDismissRecordCreate?: (operationId: string) => void;
   readonly onDeleteRecord?: (recordId: string) => void | Promise<void>;
   readonly onDuplicateRecord?: (recordId: string) => void | Promise<void>;
+  readonly onInsertRecordBelow?: (recordId: string) => void | Promise<void>;
   readonly onUndoDelete?: () => void | Promise<void>;
   readonly attachmentThumbnail?: (attachment: RenderedAttachment) => string | undefined;
   readonly onUndo?: () => void | Promise<void>;
@@ -2473,6 +2474,12 @@ export class ReadonlyGridRenderer {
         action: () => this.#callbacks.onRecordOpen(record),
       },
     ];
+    if (
+      this.#callbacks.onInsertRecordBelow !== undefined &&
+      manualOrderEnabled(this.#virtualGrid?.state)
+    ) {
+      items.push(this.#recordInsertBelowMenuItem(record));
+    }
     if (this.#callbacks.onDuplicateRecord !== undefined) {
       items.push(this.#recordDuplicateMenuItem(record));
     }
@@ -2716,6 +2723,12 @@ export class ReadonlyGridRenderer {
         action: () => this.#callbacks.onRecordOpen(record),
       },
     ];
+    if (
+      this.#callbacks.onInsertRecordBelow !== undefined &&
+      manualOrderEnabled(this.#virtualGrid?.state)
+    ) {
+      items.push(this.#recordInsertBelowMenuItem(record));
+    }
     if (this.#callbacks.onDuplicateRecord !== undefined) {
       items.push(this.#recordDuplicateMenuItem(record));
     }
@@ -2729,6 +2742,16 @@ export class ReadonlyGridRenderer {
       host: this.#container,
       label: this.#translate('grid.menu.label'),
     });
+  }
+
+  #recordInsertBelowMenuItem(record: LoomTableRecord): ContextMenuItem {
+    const gridState = this.#virtualGrid?.state;
+    return {
+      label: this.#translate('record.insertBelow.action'),
+      icon: 'row-insert-below',
+      disabled: gridState?.status === 'offline',
+      action: () => void this.#callbacks.onInsertRecordBelow?.(record.id),
+    };
   }
 
   #recordDuplicateMenuItem(record: LoomTableRecord): ContextMenuItem {

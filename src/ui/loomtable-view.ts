@@ -257,6 +257,9 @@ export class LoomTableView extends ItemView {
             onDuplicateRecord: async (recordId: string) => {
               await controller.duplicateRecord(recordId);
             },
+            onInsertRecordBelow: async (recordId: string) => {
+              await controller.insertRecordBelow(recordId);
+            },
             onUndoDelete: async () => {
               await controller.undoDelete();
             },
@@ -452,6 +455,9 @@ export class LoomTableView extends ItemView {
             },
             onDuplicateRecord: async (recordId: string) => {
               await this.#gridController!.duplicateRecord(recordId);
+            },
+            onInsertRecordBelow: async (recordId: string) => {
+              await this.#gridController!.insertRecordBelow(recordId);
             },
           }
         : {}),
@@ -701,6 +707,9 @@ export class LoomTableView extends ItemView {
               },
               onDuplicateRecord: async (recordId: string) => {
                 await controller.duplicateRecord(recordId);
+              },
+              onInsertRecordBelow: async (recordId: string) => {
+                await controller.insertRecordBelow(recordId);
               },
             }
           : {}),

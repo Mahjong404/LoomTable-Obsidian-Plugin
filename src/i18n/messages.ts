@@ -381,6 +381,7 @@ export const englishMessages = {
   'record.duplicate.action': 'Duplicate Record',
   'record.duplicate.blocked.offline': 'Offline. Reconnect before duplicating this Record.',
   'record.duplicate.blocked.unavailable': 'Record duplication is unavailable for this connection.',
+  'record.insertBelow.action': 'Insert row below',
   'record.move.failed': 'The Record could not be moved.',
   'record.recycle.action': 'Deleted Records',
   'record.recycle.title': 'Deleted Records',

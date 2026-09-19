@@ -60,7 +60,8 @@ export type UiIconName =
   | 'tool-convert'
   | 'menu-duplicate'
   | 'view-default'
-  | 'field-format';
+  | 'field-format'
+  | 'row-insert-below';
 
 const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
   'tool-undo': [
@@ -102,6 +103,12 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
     ['path', { d: 'M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3' }],
     ['path', { d: 'M14.5 12v5' }],
     ['path', { d: 'M12 14.5h5' }],
+  ],
+  'row-insert-below': [
+    ['path', { d: 'M3 5h18' }],
+    ['path', { d: 'M3 10h18' }],
+    ['path', { d: 'M12 14v6' }],
+    ['path', { d: 'M9 17h6' }],
   ],
   'view-default': [
     [

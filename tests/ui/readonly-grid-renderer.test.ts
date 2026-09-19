@@ -2031,6 +2031,44 @@ describe('Grid record lifecycle', () => {
     container.remove();
   });
 
+  it('offers Insert row below only in manual order and forwards the Record id', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = lifecycleCallbacks();
+    const onInsertRecordBelow = vi.fn(async () => undefined);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...callbacks,
+      onInsertRecordBelow,
+    });
+    const gridView = createState(2).views[0] as Extract<View, { type: 'grid' }>;
+    const manualView: Extract<View, { type: 'grid' }> = {
+      ...gridView,
+      config: { ...gridView.config, manualSort: true },
+    };
+    renderer.render({ ...createState(2), views: [manualView] });
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-index-cell')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    const insert = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+    ].find((item) => item.textContent?.includes('Insert row below'));
+    expect(insert).not.toBeUndefined();
+    insert?.click();
+    await vi.waitFor(() => expect(onInsertRecordBelow).toHaveBeenCalledWith('record_01'));
+
+    // A field-sorted View hides the item: "below" cannot be honored.
+    renderer.render(createState(2));
+    container
+      .querySelector<HTMLElement>('.loom-grid-index-cell')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
+    const sortedLabels = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+    ].map((item) => item.textContent ?? '');
+    expect(sortedLabels.some((label) => label.includes('Insert row below'))).toBe(false);
+    container.remove();
+  });
+
   it('offers Duplicate Record in the row context menu and forwards the Record id', async () => {
     const container = document.createElement('div');
     document.body.append(container);

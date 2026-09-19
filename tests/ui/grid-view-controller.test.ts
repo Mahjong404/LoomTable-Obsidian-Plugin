@@ -2731,6 +2731,34 @@ describe('Record lifecycle', () => {
     scheduler.stop();
   });
 
+  it('inserts a blank Record directly below the anchor Record', async () => {
+    const { scheduler, controller } = createLifecycleController(createRecords(3));
+    await startLifecycle(scheduler, controller);
+
+    const created = await controller.insertRecordBelow('record_01');
+
+    expect(created.values).toEqual({});
+    const ids = controller.state.records.map((record) => record.id);
+    expect(ids.indexOf(created.id)).toBe(ids.indexOf('record_01') + 1);
+    scheduler.stop();
+  });
+
+  it('surfaces an edit error when the follow-up move fails', async () => {
+    const { client, scheduler, controller } = createLifecycleController(createRecords(3));
+    await startLifecycle(scheduler, controller);
+    const moveSpy = vi
+      .spyOn(client, 'moveRecord')
+      .mockRejectedValueOnce(new LoomTableClientError('network', { message: 'offline' }));
+
+    const created = await controller.insertRecordBelow('record_01');
+
+    expect(moveSpy).toHaveBeenCalledWith('table_01', created.id, {
+      afterRecordId: 'record_01',
+    });
+    expect(controller.state.editError?.message).toBe('The Record could not be moved.');
+    scheduler.stop();
+  });
+
   it('rejects duplication while offline', async () => {
     const { scheduler, controller } = createLifecycleController(createRecords(3), {
       offline: true,
