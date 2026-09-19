@@ -24,6 +24,7 @@ import { createUiIcon, type UiIconName } from './icons';
 import { FilterBuilder } from './filter-builder';
 import { openFieldEditor, type FieldEditorSubmit } from './field-editor-panel';
 import { openFieldConverter } from './field-convert-panel';
+import { openNumberFormatPanel } from './number-format-panel';
 import { SortPanel } from './sort-panel';
 import { DisplayPanel } from './display-panel';
 import { createRecordCreateForm, type RecordCreateForm } from './record-create-form';
@@ -2512,6 +2513,15 @@ export class ReadonlyGridRenderer {
               },
             ]
           : []),
+        ...(field.type === 'number'
+          ? [
+              {
+                label: this.#translate('field.format.title'),
+                icon: 'field-format' as const,
+                action: () => this.#openNumberFormatPanel(field, x, y),
+              },
+            ]
+          : []),
         {
           label: this.#translate('field.menu.insertLeft'),
           icon: 'col-insert-left',
@@ -2677,6 +2687,24 @@ export class ReadonlyGridRenderer {
       translate: this.#translate,
       onPreview: (fieldId, type) => onPreview(fieldId, type),
       onConvert: (fieldId, request) => onConvert(fieldId, request),
+    });
+  }
+
+  #openNumberFormatPanel(field: Extract<Field, { type: 'number' }>, x: number, y: number): void {
+    if (this.#callbacks.onFieldSave === undefined) return;
+    this.#closePanels();
+    this.#overlayClose = openNumberFormatPanel({
+      field,
+      x,
+      y,
+      host: this.#container,
+      translate: this.#translate,
+      onSubmit: async (format) => {
+        await this.#callbacks.onFieldSave?.(
+          { name: field.name, type: 'number', format },
+          { mode: 'edit', fieldId: field.id },
+        );
+      },
     });
   }
 

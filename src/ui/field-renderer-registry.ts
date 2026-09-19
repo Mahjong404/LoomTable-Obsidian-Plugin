@@ -3,6 +3,7 @@ import type {
   Field,
   FieldBase,
   JsonValue,
+  NumberFormatConfig,
   SelectFieldConfig,
 } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
@@ -325,7 +326,7 @@ export function renderFieldValue(
       return renderText(value, translate);
     case 'number':
       return typeof value === 'number' && Number.isFinite(value)
-        ? renderedValue(String(value))
+        ? renderedValue(formatNumberCell(value, field.config.format))
         : unavailable(translate);
     case 'checkbox':
       if (typeof value !== 'boolean') return unavailable(translate);
@@ -910,6 +911,25 @@ function renderedNaturalString(value: string, translate: Translator): RenderedFi
 
 function renderedValue(text: string): RenderedFieldValue {
   return { state: 'value', text, ariaLabel: text };
+}
+
+function formatNumberCell(value: number, format: NumberFormatConfig | undefined): string {
+  if (format === undefined) return String(value);
+  const options: Intl.NumberFormatOptions = {
+    useGrouping: format.thousandsSeparator === true,
+    ...(format.decimals === undefined
+      ? {}
+      : {
+          minimumFractionDigits: format.decimals,
+          maximumFractionDigits: format.decimals,
+        }),
+    ...(format.currency === undefined ? {} : { style: 'currency', currency: format.currency }),
+  };
+  try {
+    return new Intl.NumberFormat(undefined, options).format(value);
+  } catch {
+    return String(value);
+  }
 }
 
 function rendered(state: FieldDisplayState, text: string): RenderedFieldValue {

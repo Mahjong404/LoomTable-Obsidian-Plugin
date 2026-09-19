@@ -154,6 +154,51 @@ describe('HttpLoomTableClient Field management', () => {
     );
   });
 
+  it('round-trips a Number Field display format and accepts a legacy empty config', async () => {
+    const transport = queuedTransport([
+      jsonResponse(200, {
+        ...TEXT_FIELD,
+        type: 'number',
+        config: { format: { thousandsSeparator: true, decimals: 2, currency: 'CNY' } },
+        revision: 3,
+      }),
+      jsonResponse(200, {
+        ...TEXT_FIELD,
+        id: 'field_legacy',
+        type: 'number',
+        config: {},
+      }),
+    ]);
+    const client = createClient(transport);
+
+    const formatted = await client.updateField('field_notes', {
+      type: 'number',
+      expectedRevision: 2,
+      config: { format: { thousandsSeparator: true, decimals: 2, currency: 'CNY' } },
+    });
+
+    expect(transport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        body: JSON.stringify({
+          type: 'number',
+          expectedRevision: 2,
+          config: { format: { thousandsSeparator: true, decimals: 2, currency: 'CNY' } },
+        }),
+      }),
+    );
+    expect(formatted).toMatchObject({
+      type: 'number',
+      config: { format: { thousandsSeparator: true, decimals: 2, currency: 'CNY' } },
+    });
+
+    const legacy = await client.updateField('field_legacy', {
+      type: 'number',
+      expectedRevision: 2,
+      name: 'Legacy',
+    });
+    expect(legacy).toMatchObject({ type: 'number', config: {} });
+  });
+
   it('rejects an update carrying neither name nor config', async () => {
     const transport = queuedTransport([]);
     const client = createClient(transport);

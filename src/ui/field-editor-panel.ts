@@ -1,4 +1,9 @@
-import type { Field, SelectOptionColor, SelectOptionInput } from '../client/loomtable-client';
+import type {
+  Field,
+  NumberFormatConfig,
+  SelectOptionColor,
+  SelectOptionInput,
+} from '../client/loomtable-client';
 import type { Translator } from '../i18n';
 import { createFieldTypeIcon } from './field-type-icon';
 import { createUiIcon } from './icons';
@@ -34,6 +39,7 @@ export interface FieldEditorSubmit {
   readonly options?: readonly SelectOptionInput[];
   readonly maxCount?: number;
   readonly description?: string;
+  readonly format?: NumberFormatConfig | null;
 }
 
 export interface FieldEditorOptions {

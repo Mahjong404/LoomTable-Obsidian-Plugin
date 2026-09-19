@@ -59,7 +59,8 @@ export type UiIconName =
   | 'tool-trash'
   | 'tool-convert'
   | 'menu-duplicate'
-  | 'view-default';
+  | 'view-default'
+  | 'field-format';
 
 const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
   'tool-undo': [
@@ -109,6 +110,12 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
         d: 'm12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z',
       },
     ],
+  ],
+  'field-format': [
+    ['path', { d: 'M4 9h16' }],
+    ['path', { d: 'M4 15h16' }],
+    ['path', { d: 'M10 3 8 21' }],
+    ['path', { d: 'm16 3-2 18' }],
   ],
   'view-grid': [
     ['rect', { width: '18', height: '18', x: '3', y: '3', rx: '2' }],

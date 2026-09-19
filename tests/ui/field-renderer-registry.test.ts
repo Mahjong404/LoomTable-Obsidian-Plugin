@@ -81,6 +81,29 @@ describe('Field renderer registry', () => {
     });
   });
 
+  it('formats Number values per the Field format config', () => {
+    const translate = createTranslator('en');
+    const plain = registry.render(createField('number', { format: {} }), 12345.6, { translate });
+    expect(plain).toMatchObject({ state: 'value', text: '12345.6' });
+
+    const grouped = registry.render(
+      createField('number', {
+        format: { thousandsSeparator: true, decimals: 2, currency: 'CNY' },
+      }),
+      12345.6,
+      { translate },
+    );
+    expect(grouped.state).toBe('value');
+    expect(grouped.text).toContain('12,345.60');
+    expect(grouped.ariaLabel).toBe(grouped.text);
+
+    expect(
+      registry.render(createField('number', { format: { decimals: 0 } }), 'not-a-number', {
+        translate,
+      }),
+    ).toMatchObject({ state: 'unavailable' });
+  });
+
   it('does not present invalid Date wire values as ordinary values', () => {
     const translate = createTranslator('zh-CN');
     const field = createField('date');

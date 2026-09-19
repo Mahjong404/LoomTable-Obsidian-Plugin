@@ -39,6 +39,8 @@ import {
   type MapViewport,
   type MapViewportBox,
   type MapViewConfig,
+  type NumberFieldConfig,
+  type NumberFormatConfig,
   type MutationCommandResult,
   type MutationRequest,
   type MutationResult,
@@ -123,15 +125,7 @@ const BOOTSTRAP_STATES = new Set(['required', 'complete', 'unknown']);
 const ATTACHMENT_SOURCES = new Set(['managed', 'vault']);
 const ATTACHMENT_STATUSES = new Set(['pending', 'ready']);
 const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
-const EMPTY_FIELD_TYPES = new Set([
-  'text',
-  'longText',
-  'number',
-  'checkbox',
-  'date',
-  'url',
-  'location',
-]);
+const EMPTY_FIELD_TYPES = new Set(['text', 'longText', 'checkbox', 'date', 'url', 'location']);
 const FILTER_OPERATORS = new Set([
   'is',
   'isNot',
@@ -1773,6 +1767,11 @@ function decodeField(value: unknown): Field {
     ...(value.description === undefined ? {} : { description: value.description }),
   };
 
+  if (value.type === 'number') {
+    const config = decodeNumberFieldConfig(value.config);
+    if (config === null) throw invalidResource('field');
+    return { ...base, type: 'number', config };
+  }
   if (EMPTY_FIELD_TYPES.has(value.type)) {
     if (!isEmptyObject(value.config)) throw invalidResource('field');
     return { ...base, type: value.type, config: {} } as Field;
@@ -1869,6 +1868,28 @@ function decodeDeletedSelectOption(value: unknown): DeletedSelectOption | null {
 function decodeAttachmentFieldConfig(value: Record<string, unknown>): AttachmentFieldConfig | null {
   const maxCount = value.maxCount ?? 10;
   return isPositiveInteger(maxCount) && maxCount <= 100 ? { maxCount } : null;
+}
+
+function decodeNumberFieldConfig(value: Record<string, unknown>): NumberFieldConfig | null {
+  if (value.format === undefined) return {};
+  if (!isRecord(value.format)) return null;
+  const raw = value.format;
+  const format: { -readonly [K in keyof NumberFormatConfig]: NumberFormatConfig[K] } = {};
+  if (raw.thousandsSeparator !== undefined) {
+    if (typeof raw.thousandsSeparator !== 'boolean') return null;
+    format.thousandsSeparator = raw.thousandsSeparator;
+  }
+  if (raw.decimals !== undefined) {
+    if (!isNonNegativeInteger(raw.decimals) || raw.decimals > 10) {
+      return null;
+    }
+    format.decimals = raw.decimals;
+  }
+  if (raw.currency !== undefined) {
+    if (typeof raw.currency !== 'string' || !/^[A-Z]{3}$/.test(raw.currency)) return null;
+    format.currency = raw.currency;
+  }
+  return { format };
 }
 
 function decodeAttachment(value: unknown): Attachment {

@@ -3272,6 +3272,88 @@ describe('refresh indicator and anchored panels', () => {
     container.remove();
   });
 
+  it('exposes Number format only for Number columns and submits the chosen format', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onFieldSave = vi.fn(async () => undefined);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave,
+    });
+    const scoreField: Field = {
+      id: 'field_score',
+      tableId: 'table_01',
+      name: 'Score',
+      position: 1,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'number',
+      config: {},
+    };
+    const state = createState(1);
+    const gridView = state.views[0] as Extract<View, { type: 'grid' }>;
+    const view: Extract<View, { type: 'grid' }> = {
+      ...gridView,
+      config: {
+        ...gridView.config,
+        projection: ['field_name', 'field_score'],
+        columnOrder: ['field_name', 'field_score'],
+      },
+    };
+    renderer.render({
+      ...state,
+      views: [view],
+      fields: [...state.fields, scoreField],
+      records: state.records.map((record) => ({
+        ...record,
+        values: { ...record.values, field_score: 12345.6 },
+      })),
+    });
+
+    const menuButtons = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-grid-header-menu'),
+    ];
+    expect(menuButtons).toHaveLength(2);
+    // The text column menu must not offer Number format.
+    menuButtons[0]?.click();
+    let labels = [...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].map(
+      (item) => item.textContent ?? '',
+    );
+    expect(labels.some((label) => label.includes('Number format'))).toBe(false);
+    document.body.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+
+    menuButtons[1]?.click();
+    const formatItem = [
+      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+    ].find((item) => item.textContent?.includes('Number format'));
+    expect(formatItem).not.toBeUndefined();
+    formatItem?.click();
+
+    const panel = container.querySelector<HTMLElement>('.loom-number-format');
+    expect(panel).not.toBeNull();
+    const grouping = panel?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    const decimals = panel?.querySelector<HTMLInputElement>('input[type="number"]');
+    const currency = panel?.querySelector<HTMLSelectElement>('select');
+    if (grouping && decimals && currency) {
+      grouping.checked = true;
+      decimals.value = '2';
+      currency.value = 'USD';
+    }
+    panel?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+    await vi.waitFor(() => expect(onFieldSave).toHaveBeenCalled());
+    expect(onFieldSave).toHaveBeenCalledWith(
+      {
+        name: 'Score',
+        type: 'number',
+        format: { thousandsSeparator: true, decimals: 2, currency: 'USD' },
+      },
+      { mode: 'edit', fieldId: 'field_score' },
+    );
+    await vi.waitFor(() => expect(container.querySelector('.loom-number-format')).toBeNull());
+    container.remove();
+  });
+
   it('supports checkbox, Ctrl and Shift row selection from the index cell', () => {
     const container = document.createElement('div');
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {

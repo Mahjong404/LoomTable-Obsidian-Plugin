@@ -229,6 +229,7 @@ export class LoomTableView extends ItemView {
               ...(input.options === undefined ? {} : { options: input.options }),
               ...(input.maxCount === undefined ? {} : { maxCount: input.maxCount }),
               ...(input.description === undefined ? {} : { description: input.description }),
+              ...(input.format === undefined ? {} : { format: input.format }),
             })
           : controller.createField(
               input,

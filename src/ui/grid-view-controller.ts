@@ -25,6 +25,7 @@ import {
   type MutationRequest,
   type MutationResult,
   type MutationValue,
+  type NumberFormatConfig,
   type QueryRequest,
   type QueryResult,
   type SortSpec,
@@ -303,8 +304,25 @@ function fieldConfigFromInput(input: FieldSubmitInput): FieldConfigInput | null 
 
 function fieldUpdateConfigFromInput(
   field: Field,
-  input: { readonly options?: readonly SelectOptionInput[]; readonly maxCount?: number },
+  input: {
+    readonly options?: readonly SelectOptionInput[];
+    readonly maxCount?: number;
+    readonly format?: NumberFormatConfig | null;
+  },
 ): FieldConfigInput | undefined | null {
+  if (field.type === 'number') {
+    if (input.format === undefined) return undefined;
+    if (input.format === null) return {};
+    const format = input.format;
+    if (
+      (format.decimals !== undefined &&
+        (!Number.isInteger(format.decimals) || format.decimals < 0 || format.decimals > 10)) ||
+      (format.currency !== undefined && !/^[A-Z]{3}$/.test(format.currency))
+    ) {
+      return null;
+    }
+    return { format: { ...format } };
+  }
   if (field.type === 'select' || field.type === 'multiSelect') {
     if (input.options === undefined) return undefined;
     return {
@@ -1866,6 +1884,7 @@ export class GridViewController {
       readonly options?: readonly SelectOptionInput[];
       readonly maxCount?: number;
       readonly description?: string;
+      readonly format?: NumberFormatConfig | null;
     },
   ): Promise<FieldWriteOutcome> {
     const field = this.#state.fields.find((candidate) => candidate.id === fieldId);

@@ -190,8 +190,7 @@ export interface AttachmentDownload {
   readonly contentType?: string;
 }
 
-export type EmptyFieldType =
-  'text' | 'longText' | 'number' | 'checkbox' | 'date' | 'url' | 'location';
+export type EmptyFieldType = 'text' | 'longText' | 'checkbox' | 'date' | 'url' | 'location';
 
 export type LocationPrecision = 'exact' | 'rooftop' | 'approximate';
 
@@ -204,10 +203,24 @@ export type LocationValue = Readonly<{
   precision?: LocationPrecision;
 }>;
 
+export interface NumberFormatConfig {
+  readonly thousandsSeparator?: boolean;
+  readonly decimals?: number;
+  readonly currency?: string;
+}
+
+export interface NumberFieldConfig {
+  readonly format?: NumberFormatConfig;
+}
+
 export type Field =
   | (FieldBase & {
       readonly type: EmptyFieldType;
       readonly config: Readonly<Record<string, never>>;
+    })
+  | (FieldBase & {
+      readonly type: 'number';
+      readonly config: NumberFieldConfig;
     })
   | (FieldBase & {
       readonly type: 'select' | 'multiSelect';
@@ -232,7 +245,10 @@ export interface SelectFieldConfigInput {
 }
 
 export type FieldConfigInput =
-  Readonly<Record<string, never>> | SelectFieldConfigInput | AttachmentFieldConfig;
+  | Readonly<Record<string, never>>
+  | NumberFieldConfig
+  | SelectFieldConfigInput
+  | AttachmentFieldConfig;
 
 export interface CreateFieldRequest {
   readonly name: string;

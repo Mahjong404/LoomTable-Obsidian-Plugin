@@ -2135,6 +2135,19 @@ function createField(): Field {
   };
 }
 
+function createNumberField(): Field {
+  return {
+    id: 'field_number',
+    tableId: 'table_01',
+    name: 'Amount',
+    position: 1,
+    schemaVersion: 1,
+    revision: 1,
+    type: 'number',
+    config: {},
+  };
+}
+
 function createLocationField(): Field {
   return {
     id: 'field_location',
@@ -3148,6 +3161,25 @@ describe('Field management', () => {
 
     expect(outcome.status).toBe('written');
     expect(controller.state.fields[0]).toMatchObject({ name: 'Title', revision: 2 });
+  });
+
+  it('persists a Number Field display format through updateField', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [], [createNumberField()]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.updateField('field_number', {
+      name: 'Amount',
+      format: { thousandsSeparator: true, decimals: 2, currency: 'CNY' },
+    });
+
+    expect(outcome.status).toBe('written');
+    const field = controller.state.fields.find((candidate) => candidate.id === 'field_number');
+    expect(field?.config).toEqual({
+      format: { thousandsSeparator: true, decimals: 2, currency: 'CNY' },
+    });
   });
 
   it('deletes a Field and scrubs it from every Grid View config', async () => {
