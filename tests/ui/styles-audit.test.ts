@@ -98,4 +98,12 @@ describe('LoomTable CSS contract', () => {
     expect(styles).toContain('text-decoration: underline');
     expect(styles).toContain('.loom-field-value-link:focus-visible');
   });
+
+  it('merges upper context selects into one crumb group', () => {
+    expect(styles).toContain('.loom-shell-context-upper');
+    expect(styles).toContain(
+      '.loom-shell-context-upper .loom-grid-select + .loom-grid-select::before',
+    );
+    expect(styles).toContain('.loom-grid-select-label');
+  });
 });

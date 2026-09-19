@@ -162,7 +162,8 @@ export class TableShell {
       this.#rerender();
     });
     context.append(contextToggle);
-    context.append(
+    const upper = createElement('div', 'loom-shell-context-upper');
+    upper.append(
       this.#renderSelect(
         'grid.workspace',
         state.workspaces,
@@ -175,6 +176,9 @@ export class TableShell {
         state.selectedBaseId,
         (value) => void this.#callbacks.onBaseChange(value),
       ),
+    );
+    context.append(
+      upper,
       this.#renderSelect(
         'grid.table',
         state.tables,
@@ -766,7 +770,9 @@ export class TableShell {
     onChange: (value: string) => void,
   ): HTMLElement {
     const label = createElement('label', 'loom-grid-select');
-    label.append(document.createTextNode(this.#translate(labelKey)));
+    const labelText = createTextElement('span', this.#translate(labelKey));
+    labelText.classList.add('loom-grid-select-label');
+    label.append(labelText);
     const select = document.createElement('select');
     select.setAttribute('aria-label', this.#translate(labelKey));
     select.dataset.shellFocus = `select:${labelKey}`;

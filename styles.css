@@ -467,6 +467,35 @@
   min-width: 0;
 }
 
+.loom-shell-context-upper {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  border: 1px solid var(--loom-grid-line);
+  border-radius: var(--loom-radius-md);
+  background: var(--loom-bg-primary);
+  padding-inline: var(--loom-space-2);
+}
+
+.loom-shell-context-upper .loom-grid-select + .loom-grid-select::before {
+  content: '/';
+  color: var(--loom-text-muted);
+  margin-inline: var(--loom-space-1);
+}
+
+.loom-shell-context-upper .loom-grid-select select {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+  max-width: 10rem;
+}
+
+.loom-grid-select-label {
+  display: none;
+}
+
 .loom-shell-actions {
   display: flex;
   align-items: center;
@@ -3485,8 +3514,13 @@
     max-width: 100%;
   }
 
-  .loom-shell-context:not(.loom-shell-context-open) .loom-grid-select {
+  .loom-shell-context:not(.loom-shell-context-open) .loom-shell-context-upper,
+  .loom-shell-context:not(.loom-shell-context-open) > .loom-grid-select {
     display: none;
+  }
+
+  .loom-shell-context-open .loom-grid-select-label {
+    display: inline;
   }
 }
 

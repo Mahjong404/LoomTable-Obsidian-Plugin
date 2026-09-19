@@ -162,6 +162,25 @@ describe('TableShell tabs', () => {
     host.remove();
   });
 
+  it('merges Workspace and Base into one crumb group ahead of the Table select', () => {
+    const { shell } = createShell();
+    const host = mount(shell, shellState());
+
+    const upper = host.querySelector<HTMLElement>('.loom-shell-context-upper');
+    expect(upper).not.toBeNull();
+    const upperSelects = [...(upper?.querySelectorAll('select') ?? [])];
+    expect(upperSelects.map((select) => select.getAttribute('aria-label'))).toEqual([
+      'Workspace',
+      'Base',
+    ]);
+    const tableSelect = host.querySelector<HTMLSelectElement>(
+      '.loom-shell-context > .loom-grid-select select',
+    );
+    expect(tableSelect?.getAttribute('aria-label')).toBe('Table');
+    expect(host.querySelectorAll('.loom-grid-select-label')).toHaveLength(3);
+    host.remove();
+  });
+
   it('keeps duplicate View names distinguishable by type and hides deleted Views', () => {
     const { shell } = createShell();
     const host = mount(
