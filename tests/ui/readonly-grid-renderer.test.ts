@@ -2700,6 +2700,29 @@ describe('Grid record lifecycle', () => {
 });
 
 describe('column menu and field editor', () => {
+  it('closes the query panel when the field editor opens, and vice versa', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+      onApplySort: vi.fn(async () => {}),
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLElement>('[data-action="toggle-sort"]')?.click();
+    expect(container.querySelector('.loom-query-panel[data-panel="sort"]')).not.toBeNull();
+
+    container.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+    expect(container.querySelector('.loom-field-editor')).not.toBeNull();
+    expect(container.querySelector('.loom-query-panel[data-panel="sort"]')).toBeNull();
+
+    container.querySelector<HTMLElement>('[data-action="toggle-sort"]')?.click();
+    expect(container.querySelector('.loom-query-panel[data-panel="sort"]')).not.toBeNull();
+    expect(container.querySelector('.loom-field-editor')).toBeNull();
+    container.remove();
+  });
+
   it('renders an add-field header cell that opens the create panel', () => {
     const container = document.createElement('div');
     document.body.append(container);

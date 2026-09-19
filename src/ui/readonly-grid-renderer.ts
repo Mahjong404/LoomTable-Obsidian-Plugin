@@ -298,6 +298,7 @@ export class ReadonlyGridRenderer {
     readonly offset: number;
   } | null = null;
   #panelDismiss: ((event: PointerEvent) => void) | null = null;
+  #overlayClose: (() => void) | null = null;
 
   constructor(container: HTMLElement, translate: Translator, callbacks: GridRendererCallbacks) {
     this.#container = container;
@@ -487,6 +488,7 @@ export class ReadonlyGridRenderer {
               label: this.#translate('record.create.menu.form'),
               icon: 'menu-open',
               action: () => {
+                this.#dismissOverlay();
                 this.#openPanel = 'create';
                 this.#rerenderSelf();
               },
@@ -542,6 +544,7 @@ export class ReadonlyGridRenderer {
     renderSaveStatus(statusToggle, state.saveStatus, this.#translate);
     statusToggle.addEventListener('click', () => {
       const opening = this.#openPanel !== 'status';
+      if (opening) this.#dismissOverlay();
       this.#openPanel = opening ? 'status' : null;
       if (opening) void this.#callbacks.onLoadDeletedRecords?.();
       this.#rerenderSelf();
@@ -737,6 +740,7 @@ export class ReadonlyGridRenderer {
     }
     button.addEventListener('click', () => {
       const opening = this.#openPanel !== panel;
+      if (opening) this.#dismissOverlay();
       this.#openPanel = opening ? panel : null;
       this.#rerenderSelf();
       if (opening) {
@@ -848,7 +852,13 @@ export class ReadonlyGridRenderer {
     this.#sortPanel = null;
     this.#displayPanel = null;
     this.#createForm = null;
+    this.#dismissOverlay();
     this.#rerenderSelf();
+  }
+
+  #dismissOverlay(): void {
+    this.#overlayClose?.();
+    this.#overlayClose = null;
   }
 
   #anchorQueryPanel(toolbar: HTMLElement, panel: HTMLElement): void {
@@ -1493,6 +1503,7 @@ export class ReadonlyGridRenderer {
         button.addEventListener('click', () => {
           const next = nextHeaderSort(gridView.config.sort, field.id);
           if (next === null) {
+            this.#dismissOverlay();
             this.#openPanel = 'sort';
             this.#sortFocusFieldId = field.id;
             this.#rerenderSelf();
@@ -2317,6 +2328,7 @@ export class ReadonlyGridRenderer {
     if (state.hasMore) {
       // The trailing draft row only exists at the end of a fully loaded grid;
       // fall back to the create form while more pages remain unloaded.
+      this.#dismissOverlay();
       this.#openPanel = 'create';
       this.#rerenderSelf();
       return;
@@ -2572,6 +2584,7 @@ export class ReadonlyGridRenderer {
         label: this.#translate('field.menu.filter'),
         icon: 'tool-filter',
         action: () => {
+          this.#dismissOverlay();
           this.#filterSeedFieldId = field.id;
           this.#openPanel = 'filter';
           this.#rerenderSelf();
@@ -2629,7 +2642,8 @@ export class ReadonlyGridRenderer {
     trigger?: HTMLElement,
     field?: Field,
   ): void {
-    openFieldEditor({
+    this.#closePanels();
+    this.#overlayClose = openFieldEditor({
       mode: context.mode,
       ...(context.mode === 'edit' && field !== undefined ? { field } : {}),
       x,
@@ -2652,7 +2666,8 @@ export class ReadonlyGridRenderer {
     }
     const onPreview = this.#callbacks.onConversionPreview;
     const onConvert = this.#callbacks.onConvertField;
-    openFieldConverter({
+    this.#closePanels();
+    this.#overlayClose = openFieldConverter({
       field,
       x,
       y,
@@ -3435,6 +3450,7 @@ export class ReadonlyGridRenderer {
         edit.dataset.action = 'empty-edit-filter';
         edit.textContent = this.#translate('grid.empty.editFilter');
         edit.addEventListener('click', () => {
+          this.#dismissOverlay();
           this.#openPanel = 'filter';
           this.#rerenderSelf();
         });
