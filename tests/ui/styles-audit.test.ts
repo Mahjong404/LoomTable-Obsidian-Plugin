@@ -99,6 +99,10 @@ describe('LoomTable CSS contract', () => {
     expect(styles).toContain('.loom-field-value-link:focus-visible');
   });
 
+  it('keeps the cell editor square above Obsidian input specificity', () => {
+    expect(styles).toMatch(/\.loom-grid-cell \.loom-grid-editor \{\s*border-radius: 0;/);
+  });
+
   it('merges upper context selects into one crumb group', () => {
     expect(styles).toContain('.loom-shell-context-upper');
     expect(styles).toContain(

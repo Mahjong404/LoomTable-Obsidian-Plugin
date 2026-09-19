@@ -1372,6 +1372,12 @@
   box-shadow: 0 0 0 1px var(--loom-accent);
 }
 
+/* Obsidian's global input rule (0-1-1) beats the bare class; keep the
+   overlay editor square-cornered inside cells. */
+.loom-grid-cell .loom-grid-editor {
+  border-radius: 0;
+}
+
 .loom-grid-header-cell {
   position: relative;
   height: 2.25rem;
