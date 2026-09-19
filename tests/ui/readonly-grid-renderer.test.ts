@@ -3522,6 +3522,37 @@ describe('Record drag reorder', () => {
     target?.dispatchEvent(event);
   }
 
+  it('renders the hover trio (≡ handle, checkbox, open) in index cells', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onMoveRecord: vi.fn(async () => {}),
+    });
+    renderer.render(createState(3));
+    const indexCell = container.querySelector<HTMLElement>('.loom-grid-index-cell');
+    expect(indexCell?.querySelector('.loom-grid-row-drag')?.textContent).toBe('≡');
+    expect(indexCell?.querySelector('input.loom-grid-row-check')).not.toBeNull();
+    expect(indexCell?.querySelector('.loom-grid-open')).not.toBeNull();
+    expect(indexCell?.classList.contains('is-manual-order')).toBe(false);
+  });
+
+  it('marks index cells manual-order only when dragging is wired', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onMoveRecord: vi.fn(async () => {}),
+    });
+    renderer.render(manualViewState());
+    expect(
+      container.querySelector<HTMLElement>('.loom-grid-index-cell')?.classList.contains('is-manual-order'),
+    ).toBe(true);
+
+    renderer.render(createState(3));
+    expect(
+      container.querySelector<HTMLElement>('.loom-grid-index-cell')?.classList.contains('is-manual-order'),
+    ).toBe(false);
+  });
+
   it('makes index cells draggable only in manual order mode', () => {
     const container = document.createElement('div');
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {

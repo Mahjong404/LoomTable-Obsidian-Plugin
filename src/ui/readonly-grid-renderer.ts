@@ -1909,6 +1909,9 @@ export class ReadonlyGridRenderer {
     indexCell.setAttribute('aria-colindex', '1');
     const rowNumber = createTextElement('span', String(rowIndex + 1));
     rowNumber.className = 'loom-grid-row-number';
+    const dragHandle = createTextElement('span', '≡');
+    dragHandle.className = 'loom-grid-row-drag';
+    dragHandle.setAttribute('aria-hidden', 'true');
     const check = createElement('input', 'loom-grid-row-check');
     check.type = 'checkbox';
     check.checked = this.#isRowSelected(rowIndex);
@@ -1928,7 +1931,7 @@ export class ReadonlyGridRenderer {
       event.stopPropagation();
       this.#callbacks.onRecordOpen(record);
     });
-    indexCell.append(rowNumber, check, open);
+    indexCell.append(rowNumber, dragHandle, check, open);
     indexCell.addEventListener('click', (event) => {
       event.stopPropagation();
       if ((event.target as HTMLElement).closest('input') !== null) return;
@@ -1946,6 +1949,7 @@ export class ReadonlyGridRenderer {
       this.#openRecordContextMenu(record, event.clientX, event.clientY);
     });
     if (manualOrderEnabled(gridState) && this.#callbacks.onMoveRecord !== undefined) {
+      indexCell.classList.add('is-manual-order');
       indexCell.draggable = true;
       indexCell.addEventListener('dragstart', (event) => {
         if ((event.target as HTMLElement).closest('input,button') !== null) {
