@@ -2894,19 +2894,18 @@ describe('search highlight and footer', () => {
     container.remove();
   });
 
-  it('renders the bottom status bar with the loaded row count and view name', () => {
+  it('renders the row count in the aggregate stats row instead of a footer', () => {
     const container = document.createElement('div');
     document.body.append(container);
-    const renderer = new ReadonlyGridRenderer(
-      container,
-      createTranslator('en'),
-      rendererCallbacks(),
-    );
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onSetFieldAggregation: vi.fn(async () => {}),
+    });
     renderer.render(createState(3));
 
-    const footer = container.querySelector<HTMLElement>('.loom-grid-footer');
-    expect(footer?.textContent).toContain('3');
-    expect(footer?.textContent).toContain('Grid');
+    const count = container.querySelector<HTMLElement>('.loom-grid-aggregate-count');
+    expect(count?.textContent).toContain('3');
+    expect(container.querySelector('.loom-grid-footer')).toBeNull();
     container.remove();
   });
 
@@ -3249,11 +3248,10 @@ describe('refresh indicator and anchored panels', () => {
 
   it('supports checkbox, Ctrl and Shift row selection from the index cell', () => {
     const container = document.createElement('div');
-    const renderer = new ReadonlyGridRenderer(
-      container,
-      createTranslator('en'),
-      rendererCallbacks(),
-    );
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onSetFieldAggregation: vi.fn(async () => {}),
+    });
     renderer.render(createState(4));
 
     const indexCells = () => [
@@ -3276,7 +3274,7 @@ describe('refresh indicator and anchored panels', () => {
 
     checks()[1]?.click();
     expect(checks().filter((input) => input.checked)).toHaveLength(2);
-    expect(container.querySelector('.loom-grid-footer-count')?.textContent).toContain(
+    expect(container.querySelector('.loom-grid-aggregate-count')?.textContent).toContain(
       '2 rows selected',
     );
     container.remove();

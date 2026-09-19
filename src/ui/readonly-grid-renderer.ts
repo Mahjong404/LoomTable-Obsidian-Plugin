@@ -507,21 +507,7 @@ export class ReadonlyGridRenderer {
       );
     }
     const count = createElement('span', 'loom-grid-count');
-    if (
-      state.totalCount !== null &&
-      state.unfilteredTotal !== null &&
-      state.unfilteredTotal > state.totalCount
-    ) {
-      // Filtered/total communicates how many rows the active filter hides.
-      count.textContent = `${state.totalCount}/${state.unfilteredTotal} ${this.#translate('grid.rows')}`;
-    } else if (state.totalCount !== null && state.totalCount > state.records.length) {
-      // Loaded/total keeps partial progress visible while paging continues.
-      count.textContent = `${state.records.length}/${state.totalCount} ${this.#translate('grid.rows')}`;
-    } else if (state.totalCount !== null) {
-      count.textContent = `${state.totalCount} ${this.#translate('grid.rows')}`;
-    } else if (state.records.length > 0) {
-      count.textContent = `${state.records.length} ${this.#translate('grid.rows')}`;
-    }
+    count.textContent = this.#rowsCountText(state);
     if (this.#callbacks.onUndo !== undefined || this.#callbacks.onRedo !== undefined) {
       const undoButton = this.#createActionButton(
         'undo',
@@ -1621,12 +1607,6 @@ export class ReadonlyGridRenderer {
           );
     viewport.append(header, canvas);
     if (aggregateRow !== null) viewport.append(aggregateRow);
-    const footer = createElement('div', 'loom-grid-footer');
-    const footerCount = createElement('span', 'loom-grid-footer-count');
-    footerCount.textContent = `${state.records.length} ${this.#translate('grid.rows')}`;
-    const footerView = createElement('span', 'loom-grid-footer-view');
-    footerView.textContent = gridView?.name ?? '';
-    footer.append(footerCount, footerView);
     this.#virtualGrid = {
       viewport,
       rowLayer,
@@ -1651,7 +1631,6 @@ export class ReadonlyGridRenderer {
       loadMore.addEventListener('click', () => void this.#callbacks.onLoadMore());
       wrapper.append(loadMore);
     }
-    wrapper.append(footer);
     return wrapper;
   }
 
@@ -1675,10 +1654,28 @@ export class ReadonlyGridRenderer {
     for (const field of fields) {
       row.append(this.#renderAggregateCell(state, field));
     }
-    const filler = createElement('div', 'loom-grid-aggregate-cell');
-    filler.setAttribute('aria-hidden', 'true');
+    const filler = createElement('div', 'loom-grid-aggregate-cell loom-grid-aggregate-count');
+    filler.textContent = this.#rowsCountText(state);
     row.append(filler);
     return row;
+  }
+
+  #rowsCountText(state: GridState): string {
+    if (
+      state.totalCount !== null &&
+      state.unfilteredTotal !== null &&
+      state.unfilteredTotal > state.totalCount
+    ) {
+      // Filtered/total communicates how many rows the active filter hides.
+      return `${state.totalCount}/${state.unfilteredTotal} ${this.#translate('grid.rows')}`;
+    }
+    if (state.totalCount !== null && state.totalCount > state.records.length) {
+      // Loaded/total keeps partial progress visible while paging continues.
+      return `${state.records.length}/${state.totalCount} ${this.#translate('grid.rows')}`;
+    }
+    if (state.totalCount !== null) return `${state.totalCount} ${this.#translate('grid.rows')}`;
+    if (state.records.length > 0) return `${state.records.length} ${this.#translate('grid.rows')}`;
+    return '';
   }
 
   #renderAggregateCell(state: GridState, field: Field): HTMLElement {
@@ -3271,10 +3268,12 @@ export class ReadonlyGridRenderer {
             rect.bottom === lastRow,
         );
       });
-    const footerCount = this.#container.querySelector<HTMLElement>('.loom-grid-footer-count');
-    if (footerCount !== null) {
-      const base = `${grid.state.records.length} ${this.#translate('grid.rows')}`;
-      footerCount.textContent =
+    const aggregateCount = this.#container.querySelector<HTMLElement>(
+      '.loom-grid-aggregate-count',
+    );
+    if (aggregateCount !== null) {
+      const base = this.#rowsCountText(grid.state);
+      aggregateCount.textContent =
         this.#selectedRows.size > 1
           ? `${base} · ${this.#translate('grid.selectedRows').replace('{count}', String(this.#selectedRows.size))}`
           : rect !== null && (rect.bottom - rect.top + 1) * (rect.right - rect.left + 1) > 1

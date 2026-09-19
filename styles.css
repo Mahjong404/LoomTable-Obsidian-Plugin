@@ -3297,22 +3297,10 @@
   color: inherit;
 }
 
-.loom-grid-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--loom-space-2);
-  min-height: 1.75rem;
-  padding: 0 var(--loom-space-3);
-  border-top: 1px solid var(--loom-grid-line);
+.loom-grid-aggregate-count {
+  justify-content: flex-end;
+  padding-inline-end: var(--loom-space-3);
   color: var(--loom-text-faint);
-  font-size: var(--loom-font-ui-smaller);
-}
-
-.loom-grid-footer-view {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Detail: primary field prominence (外部产品式 record title row) */
