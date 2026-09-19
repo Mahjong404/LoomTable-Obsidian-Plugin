@@ -970,6 +970,26 @@ describe('Grid query controls', () => {
     container.remove();
   });
 
+  it('collapses an empty search input on blur without re-entering render', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onSearch: vi.fn(async () => true),
+    });
+    renderer.render(createState(1, { search: '' }));
+    container.querySelector<HTMLButtonElement>('[data-action="search-expand"]')?.click();
+    const input = container.querySelector<HTMLInputElement>('input[data-role="grid-search"]');
+    if (input === null) throw new Error('Search input is missing.');
+    input.dispatchEvent(new FocusEvent('blur'));
+    await vi.waitFor(() =>
+      expect(
+        container.querySelector<HTMLInputElement>('input[data-role="grid-search"]'),
+      ).toBeNull(),
+    );
+    container.remove();
+  });
+
   it('surfaces a too-long Search rejection and keeps the typed draft', async () => {
     const container = document.createElement('div');
     document.body.append(container);

@@ -648,10 +648,15 @@ export class ReadonlyGridRenderer {
       input.addEventListener('blur', (event) => {
         const next = event.relatedTarget;
         if (next instanceof Node && wrap.contains(next)) return;
-        if (input.value === '' && state.search === '') {
-          this.#searchExpanded = false;
-          this.#rerenderSelf();
-        }
+        // Defer: a render that replaces this input fires blur synchronously;
+        // collapsing here would re-enter render() inside replaceChildren.
+        window.setTimeout(() => {
+          if (!input.isConnected) return;
+          if (input.value === '' && state.search === '') {
+            this.#searchExpanded = false;
+            this.#rerenderSelf();
+          }
+        }, 0);
       });
       const clear = createElement('button', 'clickable-icon loom-grid-search-clear');
       clear.type = 'button';
