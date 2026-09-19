@@ -1,6 +1,7 @@
 import type { Field, SortSpec } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
 import { MAX_SORT_FIELDS, defaultSortFor, isSortableField } from './view-query-model';
+import { jsonEqual } from './json-equal';
 import { captureQueryControlFocus, restoreQueryControlFocus } from './query-focus';
 
 import { ensureButtonLabels, labelContainer } from './a11y';
@@ -41,6 +42,17 @@ export class SortPanel {
     return this.#root;
   }
 
+  /** True while a draft change is waiting for the debounced apply or an apply
+      is in flight — the host must not rebuild the panel in that window. */
+  hasPendingEdits(): boolean {
+    return this.#applyTimer !== null || this.#applying;
+  }
+
+  /** True when the draft already matches the persisted config slice. */
+  isInSyncWith(source: readonly SortSpec[]): boolean {
+    return jsonEqual(this.#draft, source);
+  }
+
   #build(): HTMLElement {
     const root = createElement('div', 'loom-sort-panel');
     root.setAttribute('role', 'form');
@@ -73,12 +85,14 @@ export class SortPanel {
       });
       manualRow.append(toggle, createTextElement('span', this.#translate('sort.manual')));
       root.append(manualRow);
-      root.append(
-        createTextElement(
-          'p',
-          this.#translate(this.#draft.length === 0 ? 'sort.manual.drag' : 'sort.manual.hint'),
-        ),
-      );
+      if (this.#manualSort) {
+        root.append(
+          createTextElement(
+            'p',
+            this.#translate(this.#draft.length === 0 ? 'sort.manual.drag' : 'sort.manual.hint'),
+          ),
+        );
+      }
     }
 
     const sortable = this.#fields.filter(

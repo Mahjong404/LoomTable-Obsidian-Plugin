@@ -250,4 +250,29 @@ describe('SortPanel', () => {
     expect(host.textContent).toContain('overrides the manual order');
     host.remove();
   });
+
+  it('hides the manual-order hint while manual sort is off', () => {
+    const empty = new SortPanel([], {
+      fields: FIELDS,
+      translate: createTranslator('en'),
+      onApply: vi.fn(),
+      manualSort: false,
+      onManualSortChange: vi.fn(),
+    });
+    const host = mount(empty);
+    expect(host.querySelector('[data-role="sort-manual"]')).not.toBeNull();
+    expect(host.textContent).not.toContain('Drag row headers');
+    host.remove();
+
+    const withRules = new SortPanel([{ fieldId: 'field_name', direction: 'asc', nulls: 'last' }], {
+      fields: FIELDS,
+      translate: createTranslator('en'),
+      onApply: vi.fn(),
+      manualSort: false,
+      onManualSortChange: vi.fn(),
+    });
+    const host2 = mount(withRules);
+    expect(host2.textContent).not.toContain('manual order');
+    host2.remove();
+  });
 });

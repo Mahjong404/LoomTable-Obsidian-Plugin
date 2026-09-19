@@ -1399,6 +1399,126 @@ describe('Grid query controls', () => {
     expect(nextViewport?.scrollTop).toBe(10 * 30 + 12);
     container.remove();
   });
+
+  it('keeps the query toggles in the start group while Search expands beside them', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onSearch: vi.fn(async () => true),
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLButtonElement>('[data-action="search-expand"]')?.click();
+    const toolbar = container.querySelector('.loom-grid-toolbar');
+    const search = container.querySelector('.loom-grid-search.is-expanded');
+    const toggles = container.querySelector('.loom-grid-query-toggles');
+    const start = container.querySelector('.loom-toolbar-start');
+    const end = container.querySelector('.loom-toolbar-end');
+    // The search wrap is a toolbar-level sibling so the expanded input grows
+    // into the free space between the groups instead of overlaying them.
+    expect(search?.parentElement).toBe(toolbar);
+    expect(toggles?.parentElement).toBe(start);
+    const order = [...(toolbar?.children ?? [])];
+    expect(order.indexOf(start!)).toBeLessThan(order.indexOf(search!));
+    expect(order.indexOf(search!)).toBeLessThan(order.indexOf(end!));
+    container.remove();
+  });
+
+  it('rebuilds the cached Sort Panel when the persisted sort changes elsewhere', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplySort: vi.fn(
+        async () => ({ status: 'saved', view: createState(0).views[0]! }) as const,
+      ),
+    });
+    const state = createState(1);
+    renderer.render(state);
+    container.querySelector<HTMLElement>('[data-action="toggle-sort"]')?.click();
+    expect(container.querySelectorAll('.loom-sort-panel li[data-sort-index]')).toHaveLength(0);
+
+    // An external writer (e.g. the header quick-sort) lands a new sort.
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...state,
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            sort: [{ fieldId: 'field_name', direction: 'asc', nulls: 'last' }],
+          },
+        },
+      ],
+    });
+    expect(container.querySelectorAll('.loom-sort-panel li[data-sort-index]')).toHaveLength(1);
+    container.remove();
+  });
+
+  it('keeps a pending Sort Panel draft when an unrelated render lands', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onApplySort = vi.fn(
+      async () => ({ status: 'saved', view: createState(0).views[0]! }) as const,
+    );
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplySort,
+    });
+    const state = createState(1);
+    renderer.render(state);
+    container.querySelector<HTMLElement>('[data-action="toggle-sort"]')?.click();
+
+    container
+      .querySelector<HTMLButtonElement>('.loom-sort-panel [data-action="sort-add"]')
+      ?.click();
+    // A render while the debounced apply is pending must not wipe the draft row.
+    renderer.render(state);
+    expect(container.querySelectorAll('.loom-sort-panel li[data-sort-index]')).toHaveLength(1);
+    await vi.waitFor(() => expect(onApplySort).toHaveBeenCalled(), { timeout: 1000 });
+    container.remove();
+  });
+
+  it('rebuilds the cached Filter Builder when the persisted filter changes elsewhere', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter: vi.fn(
+        async () => ({ status: 'saved', view: createState(0).views[0]! }) as const,
+      ),
+    });
+    const state = createState(1);
+    renderer.render(state);
+    container.querySelector<HTMLElement>('[data-action="toggle-filter"]')?.click();
+    expect(container.querySelector('.loom-filter-empty')).not.toBeNull();
+
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...state,
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            filter: {
+              kind: 'rule',
+              fieldId: 'field_name',
+              operator: 'contains',
+              value: 'a',
+            },
+          },
+        },
+      ],
+    });
+    expect(container.querySelector('.loom-filter-empty')).toBeNull();
+    expect(container.querySelectorAll('.loom-filter-row')).toHaveLength(1);
+    container.remove();
+  });
 });
 
 describe('getVirtualRowRange', () => {

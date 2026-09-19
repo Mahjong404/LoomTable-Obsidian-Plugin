@@ -811,29 +811,23 @@
 
 .loom-grid-search {
   position: relative;
+  flex: 0 0 auto;
   flex-wrap: nowrap;
 }
 
+.loom-grid-search.is-expanded {
+  flex: 1;
+}
+
 .loom-grid-search.is-expanded .loom-grid-search-toggle {
-  visibility: hidden;
+  display: none;
 }
 
 .loom-grid-search.is-expanded input[type='search'] {
-  position: absolute;
-  inset-inline-start: 0;
-  top: 50%;
-  z-index: 6;
-  width: 12rem;
-  transform: translateY(-50%);
+  flex: 1;
+  min-width: 0;
+  max-width: none;
   background: var(--loom-bg-form);
-}
-
-.loom-grid-search.is-expanded .loom-grid-search-clear {
-  position: absolute;
-  inset-inline-start: 10.5rem;
-  top: 50%;
-  z-index: 7;
-  transform: translateY(-50%);
 }
 
 .loom-grid-search input[type='search'] {
@@ -1556,6 +1550,7 @@
   top: 50%;
   width: 0.875rem;
   height: 0.875rem;
+  min-height: 0;
   margin: 0;
   padding: 0;
   opacity: 0;

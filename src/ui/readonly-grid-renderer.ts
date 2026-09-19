@@ -21,6 +21,7 @@ import { ensureButtonLabels, labelContainer } from './a11y';
 import { openContextMenu, type ContextMenuEntry, type ContextMenuItem } from './context-menu';
 import { createFieldTypeIcon } from './field-type-icon';
 import { createUiIcon, type UiIconName } from './icons';
+import { jsonEqual } from './json-equal';
 import { FilterBuilder } from './filter-builder';
 import { openFieldEditor, type FieldEditorSubmit } from './field-editor-panel';
 import { openFieldConverter } from './field-convert-panel';
@@ -519,14 +520,12 @@ export class ReadonlyGridRenderer {
       split.append(createButton, caret);
       start.append(split);
     }
+    let searchControls: HTMLElement | null = null;
     if (gridView !== null) {
       const divider = createElement('span', 'loom-toolbar-divider');
       divider.setAttribute('aria-hidden', 'true');
-      start.append(
-        this.#renderSearchControls(state),
-        divider,
-        this.#renderQueryToggles(state, gridView),
-      );
+      start.append(divider, this.#renderQueryToggles(state, gridView));
+      searchControls = this.#renderSearchControls(state);
     }
     const count = createElement('span', 'loom-grid-count');
     count.textContent = this.#rowsCountText(state);
@@ -579,7 +578,11 @@ export class ReadonlyGridRenderer {
       }
     });
     end.append(statusToggle);
-    toolbar.append(start, end);
+    if (searchControls !== null) {
+      toolbar.append(start, searchControls, end);
+    } else {
+      toolbar.append(start, end);
+    }
     return toolbar;
   }
 
@@ -791,9 +794,17 @@ export class ReadonlyGridRenderer {
     if (this.#openPanel === 'filter') {
       const onApplyFilter = this.#callbacks.onApplyFilter;
       if (onApplyFilter === undefined) return null;
-      // Panels apply changes as they happen; the open builder owns its draft,
-      // so it is keyed by View rather than rebuilt on every saved revision.
-      if (this.#filterBuilder === null || this.#filterBuilderViewId !== view.id) {
+      // Panels apply changes as they happen; the open builder owns its draft.
+      // Rebuild only when a seed rule is waiting, or when the persisted filter
+      // changed externally (e.g. a config repair) while the builder has no
+      // pending edits of its own.
+      if (
+        this.#filterBuilder === null ||
+        this.#filterBuilderViewId !== view.id ||
+        this.#filterSeedFieldId !== null ||
+        (!this.#filterBuilder.hasPendingEdits() &&
+          !this.#filterBuilder.isInSyncWith(view.config.filter))
+      ) {
         const seedFieldId = this.#filterSeedFieldId;
         this.#filterSeedFieldId = null;
         let initial = view.config.filter;
@@ -831,7 +842,8 @@ export class ReadonlyGridRenderer {
       if (
         this.#sortPanel === null ||
         this.#sortPanelViewId !== view.id ||
-        this.#sortPanelManual !== manualSort
+        this.#sortPanelManual !== manualSort ||
+        (!this.#sortPanel.hasPendingEdits() && !this.#sortPanel.isInSyncWith(view.config.sort))
       ) {
         this.#sortPanel = new SortPanel(view.config.sort, {
           fields: state.fields.filter((field) => field.deletedAt === undefined),
@@ -3718,27 +3730,6 @@ function createGridCell(text: string, className: string): HTMLElement {
 
 function editDraftKey(recordId: string, fieldId: string): string {
   return recordId + '\u0000' + fieldId;
-}
-
-function jsonEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (a === null || a === undefined || b === null || b === undefined) {
-    return (a === null || a === undefined) && (b === null || b === undefined);
-  }
-  if (Array.isArray(a) && Array.isArray(b)) {
-    return a.length === b.length && a.every((entry, index) => jsonEqual(entry, b[index]));
-  }
-  if (typeof a === 'object' && typeof b === 'object') {
-    const aKeys = Object.keys(a);
-    const bKeys = Object.keys(b);
-    return (
-      aKeys.length === bKeys.length &&
-      aKeys.every((key) =>
-        jsonEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
-      )
-    );
-  }
-  return false;
 }
 
 function renderDiagnostic(label: string, details: string): HTMLElement {

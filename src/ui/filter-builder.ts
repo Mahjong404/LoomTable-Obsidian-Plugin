@@ -10,6 +10,7 @@ import type {
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import { openFilterValuesPopover } from './filter-values-popover';
+import { jsonEqual } from './json-equal';
 import {
   addFilterChild,
   coerceRuleForField,
@@ -97,6 +98,17 @@ export class FilterBuilder {
   render(): HTMLElement {
     if (this.#root === null) this.#root = this.#build();
     return this.#root;
+  }
+
+  /** True while a draft change is waiting for the debounced apply or an apply
+      is in flight — the host must not rebuild the panel in that window. */
+  hasPendingEdits(): boolean {
+    return this.#applyTimer !== null || this.#applying || this.#draft !== this.#applied;
+  }
+
+  /** True when the draft already matches the persisted config slice. */
+  isInSyncWith(source: FilterNode | undefined): boolean {
+    return this.#draft === source || jsonEqual(this.#draft, source);
   }
 
   #build(): HTMLElement {

@@ -212,3 +212,14 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - **UI 修复**：状态面板三模式 icon 与刷新钮收入 `.loom-status-panel-actions` 统一 `gap: space-1` 等距；模式钮移除 `title`（浏览器 tooltip 与 Obsidian aria-label 提示重复）。
 - **测试**：changes.test +契约（values/query、aggregate、move、duplicate 请求体与解码）；view-management +manualSort 解码；controller +duplicate/move/manualSort/aggregate 生命周期；renderer +计数/汇总行/拖拽门控与锚点/复制菜单；filter-builder +popover 行为；sort-panel +开关。
 - **验证**：64 文件 859 tests 全绿；lint 0 error（584 warning 存量）；typecheck/format:check 干净；api:generate 后 transport 零 diff、openapi 快照零改动；esbuild 通过；已部署 vault（main.js 642,936B / styles.css 82,970B）。
+
+## 2026-XX — UX 跟进复核：搜索零遮挡重构 / 查询面板过期草稿重建 / 行复选框修复
+
+- **背景**：另一会话（Server 开发计划）落地 14 个 UX 修复提交后，本轮用 Obsidian CDP(:9223) 逐项复核，确认面包屑瘦身/Σ 汇总行/页签右键/数字格式/行菜单扩展/面板互斥/编辑器 radius 等已生效；同时坐实 4 个残留缺陷并修复。
+- **F1 行复选框**：`.loom-root input{min-height:var(--loom-control-min-height)}` 给全部 input 垫了 32px 底，`.loom-grid-index-cell input.loom-grid-row-check` 只设 height 未清 min-height → 14×32 竖条残留。补 `min-height:0` → 实测 14×14。
+- **F2 搜索零遮挡**：此前「零位移」用 `position:absolute;width:12rem` 原位覆盖实现，展开态盖住筛选/排序钮且 query 激活时持续遮挡。改为 `.loom-grid-search` 提为 `.loom-grid-toolbar` 直接子项（位于 start/end 组之间），展开态 `flex:1` + 输入框流内 `flex:1`——自适应填满两组间自由空间，任何宽度下零位移且零遮挡；≤40rem 堆叠布局下独占一行。
+- **F3 面板草稿过期**：SortPanel/FilterBuilder 按 viewId 缓存，外部通路（列头快捷排序、列菜单「按此字段筛选」、配置修复、undo）改 `config.sort`/`config.filter` 后面板仍显示旧草稿，继续编辑会用过期草稿覆盖真实配置。新增 `hasPendingEdits()`/`isInSyncWith(source)`（新共享 `src/ui/json-equal.ts`）：面板无待提交编辑且草稿与持久配置不一致时重建；`#filterSeedFieldId` 等待种子时强制重建（顺带修了种子在缓存面板下被静默丢弃的旧隐患）。DisplayPanel 无外部变更通路，未加门控。
+- **F4 提示门控**：排序面板在 manualSort 关闭时也显示「拖动行头即可调整记录顺序」→ 提示段按 `#manualSort` 门控。
+- **生产 Server 状态翻转**：S1–S8 端点已全部上线（聚合求和、unfilteredTotal、manualSort PATCH、历史流、复制记录均实测成功），旧审计「Server 滞后」结论作废。
+- **测试**：renderer +4（搜索 DOM 结构/排序面板过期重建/编辑中不重建/FilterBuilder 过期重建）；sort-panel +1（提示门控）。
+- **验证**：66 文件 892 tests 全绿；lint 0 error；typecheck/format:check 干净；api:generate 零 diff；esbuild 通过；`docs/local/` 已加入 eslint ignores（gitignored 取证工具区）。已部署 vault（main.js 655,389B / styles.css 86,598B），CDP 复测 F1/F2 通过（shots 43/44）。
