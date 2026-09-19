@@ -572,21 +572,21 @@ export class ReadonlyGridRenderer {
   #renderSearchControls(state: GridState): HTMLElement {
     const wrap = createElement('div', 'loom-grid-search');
     const term = this.#searchDraft ?? state.search;
-    if (!this.#searchExpanded && term === '') {
-      const toggle = createElement('button', 'clickable-icon loom-grid-search-toggle');
-      toggle.type = 'button';
-      toggle.dataset.action = 'search-expand';
-      toggle.setAttribute('aria-label', this.#translate('grid.search.label'));
-      toggle.setAttribute('title', this.#translate('grid.search.label'));
-      toggle.append(createUiIcon('tool-search'));
-      toggle.disabled = this.#callbacks.onSearch === undefined;
-      toggle.addEventListener('click', () => {
-        this.#searchExpanded = true;
-        this.#rerenderSelf();
-        this.#container.querySelector<HTMLInputElement>('[data-role="grid-search"]')?.focus();
-      });
-      wrap.append(toggle);
-    } else {
+    const expanded = this.#searchExpanded || term !== '';
+    if (expanded) wrap.classList.add('is-expanded');
+    const toggle = createElement('button', 'clickable-icon loom-grid-search-toggle');
+    toggle.type = 'button';
+    toggle.dataset.action = 'search-expand';
+    toggle.setAttribute('aria-label', this.#translate('grid.search.label'));
+    toggle.append(createUiIcon('tool-search'));
+    toggle.disabled = this.#callbacks.onSearch === undefined;
+    toggle.addEventListener('click', () => {
+      this.#searchExpanded = true;
+      this.#rerenderSelf();
+      this.#container.querySelector<HTMLInputElement>('[data-role="grid-search"]')?.focus();
+    });
+    wrap.append(toggle);
+    if (expanded) {
       const input = document.createElement('input');
       input.type = 'search';
       input.dataset.role = 'grid-search';
@@ -634,7 +634,6 @@ export class ReadonlyGridRenderer {
       clear.type = 'button';
       clear.dataset.action = 'search-clear';
       clear.setAttribute('aria-label', this.#translate('grid.search.clear'));
-      clear.setAttribute('title', this.#translate('grid.search.clear'));
       clear.append(createUiIcon('detail-close'));
       clear.hidden = term === '';
       clear.disabled = this.#callbacks.onSearch === undefined;

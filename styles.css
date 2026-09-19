@@ -779,6 +779,33 @@
   min-width: 0;
 }
 
+.loom-grid-search {
+  position: relative;
+  flex-wrap: nowrap;
+}
+
+.loom-grid-search.is-expanded .loom-grid-search-toggle {
+  visibility: hidden;
+}
+
+.loom-grid-search.is-expanded input[type='search'] {
+  position: absolute;
+  inset-inline-start: 0;
+  top: 50%;
+  z-index: 6;
+  width: 12rem;
+  transform: translateY(-50%);
+  background: var(--loom-bg-form);
+}
+
+.loom-grid-search.is-expanded .loom-grid-search-clear {
+  position: absolute;
+  inset-inline-start: 10.5rem;
+  top: 50%;
+  z-index: 7;
+  transform: translateY(-50%);
+}
+
 .loom-grid-search input[type='search'] {
   min-width: 10rem;
   max-width: 100%;
