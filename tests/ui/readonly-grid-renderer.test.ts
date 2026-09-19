@@ -1383,6 +1383,7 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     tableId: 'table_01',
     name: 'Grid',
     type: 'grid',
+    isDefault: false,
     config,
     revision: 1,
     createdAt: '2026-08-14T00:00:00Z',
@@ -2706,7 +2707,9 @@ describe('column menu and field editor', () => {
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
       ...rendererCallbacks(),
       onFieldSave: vi.fn(),
-      onApplySort: vi.fn(async () => {}),
+      onApplySort: vi.fn(
+        async () => ({ status: 'saved', view: createState(0).views[0]! }) as const,
+      ),
     });
     renderer.render(createState(1));
 
@@ -3569,12 +3572,16 @@ describe('Record drag reorder', () => {
     });
     renderer.render(manualViewState());
     expect(
-      container.querySelector<HTMLElement>('.loom-grid-index-cell')?.classList.contains('is-manual-order'),
+      container
+        .querySelector<HTMLElement>('.loom-grid-index-cell')
+        ?.classList.contains('is-manual-order'),
     ).toBe(true);
 
     renderer.render(createState(3));
     expect(
-      container.querySelector<HTMLElement>('.loom-grid-index-cell')?.classList.contains('is-manual-order'),
+      container
+        .querySelector<HTMLElement>('.loom-grid-index-cell')
+        ?.classList.contains('is-manual-order'),
     ).toBe(false);
   });
 

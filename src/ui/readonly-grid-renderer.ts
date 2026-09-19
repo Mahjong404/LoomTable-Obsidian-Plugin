@@ -108,6 +108,7 @@ export interface GridRendererCallbacks {
   readonly onCopyView?: (viewId: string, name: string) => Promise<ViewCopyOutcome>;
   readonly onDeleteView?: (viewId: string) => Promise<ViewWriteOutcome>;
   readonly onRestoreView?: (viewId: string) => Promise<ViewWriteOutcome>;
+  readonly onSetDefaultView?: (viewId: string) => Promise<ViewWriteOutcome>;
   readonly onRepairView?: (
     viewId: string,
     repair: ViewConfigRepairInput,
@@ -332,6 +333,7 @@ export class ReadonlyGridRenderer {
             onCopyView: callbacks.onCopyView,
             onDeleteView: callbacks.onDeleteView,
             onRestoreView: callbacks.onRestoreView,
+            onSetDefaultView: callbacks.onSetDefaultView,
             onRepairView: callbacks.onRepairView,
             onResolveViewIssue: callbacks.onResolveViewIssue,
           }),
@@ -3282,9 +3284,7 @@ export class ReadonlyGridRenderer {
             rect.bottom === lastRow,
         );
       });
-    const aggregateCount = this.#container.querySelector<HTMLElement>(
-      '.loom-grid-aggregate-count',
-    );
+    const aggregateCount = this.#container.querySelector<HTMLElement>('.loom-grid-aggregate-count');
     if (aggregateCount !== null) {
       const base = this.#rowsCountText(grid.state);
       aggregateCount.textContent =

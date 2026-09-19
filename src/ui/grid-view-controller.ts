@@ -1607,6 +1607,10 @@ export class GridViewController {
     return this.#runViewWrite(viewId, (view, writes) => writes.restoreView(view));
   }
 
+  async setDefaultView(viewId: string): Promise<ViewWriteOutcome> {
+    return this.#runViewWrite(viewId, (view, writes) => writes.setDefaultView(view));
+  }
+
   async applyViewFilter(viewId: string, filter: FilterNode | undefined): Promise<ViewWriteOutcome> {
     return this.#runViewWrite(viewId, (view, writes) => {
       if (view.type !== 'grid') {

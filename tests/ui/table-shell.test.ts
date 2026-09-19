@@ -30,6 +30,7 @@ function gridView(id: string, name = 'Board', extra: Partial<ViewBase> = {}): Vi
     tableId: 'table_01',
     name,
     type: 'grid',
+    isDefault: false,
     config: {
       projection: ['field_name'],
       columnOrder: ['field_name'],
@@ -51,6 +52,7 @@ function mapView(id: string, name = 'Map'): View {
     tableId: 'table_01',
     name,
     type: 'map',
+    isDefault: false,
     config: { locationFieldId: 'field_location' },
     revision: 1,
     createdAt: '',
@@ -404,6 +406,10 @@ describe('TableShell View management', () => {
       status: 'saved' as const,
       view: gridView('view_grid'),
     }));
+    const onSetDefaultView = vi.fn(async () => ({
+      status: 'saved' as const,
+      view: { ...gridView('view_grid'), isDefault: true },
+    }));
     const onResolveViewIssue = vi.fn(async () => undefined);
     const { shell } = createShell({
       onManageViews,
@@ -412,6 +418,7 @@ describe('TableShell View management', () => {
       onDeleteView,
       onRestoreView,
       onRepairView,
+      onSetDefaultView,
       onResolveViewIssue,
       ...callbacks,
     });
@@ -423,6 +430,7 @@ describe('TableShell View management', () => {
       onDeleteView,
       onRestoreView,
       onRepairView,
+      onSetDefaultView,
       onResolveViewIssue,
     };
   }
@@ -728,6 +736,79 @@ describe('view tab overflow', () => {
     roCallbacks[0]?.([], {} as ResizeObserver);
     expect(tabs[2]?.hidden).toBe(false);
     expect(tabs[1]?.hidden).toBe(true);
+    host.remove();
+  });
+});
+
+describe('TableShell tab context menu', () => {
+  function rightClickTab(host: HTMLElement, index = 0): void {
+    const tab = tabs(host)[index];
+    tab?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 24, clientY: 12 }));
+  }
+
+  it('opens a menu with rename/copy/set-default/delete on tab right-click', async () => {
+    const { shell } = createShell();
+    const host = mount(shell, shellState());
+
+    rightClickTab(host);
+    const menu = host.querySelector<HTMLElement>('.loom-context-menu');
+    expect(menu).not.toBeNull();
+    const labels = [...(menu?.querySelectorAll('.loom-context-menu-item') ?? [])].map(
+      (item) => item.textContent,
+    );
+    expect(labels).toEqual(['Rename', 'Copy', 'Set as default', 'Delete']);
+    host.remove();
+  });
+
+  it('runs set-default directly from the tab menu', async () => {
+    const onSetDefaultView = vi.fn(async () => ({
+      status: 'saved' as const,
+      view: { ...gridView('view_map_2'), isDefault: true },
+    }));
+    const { shell } = createShell({ onSetDefaultView });
+    const host = mount(shell, shellState());
+
+    rightClickTab(host, 1);
+    const item = [...host.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].find(
+      (entry) => entry.textContent === 'Set as default',
+    );
+    item?.click();
+    await vi.waitFor(() => expect(onSetDefaultView).toHaveBeenCalledWith('view_map'));
+    host.remove();
+  });
+
+  it('disables set-default for the current default View', () => {
+    const { shell } = createShell();
+    const host = mount(
+      shell,
+      shellState({ views: [{ ...gridView('view_grid'), isDefault: true }, mapView('view_map')] }),
+    );
+
+    rightClickTab(host);
+    const item = [...host.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].find(
+      (entry) => entry.textContent === 'Set as default',
+    );
+    expect(item?.disabled).toBe(true);
+    host.remove();
+  });
+
+  it('opens the manage panel rename form from the tab menu', async () => {
+    const onManageViews = vi.fn(async () => undefined);
+    const onRenameView = vi.fn(async () => ({
+      status: 'saved' as const,
+      view: gridView('view_grid'),
+    }));
+    const { shell } = createShell({ onManageViews, onRenameView });
+    const host = mount(shell, shellState());
+
+    rightClickTab(host);
+    const item = [...host.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].find(
+      (entry) => entry.textContent === 'Rename',
+    );
+    item?.click();
+    const form = host.querySelector<HTMLFormElement>('form[data-manage-form="rename"]');
+    expect(form).not.toBeNull();
+    expect(form?.querySelector('input')?.value).toBe('Board');
     host.remove();
   });
 });

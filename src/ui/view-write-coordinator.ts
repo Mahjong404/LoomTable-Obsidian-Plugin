@@ -13,7 +13,7 @@ import { createMutationId } from './mutation-queue';
 
 export type ViewWriteClient = Pick<
   LoomTableClient,
-  'getView' | 'createView' | 'updateView' | 'deleteView' | 'restoreView'
+  'getView' | 'createView' | 'updateView' | 'deleteView' | 'restoreView' | 'setDefaultView'
 >;
 
 export interface PendingViewCreateIntent {
@@ -235,6 +235,39 @@ export class ViewWriteCoordinator {
             return { status: 'saved', view: latest };
           }
           return { status: 'unresolved', kind: failure.kind, error: failure.details };
+        }
+        return { status: 'failed', kind: failure.kind, error: failure.details };
+      }
+    });
+  }
+
+  async setDefaultView(view: View): Promise<ViewWriteOutcome> {
+    return this.#serialize(view.id, async () => {
+      if (view.isDefault) return { status: 'saved', view };
+      try {
+        const updated = await this.#client.setDefaultView(view.id, view.revision);
+        return { status: 'saved', view: updated };
+      } catch (error) {
+        const failure = asClientError(error);
+        if (failure.kind === 'conflict' || failure.kind === 'not-found') {
+          const latest = await this.#readBack(view.id);
+          if (latest !== null && latest.isDefault) {
+            return { status: 'saved', view: latest };
+          }
+          return { status: 'conflict', latestView: latest };
+        }
+        if (failure.kind === 'network' || failure.kind === 'timeout') {
+          const latest = await this.#readBack(view.id);
+          if (latest === null) {
+            return { status: 'unresolved', kind: failure.kind, error: failure.details };
+          }
+          if (latest.isDefault) {
+            return { status: 'saved', view: latest };
+          }
+          if (latest.revision === view.revision) {
+            return { status: 'unresolved', kind: failure.kind, error: failure.details };
+          }
+          return { status: 'conflict', latestView: latest };
         }
         return { status: 'failed', kind: failure.kind, error: failure.details };
       }

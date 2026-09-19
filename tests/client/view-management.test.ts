@@ -34,6 +34,7 @@ const GRID_VIEW = {
   name: 'Board',
   type: 'grid',
   config: GRID_CONFIG,
+  isDefault: false,
   revision: 2,
   createdAt: '2026-08-14T00:00:00Z',
   updatedAt: '2026-08-14T01:00:00Z',

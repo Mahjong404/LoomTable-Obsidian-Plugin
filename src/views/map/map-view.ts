@@ -77,6 +77,7 @@ export interface MapViewNavigation {
   readonly onCopyView?: (viewId: string, name: string) => Promise<ViewCopyOutcome>;
   readonly onDeleteView?: (viewId: string) => Promise<ViewWriteOutcome>;
   readonly onRestoreView?: (viewId: string) => Promise<ViewWriteOutcome>;
+  readonly onSetDefaultView?: (viewId: string) => Promise<ViewWriteOutcome>;
   readonly onRepairView?: (
     viewId: string,
     repair: ViewConfigRepairInput,
@@ -447,6 +448,7 @@ export class MapView {
               this.#navigation!.onCopyView!(viewId, name),
             onDeleteView: (viewId: string) => this.#navigation!.onDeleteView!(viewId),
             onRestoreView: (viewId: string) => this.#navigation!.onRestoreView!(viewId),
+            onSetDefaultView: (viewId: string) => this.#navigation!.onSetDefaultView!(viewId),
             onRepairView: (viewId: string, repair: ViewConfigRepairInput) =>
               this.#navigation!.onRepairView!(viewId, repair),
             onResolveViewIssue: (viewId: string, action: ViewIssueAction) =>

@@ -342,6 +342,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/views/{viewId}/default": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                viewId: components["parameters"]["ViewId"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Marks the View as the table's default. Setting a new default clears the previous one atomically; both revisions are bumped and reported through viewChanged changes. */
+        post: operations["setDefaultView"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/views/{viewId}/map/query": {
         parameters: {
             query?: never;
@@ -730,7 +749,7 @@ export interface components {
         NumberField: components["schemas"]["FieldBase"] & {
             /** @constant */
             type: "number";
-            config: components["schemas"]["EmptyFieldConfig"];
+            config: components["schemas"]["NumberFieldConfig"];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -827,6 +846,8 @@ export interface components {
              */
             type: "grid";
             config: components["schemas"]["GridViewConfig"];
+            /** @description Whether this View is the table default. Exactly one active View per table can be default. */
+            isDefault: boolean;
             revision: number;
             /** Format: date-time */
             createdAt: string;
@@ -845,6 +866,8 @@ export interface components {
              */
             type: "map";
             config: components["schemas"]["MapViewConfig"];
+            /** @description Whether this View is the table default. Exactly one active View per table can be default. */
+            isDefault: boolean;
             revision: number;
             /** Format: date-time */
             createdAt: string;
@@ -1025,7 +1048,7 @@ export interface components {
         CreateNumberFieldRequest: components["schemas"]["CreateFieldBase"] & {
             /** @constant */
             type: "number";
-            config: components["schemas"]["EmptyFieldConfig"];
+            config: components["schemas"]["NumberFieldConfig"];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1145,7 +1168,7 @@ export interface components {
         UpdateNumberFieldRequest: components["schemas"]["UpdateFieldBase"] & {
             /** @constant */
             type?: "number";
-            config?: components["schemas"]["EmptyFieldConfig"];
+            config?: components["schemas"]["NumberFieldConfig"];
         } & {
             /**
              * @description discriminator enum property added by openapi-typescript
@@ -1231,6 +1254,19 @@ export interface components {
             type: "attachment";
         };
         EmptyFieldConfig: Record<string, never>;
+        /** @description Number Cell configuration. format is optional display metadata; it never changes stored values. */
+        NumberFieldConfig: {
+            format?: components["schemas"]["NumberFormatConfig"];
+        };
+        /** @description Display formatting hints for a Number Field. */
+        NumberFormatConfig: {
+            /** @description Render grouping separators (for example 12,345). */
+            thousandsSeparator?: boolean;
+            /** @description Fixed fraction digits to display. */
+            decimals?: number;
+            /** @description ISO 4217 currency code rendered with the number (for example CNY). */
+            currency?: string;
+        };
         /** @description Attachment Cell configuration. maxCount defaults to 10 and is bounded from 1 to 100. */
         AttachmentFieldConfig: {
             /** @default 10 */
@@ -2858,6 +2894,41 @@ export interface operations {
         };
         responses: {
             /** @description View restored when its expected revision matches */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["View"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthenticated"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["RevisionConflict"];
+            413: components["responses"]["PayloadTooLarge"];
+            415: components["responses"]["UnsupportedMediaType"];
+            422: components["responses"]["UnprocessableEntity"];
+            default: components["responses"]["ErrorResponse"];
+        };
+    };
+    setDefaultView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                viewId: components["parameters"]["ViewId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestoreMetadataRequest"];
+            };
+        };
+        responses: {
+            /** @description View marked as the table default */
             200: {
                 headers: {
                     [name: string]: unknown;

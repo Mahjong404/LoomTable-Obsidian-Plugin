@@ -1365,6 +1365,7 @@ function createMapView() {
     tableId: 'table_01',
     name: 'Map',
     type: 'map' as const,
+    isDefault: false,
     config: { locationFieldId: 'field_location' },
     revision: 1,
     createdAt: '',

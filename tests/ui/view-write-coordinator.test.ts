@@ -30,6 +30,7 @@ const GRID_VIEW: View = {
   tableId: 'table_01',
   name: 'Board',
   type: 'grid',
+  isDefault: false,
   config: GRID_REQUEST.config,
   revision: 1,
   createdAt: '2026-08-14T00:00:00Z',
@@ -43,6 +44,11 @@ function createClient(overrides: Partial<ViewWriteClient> = {}): ViewWriteClient
     updateView: vi.fn(async () => ({ ...GRID_VIEW, revision: GRID_VIEW.revision + 1 })),
     deleteView: vi.fn(async () => undefined),
     restoreView: vi.fn(async () => ({ ...GRID_VIEW, revision: GRID_VIEW.revision + 1 })),
+    setDefaultView: vi.fn(async () => ({
+      ...GRID_VIEW,
+      isDefault: true,
+      revision: GRID_VIEW.revision + 1,
+    })),
     ...overrides,
   };
 }

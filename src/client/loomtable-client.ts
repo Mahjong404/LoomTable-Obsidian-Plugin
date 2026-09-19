@@ -657,6 +657,7 @@ export interface ViewBase {
   readonly id: string;
   readonly tableId: string;
   readonly name: string;
+  readonly isDefault: boolean;
   readonly revision: number;
   readonly createdAt: string;
   readonly updatedAt: string;
@@ -705,6 +706,7 @@ export interface LoomTableClient {
   updateView(viewId: string, request: UpdateViewRequest): Promise<View>;
   deleteView(viewId: string, expectedRevision: number): Promise<void>;
   restoreView(viewId: string, expectedRevision: number): Promise<View>;
+  setDefaultView(viewId: string, expectedRevision: number): Promise<View>;
   createField(tableId: string, request: CreateFieldRequest, idempotencyKey: string): Promise<Field>;
   updateField(fieldId: string, request: UpdateFieldRequest): Promise<Field>;
   deleteField(fieldId: string, expectedRevision: number): Promise<void>;

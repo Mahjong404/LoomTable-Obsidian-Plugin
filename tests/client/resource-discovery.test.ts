@@ -68,6 +68,7 @@ describe('HttpLoomTableClient resource discovery', () => {
         rowHeight: 'standard',
         sort: [],
       },
+      isDefault: true,
       revision: 1,
       createdAt: '2026-08-14T00:00:00Z',
       updatedAt: '2026-08-14T00:00:00Z',

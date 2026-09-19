@@ -723,6 +723,27 @@ export class HttpLoomTableClient implements LoomTableClient {
     return decodeView(value);
   }
 
+  async setDefaultView(viewId: string, expectedRevision: number): Promise<View> {
+    const normalizedViewId = viewId.trim();
+    if (normalizedViewId === '') {
+      throw new LoomTableClientError('validation', {
+        message: 'A View ID is required to set the default View.',
+      });
+    }
+    if (!isPositiveInteger(expectedRevision)) {
+      throw new LoomTableClientError('validation', {
+        message: 'View expectedRevision must be a positive integer.',
+      });
+    }
+    const body: TransportRestoreMetadataRequest = { expectedRevision };
+    const value = await this.#requestJson(
+      `/v1/views/${encodeURIComponent(normalizedViewId)}/default`,
+      this.#requireAccessToken(),
+      { method: 'POST', body, retryable: false },
+    );
+    return decodeView(value);
+  }
+
   async createField(
     tableId: string,
     request: CreateFieldRequest,
@@ -1780,6 +1801,7 @@ function decodeView(value: unknown): View {
     typeof value.updatedAt !== 'string' ||
     !isOptionalString(value.deletedAt) ||
     typeof value.type !== 'string' ||
+    typeof value.isDefault !== 'boolean' ||
     !isRecord(value.config)
   ) {
     throw invalidResource('view');
@@ -1789,6 +1811,7 @@ function decodeView(value: unknown): View {
     id: value.id,
     tableId: value.tableId,
     name: value.name,
+    isDefault: value.isDefault,
     revision: value.revision,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,

@@ -545,6 +545,7 @@ export const englishMessages = {
   'view.manage.repair.title': 'Repair View configuration',
   'view.manage.repairRequired': 'Fix invalid Field references before copying this View.',
   'view.manage.rename': 'Rename',
+  'view.manage.setDefault': 'Set as default',
   'view.manage.restore': 'Restore',
   'view.ready': 'LoomTable is ready for Plugin development.',
   'view.tabs': 'Views',

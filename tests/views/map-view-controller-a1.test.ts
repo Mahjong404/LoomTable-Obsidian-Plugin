@@ -175,6 +175,7 @@ function createMapView(): Extract<View, { type: 'map' }> {
     tableId: 'table_01',
     name: 'Map',
     type: 'map',
+    isDefault: false,
     config: { locationFieldId: 'field_location' },
     revision: 1,
     createdAt: '',

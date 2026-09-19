@@ -205,6 +205,7 @@ export class LoomTableView extends ItemView {
       onCopyView: (viewId, name) => controller.copyView(viewId, name),
       onDeleteView: (viewId) => controller.deleteView(viewId),
       onRestoreView: (viewId) => controller.restoreView(viewId),
+      onSetDefaultView: (viewId) => controller.setDefaultView(viewId),
       onRepairView: (viewId, repair) => controller.repairView(viewId, repair),
       onResolveViewIssue: (viewId, action) => {
         if (action === 'adopt-latest' || action === 're-edit') {
@@ -556,6 +557,7 @@ export class LoomTableView extends ItemView {
       onCopyView: (viewId, name) => controller.copyView(viewId, name),
       onDeleteView: (viewId) => controller.deleteView(viewId),
       onRestoreView: (viewId) => controller.restoreView(viewId),
+      onSetDefaultView: (viewId) => controller.setDefaultView(viewId),
       onRepairView: (viewId, repair) => controller.repairView(viewId, repair),
       onResolveViewIssue: (viewId, action) => {
         if (action === 'adopt-latest' || action === 're-edit') {

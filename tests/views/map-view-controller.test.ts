@@ -1432,6 +1432,7 @@ function createMapView(locationFieldId: string, revision = 1): Extract<View, { t
     tableId: 'table_01',
     name: 'Map',
     type: 'map',
+    isDefault: false,
     config: { locationFieldId },
     revision,
     createdAt: '2026-08-15T00:00:00Z',

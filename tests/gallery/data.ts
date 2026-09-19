@@ -270,6 +270,7 @@ export function galleryMapConfig(): MapViewConfig {
 
 const VIEW_BASE = {
   tableId: 'table_01',
+  isDefault: false,
   revision: 1,
   createdAt: STAMP,
   updatedAt: STAMP,

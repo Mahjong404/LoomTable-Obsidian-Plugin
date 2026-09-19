@@ -58,7 +58,7 @@ export interface InMemoryGridData {
 
 type ViewWriteSource = Pick<
   LoomTableClient,
-  'getView' | 'createView' | 'updateView' | 'deleteView' | 'restoreView'
+  'getView' | 'createView' | 'updateView' | 'deleteView' | 'restoreView' | 'setDefaultView'
 >;
 
 const IN_MEMORY_META: ServerMeta = {
@@ -194,6 +194,7 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
       name: name.name,
       type: request.type,
       config: structuredClone(request.config),
+      isDefault: false,
       revision: 1,
       createdAt: stamp,
       updatedAt: stamp,
@@ -294,12 +295,60 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
     const index = this.#views.indexOf(view);
     const restored: View = {
       ...view,
+      isDefault: false,
       revision: view.revision + 1,
       updatedAt: new Date(1_800_000_000_000 + ++this.#clock * 1000).toISOString(),
     };
     delete (restored as { deletedAt?: string }).deletedAt;
     this.#views[index] = restored;
     return restored;
+  }
+
+  async setDefaultView(viewId: string, expectedRevision: number): Promise<View> {
+    const view = this.#views.find((candidate) => candidate.id === viewId);
+    if (view === undefined) {
+      throw new LoomTableClientError('not-found', {
+        message: 'The View does not exist.',
+        httpStatus: 404,
+        code: 'NOT_FOUND',
+      });
+    }
+    if (view.revision !== expectedRevision || view.deletedAt !== undefined) {
+      throw new LoomTableClientError('conflict', {
+        message: 'The View changed on the Server.',
+        httpStatus: 409,
+        code: 'CONFLICT',
+      });
+    }
+    const stamp = new Date(1_800_000_000_000 + ++this.#clock * 1000).toISOString();
+    for (let index = 0; index < this.#views.length; index++) {
+      const candidate = this.#views[index];
+      if (candidate !== undefined && candidate.tableId === view.tableId && candidate.isDefault) {
+        this.#views[index] = {
+          ...candidate,
+          isDefault: false,
+          revision: candidate.revision + 1,
+          updatedAt: stamp,
+        };
+      }
+    }
+    const index = this.#views.findIndex((candidate) => candidate.id === viewId);
+    const current = this.#views[index];
+    if (current === undefined) {
+      throw new LoomTableClientError('not-found', {
+        message: 'The View does not exist.',
+        httpStatus: 404,
+        code: 'NOT_FOUND',
+      });
+    }
+    const updated: View = {
+      ...current,
+      isDefault: true,
+      revision: view.revision + 1,
+      updatedAt: stamp,
+    };
+    this.#views[index] = updated;
+    return updated;
   }
 
   async createField(

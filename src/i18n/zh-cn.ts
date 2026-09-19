@@ -517,6 +517,7 @@ export const simplifiedChineseMessages = {
   'view.manage.repair.title': '修复视图配置',
   'view.manage.repairRequired': '复制前请先修复无效的字段引用。',
   'view.manage.rename': '重命名',
+  'view.manage.setDefault': '设为默认',
   'view.manage.restore': '恢复',
   'view.ready': 'LoomTable 已准备好开始 Plugin 开发。',
   'view.tabs': '视图',

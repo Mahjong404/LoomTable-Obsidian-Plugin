@@ -10,7 +10,7 @@ import {
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import { ensureButtonLabels, labelContainer } from './a11y';
-import { openContextMenu } from './context-menu';
+import { openContextMenu, type ContextMenuItem } from './context-menu';
 import { createUiIcon } from './icons';
 import { findBrokenViewFieldIds, type ViewConfigRepairInput } from './view-config-repair';
 import type {
@@ -65,6 +65,7 @@ export interface TableShellCallbacks {
   readonly onCopyView?: (viewId: string, name: string) => Promise<ViewCopyOutcome>;
   readonly onDeleteView?: (viewId: string) => Promise<ViewWriteOutcome>;
   readonly onRestoreView?: (viewId: string) => Promise<ViewWriteOutcome>;
+  readonly onSetDefaultView?: (viewId: string) => Promise<ViewWriteOutcome>;
   readonly onRepairView?: (
     viewId: string,
     repair: ViewConfigRepairInput,
@@ -694,9 +695,13 @@ export class TableShell {
     return form;
   }
 
-  #runViewWrite(kind: 'delete' | 'restore', viewId: string): Promise<void> {
+  #runViewWrite(kind: 'delete' | 'restore' | 'default', viewId: string): Promise<void> {
     const callback =
-      kind === 'delete' ? this.#callbacks.onDeleteView : this.#callbacks.onRestoreView;
+      kind === 'delete'
+        ? this.#callbacks.onDeleteView
+        : kind === 'restore'
+          ? this.#callbacks.onRestoreView
+          : this.#callbacks.onSetDefaultView;
     if (callback === undefined) return Promise.resolve();
     return callback(viewId)
       .then((outcome) => this.#handleManageOutcome(viewId, outcome))
@@ -806,6 +811,10 @@ export class TableShell {
         ),
       );
       tab.addEventListener('click', () => void this.#callbacks.onViewChange(view.id));
+      tab.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        this.#openTabContextMenu(view, event.clientX, event.clientY, tablist);
+      });
       tablist.append(tab);
     }
     const overflowButton = document.createElement('button');
@@ -842,6 +851,48 @@ export class TableShell {
       allTabs[next]?.focus();
     });
     return tablist;
+  }
+
+  #openTabContextMenu(view: View, x: number, y: number, host: HTMLElement): void {
+    const items: ContextMenuItem[] = [
+      {
+        label: this.#translate('view.manage.rename'),
+        icon: 'menu-edit',
+        disabled: this.#callbacks.onRenameView === undefined,
+        action: () => this.#openManageFor(view, 'rename'),
+      },
+      {
+        label: this.#translate('view.manage.copy'),
+        icon: 'menu-copy',
+        disabled: this.#callbacks.onCopyView === undefined,
+        action: () => this.#openManageFor(view, 'copy'),
+      },
+      {
+        label: this.#translate('view.manage.setDefault'),
+        icon: 'view-default',
+        disabled: view.isDefault || this.#callbacks.onSetDefaultView === undefined,
+        action: () => void this.#runViewWrite('default', view.id),
+      },
+      {
+        label: this.#translate('view.manage.delete'),
+        icon: 'menu-delete',
+        danger: true,
+        disabled: this.#callbacks.onDeleteView === undefined,
+        action: () => this.#openManageFor(view, 'delete'),
+      },
+    ];
+    openContextMenu({ items, x, y, host, label: view.name });
+  }
+
+  #openManageFor(view: View, edit: 'rename' | 'copy' | 'delete'): void {
+    this.#manageOpen = true;
+    this.#manageTableId = view.tableId;
+    this.#createOpen = false;
+    this.#manageEdit = edit === 'delete' ? null : { viewId: view.id, mode: edit };
+    this.#confirmDeleteId = edit === 'delete' ? view.id : null;
+    this.#repairViewId = null;
+    this.#manageFormError = null;
+    this.#rerender();
   }
 
   #syncTabOverflow(tablist: HTMLElement): void {

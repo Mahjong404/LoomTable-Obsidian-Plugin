@@ -9,6 +9,7 @@ function createMapView(id: string, name: string): View {
     tableId: 'table_01',
     name,
     type: 'map',
+    isDefault: false,
     config: { locationFieldId: 'field_location' },
     revision: 1,
     createdAt: '',
