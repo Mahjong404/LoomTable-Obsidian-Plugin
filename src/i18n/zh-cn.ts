@@ -227,7 +227,7 @@ export const simplifiedChineseMessages = {
   'grid.aggregate.min': '最小值',
   'grid.aggregate.max': '最大值',
   'grid.aggregate.loading': '…',
-  'grid.aggregate.error': '错误',
+  'grid.aggregate.error': '加载失败',
   'grid.search.clear': '清除搜索',
   'grid.search.label': '搜索记录',
 

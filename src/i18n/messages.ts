@@ -236,7 +236,7 @@ export const englishMessages = {
   'grid.aggregate.min': 'Min',
   'grid.aggregate.max': 'Max',
   'grid.aggregate.loading': '…',
-  'grid.aggregate.error': 'Error',
+  'grid.aggregate.error': 'load failed',
   'grid.search.clear': 'Clear Search',
   'grid.search.label': 'Search Records',
 

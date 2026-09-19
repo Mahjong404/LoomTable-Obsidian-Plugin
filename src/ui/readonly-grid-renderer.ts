@@ -1667,7 +1667,9 @@ export class ReadonlyGridRenderer {
     row.style.height = `${rowHeight}px`;
     const indexCell = createElement('div', 'loom-grid-aggregate-cell loom-grid-index-cell');
     indexCell.setAttribute('role', 'cell');
-    indexCell.append(createUiIcon('tool-convert'));
+    const symbol = createTextElement('span', 'Σ');
+    symbol.className = 'loom-grid-aggregate-symbol';
+    indexCell.append(symbol);
     indexCell.setAttribute('aria-label', this.#translate('grid.aggregate.menu'));
     row.append(indexCell);
     for (const field of fields) {
@@ -1695,7 +1697,7 @@ export class ReadonlyGridRenderer {
       cell.textContent = this.#translate('grid.aggregate.loading');
     } else if (state.aggregateStatus === 'error') {
       cell.dataset.status = 'error';
-      cell.textContent = this.#translate('grid.aggregate.error');
+      cell.textContent = `${this.#aggregateFnLabel(selected)} ${this.#translate('grid.aggregate.error')}`;
     } else {
       const value = state.aggregateResults?.[field.id]?.[selected];
       cell.textContent = `${this.#aggregateFnLabel(selected)} ${formatAggregateValue(value)}`;
@@ -1704,6 +1706,16 @@ export class ReadonlyGridRenderer {
       const onSetFieldAggregation = this.#callbacks.onSetFieldAggregation;
       if (onSetFieldAggregation === undefined) return;
       const items: ContextMenuEntry[] = [
+        ...(state.aggregateStatus === 'error' && selected !== undefined
+          ? [
+              {
+                label: this.#translate('grid.retry'),
+                dataAction: 'aggregate-retry',
+                action: () => void onSetFieldAggregation(field.id, selected),
+              } satisfies ContextMenuItem,
+              'separator' as const,
+            ]
+          : []),
         {
           label: this.#translate('grid.aggregate.none'),
           dataAction: 'aggregate-none',

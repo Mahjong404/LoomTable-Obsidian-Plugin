@@ -3788,6 +3788,11 @@
   color: var(--loom-text-error);
 }
 
+.loom-grid-aggregate-symbol {
+  font-weight: 600;
+  color: var(--loom-text-muted);
+}
+
 /* Record drag reorder (manual order) */
 
 .loom-grid-index-cell[draggable='true'] {

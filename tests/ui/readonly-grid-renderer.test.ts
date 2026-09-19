@@ -3481,7 +3481,11 @@ describe('Grid aggregate row', () => {
       '.loom-grid-aggregate-cell[data-field-id="field_count"]',
     );
     expect(cell?.dataset.status).toBe('error');
-    expect(cell?.textContent).toBe('Error');
+    expect(cell?.textContent).toBe('Sum load failed');
+    cell?.click();
+    expect(
+      container.querySelector<HTMLElement>('[data-action="aggregate-retry"]')?.textContent,
+    ).toBe('Retry save');
   });
 });
 
