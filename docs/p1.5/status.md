@@ -42,11 +42,11 @@
 
 在此记录最近一次有效交接即可，较早的实现摘要进入 `docs/development-log.md`，不要逐项复制 CI 历史。
 
-- 切片与需求 ID：切片 J —— Server S4（distinct 值清单）/S5（无筛选总数）/S6（聚合汇总行）/S7（手动排序+行拖拽）/S8（记录复制）客户端集成；附状态面板 icon 组间距/悬浮提示修复。
-- 代码/测试位置：`src/client/loomtable-client.ts` + `http-loomtable-client.ts`（queryFieldValues/duplicateRecord/moveRecord/aggregateRecords、unfilteredTotal、manualSort 解码）、`src/ui/grid-view-controller.ts`（queryFieldValues/duplicateRecord/moveRecord/applyViewManualSort、聚合 selections+重取钩子）、`src/ui/filter-values-popover.ts`（新，服务器 distinct 清单）、`src/ui/filter-builder.ts`（值编辑按钮接入 + 本地回退）、`src/ui/readonly-grid-renderer.ts`（N/M 行计数、汇总行、行拖拽、复制菜单项）、`src/ui/sort-panel.ts`（manualSort 开关与提示）、`src/ui/record-detail.ts`（⋯ 复制项）、`tests/client/changes.test.ts`/`view-management.test.ts`/`query.test.ts`（契约）、`grid-view-controller.test.ts`/`readonly-grid-renderer.test.ts`/`filter-builder.test.ts`/`sort-panel.test.ts`（行为）、`tests/fixtures/in-memory-loomtable-client.ts`（五端点 fixture）。
-- 已完成行为：FilterBuilder 值编辑器在有 `queryFieldValues` capability 时开服务器清单（display+count、emptyCount、search、分页、防陈旧、重试、本地回退、deleted 选项保留）；行计数显示 filtered/unfiltered `N/M 行`；行右键与 Detail ⋯ 可复制记录（无 body POST，复制后按失效链刷新）；Grid 底部汇总行每列可选 count/sum/avg/min/max，结果随当前 Filter 与 mutation/失效同步，error 可重试；SortPanel 可开关 manualSort 并提示显式排序覆盖；手动排序且未设显式排序时行索引格可拖拽，drop 计算 before/after 锚点调 moveRecord，显式排序或非手动视图下零拖拽行为；状态面板三模式 icon 与刷新钮等距（统一 gap），icon 仅 aria-label 无重复 title。
-- 实际检查命令、结果和未运行原因：`vitest run`（64 文件 859 tests 全绿）、`tsc --noEmit` 干净、`eslint` 0 error（584 warning 均为存量风格项）、`prettier --check .` 通过、`api:generate` 后 `git diff --exit-code transport.ts` 零 diff、`openapi/` 快照零改动、`git diff --check` 干净、`esbuild production` 通过。桌面证据流程已取消，未运行。
-- Review 发现及处理：styles-audit 禁止 `button.` 裸元素前缀选择器，汇总行交互态改走 `.clickable-icon` 限定；`QueryResult` 重查重置点保留 `unfilteredTotal` 避免计数闪动；`record-detail.ts` 漏跑 prettier 已补；manualSort 谓词修正 `selectedGridView` 可空。
-- PR/CI/合并状态（若实际存在）：未执行远端操作；本环境无 GitHub connector 结果，不声称 PR/CI 状态。
-- 未完成需求或阻塞：无合同/产品阻塞；S4–S8 全部接线完成。
-- 下一项具体实现：P1.5 需求表全项已交付/有基础；建议实际 Obsidian 验证 distinct 清单、汇总行与行拖拽观感后进入收尾或下一阶段。
+- 切片与需求 ID：ux-followup-2026-09-19 审计 12 项修复 —— Server 部署+迁移 006（`View.isDefault`、number `Field.config.format`）；插件侧行号格三件套、汇总行语义、footer 并入统计行、搜索零位移/去 title、面板互斥、manualSort 回滚、页签右键菜单、数字格式、行菜单「在下方新增行」、通用 toast 基建、桌面面包屑瘦身、编辑器 border-radius 特异性。
+- 代码/测试位置：`src/ui/number-format-panel.ts` + `toast.ts`（新组件）；`table-shell.ts`（页签右键、上下文合并胶囊）、`readonly-grid-renderer.ts`（列菜单数字格式入口、行菜单插入项、冲突 toast、toastStack 随 root 重挂）、`grid-view-controller.ts`（`setDefaultView`/`insertRecordBelow`/number format 入 `config.format`）、`undo-history.ts`（undo/redo 失败回栈重试）、`loomtable-view.ts`（undo/redo/undoTo/undoDelete/duplicate toast 包装）；client 层 `View.isDefault` + `setDefaultView` + `NumberFieldConfig` 解码（`config:{}` 兼容）。
+- 已完成行为：页签右键菜单（重命名/复制/设为默认/删除）走 Server `is_default`；数字列菜单「Number format」面板持久化千分位/小数位/货币并经 `Intl.NumberFormat` 渲染；行菜单在手动序下提供「在下方新增行」（create+move 两步）；toast 堆叠组件覆盖 undo/redo/undoDelete 失败、新冲突（「去解决」聚焦冲突区）、复制成功；桌面端工作区/数据集合并单胶囊、表名独立胶囊，窄屏折叠行为不变；编辑器 overlay 以 `.loom-grid-cell .loom-grid-editor`（0-2-0）压住 Obsidian 全局 input 规则。
+- 实际检查命令、结果和未运行原因：`vitest run`（66 文件 886 tests 全绿）、`tsc --noEmit` 干净、`eslint` 0 error（608 warning 均为存量风格项）、`prettier --check .` 通过、`api:generate` 后 `git diff --exit-code transport.ts` 零 diff、`esbuild production` 通过。生产 Server `v0.2.0-dev+43da70e` 已部署并应用迁移 006，`/v1/views/{id}/default` 返回 401（路由存在）。CDP 实测未在本轮执行。
+- Review 发现及处理：styles-audit 捕获 toast box-shadow 裸 rgba fallback → 改用 `--loom-panel-shadow`；行菜单插入项仅手动序可见（与服务端 manualSort 语义一致）；undo 失败原静默丢栈条目 → UndoHistory 失败回栈。
+- PR/CI/合并状态（若实际存在）：插件侧未推送远端；Server 合同提交 `43da70e` 已推送并部署。
+- 未完成需求或阻塞：审计 12 项全部交付；CDP 真机观感复核（面包屑瘦身、toast、数字格式面板）建议在下次会话执行。
+- 下一项具体实现：审计清单清零；可用 Obsidian CDP 做一轮 #9–#12 的真机验收。
