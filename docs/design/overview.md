@@ -1,6 +1,6 @@
 # LoomTable Obsidian Plugin 概要设计
 
-本文是产品架构背景，目录与 P0 流程是设计示意，不表示功能已全部实现。当前 P1.5 范围与开发顺序见 [实现要求](../p1.5/README.md)。
+本文是产品架构背景，目录与 P0 流程是设计示意，不表示功能已全部实现。P1.5 的实现规范与交付状态见 [P1.5 目录](../p1.5/README.md)；实际源码结构以 [Plugin 源码结构](../architecture/source-layout.md) 为准。
 
 ## 1. 文档目的
 
@@ -68,26 +68,7 @@ P0 不要求 Attachment、Relation、Formula、Lookup、Rollup 和其他高级 V
 
 ## 5. 模块总览
 
-```text
-src/
-├── main.ts
-├── obsidian/
-├── connection/
-├── navigation/
-├── client/
-├── cache/
-├── domain/
-├── ui/
-├── fields/
-├── views/
-│   ├── grid/
-│   └── map/
-├── maps/
-│   ├── renderer/
-│   ├── providers/
-│   └── credentials/
-└── settings/
-```
+实际源码目录与依赖规则以 [Plugin 源码结构](../architecture/source-layout.md) 为准，本文不维护第二份目录树。
 
 模块之间通过小 Interface 通信。UI 不直接创建 HTTP Client；Grid 不直接解析 API 响应；Field Renderer 不直接修改 Record。
 

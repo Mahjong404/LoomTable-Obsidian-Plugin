@@ -30,7 +30,7 @@
 
 ## 当前稳定边界
 
-Server 是事实来源；普通离线状态只读。Mutation 的 request/key/revision、完整返回 Record、Conflict 和 Change 语义保持。Attachment Detach 不是资源 Delete；资源 Delete/Restore/GC 不属于 P1.5，边界见 [附件决策](./design/attachment-resource-lifecycle-decision.md)。
+Server 是事实来源；普通离线状态只读。Mutation 的 request/key/revision、完整返回 Record、Conflict 和 Change 语义保持。Attachment Detach 不是资源 Delete；资源 Delete/Restore/GC 不属于 P1.5，边界见 [附件决策](./architecture/attachment-resource-lifecycle-decision.md)。
 
 ## 后续记录方式
 

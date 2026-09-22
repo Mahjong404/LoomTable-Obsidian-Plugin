@@ -74,10 +74,10 @@ loomtable ──┼─ opendesign       （复杂界面的方向探索）
 | 任务类型 | 必读 | 选读 |
 |---|---|---|
 | 任何 UI 任务（底线） | `docs/ui/interaction-hig.md`、`docs/ui/design-system.md` 对应节 | `docs/ui/README.md`（文档架构与规范层级） |
-| Grid 行为/性能/选择/编辑/虚拟化 | `docs/ui/grid-spec.md`、`docs/p1.5/view-grid.md`、`src/ui/readonly-grid-renderer.ts`、`src/ui/table-shell.ts` | `docs/design/detailed.md` |
+| Grid 行为/性能/选择/编辑/虚拟化 | `docs/ui/grid-spec.md`、`docs/p1.5/view-grid.md`、`src/ui/readonly-grid-renderer.ts`、`src/ui/table-shell.ts` | `docs/architecture/detailed-design.md` |
 | Filter/Sort/Display/搜索面板 | `interaction-hig.md` 浮层与查询节、`docs/p1.5/view-grid.md`、`src/ui/filter-builder.ts`、`sort-panel.ts`、`display-panel.ts` | `grid-spec.md` 查询语义 |
 | 记录详情/字段编辑/字段渲染 | `docs/p1.5/record-lifecycle.md`、`src/ui/record-detail.ts`、`field-value-editor.ts`、`field-renderer-registry.ts` | `interaction-hig.md` 表单与状态节 |
-| View 生命周期/页签/视图管理 | `docs/p1.5/view-grid.md`、`src/ui/loomtable-view.ts`、`table-shell.ts` | `docs/design/detailed.md` |
+| View 生命周期/页签/视图管理 | `docs/p1.5/view-grid.md`、`src/ui/loomtable-view.ts`、`table-shell.ts` | `docs/architecture/detailed-design.md` |
 | Map | `docs/ui/map-spec.md`、`docs/p1.5/map-location.md`、`src/views/map/`、`src/maps/` | `interaction-hig.md` 状态节 |
 | 新组件/新 primitive/新状态 | `design-system.md` 全部、`styles.css` 相关块、`tests/gallery/` | `frontend-design`（打磨建议） |
 | 视觉打磨/层级/间距/密度 | `design-system.md` + 本 Skill 反模式节 + `frontend-design` | `ux-designer` 视觉参考 |

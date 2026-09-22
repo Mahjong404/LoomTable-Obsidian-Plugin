@@ -11,7 +11,7 @@
 | [grid-spec.md](./grid-spec.md) | Grid 特性规范：性能与虚拟化、选择/编辑/剪贴板、查询与分页、列与行操作、Grid 状态 | 通用交互规则（引用 HIG） |
 | [map-spec.md](./map-spec.md) | Map 特性规范：配置边界、Provider/Renderer/Geocoding、Camera、Attribution、失败行为 | 通用交互规则（引用 HIG） |
 
-View 生命周期、记录生命周期等本期实现规范在 [docs/p1.5/](../p1.5/README.md)；它们是与正式规范同级的实现级合同，不比本目录更通用。
+View 生命周期、记录生命周期等 P1.5 实现规范在 [docs/p1.5/](../p1.5/README.md)；它们是与正式规范同级的实现级合同，不比本目录更通用。
 
 ## 规范冲突的裁决顺序
 

@@ -370,7 +370,7 @@ Detail/Sheet 提供：
 - 按当前合同提供添加、预览、打开、下载、移除记录引用和重试；
 - 文件名、大小、MIME、来源等元数据；
 - Managed Attachment 与 Vault Attachment 的来源区分；
-- 移除记录引用前确认；资源级删除/恢复/GC 按 [附件决策](../design/attachment-resource-lifecycle-decision.md) 独立处理；
+- 移除记录引用前确认；资源级删除/恢复/GC 按 [附件决策](../architecture/attachment-resource-lifecycle-decision.md) 独立处理；
 - 上传状态和 Record 引用保存状态分开显示。
 
 ## Grid 交互

@@ -1,5 +1,7 @@
 # P1.5 实现要求
 
+> **阶段属性**：P1.5 需求已全量交付（明细见 [状态表](./status.md)）。本目录保留为该阶段的范围定义与记录：`view-grid.md`、`map-location.md`、`record-lifecycle.md` 仍是相应已实现行为的有效实现合同；本文与 [workflow.md](./workflow.md) 保留为阶段范围记录与后续阶段的工作流参考。后续阶段若沿用本工作流，应新建对应阶段目录，不在本目录继续追加范围。
+
 本文是 Devin SWE2 开发 P1.5 的唯一范围入口。目标是在现有客户端上完成可持续使用的 Grid、View 管理、Map/Location 和单条 Record 生命周期。按 [开发工作流](./workflow.md) 执行，进度只写入 [状态表](./status.md)。本文描述目标行为，不表示这些功能已经交付。
 
 ## 范围与完成定义
@@ -34,7 +36,7 @@ Plugin 的固定合同来源由 [source.json](../../openapi/source.json) 记录�
 
 权威次序：用户当前要求 → 本目录的 P1.5 范围/产品选择 → 已发布 OpenAPI 的传输事实 → [Interaction HIG](../ui/interaction-hig.md) 的通用交互 → 现有代码与测试。实现规范不能改变 API 事实；若发现矛盾，报告具体请求/响应或本地合同位置，继续不受影响的工作，不猜接口。
 
-产品术语参考同级 Server 的 `CONTEXT.md`，字段数据规范参考 `docs/field-types.md`。只有 Plugin 仓库的 Devin 环境可直接使用固定快照、本文字段矩阵和现有测试，无需额外运行 Server。
+产品术语参考同级 Server 的 `CONTEXT.md`，字段数据规范参考 Server 仓库 `docs/field-types.md`（本仓库无此文件）。只有 Plugin 仓库的 Devin 环境可直接使用固定快照、本文字段矩阵和现有测试，无需额外运行 Server。
 
 ## 已有基础：复用并验证
 
