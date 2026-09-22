@@ -95,7 +95,7 @@ src/
 
 - 20k Records 下 Grid 可浏览和编辑。
 - Plugin 不因服务端一次返回全部数据而增长不可控内存。
-- Light、Dark、桌面、平板和手机布局可用。
+- Light、Dark、宽/窄容器布局和移动交互环境可用。
 - 主题适配使用 Obsidian CSS Variables，不绑定某个主题。
 - 服务不可用时显示缓存并进入只读或离线状态。
 - Conflict、AuthError、Readonly 和 ServerIncompatible 有明确 UI 状态。

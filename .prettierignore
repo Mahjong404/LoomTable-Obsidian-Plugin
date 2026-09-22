@@ -5,3 +5,4 @@ node_modules/
 openapi/loomtable-server.openapi.yaml
 README.md
 src/generated/transport.ts
+.agents/

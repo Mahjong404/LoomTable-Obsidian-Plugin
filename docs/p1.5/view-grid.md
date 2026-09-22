@@ -62,19 +62,19 @@ Map Default Camera、Map Filter、Location Field 修复与管理面板的修改�
 ### Filter Builder
 
 - 支持增加/删除规则和嵌套 AND/OR Group、切换组关系、字段/操作符/值编辑。根节点可以是规则或组；根深度为 1，最多深度 8、总计 100 个规则加组；每组至少一个子节点。
-- 草稿可暂时不完整；无效时禁用应用并说明位置。删除最后一个根规则表示无 filter；删除非根组最后一项时删除该空组并向上收敛，不能提交 children=[]。
+- 草稿可暂时不完整；无效草稿在对应位置就地标记错误且不提交，恢复合法后自动生效。删除最后一个根规则表示无 filter；删除非根组最后一项时删除该空组并向上收敛，不能提交 children=[]。
 - operator 只来自总要求的类型矩阵。变更字段或 operator 时，丢弃不再适用的 operand，并等待用户补全；不隐式把字符串转成数字/布尔。
 - `isEmpty/isNotEmpty` 必须省略 value，不能发送 null。其余 operator 必须有类型正确的非 null 值。Number 是有限数，Date 为 YYYY-MM-DD，Checkbox 是 boolean，Select/MultiSelect operand 均为单个 option ID（不是数组）。
 - Filter 可选择本字段保留的 deleted option，并明确标注，用于查询历史引用；这不同于新 Record 禁止新引入 deleted option。未知 option 不可用。
 - 文本 Filter operand 保留用户首尾空白。URL 的 contains/prefix 等 operand 可以是片段，不能使用只允许完整 HTTP URL 的 Cell 校验器。Server 负责 Unicode 匹配；客户端只验证结构，不计算匹配集合。
-- “应用”保存完整 View config；“清除筛选”也是显式应用无 filter 的操作；取消/关闭丢弃 Filter 草稿但不改变已保存 Query。关闭未提交草稿需要明确放弃确认；确认只是丢弃草稿，不产生请求。
+- Filter/Sort/Display 面板统一采用“草稿即时校验 + 防抖自动生效”模型：编辑产生草稿，经约 300ms 防抖后自动提交并保存完整 View config，不提供显式“应用/取消”按钮。“清除筛选”是显式提交无 filter 的操作；关闭面板不改变已保存 Query。存在未生效草稿时面板实例保持不被重建。
 - 显示已应用条件摘要/规则数量；无结果提供清除筛选和返回编辑入口。不要根据当前缓存推算其他页是否匹配。
 
 ### Sort
 
 - 简单表头操作循环“无排序 → 升序 → 降序 → 无排序”，默认 nulls=last。点击另一个字段切换为该字段的单字段排序。
 - 已有多字段排序时表头动作应打开排序面板并定位该字段，避免一次点击抹掉其他规则。
-- 多字段面板支持新增、删除、上移/下移、asc/desc、nulls first/last；最多 10 个不同 fieldId；采用草稿→应用/取消。
+- 多字段面板支持新增、删除、上移/下移、asc/desc、nulls first/last；最多 10 个不同 fieldId；与 Filter 采用同一防抖自动生效模型。
 - MultiSelect/Location/Attachment 不显示可执行排序。空排序由 Server 使用 createdAt ASC、id ASC；不要提交虚构的系统字段排序。
 - Server 追加 Record ID ASC 稳定尾序；Select 的 Active/Deleted 桶与空值顺序由 Server 处理，客户端不按 option name 重排。
 
@@ -106,7 +106,7 @@ Grid query body 只含合同字段 viewId/lifecycle/cursor/limit/projection/filt
 | 冻结 | frozenFieldIds | 可见字段的冻结开关；实际冻结区置于左侧，内部顺序取 columnOrder；取消冻结回到普通顺序 |
 | 行高 | rowHeight | compact/standard/comfortable，对应当前 30/36/44px；渲染与虚拟窗口测量使用同一数值来源 |
 
-显示面板统一草稿→应用/取消。宽度输入校验不能静默截断无效值；旧配置渲染可沿用防御性宽度 clamp。不要把“只保存配置但 UI 不生效”当完成。
+显示面板与 Filter/Sort 统一采用防抖自动生效模型。宽度输入校验不能静默截断无效值；旧配置渲染可沿用防御性宽度 clamp。不要把“只保存配置但 UI 不生效”当完成。
 
 解析顺序：从 active fields 得到合法字段集 → projection 得到可见集 → 按 columnOrder 排列可见字段 → 未列入 order 的可见字段按 position/id 补到末尾 → 按冻结标志稳定分为左侧冻结区与普通区。隐藏列不得因为仍在 columnOrder 而出现。
 

@@ -17,6 +17,7 @@
 - [Plugin 详细设计](./design/detailed.md)
 - [Attachment resource lifecycle decision](./design/attachment-resource-lifecycle-decision.md)
 - [产品范围](./product/scope.md)
+- [UI 文档入口（职责划分与规范层级）](./ui/README.md)
 - [LoomTable Interaction HIG](./ui/interaction-hig.md)
 - [UI Design System](./ui/design-system.md)
 - [Grid View 规范](./ui/grid-spec.md)

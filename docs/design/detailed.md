@@ -136,12 +136,12 @@ Conflict UI 必须展示本地提交值和服务端当前值，并提供：放�
 
 ## 7. 响应式实现
 
-- 桌面使用完整 Grid。
-- 平板保留 Grid，工具栏可折叠，交互支持触控。
-- 手机优先显示 Record 卡片和详情面板。
-- 手机横屏可以显示简化 Grid。
+空间/布局响应与环境/交互响应的两类规则以 [Interaction HIG 容器响应式节](../ui/interaction-hig.md#响应式主题与可访问性) 为准；本节只记录实现层要点。
+
+- 宽容器使用完整 Grid；中等容器保留 Grid，工具栏可折叠；窄容器优先 Record 卡片和详情面板，必要时提供横向滚动的简化 Grid。
 - Map View 使用触控拖动、缩放和 Marker 选择。
-- 所有布局使用容器查询或明确断点，避免依赖固定窗口宽度。
+- 布局适配按实际 container/pane 可用宽度实现，不得用 viewport 断点、设备名或宿主类名（如 `is-phone`）推断 pane 宽度；环境/交互能力适配（pointer/hover、touch、safe-area、reduced-motion 等）按 HIG 规则单独处理。
+- `styles.css` 现存少量 viewport 布局查询属已知偏离，后续逐步迁移到容器宽度判定。
 - P0 同时支持 Obsidian 桌面端和移动端。`manifest.json` 的 `minAppVersion` 固定为 `1.11.5`，以直接使用 SecretStorage；不为更低版本提供明文密钥兼容路径。
 
 ## 8. 错误和诊断
@@ -198,7 +198,7 @@ interface LoomTableViewIdentity {
 - Client HTTP 状态、错误码、Request ID 和重试映射测试。
 - 同一 Record FIFO、不同 Record 并行和 Conflict 暂停队列测试。
 - Grid 键盘和编辑测试。
-- Light/Dark、桌面/平板/手机布局测试。
+- Light/Dark、宽/窄容器与移动环境布局测试。
 - 20k 数据量虚拟化和滚动基准测试。
 - Provider Schema、URL/Origin 校验、Credential 脱敏和缺少配置状态测试。
 - Leaflet 生命周期、Provider 切换、OSM/天地图预设的无网络 adapter 测试。

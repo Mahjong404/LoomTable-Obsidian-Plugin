@@ -24,7 +24,7 @@ P1.5 的功能范围和自动化验证方式由 [P1.5 实现要求](../p1.5/READ
 - Dashboard/仪表盘的完整组件设计；
 - 具体实现框架或 CSS 文件组织。
 
-字段语义、View 数据合同、Mutation 和错误合同以 LoomTable Server 文档和 Plugin Client Contract 为准。
+`docs/ui/` 内各文档的职责划分与规范冲突的裁决顺序见 [UI 文档入口](./README.md)。字段语义、View 数据合同、Mutation 和错误合同以 LoomTable Server 文档和 Plugin Client Contract 为准。
 
 ## 规范关键词
 
@@ -54,6 +54,22 @@ LoomTable 采用“Obsidian Native 基础 + LoomTable 数据工作台组件”�
 - Server 是 Record、Field、View 和 Attachment 元数据的事实来源；
 - UI 不得用本地缓存或视觉成功状态伪造 Server 成功；
 - 新 View 和新组件必须复用既有状态、焦点和错误语义。
+
+### 设计优先级
+
+当设计目标相互冲突时，按以下优先级裁决（高在前）：
+
+1. 交互正确性；
+2. 数据完整性；
+3. Obsidian 宿主一致性；
+4. 信息密度；
+5. 多维表格工作流效率；
+6. 可访问性；
+7. 响应式与窄面板可用性；
+8. 视觉打磨；
+9. 装饰性美观。
+
+装饰性美观 MUST NOT 凌驾于前七项。组件的精致化通过层级、间距、密度、对齐和反馈质量实现，不通过装饰性视觉元素实现。
 
 ### 桌面与移动端
 
@@ -146,9 +162,12 @@ LoomTable 使用双模式交互：
 
 一个操作区域 SHOULD 只有一个 Primary。Danger 不得与普通操作使用相同的视觉层级。
 
+### 图标
+
+图标 provider、语义分层和使用原则的规范性定义见 [Design System 图标节](./design-system.md#图标)。
+
 ### Tooltip
 
-- 图标来源：插件默认图标使用 Lucide 风格 stroke SVG（`src/ui/icons.ts`、`src/ui/field-type-icon.ts`）；仅当 Tabler 明显更适配时采用；未来开放用户自选图标时候选集为 Tabler Icons；
 - 只有图标的操作 MUST 有 Tooltip；
 - Tooltip 不是唯一的可访问名称，元素同时 MUST 有 `aria-label` 或等价语义；
 - Tooltip 应说明动作，不重复整段状态文案；
@@ -199,13 +218,15 @@ Toolbar SHOULD 按以下顺序组织：
 
 ### Filter 与 Sort
 
-Filter 和 Sort 使用不同的提交规则：
+Filter、Sort 和 Display 面板统一采用“草稿即时校验 + 防抖自动生效”模型：
 
-- Filter MUST 始终采用“草稿 → 应用”；
-- 单字段 Sort 可以通过列标题点击或方向切换立即生效；
-- 多字段 Sort 和高级 Sort MUST 采用“草稿 → 应用”；
+- 面板内编辑产生草稿，草稿经本地校验后按防抖自动提交生效，不提供显式“应用”按钮；
+- 草稿校验不通过时，错误在对应条件行就地提示，不阻断继续编辑，也不提交非法查询；
+- 提交期间面板控件保持可用并反映 pending 状态，不得整面板锁定；
+- 单字段 Sort 可以通过列标题点击或方向切换立即生效，不进入面板草稿；
 - Filter Operator MUST 根据 Field Type 能力提供；
-- Filter/Sort 应用后旧 Cursor 必须失效并从正确的起点重新查询；
+- Filter/Sort 生效后旧 Cursor 必须失效并从正确的起点重新查询；
+- 工具栏 Filter/Sort 按钮 MUST 实时反映本地草稿中的条件数量与激活状态，不等服务端回写；
 - Plugin 不得只对当前缓存页执行本地筛选或排序来伪造 Server 结果。
 
 ## 保存、加载、错误与离线状态
@@ -447,13 +468,32 @@ Table ID + View ID + Record ID + Field ID
 
 ### 容器响应式
 
-界面 SHOULD 根据可用容器宽度，而不是 User Agent 或设备名称适配：
+响应式适配分为两类，规则不同：
+
+**空间/布局响应（Spatial/Layout Responsiveness）**
+
+组件与面板的布局适配 MUST 由 LoomTable 自身实际的 container/pane 可用宽度驱动。MUST NOT 用 viewport width、User Agent、设备名称或宿主环境类名（如 `is-phone`）推断一个 LoomTable View 的实际可用宽度——同一窗口宽度下，View 可能处于全宽、分栏、侧栏等不同容器。
 
 - 宽容器：完整 Toolbar、Grid 和 Detail Panel；
 - 中等容器：Toolbar 折叠，Detail Panel 可收起；
 - 窄容器：详情和 Sheet 优先，Grid 减少操作；
-- 移动端：触控和 Record Detail 优先；
+- 移动端视口：触控和 Record Detail 优先；
 - Dashboard 等未来组件必须具备确定性的网格重排规则。
+
+**环境/交互响应（Environment/Interaction Responsiveness）**
+
+当 UI 差异确实来自设备或交互环境（而非容器宽度）时，MAY 依据运行环境信息进行适配，例如：mobile host context、pointer/hover capability、触屏、`safe-area`、`prefers-reduced-motion`、`prefers-contrast`、print 等。典型场景：移动端专用底部操作栏、触控目标放大、Popover → Bottom Sheet、长按替代部分 hover/右键。
+
+此条款不放宽上一类规则：环境/交互信息 MUST NOT 被用来推断 pane 可用宽度。两类响应允许组合——同一个移动端 UI 仍须根据自身容器宽度做进一步布局适配。
+
+浮层形态的响应式决策 MUST 收敛在单一接缝：
+
+- 桌面宽容器使用 Popover，窄布局使用 Sheet/底部抽屉；
+- 判定宽度与切换逻辑由共享的单一入口决定，任何面板不得自行引入断点分支；
+- 面板默认不随窗口变窄自动变形；只有显式声明响应式的面板才切换为 Sheet——在多处复用的面板（如字段设置、查询构建）不得因宿主窗口变窄而改变形态；
+- 同一面板的触发控件在两种形态下保持一致，不随形态改变。
+
+触屏输入不得以 hover 为唯一路径：右键菜单、拖拽排序等指针型能力 MUST 提供触屏等价入口（长按、显式拖拽手柄等）。
 
 ### 键盘、触控和辅助技术
 
