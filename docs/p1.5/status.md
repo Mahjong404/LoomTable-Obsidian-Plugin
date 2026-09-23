@@ -6,7 +6,7 @@
 
 - **P1.5 已交付封存；后续 UI/UX 稳定化工作进入 [P1.6](../p1.6/README.md)。**
 - 2026-09-14：统筹文档已整理，尚未实施本次新增功能。
-- 读取的 Plugin HEAD：`c893cdbb1dc3e56a94f82990b26ca9cc8bf75263`；Server HEAD：`ab949d59c37680d53b4109e1502f8478b24cc655`。后续执行者启动时记录实际基线。
+- 读取的 Plugin HEAD：当时 main 基线（SHA 属历史重写前历史，不作为当前引用）；Server HEAD：`ab949d59c37680d53b4109e1502f8478b24cc655`。后续执行者启动时记录实际基线。
 - 已有 S1–S3 代码继续复用，按需求做针对性回归；附件资源生命周期为明确排除，不阻塞本期。
 - 切片 A 已交付：`LoomTableClient` 补齐 View 生命周期方法（recording-transport 测试覆盖路由/请求体/幂等键/错误解码）；Grid/Map 共用 `TableShell` 提供上下文 Select、`role="tablist"` View Tabs（稳定 View ID、同名加类型标注）、Add View 显式创建表单（Map 要求 active Location Field，取消零写入）、未确认创建 Intent 提示与重试/忽略；`ViewWriteCoordinator` 按 View 串行化写操作并处理 409 读回与已删除语义，未决创建经 `ViewCreateIntentStore` 持久化到 Plugin Settings（profile+origin 隔离）；GridViewController 提供 `createView`/`retryViewIntent`/`dismissViewIntent` 并在已选 View 删除后回退；`loomtable-view` 组合根已接线。
 - 切片 B 已交付：`TableShell` 新增 Manage Views 面板（活动列表 + `lifecycle=deleted` 回收列表，零活动视图可达）；View 重命名（PATCH 完整 config+expectedRevision）、复制（确认新名称；query 语义失效引用先要求修复，不静默丢 Filter；presentation 过期引用复制时清理）、软删除（命名确认、已删除幂等、选中回退 next→previous→空态）、恢复（按最新 deleted revision）；`view-config-repair` 暴露 `brokenFieldIds` 并支持显式移除 query 引用、Map Location Field 必选重选、presentation 过期随保存清理；写入冲突/未决/失败以 issue 行呈现 adopt-latest/re-edit/retry/dismiss；Map camera 保存与 Grid/Map 管理操作统一经 `ViewWriteCoordinator`，Map 导航实时刷新。

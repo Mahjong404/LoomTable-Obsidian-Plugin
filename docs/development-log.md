@@ -7,7 +7,7 @@
 - 合并重复计划，形成 View/Grid、Map/Location、Record 生命周期的实现规范、工作流和需求状态表。
 - 取消 smoke、安装用户插件包、真实窗口/公共瓦片与截图证据门禁；移除旧审计矩阵和重复残余要求。
 - 新功能尚待 Devin SWE2 实施，本次没有业务代码、合同或版本变更。
-- 本地阅读 HEAD 为 `c893cdbb1dc3e56a94f82990b26ca9cc8bf75263`；固定 API source 仍由 `openapi/source.json` 记录。
+- 本地阅读 HEAD 为当时 Plugin main 基线（2026-09-09 提交，SHA 属历史重写前历史，不作为当前引用）；固定 API source 仍由 `openapi/source.json` 记录。
 
 ## 已有实现摘要
 
@@ -24,9 +24,9 @@
 | S3 Attachment | PR #92/#94/#96/#98/#100 | 下载、宿主接线、上传后关联、Preview/Open、Detach 和受限 Retry |
 | S3 下载来源分流 | 原日志 S3-C3-C4 | Managed content GET；Vault 安全路径本地下载 |
 | S3 Date/Detail | PR #105/#107/#108 | Date 校验一致、标量/URL/Select/MultiSelect 详情编辑 |
-| 固定快照漂移修正 | 本地 HEAD `c893cdb` | sync 脚本不额外追加换行，快照与 Server 对齐 |
+| 固定快照漂移修正 | 本地 HEAD（当时 main） | sync 脚本不额外追加换行，快照与 Server 对齐 |
 
-历史最后的业务实现点记录为 `c40c8f6d812ba04752c4f67bb0ba621862a3e253`（PR #108）。上述实现仍以现有源码和测试为准；不因重新整理文档重做已经完成的基础。
+历史最后的业务实现点记录为 `c40c8f6d812ba04752c4f67bb0ba621862a3e253`（PR #108；属历史重写前提交，不在当前 main 上，可经 GitHub PR refs 核对）。上述实现仍以现有源码和测试为准；不因重新整理文档重做已经完成的基础。
 
 ## 当前稳定边界
 

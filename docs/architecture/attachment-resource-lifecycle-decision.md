@@ -4,6 +4,7 @@
 - Date: 2026-09-01
 - Scope: Plugin S3-C3-C3 documentation decision only
 - Current Plugin main at review: `4d6f79781ad0da5a679c8e76a737f74724302f8a`
+- Note: Plugin SHAs cited below (`4d6f797`, `634862e`, `748775a`) are pre-history-rewrite commits, not reachable on current `main`; verify via GitHub PR refs (`refs/pull/*`) or the local pre-scrub backup bundle.
 
 P1.5 note (2026-09-14): resource Delete/Restore/GC is outside the current milestone and does not block View/Grid, Map or Record lifecycle work. The future proposal below is reference only; execution at that phase starts at [P1.5](../p1.5/README.md).
 

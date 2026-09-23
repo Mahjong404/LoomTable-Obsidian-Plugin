@@ -4,7 +4,7 @@
 
 Grid View 是第一阶段的核心交互。它必须支持约 20k Records 的浏览、筛选、排序和编辑，同时避免把完整数据集转换成完整 DOM。
 
-本文保留 Grid 的通用设计。当前 P1.5 实现范围、已交付基础和具体行为以 [View 与 Grid](../p1.5/view-grid.md) 为准；已有 UpdateRecord 持久化队列继续复用，新增单条生命周期按 [Record 生命周期](../p1.5/record-lifecycle.md) 实施。逐字段合并、离线新写入和列虚拟化不在本期。
+本文保留 Grid 的通用设计。P1.5 实现范围、已交付基础和具体行为以 [View 与 Grid](../p1.5/view-grid.md) 为准；已有 UpdateRecord 持久化队列继续复用，新增单条生命周期按 [Record 生命周期](../p1.5/record-lifecycle.md) 实施。逐字段合并、离线新写入和列虚拟化不在 P1.5 交付范围。
 
 ## 结构
 
