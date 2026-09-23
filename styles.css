@@ -2769,7 +2769,7 @@
   color: var(--loom-text-error);
 }
 
-/* Field editor popover (外部组件式 create/edit) */
+/* Field editor popover (pointer-anchored create/edit) */
 
 .loom-field-editor {
   position: absolute;
@@ -3361,7 +3361,7 @@
   color: var(--loom-text-faint);
 }
 
-/* Detail: primary field prominence (外部产品式 record title row) */
+/* Detail: primary field prominence (record title row) */
 
 .loom-record-fields dt[data-primary='true'] {
   padding-top: 0;

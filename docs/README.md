@@ -10,6 +10,7 @@
 | `design/` | 产品/系统设计 | Plugin 职责、运行边界、用户流程、质量目标 |
 | `ui/` | UI/UX canonical 规范 | HIG、Design System、Grid/Map 特性规范（入口与层级见 [ui/README.md](./ui/README.md)） |
 | `architecture/` | 技术架构与工程决策 | Client 接口合同、源码/仓库结构、技术详细设计、ADR |
+| `p1.6/` | **当前阶段**：UI/UX 稳定化与打磨 | 阶段范围、允许工作与排除项 |
 | `p1.5/` | P1.5 阶段实现规范与记录（**已交付**） | View/Grid、Map/Location、Record 生命周期的实现级行为合同 |
 | `releases/` | 版本与发布记录 | 各版本基线与范围 |
 | `local/` | 本地研究/审计/探索材料（gitignored） | 不是正式规范，不入库 |
@@ -37,7 +38,11 @@
 - [Plugin 仓库结构与文件职责](./architecture/repository-layout.md)
 - [Attachment resource lifecycle decision](./architecture/attachment-resource-lifecycle-decision.md)
 
-## P1.5 实现规范与阶段记录（已交付）
+## 阶段实现规范与记录
+
+**当前阶段：[P1.6](./p1.6/README.md)** — UI/UX 稳定化与打磨（修复、对齐、技术债；不新增产品功能）。
+
+P1.5 已交付（实现规范仍为已交付行为的有效合同）：
 
 - [范围与需求定义](./p1.5/README.md) — 阶段属性与需求 ID
 - [View 与 Grid 实现规范](./p1.5/view-grid.md)

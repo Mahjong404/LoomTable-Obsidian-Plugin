@@ -1,6 +1,6 @@
 # LoomTable Obsidian Plugin 开发日志
 
-本文保留实现里程碑，当前任务与进度只见 [P1.5 要求](./p1.5/README.md) 和 [状态表](./p1.5/status.md)。下列 PR 是原日志记录的历史线索，本次没有重新查询远端 CI，不将历史记录作为当前实现已完成的证据。
+本文保留实现里程碑，当前任务与进度只见当前阶段文档（现 [P1.6](./p1.6/README.md)；P1.5 已交付，其进度见 [P1.5 状态表](./p1.5/status.md)）。下列 PR 是原日志记录的历史线索，本次没有重新查询远端 CI，不将历史记录作为当前实现已完成的证据。
 
 ## 2026-09-14：P1.5 统筹交接
 
@@ -100,7 +100,7 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - 状态：切片 H 完成；P1.5 需求表全部条目已交付。
 ## P1.5 后 UX 重排（导航/命令栏稳定分区 + Detail 右侧浮层）
 
-- 行为：Grid 导航行与命令行重构为稳定分区——`.loom-table-shell` 三段 `context | tabs | actions`（actions 钉右，tabs 横向滚动不换行），`.loom-grid-toolbar` 两段 `start | end`（search+filter/sort/display 居左，count+save-status+create+recycle+refresh 钉右）；Grid 行序改为导航行在上、命令行在下，与 Map 一致；Map 工具栏同模型（start=filter+provider，end=save-status+fitAll+saveCamera+create+refresh）；`.loom-save-status` 固定 6.5em 宽 + 状态色点（saving 脉冲），消除状态文字宽度抖动；clipboard 通知移出 toolbar 独占状态行；Detail 从底部块改为 `.loom-detail-host`/`.loom-map-details` 右侧浮层面板（`position:absolute`、`min(26rem,88%)`、`--loom-panel-shadow` token、`:empty{display:none}`），覆盖 Grid 与 Map；外部表格组件库 实测样式与本仓 外部多维表产品 惯例（钉右命令区、固定宽状态、右侧记录面板）为依据。
+- 行为：Grid 导航行与命令行重构为稳定分区——`.loom-table-shell` 三段 `context | tabs | actions`（actions 钉右，tabs 横向滚动不换行），`.loom-grid-toolbar` 两段 `start | end`（search+filter/sort/display 居左，count+save-status+create+recycle+refresh 钉右）；Grid 行序改为导航行在上、命令行在下，与 Map 一致；Map 工具栏同模型（start=filter+provider，end=save-status+fitAll+saveCamera+create+refresh）；`.loom-save-status` 固定 6.5em 宽 + 状态色点（saving 脉冲），消除状态文字宽度抖动；clipboard 通知移出 toolbar 独占状态行；Detail 从底部块改为 `.loom-detail-host`/`.loom-map-details` 右侧浮层面板（`position:absolute`、`min(26rem,88%)`、`--loom-panel-shadow` token、`:empty{display:none}`），覆盖 Grid 与 Map；成熟高密度表格产品的实测样式与本仓既有惯例（钉右命令区、固定宽状态、右侧记录面板）为依据。
 - 代码：src/ui/table-shell.ts（context/actions 分区）、src/ui/readonly-grid-renderer.ts（行序交换 + toolbar 分区 + `#renderClipboardNote`）、src/views/map/map-view.ts（工具栏分区 + save-status 入 end 组）、styles.css（分区规则、save-status 定宽与色点、detail 浮层、媒体查询）。
 - 测试：tests/gallery/scenarios.ts 新增 Layout 三场景（annotated zones、save-status 六态、detail 浮层）、gallery.test.ts +3 断言分区结构与浮层挂载；tests/views/map-view.test.ts 按钮顺序更新。
 - 检查：pnpm check 全绿（62 文件 736 tests、api diff 为空、build）；pnpm gallery 构建成功；git diff --check 干净。
@@ -109,24 +109,24 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 ## 2026-09-15 — UX 跟进：aria-label tooltip 修复 + 发丝线视觉
 
 - 修复：Obsidian 全局 pointerover 委托会把任何 aria-label 渲染成 .tooltip 浮层——容器级 aria-label（.loom-view-tabs 的 '视图'、.loom-table-shell/toolbar 的 'Grid 状态'）悬停时弹出错位 chip（用户截图确认）。新增 src/ui/a11y.ts labelContainer()（隐藏 span + aria-labelledby），约 20 处容器（region/toolbar/tablist/form/dialog/grid）改为 labelledby；显示型 aria-label（单元格 td、chip/list/card、detail body、conflict pre、行 title）直接删除（可见文本自足，tooltip 是重复噪声）；save-status 保留 aria-label（折叠为 ✓ 后仍可访问），删除多余 title 避免双重 tooltip。
-- 视觉（模仿 外部表格组件库/外部多维表产品 无边框观感，细节见 docs/ui/visual-style-comparison.md）：.loom-root 新增 --loom-grid-line(55%)/--loom-grid-line-strong(90%)/--loom-header-bg/--loom-accent-soft/--loom-on-accent/--loom-accent-hover/--loom-selection-bg；单元格/行/列头/视口边框全部改用发丝线；视图页签改药丸式（激活=accent 12% 底+accent 字）；工具栏按钮 ghost 化（无边框透明底+hover 底），筛选/排序/显示按 aria-pressed/expanded 呈 accent 激活态；'新增记录'升为 accent 实底主按钮（Grid 与 Map 同）；行内 ↗/× 仅在行 hover/focus-within 显现；工具栏新增 1px 竖分隔线（搜索|查询开关、filter|provider）。
+- 视觉（无边框高密度网格观感，细节见 docs/ui/visual-style-comparison.md）：.loom-root 新增 --loom-grid-line(55%)/--loom-grid-line-strong(90%)/--loom-header-bg/--loom-accent-soft/--loom-on-accent/--loom-accent-hover/--loom-selection-bg；单元格/行/列头/视口边框全部改用发丝线；视图页签改药丸式（激活=accent 12% 底+accent 字）；工具栏按钮 ghost 化（无边框透明底+hover 底），筛选/排序/显示按 aria-pressed/expanded 呈 accent 激活态；'新增记录'升为 accent 实底主按钮（Grid 与 Map 同）；行内 ↗/× 仅在行 hover/focus-within 显现；工具栏新增 1px 竖分隔线（搜索|查询开关、filter|provider）。
 - 测试：受影响断言更新为新契约（labelledby 解析隐藏标签文本），styles-audit、gallery 全绿；pnpm check 全绿（62 文件 736 tests）。
-- 文档：docs/ui/visual-style-comparison.md 新增——外部表格组件库/外部多维表产品/LoomTable 六维度逐项对比（真实 CSS 值）+ D1–D8 决策点。
+- 文档：docs/ui/visual-style-comparison.md 新增——外部参照产品与 LoomTable 六维度逐项对比（真实 CSS 值）+ D1–D8 决策点。
 
 ## 2026-09-15 — UX 跟进 2：列头类型图标 + 单元格选中态 + 基础右键菜单（D2/D4/D6）
 
 - D2 列头字段类型图标：新增 src/ui/field-type-icon.ts —— 10 种字段类型到 Lucide 风格 stroke SVG 的映射（createElementNS 构建，无 innerHTML），`.loom-field-type-icon` 0.875rem/`--loom-text-faint`；可排序列图标置于排序按钮内、不可排序列置于 header cell 内，字段名与排序交互不变；排序指示器 margin-inline-start:auto 钉右。
-- D4 外部表格组件库 式活动单元格：`.loom-grid-cell:focus/:focus-visible/:focus-within` 改为 `--loom-selection-bg` 底 + `inset 0 0 0 2px var(--loom-selection-border)` 内环（新增 token），z-index 3 覆盖冻结层；移除旧规则的 `position:relative`（会破坏 sticky 冻结列）；冻结聚焦单元格用不透明 `color-mix(accent 12%, bg-primary)` 防透底；`:focus-within` 保证内联编辑时环保持。
+- D4 活动单元格选中底+内环高亮方案：`.loom-grid-cell:focus/:focus-visible/:focus-within` 改为 `--loom-selection-bg` 底 + `inset 0 0 0 2px var(--loom-selection-border)` 内环（新增 token），z-index 3 覆盖冻结层；移除旧规则的 `position:relative`（会破坏 sticky 冻结列）；冻结聚焦单元格用不透明 `color-mix(accent 12%, bg-primary)` 防透底；`:focus-within` 保证内联编辑时环保持。
 - D6 基础右键菜单：新增 src/ui/context-menu.ts —— DOM 菜单（role=menu/menuitem、危险项 data-variant、分隔线、Esc/外部 pointerdown/host scroll 关闭、ArrowUp/Down 循环、指针坐标定位+边界 clamp、host 内 absolute）；单元格菜单=编辑/复制（不可序列化禁用）/打开详情/删除记录（经既有 confirmDangerousAction，无 onDeleteRecord 时不出现），行号单元格菜单=打开详情/删除记录；i18n 三键 en+zh-CN。未用 Obsidian `Menu` API——renderer 保持无 obsidian 依赖的 jsdom 可测边界，视觉经 token 对齐原生。
 - 测试：readonly-grid-renderer.test.ts +5（图标渲染与 aria-hidden、排序按钮带图标可点击、菜单项与 openDetails 闭环、Esc/外部点击关闭、删除走确认流）；styles-audit 焦点环断言更新为 --loom-selection-border。
 - 检查：62 文件 741 tests 全绿；lint 0 error；format/typecheck 干净；api diff 为空；esbuild production build 通过；已部署至 vault 插件目录（main.js 549,948B / styles.css 45,044B）。
 - 状态：待用户实测 D2/D4/D6 视觉与交互。
 
-## 2026-XX — P1.5 UX 对齐切片（U1–U14，外部表格组件库/外部多维表产品 参照）
+## 2026-XX — P1.5 UX 对齐切片（U1–U14，外部产品参照）
 
 - U1 列头右键菜单全量 + 新建字段：列头右键菜单（编辑字段/左右插入/隐藏/删除，主字段删除禁用，删除走确认）；末尾 `+` 表头格打开 `field-editor-panel`（10 种字段类型、select 选项+语义色）；client 新增 createField/updateField/deleteField/restoreField（Idempotency-Key、expectedRevision），InMemory fixture 同步实现。未改 Server——合同已含字段生命周期端点。
 - U2 select 语义色 chip：option color token → `--loom-select-*` 调色板变量，单选也渲染 chip；删除选项保留可访问状态。
-- U3/U12 选中模型：`#selection` 矩形选区（点击选中、Shift 扩选、行号整行、列头整列、Ctrl+A 全选、Ctrl+C 复制 TSV 经既有 clipboard host）；第二次点击进入编辑（外部表格组件库 模型）；选中态样式 + 底栏选中计数。
+- U3/U12 选中模型：`#selection` 矩形选区（点击选中、Shift 扩选、行号整行、列头整列、Ctrl+A 全选、Ctrl+C 复制 TSV 经既有 clipboard host）；第二次点击进入编辑（先选中再编辑的两段模型）；选中态样式 + 底栏选中计数。
 - U5 搜索命中高亮：gridState.search → `<mark>` 包裹匹配子串。
 - U7 底部状态栏：行数 + 视图名 + 选中计数。
 - U8 undo/redo：`src/ui/undo-history.ts` 本地命令栈（cell 编辑 before/after、新建→删除、删除→恢复、恢复→删除），controller `undo()/redo()` + GridState `canUndo/canRedo`，工具栏按钮 + Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y，`load()` 清空历史防陈旧 revision 重放。
@@ -166,7 +166,7 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 
 - 裸 button 主题泄漏根因：Obsidian 对 `button:not(.clickable-icon)`（0-1-1）施加 `background-color/border/border-radius`，盖过单类组件样式（0-1-0）——上轮 `box-shadow` 重置（0-2-1）生效但背景/边框仍漏。修复：所有无铬控件加官方豁免类 `clickable-icon`（`.loom-grid-sort`/`.loom-grid-open`/`.loom-grid-add-row`/`.loom-grid-add-field-button`/`.loom-record-detail-iconbtn`/`.loom-context-menu-item`/`.loom-view-tab-overflow`/字段编辑器类型项与色板等），`loom-button` 控件保留原生观感。
 - 行展开图标改纯 `:hover` 触发（移除 `:focus-within`，选中行不再残留 ↗）。
-- `+` 新建字段列回退为表头独占单格（行/画布模板不含 +track，下方为统一空白填充），外部表格组件库 式孤立 icon。
+- `+` 新建字段列回退为表头独占单格（行/画布模板不含 +track，下方为统一空白填充），孤立 icon（无容器按钮）。
 - Detail 移除空字段 `<details>` 折叠组：所有字段平铺可编辑（空值行点击即编辑），`record.detail.emptyFields` 键与 CSS 清理。
 - 验证：63 文件 793 tests 全绿；lint 0 error；format/typecheck 干净；已部署 vault（main.js 586,703B / styles.css 65,931B）；gallery bundle 已重建。
 
@@ -179,7 +179,7 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - 测试：renderer +2（状态面板含历史/刷新/已删除区、icon-only undo/redo 断言），recycle 测试改走 `toggle-status`/`.loom-status-panel`。
 - 验证：63 文件 794 tests 全绿；lint 0 error；format/typecheck 干净；openapi 无 diff；已部署 vault（main.js 590,044B / styles.css 68,261B）；gallery bundle 已重建。
 
-## 2026-XX — UX 跟进 7：ux-gap-2026-09-17 二轮审计落地批次 A–F（外部多维表产品/外部表格组件库 对齐）
+## 2026-XX — UX 跟进 7：ux-gap-2026-09-17 二轮审计落地批次 A–F（外部产品对齐）
 
 - **批次 A 闪屏三连修**：`finish(true)` 无变化也提交 → `jsonEqual` 守卫跳过；单元格 click 选中态/dblclick 进入编辑分离（行 dblclick 不再冒泡开详情）；`refresh()` 改走保留记录的 `load({preserveRecords:true})`——加载期不清空 `records`，视图删除回退等完整管线仍生效；外部 mutation 经 `applyExternalMutation` 原位 patch。面板锚定 bug 修复（挂载后 rect 测量差值）+ 右缘翻转 `loom-query-panel--end`；编辑器改覆盖式去胶囊 + 密集控件焦点环内描边。
 - **批次 B 即改即生效**：搜索图标折叠（展开后 300ms 防抖即搜、Enter 立即、Escape 收起）；FilterBuilder/SortPanel/DisplayPanel 三件套去 Apply/Cancel/丢弃确认——变更即防抖提交、builder 按 viewId 缓存防 revision bump 冲掉草稿、面板保持打开；计数 `N/M rows`（部分加载时显示已加载/总数）；删除去确认（grid 右键/详情/Map 详情即删 + `deletedNotice` 撤销条）；底部 `+` 即时插入草稿行（首格即编辑、提交走 onCreateRecord、空值失焦/Escape 取消），顶部 `+ ▾` 分拆钮（即时插入/打开表单）。
@@ -207,7 +207,7 @@ Server 是事实来源；普通离线状态只读。Mutation 的 request/key/rev
 - **S5**：控制器查询落地携带 unfilteredTotal（重查重置点保留旧值避免计数闪动）；行计数显示 `N/M 行`（filtered/unfiltered）。
 - **S8**：行右键菜单与 Detail ⋯ 菜单「复制记录」→ `duplicateRecord` 直调（不进 mutation 队列）+ 失效链刷新；`menu-duplicate` 图标。
 - **S4**：`filter-values-popover.ts`——select/multiSelect 值编辑器在有 `queryFieldValues` capability 时打开服务器清单（`display (count)`、`+ N 空值`、300ms 防抖 search、Load more、请求令牌防陈旧、错误重试）；无 capability/离线回退本地 options；deleted 选项保留并标注；FilterBuilder 值区改「选择值」按钮 + 已选摘要。
-- **S6**：外部多维表产品 式底部汇总行——`GridState.fieldAggregations/aggregateResults/aggregateStatus`（会话级不落 View 配置）；per-列菜单按字段类型提供 count（全类型）/sum·avg（number）/min·max（number+date）；查询替换、mutation、外部失效后按当前 Filter 重取；error 态点击重试；sticky 底部 + 冻结列对齐。
+- **S6**：sticky 底部汇总行——`GridState.fieldAggregations/aggregateResults/aggregateStatus`（会话级不落 View 配置）；per-列菜单按字段类型提供 count（全类型）/sum·avg（number）/min·max（number+date）；查询替换、mutation、外部失效后按当前 Filter 重取；error 态点击重试；sticky 底部 + 冻结列对齐。
 - **S7**：`GridViewConfig.manualSort` 编解码；SortPanel 顶部手动排序开关 + 显式排序覆盖提示；controller `applyViewManualSort`（coordinator 写配置）/`moveRecord`（锚点直调 + 重查，编辑失败表面化）；行索引格 `draggable`（`application/x-loom-record` MIME，dragover 标 `.is-drop-target`，drop 计算 before/after，自身 drop 忽略）；谓词 `manualSort===true && sort.length===0`——显式排序或非手动视图零拖拽行为。
 - **UI 修复**：状态面板三模式 icon 与刷新钮收入 `.loom-status-panel-actions` 统一 `gap: space-1` 等距；模式钮移除 `title`（浏览器 tooltip 与 Obsidian aria-label 提示重复）。
 - **测试**：changes.test +契约（values/query、aggregate、move、duplicate 请求体与解码）；view-management +manualSort 解码；controller +duplicate/move/manualSort/aggregate 生命周期；renderer +计数/汇总行/拖拽门控与锚点/复制菜单；filter-builder +popover 行为；sort-panel +开关。

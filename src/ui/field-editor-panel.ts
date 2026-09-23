@@ -62,7 +62,7 @@ interface OptionDraft {
 }
 
 /**
- * Opens the 外部组件式 field create/edit popover anchored at pointer
+ * Opens the pointer-anchored field create/edit popover
  * coordinates. Create mode offers the ten-type picker; edit mode fixes the
  * type and exposes the type-specific config (select options, attachment
  * limit). Closes on submit, Escape, outside pointerdown, or host scroll.

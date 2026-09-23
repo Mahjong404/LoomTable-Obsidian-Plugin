@@ -1,6 +1,6 @@
 # LoomTable Obsidian Plugin — 仓库内规则
 
-P1.5 工作流与权威文档索引见工作区根 `../AGENTS.md`，本文件只登记仓库级的验证方法。
+当前阶段（P1.6）范围与权威文档索引见 `docs/p1.6/README.md` 与工作区根 `../AGENTS.md`，本文件只登记仓库级的验证方法。
 
 ## UI/UX 工作入口
 

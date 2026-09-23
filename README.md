@@ -6,7 +6,7 @@ LoomTable 的 Obsidian 前端插件。Plugin 使用 TypeScript，通过 LoomTabl
 
 新建 Connection Profile 默认连接本机 Server 地址 `http://127.0.0.1:31201`；已有 Profile 会保留用户已保存的地址，不会静默迁移。
 
-[P1.5](./docs/p1.5/README.md) 已交付，进度明细见 [状态表](./docs/p1.5/status.md)。已有资源导航、View 管理与配置、Grid/Detail 字段编辑、持久化 Mutation 队列、Conflict、Map/Location、Attachment、Settings 和 Record 生命周期。历史实现摘要见 [开发日志](./docs/development-log.md)。
+当前阶段为 [P1.6](./docs/p1.6/README.md)（UI/UX 稳定化与打磨，不新增产品功能）。[P1.5](./docs/p1.5/README.md) 已交付，进度明细见 [状态表](./docs/p1.5/status.md)。已有资源导航、View 管理与配置、Grid/Detail 字段编辑、持久化 Mutation 队列、Conflict、Map/Location、Attachment、Settings 和 Record 生命周期。历史实现摘要见 [开发日志](./docs/development-log.md)。
 
 Map 默认使用 OpenStreetMap。天地图矢量、影像、地形及注记预设共用一个 Token 设置入口；Plugin 直连必须使用天地图浏览器端应用 Key，标准 WMTS `tk` 请求不需要安全密钥。仓库、测试和日志不包含真实 Key。
 
