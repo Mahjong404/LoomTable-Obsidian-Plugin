@@ -1221,6 +1221,50 @@ describe('GridViewController View management', () => {
     expect(controller.state.views.find((view) => view.id === 'view_01')?.name).toBe('Local name');
   });
 
+  it('syncs the whole View list after setting a default so siblings lose isDefault', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [
+        { ...createView(createGridConfig(false)), id: 'view_02', name: 'Map', isDefault: true },
+      ]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    const outcome = await controller.setDefaultView('view_01');
+
+    expect(outcome.status).toBe('saved');
+    expect(controller.state.views.filter((view) => view.isDefault).map((view) => view.id)).toEqual([
+      'view_01',
+    ]);
+  });
+
+  it('surfaces a sync issue when the post-default list refresh fails and retries it', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(1), createGridConfig(false), [
+        { ...createView(createGridConfig(false)), id: 'view_02', name: 'Map', isDefault: true },
+      ]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    vi.spyOn(client, 'listViews').mockRejectedValueOnce(
+      new LoomTableClientError('network', { message: 'offline' }),
+    );
+    const outcome = await controller.setDefaultView('view_01');
+
+    expect(outcome.status).toBe('saved');
+    // The write landed, but the sibling still looks default locally — that
+    // stale state must be surfaced, not silently kept.
+    expect(controller.state.viewWriteIssues['view_01']?.kind).toBe('unresolved');
+
+    const retried = await controller.retryViewWrite('view_01');
+    expect(retried?.status).toBe('saved');
+    expect(controller.state.viewWriteIssues['view_01']).toBeUndefined();
+    expect(controller.state.views.filter((view) => view.isDefault).map((view) => view.id)).toEqual([
+      'view_01',
+    ]);
+  });
+
   it('adopts the latest View on a conflict without reapplying stale edits', async () => {
     const client = new InMemoryLoomTableClient(
       createData(createRecords(1), createGridConfig(false)),

@@ -1,6 +1,7 @@
 import type { Field, GridViewConfig } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
+import { jsonEqual } from './json-equal';
 import {
   GRID_COLUMN_WIDTH_DEFAULT,
   GRID_COLUMN_WIDTH_MAX,
@@ -29,11 +30,69 @@ const ISSUE_KEYS: Record<DisplayPatchIssueReason, MessageKey> = {
 
 const ROW_HEIGHTS: readonly GridViewConfig['rowHeight'][] = ['compact', 'standard', 'comfortable'];
 
+interface DisplayDraft {
+  readonly order: string[];
+  readonly visible: Set<string>;
+  readonly widths: Map<string, string>;
+  readonly frozen: Set<string>;
+  readonly rowHeight: GridViewConfig['rowHeight'];
+}
+
+/** Plain comparable form of a Display draft — sets normalized to `order`. */
+interface DisplayDraftShape {
+  readonly order: readonly string[];
+  readonly visible: readonly string[];
+  readonly widths: Readonly<Record<string, string>>;
+  readonly frozen: readonly string[];
+  readonly rowHeight: GridViewConfig['rowHeight'];
+}
+
+function snapshotDisplayDraft(config: GridViewConfig, active: readonly Field[]): DisplayDraft {
+  const fieldsById = new Map(active.map((field) => [field.id, field]));
+  const seen = new Set<string>();
+  const order: string[] = [];
+  for (const fieldId of config.columnOrder) {
+    if (fieldsById.has(fieldId) && !seen.has(fieldId)) {
+      seen.add(fieldId);
+      order.push(fieldId);
+    }
+  }
+  for (const field of active) {
+    if (!seen.has(field.id)) order.push(field.id);
+  }
+  const visible =
+    config.projection.length === 0
+      ? new Set(active.map((field) => field.id))
+      : new Set(config.projection.filter((fieldId) => fieldsById.has(fieldId)));
+  const widths = new Map<string, string>();
+  for (const [fieldId, width] of Object.entries(config.columnWidths)) {
+    if (fieldsById.has(fieldId)) widths.set(fieldId, String(width));
+  }
+  const frozen = new Set(
+    config.frozenFieldIds.filter((fieldId) => visible.has(fieldId) && fieldsById.has(fieldId)),
+  );
+  return { order, visible, widths, frozen, rowHeight: config.rowHeight };
+}
+
+function draftShape(draft: DisplayDraft): DisplayDraftShape {
+  return {
+    order: [...draft.order],
+    visible: draft.order.filter((fieldId) => draft.visible.has(fieldId)),
+    widths: Object.fromEntries(
+      [...draft.widths].map(([fieldId, width]) => [fieldId, width.trim()]),
+    ),
+    frozen: draft.order.filter((fieldId) => draft.frozen.has(fieldId)),
+    rowHeight: draft.rowHeight,
+  };
+}
+
 export class DisplayPanel {
   readonly #translate: Translator;
   readonly #onApply: DisplayPanelOptions['onApply'];
   readonly #onInvalidate: (() => void) | undefined;
   readonly #fieldsById: ReadonlyMap<string, Field>;
+  readonly #fields: readonly Field[];
+  readonly #sourceDraft: DisplayDraftShape;
   #order: string[];
   #visible: Set<string>;
   #widths: Map<string, string>;
@@ -50,40 +109,48 @@ export class DisplayPanel {
     this.#onApply = options.onApply;
     this.#onInvalidate = options.onInvalidate;
 
-    const active = options.fields
+    this.#fields = options.fields
       .filter((field) => field.deletedAt === undefined)
       .sort((left, right) => left.position - right.position || left.id.localeCompare(right.id));
-    this.#fieldsById = new Map(active.map((field) => [field.id, field]));
+    this.#fieldsById = new Map(this.#fields.map((field) => [field.id, field]));
 
-    const seen = new Set<string>();
-    const order: string[] = [];
-    for (const fieldId of config.columnOrder) {
-      if (this.#fieldsById.has(fieldId) && !seen.has(fieldId)) {
-        seen.add(fieldId);
-        order.push(fieldId);
-      }
-    }
-    for (const field of active) {
-      if (!seen.has(field.id)) order.push(field.id);
-    }
-    this.#order = order;
+    const draft = snapshotDisplayDraft(config, this.#fields);
+    this.#order = draft.order;
+    this.#visible = draft.visible;
+    this.#widths = draft.widths;
+    this.#frozen = draft.frozen;
+    this.#rowHeight = draft.rowHeight;
+    this.#sourceDraft = draftShape(this.#currentDraft());
+  }
 
-    this.#visible =
-      config.projection.length === 0
-        ? new Set(active.map((field) => field.id))
-        : new Set(config.projection.filter((fieldId) => this.#fieldsById.has(fieldId)));
-
-    this.#widths = new Map();
-    for (const [fieldId, width] of Object.entries(config.columnWidths)) {
-      if (this.#fieldsById.has(fieldId)) this.#widths.set(fieldId, String(width));
-    }
-
-    this.#frozen = new Set(
-      config.frozenFieldIds.filter(
-        (fieldId) => this.#visible.has(fieldId) && this.#fieldsById.has(fieldId),
-      ),
+  /** True while the draft differs from the config the panel was built from or
+      an apply is still in flight — the host must not rebuild the panel then. */
+  hasPendingEdits(): boolean {
+    return (
+      this.#applyTimer !== null ||
+      this.#applying ||
+      this.#applyQueued ||
+      !jsonEqual(draftShape(this.#currentDraft()), this.#sourceDraft)
     );
-    this.#rowHeight = config.rowHeight;
+  }
+
+  /** True when the draft already matches the persisted config slice — used by
+      the host to rebuild the panel after an external View write lands. */
+  isInSyncWith(config: GridViewConfig): boolean {
+    return jsonEqual(
+      draftShape(this.#currentDraft()),
+      draftShape(snapshotDisplayDraft(config, this.#fields)),
+    );
+  }
+
+  #currentDraft(): DisplayDraft {
+    return {
+      order: [...this.#order],
+      visible: new Set(this.#visible),
+      widths: new Map(this.#widths),
+      frozen: new Set(this.#frozen),
+      rowHeight: this.#rowHeight,
+    };
   }
 
   render(): HTMLElement {

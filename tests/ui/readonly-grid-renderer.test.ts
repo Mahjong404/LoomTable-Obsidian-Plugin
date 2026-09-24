@@ -1297,6 +1297,71 @@ describe('Grid query controls', () => {
     container.remove();
   });
 
+  it('rebuilds the Display panel when the persisted config changes externally', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyDisplay: vi.fn(),
+    });
+    renderer.render(createState(1));
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-display"]')?.click();
+    const width = () =>
+      container.querySelector<HTMLInputElement>(
+        '.loom-display-panel li[data-field-id="field_name"] input[data-role="display-width"]',
+      );
+    expect(width()?.value).toBe('180');
+
+    // Another client wrote new widths to the same View while the panel is open.
+    const state = createState(1);
+    const view = state.views[0] as Extract<View, { type: 'grid' }>;
+    const next = {
+      ...state,
+      views: [
+        { ...view, revision: 2, config: { ...view.config, columnWidths: { field_name: 320 } } },
+      ],
+    };
+    renderer.render(next);
+
+    expect(width()?.value).toBe('320');
+    container.remove();
+  });
+
+  it('keeps a pending Display draft when an unrelated render lands', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const pending = new Promise<ViewWriteOutcome>(() => {});
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyDisplay: vi.fn(async () => pending),
+    });
+    renderer.render(createState(1));
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-display"]')?.click();
+    const width = container.querySelector<HTMLInputElement>(
+      '.loom-display-panel li[data-field-id="field_name"] input[data-role="display-width"]',
+    );
+    if (width === null) throw new Error('width input missing');
+    width.value = '240';
+    width.dispatchEvent(new Event('input', { bubbles: true }));
+
+    // A render with an externally-changed config must not clobber the draft
+    // that is still being applied.
+    const state = createState(1);
+    const view = state.views[0] as Extract<View, { type: 'grid' }>;
+    renderer.render({
+      ...state,
+      views: [
+        { ...view, revision: 2, config: { ...view.config, columnWidths: { field_name: 320 } } },
+      ],
+    });
+
+    const after = container.querySelector<HTMLInputElement>(
+      '.loom-display-panel li[data-field-id="field_name"] input[data-role="display-width"]',
+    );
+    expect(after?.value).toBe('240');
+    container.remove();
+  });
+
   it('hides a column that remains in columnOrder', () => {
     const container = document.createElement('div');
     document.body.append(container);

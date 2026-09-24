@@ -1640,7 +1640,57 @@ export class GridViewController {
   }
 
   async setDefaultView(viewId: string): Promise<ViewWriteOutcome> {
-    return this.#runViewWrite(viewId, (view, writes) => writes.setDefaultView(view));
+    const outcome = await this.#runViewWrite(viewId, (view, writes) => writes.setDefaultView(view));
+    // The Server clears isDefault on the previous default View at the same
+    // time, so the whole list has to come back — replacing only the target
+    // leaves the sibling marked default and disables its menu command.
+    if (outcome.status !== 'saved') return outcome;
+    this.#viewWritePending.add(viewId);
+    this.#publish({});
+    try {
+      await this.#syncDefaultViewList(viewId, outcome.view);
+    } finally {
+      this.#viewWritePending.delete(viewId);
+      this.#publish({});
+    }
+    return outcome;
+  }
+
+  async #syncDefaultViewList(viewId: string, savedView: View): Promise<void> {
+    const tableId = this.#state.selectedTableId;
+    if (tableId === null) return;
+    try {
+      const views = await this.#client.listViews(tableId);
+      if (this.#state.selectedTableId !== tableId) return;
+      this.#publish({ views });
+    } catch (error) {
+      if (this.#state.selectedTableId !== tableId) return;
+      const clientError = asClientError(error);
+      this.#viewWriteIssues.set(viewId, {
+        kind: 'unresolved',
+        message: clientError.details.message,
+      });
+      // The write already landed; the retry re-reads the list instead of
+      // re-sending it, so it always works from the freshest revisions.
+      this.#viewWriteRetries.set(viewId, {
+        view: savedView,
+        run: async (view) => {
+          try {
+            const views = await this.#client.listViews(tableId);
+            if (this.#state.selectedTableId === tableId) this.#publish({ views });
+            const latest = views.find((candidate) => candidate.id === view.id);
+            if (latest === undefined) {
+              return viewWriteFailed('not-found', 'The View is no longer available in this Table.');
+            }
+            return { status: 'saved', view: latest };
+          } catch (retryError) {
+            const failure = asClientError(retryError);
+            return { status: 'unresolved', kind: failure.kind, error: failure.details };
+          }
+        },
+      });
+      this.#publish({});
+    }
   }
 
   async applyViewFilter(viewId: string, filter: FilterNode | undefined): Promise<ViewWriteOutcome> {

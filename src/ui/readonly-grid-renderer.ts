@@ -303,6 +303,7 @@ export class ReadonlyGridRenderer {
   #sortPanelManual = false;
   #displayPanel: DisplayPanel | null = null;
   #displayPanelViewId: string | null = null;
+  #displayPanelFieldsKey = '';
   #createForm: RecordCreateForm | null = null;
   #clipboardNotice: string | null = null;
   #rowHeightAnchor: {
@@ -897,7 +898,20 @@ export class ReadonlyGridRenderer {
     } else if (this.#openPanel === 'display') {
       const onApplyDisplay = this.#callbacks.onApplyDisplay;
       if (onApplyDisplay === undefined) return null;
-      if (this.#displayPanel === null || this.#displayPanelViewId !== view.id) {
+      // Same gating as Filter/Sort: the open panel owns a draft with pending
+      // edits, but a clean draft must not keep a stale snapshot when the View
+      // config or the Field set changed externally.
+      const displayFieldsKey = state.fields
+        .filter((field) => field.deletedAt === undefined)
+        .map((field) => `${field.id}:${field.revision}`)
+        .join('|');
+      if (
+        this.#displayPanel === null ||
+        this.#displayPanelViewId !== view.id ||
+        (!this.#displayPanel.hasPendingEdits() &&
+          (this.#displayPanelFieldsKey !== displayFieldsKey ||
+            !this.#displayPanel.isInSyncWith(view.config)))
+      ) {
         this.#displayPanel = new DisplayPanel(view.config, {
           fields: state.fields,
           translate: this.#translate,
@@ -905,6 +919,7 @@ export class ReadonlyGridRenderer {
           onInvalidate: () => this.#rerenderSelf(),
         });
         this.#displayPanelViewId = view.id;
+        this.#displayPanelFieldsKey = displayFieldsKey;
       }
       host.append(this.#displayPanel.render());
     }
@@ -923,6 +938,8 @@ export class ReadonlyGridRenderer {
     this.#filterBuilder = null;
     this.#sortPanel = null;
     this.#displayPanel = null;
+    this.#displayPanelViewId = null;
+    this.#displayPanelFieldsKey = '';
     this.#createForm = null;
     this.#dismissOverlay();
     this.#rerenderSelf();
