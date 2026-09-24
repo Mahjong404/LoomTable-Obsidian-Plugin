@@ -352,6 +352,7 @@ Default Camera 是共享 View Config，临时相机是单个 Plugin 窗口状态
 - 基础层成功但注记层失败：显示图层降级提示，保留必须的 Attribution。
 - 首次打开 Map View、发送任何瓦片请求前提示：外部瓦片服务能从请求的瓦片坐标推断当前查看范围，并适用其自己的隐私政策。确认状态只保存在本地；切换到尚未确认的 Provider/Profile 时再次提示。
 - Tile Error 聚合后显示，不能为每一张失败瓦片弹出 Notice。
+- 瓦片状态条只在 `loading`、`error`、`configuration-required` 时占用视觉布局；`ready` 转换仍经 `aria-live` 通告，但不保留常驻成功条。
 - `VIEW_CONFIGURATION_REQUIRED` 与 Tile Provider 的 `configuration-required` 分开呈现：前者要求重选 Location Field，后者要求配置 Provider/Credential；任何一方故障都不能被另一方的状态覆盖。
 
 ## 12. 验收和测试

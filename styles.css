@@ -2412,6 +2412,18 @@
   z-index: 700;
 }
 
+/* Panes are stretched over the whole map; let pointer events fall through
+   empty pane areas and re-enable them on real interactive content only. */
+.loom-map-shell .leaflet-pane {
+  pointer-events: none;
+}
+
+.loom-map-shell .leaflet-marker-icon,
+.loom-map-shell .leaflet-interactive,
+.loom-map-shell .leaflet-popup {
+  pointer-events: auto;
+}
+
 .loom-map-shell .leaflet-control-container,
 .loom-map-shell .leaflet-top,
 .loom-map-shell .leaflet-bottom {

@@ -513,8 +513,9 @@ export class MapView {
         : [renderDiagnostic(translate('common.openDiagnostics'), errorDiagnostic(state.error))]),
     );
     this.#tileStatus.dataset.status = state.tileStatus;
+    const tileText = describeTileState(state, translate);
     this.#tileStatus.replaceChildren(
-      document.createTextNode(describeTileState(state, translate)),
+      document.createTextNode(tileText),
       ...(tileAction === null ? [] : [tileAction]),
       ...(state.tileError === null
         ? []
@@ -524,6 +525,14 @@ export class MapView {
               tileErrorDiagnostic(state.tileError),
             ),
           ]),
+    );
+    // Ready/quiet states stay announced through the live region but take no
+    // layout space; loading, error and configuration-required remain visible.
+    this.#tileStatus.classList.toggle(
+      'loom-visually-hidden',
+      tileAction === null &&
+        state.tileError === null &&
+        (state.tileStatus === 'ready' || tileText === ''),
     );
     this.#renderDetails(state, translate);
     this.#syncActionButtons(translate);

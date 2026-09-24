@@ -64,6 +64,33 @@ describe('MapView', () => {
     expect(container.childElementCount).toBe(0);
   });
 
+  it('collapses the tile status bar once tiles are ready while keeping live announcements', () => {
+    const container = document.createElement('div');
+    const view = new MapView(container, fakeController() as unknown as MapViewController, {
+      translate: createTranslator('en'),
+    });
+    view.mount();
+
+    view.renderState({ ...initialMapViewState(createMapView()), tileStatus: 'loading' });
+    const tileStatus = container.querySelector<HTMLElement>('.loom-map-tile-status');
+    expect(tileStatus?.dataset.status).toBe('loading');
+    expect(tileStatus?.classList.contains('loom-visually-hidden')).toBe(false);
+    expect(tileStatus?.textContent).toBe('Loading tiles…');
+
+    view.renderState({ ...initialMapViewState(createMapView()), tileStatus: 'ready' });
+    expect(tileStatus?.dataset.status).toBe('ready');
+    expect(tileStatus?.classList.contains('loom-visually-hidden')).toBe(true);
+    expect(tileStatus?.getAttribute('aria-live')).toBe('polite');
+    expect(tileStatus?.textContent).toBe('Tiles ready.');
+
+    view.renderState({
+      ...initialMapViewState(createMapView()),
+      tileStatus: 'error',
+    });
+    expect(tileStatus?.classList.contains('loom-visually-hidden')).toBe(false);
+    expect(tileStatus?.dataset.status).toBe('error');
+  });
+
   it('disables Map server actions in offline state', () => {
     const container = document.createElement('div');
     const controller = fakeController();
