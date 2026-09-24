@@ -411,7 +411,9 @@ export class ReadonlyGridRenderer {
     if (createOps !== null) root.append(createOps);
     const deleteNotice = this.#renderDeletedNotice(state);
     if (deleteNotice !== null) root.append(deleteNotice);
-    if (state.editError !== null) root.append(this.#renderEditError(state));
+    if (state.editError !== null || state.moveError !== null) {
+      root.append(this.#renderEditError(state));
+    }
     if (state.conflicts.length > 0) root.append(this.#renderConflicts(state));
 
     if (state.status === 'loading' && state.records.length === 0) {
@@ -1862,20 +1864,23 @@ export class ReadonlyGridRenderer {
     status.setAttribute('aria-live', 'assertive');
     const terminal = Object.values(state.editStatuses).some((value) => value === 'terminal');
     const idempotencyTerminal = state.editError?.code === 'IDEMPOTENCY_KEY_REUSED';
+    const moveOnly = state.editError === null && state.moveError !== null;
     status.append(
       createTextElement(
         'p',
-        terminal && idempotencyTerminal
-          ? this.#translate('grid.idempotencyTerminal')
-          : this.#translate('grid.editError'),
+        moveOnly
+          ? this.#translate('record.move.failed')
+          : terminal && idempotencyTerminal
+            ? this.#translate('grid.idempotencyTerminal')
+            : this.#translate('grid.editError'),
       ),
     );
-    if (state.editError !== null) {
+    for (const details of [state.editError, state.moveError?.details ?? null]) {
+      // A move-only failure already names itself in the title; its details
+      // would just repeat the same sentence.
+      if (details === null || (moveOnly && details === state.moveError?.details)) continue;
       status.append(
-        renderDiagnostic(
-          this.#translate('grid.diagnostic.error'),
-          errorDiagnostic(state.editError),
-        ),
+        renderDiagnostic(this.#translate('grid.diagnostic.error'), errorDiagnostic(details)),
       );
     }
     const failedRecordId = Object.entries(state.editStatuses).find(
@@ -3214,6 +3219,7 @@ export class ReadonlyGridRenderer {
       editStatuses: {},
       conflicts: [],
       editError: null,
+      moveError: null,
       editDrafts: [],
       editErrorRecordId: null,
       saveStatus: 'saved',

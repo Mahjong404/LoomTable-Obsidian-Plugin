@@ -108,6 +108,17 @@ export interface GridEditDraft {
   readonly rawValue: unknown;
 }
 
+/**
+ * A failed Record move. Kept apart from `editError`/`editStatuses` because a
+ * move does not go through the Mutation queue — recovery (a later successful
+ * move or an explicit refresh) must clear exactly this failure without
+ * touching Cell errors, drafts, or conflicts.
+ */
+export interface GridMoveError {
+  readonly recordId: string;
+  readonly details: LoomTableClientErrorDetails;
+}
+
 export interface GridState {
   readonly status: GridStatus;
   readonly phase: GridPhase;
@@ -132,6 +143,7 @@ export interface GridState {
   readonly editStatuses: Readonly<Record<string, GridEditStatus>>;
   readonly conflicts: readonly GridConflict[];
   readonly editError: LoomTableClientErrorDetails | null;
+  readonly moveError: GridMoveError | null;
   readonly editDrafts: readonly GridEditDraft[];
   readonly editErrorRecordId: string | null;
   readonly saveStatus: ViewSaveStatus;
@@ -387,6 +399,7 @@ const INITIAL_STATE: GridState = {
   editStatuses: {},
   conflicts: [],
   editError: null,
+  moveError: null,
   editDrafts: [],
   editErrorRecordId: null,
   saveStatus: 'saved',
@@ -1283,6 +1296,9 @@ export class GridViewController {
       nextCursor: preserveRecords ? this.#state.nextCursor : null,
       totalCount: preserveRecords ? this.#state.totalCount : null,
       unfilteredTotal: preserveRecords ? this.#state.unfilteredTotal : null,
+      // A stale move failure must not follow the user into another selection;
+      // an explicit refresh clears it only once fresh data has landed.
+      moveError: preserveRecords ? this.#state.moveError : null,
       ...(preserveRecords ? {} : { canUndo: false, canRedo: false, historyEntries: [] }),
     });
 
@@ -1426,6 +1442,22 @@ export class GridViewController {
     // Re-run the full selection pipeline so a View deleted elsewhere falls back
     // correctly, but keep the current rows mounted to avoid a loading flash.
     await this.load({ preserveRecords: true });
+    // An explicit refresh resolves a stale move failure — but only when no
+    // queued Mutation, Cell draft, or conflict is still outstanding, so the
+    // refresh can never mask an unresolved save error.
+    if (
+      (this.#state.status === 'ready' || this.#state.status === 'empty') &&
+      this.#state.moveError !== null &&
+      this.#dirtyRecords.size === 0 &&
+      this.#state.editDrafts.length === 0 &&
+      this.#state.conflicts.length === 0
+    ) {
+      const nextState = { ...this.#state, moveError: null };
+      this.#publish({
+        moveError: null,
+        saveStatus: gridSaveStatus(nextState, this.#isOffline(), false),
+      });
+    }
   }
 
   applyExternalMutation(record: LoomTableRecord, changeCursor?: string): void {
@@ -1767,14 +1799,31 @@ export class GridViewController {
   ): Promise<void> {
     const moveRecord = this.#client.moveRecord?.bind(this.#client);
     const tableId = this.#state.selectedTableId;
+    const fail = (): LoomTableClientError => {
+      const error = new LoomTableClientError('validation', {
+        message: this.#translate('record.move.failed'),
+      });
+      this.#publish({
+        moveError: { recordId, details: error.details },
+        saveStatus: this.#isOffline() ? 'offline-readonly' : 'error',
+      });
+      return error;
+    };
     if (moveRecord === undefined || tableId === null) {
-      throw this.#publishEditFailure(this.#translate('record.move.failed'));
+      throw fail();
     }
     try {
       const result = await moveRecord(tableId, recordId, anchors);
       this.#authoritativeRecords.set(recordId, result.record);
     } catch {
-      throw this.#publishEditFailure(this.#translate('record.move.failed'));
+      throw fail();
+    }
+    if (this.#state.moveError?.recordId === recordId) {
+      const nextState = { ...this.#state, moveError: null };
+      this.#publish({
+        moveError: null,
+        saveStatus: gridSaveStatus(nextState, this.#isOffline(), this.#dirtyRecords.size > 0),
+      });
     }
     const view = this.#state.views.find((candidate) => candidate.id === this.#state.selectedViewId);
     if (view !== undefined && isGridView(view)) {
@@ -2834,6 +2883,7 @@ function gridSaveStatus(state: GridState, offline: boolean, dirty = false): View
     return 'conflict';
   }
   if (
+    state.moveError !== null ||
     Object.values(state.editStatuses).some(
       (status) => status === 'error' || status === 'terminal',
     ) ||

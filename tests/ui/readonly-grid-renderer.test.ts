@@ -1715,6 +1715,7 @@ function createState(recordCount: number, update: Partial<GridState> = {}): Grid
     editStatuses: {},
     conflicts: [],
     editError: null,
+    moveError: null,
     editDrafts: [],
     editErrorRecordId: null,
     saveStatus: 'saved',

@@ -345,6 +345,7 @@ export function createGalleryState(update: Partial<GridState> = {}): GridState {
     editStatuses: {},
     conflicts: [],
     editError: null,
+    moveError: null,
     editDrafts: [],
     editErrorRecordId: null,
     saveStatus: 'saved',

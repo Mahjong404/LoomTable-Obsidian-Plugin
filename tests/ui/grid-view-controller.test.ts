@@ -1695,7 +1695,7 @@ describe('GridViewController query controls', () => {
     ]);
   });
 
-  it('publishes an edit error when the Record move fails', async () => {
+  it('marks a failed Record move as a move-scoped error', async () => {
     const client = new InMemoryLoomTableClient(
       createData(createRecords(1), createGridConfig(false)),
     );
@@ -1708,7 +1708,106 @@ describe('GridViewController query controls', () => {
     await expect(controller.moveRecord('record_01', {})).rejects.toMatchObject({
       kind: 'validation',
     });
-    expect(controller.state.editError?.message).toBe('The Record could not be moved.');
+    expect(controller.state.moveError).toMatchObject({
+      recordId: 'record_01',
+      details: { message: 'The Record could not be moved.' },
+    });
+    expect(controller.state.editError).toBeNull();
+    expect(controller.state.editStatuses).toEqual({});
+    expect(controller.state.saveStatus).toBe('error');
+  });
+
+  it('clears only the move error after a successful move', async () => {
+    const mutate = vi
+      .fn<(tableId: string, request: MutationRequest) => Promise<MutationResult>>()
+      .mockRejectedValueOnce(
+        new LoomTableClientError('validation', { message: 'The value is invalid.' }),
+      );
+    const client = withMutation(createData(createRecords(2), createGridConfig(false)), mutate);
+    const controller = new GridViewController(client);
+    await controller.load();
+    vi.spyOn(client, 'moveRecord').mockRejectedValueOnce(
+      new LoomTableClientError('server', { message: 'boundary' }),
+    );
+    await expect(controller.moveRecord('record_01', {})).rejects.toMatchObject({
+      kind: 'validation',
+    });
+    await expect(controller.editCell('record_02', 'field_name', 'Rejected')).rejects.toThrow(
+      'The value is invalid.',
+    );
+    expect(controller.state.editErrorRecordId).toBe('record_02');
+
+    await controller.moveRecord('record_01', { afterRecordId: 'record_02' });
+
+    expect(controller.state.moveError).toBeNull();
+    expect(controller.state.editError?.message).toBe('The value is invalid.');
+    expect(controller.state.editErrorRecordId).toBe('record_02');
+    expect(controller.state.editDrafts).toEqual([
+      { recordId: 'record_02', fieldId: 'field_name', rawValue: 'Rejected' },
+    ]);
+    expect(controller.state.saveStatus).not.toBe('saved');
+  });
+
+  it('keeps the move error of a different Record after a successful move', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    vi.spyOn(client, 'moveRecord').mockRejectedValueOnce(
+      new LoomTableClientError('server', { message: 'boundary' }),
+    );
+    await expect(controller.moveRecord('record_01', {})).rejects.toMatchObject({
+      kind: 'validation',
+    });
+
+    await controller.moveRecord('record_02', { afterRecordId: 'record_03' });
+
+    expect(controller.state.moveError?.recordId).toBe('record_01');
+    expect(controller.state.saveStatus).toBe('error');
+  });
+
+  it('clears the move error after an explicit refresh once nothing is pending', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(2), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    vi.spyOn(client, 'moveRecord').mockRejectedValueOnce(
+      new LoomTableClientError('server', { message: 'boundary' }),
+    );
+    await expect(controller.moveRecord('record_01', {})).rejects.toMatchObject({
+      kind: 'validation',
+    });
+
+    await controller.refresh();
+
+    expect(controller.state.moveError).toBeNull();
+    expect(controller.state.saveStatus).toBe('saved');
+  });
+
+  it('keeps the move error across a refresh while a Cell edit is pending', async () => {
+    let resolveMutation: ((result: MutationResult) => void) | undefined;
+    const mutate = vi.fn(
+      () => new Promise<MutationResult>((resolve) => (resolveMutation = resolve)),
+    );
+    const client = withMutation(createData(createRecords(2), createGridConfig(false)), mutate);
+    const controller = new GridViewController(client);
+    await controller.load();
+    vi.spyOn(client, 'moveRecord').mockRejectedValueOnce(
+      new LoomTableClientError('server', { message: 'boundary' }),
+    );
+    await expect(controller.moveRecord('record_01', {})).rejects.toMatchObject({
+      kind: 'validation',
+    });
+
+    const pending = controller.editCell('record_02', 'field_name', 'Saving');
+    await vi.waitFor(() => expect(controller.state.editDrafts).toHaveLength(1));
+    await controller.refresh();
+
+    expect(controller.state.moveError?.recordId).toBe('record_01');
+    resolveMutation?.(mutationResult('mutation_move_01', 'Saving', 2));
+    await pending;
   });
 
   it('rejects an invalid Filter draft without a View write', async () => {
@@ -2289,6 +2388,7 @@ function withMutation(
     listViews: (tableId) => client.listViews(tableId),
     query: (request) => client.query(request),
     mutate,
+    moveRecord: (tableId, recordId, request) => client.moveRecord(tableId, recordId, request),
   };
 }
 
@@ -2872,7 +2972,11 @@ describe('Record lifecycle', () => {
     expect(moveSpy).toHaveBeenCalledWith('table_01', created.id, {
       afterRecordId: 'record_01',
     });
-    expect(controller.state.editError?.message).toBe('The Record could not be moved.');
+    expect(controller.state.moveError).toMatchObject({
+      recordId: created.id,
+      details: { message: 'The Record could not be moved.' },
+    });
+    expect(controller.state.saveStatus).toBe('error');
     scheduler.stop();
   });
 
