@@ -665,6 +665,13 @@ function createScalarFieldEditor(
     });
   });
 
+  if (field.type === 'select' || field.type === 'date') {
+    editor.addEventListener('change', () => {
+      if (saving) return;
+      void submit();
+    });
+  }
+
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     void submit();

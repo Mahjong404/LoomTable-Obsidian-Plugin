@@ -169,7 +169,6 @@ describe('Record Detail scalar field editing', () => {
     expect(selectEditor.textContent).toContain('Deleted option');
     selectEditor.value = 'option_active';
     selectEditor.dispatchEvent(new Event('change', { bubbles: true }));
-    selectForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(2));
     expect(onFieldEdit.mock.calls[1]?.[2]).toBe('option_active');
 
@@ -194,6 +193,116 @@ describe('Record Detail scalar field editing', () => {
     multiForm.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(3));
     expect(onFieldEdit.mock.calls[2]?.[2]).toEqual(['option_active']);
+  });
+
+  it('saves a Select choice immediately on change and closes the editor', async () => {
+    const container = document.createElement('div');
+    const onFieldEdit = vi.fn(
+      async (
+        _recordId: string,
+        fieldId: string,
+        value: JsonValue,
+        sourceRecord: LoomTableRecord,
+      ): Promise<LoomTableRecord> => ({
+        ...sourceRecord,
+        revision: sourceRecord.revision + 1,
+        values: { ...sourceRecord.values, [fieldId]: value },
+      }),
+    );
+    const detail = createRecordDetail(createRecord({ field_select: 'option_active' }), {
+      fields: [createSelectField('field_select', 'Select', 'select')],
+      translate: createTranslator('en'),
+      callbacks: { onFieldEdit },
+    });
+    container.append(detail);
+    document.body.append(container);
+
+    detail.querySelector<HTMLElement>('.loom-record-field-editable')?.click();
+    const select = detail.querySelector<HTMLSelectElement>(
+      '.loom-record-field-editor[data-field-id="field_select"] select',
+    );
+    expect(select).not.toBeNull();
+    if (select === null) return;
+    select.value = 'option_deleted';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(1));
+    expect(onFieldEdit.mock.calls[0]?.[2]).toBe('option_deleted');
+    await vi.waitFor(() =>
+      expect(detail.querySelector('.loom-record-field-editor')).toBeNull(),
+    );
+    expect(document.activeElement).toBe(
+      detail.querySelector<HTMLElement>('.loom-record-field-editable'),
+    );
+  });
+
+  it('saves a Date selection immediately on change', async () => {
+    const container = document.createElement('div');
+    const onFieldEdit = vi.fn(
+      async (
+        _recordId: string,
+        fieldId: string,
+        value: JsonValue,
+        sourceRecord: LoomTableRecord,
+      ): Promise<LoomTableRecord> => ({
+        ...sourceRecord,
+        revision: sourceRecord.revision + 1,
+        values: { ...sourceRecord.values, [fieldId]: value },
+      }),
+    );
+    const detail = createRecordDetail(createRecord({ field_date: '2026-01-02' }), {
+      fields: [createField('field_date', 'Date', 'date')],
+      translate: createTranslator('en'),
+      callbacks: { onFieldEdit },
+    });
+    container.append(detail);
+    document.body.append(container);
+
+    detail.querySelector<HTMLElement>('.loom-record-field-editable')?.click();
+    const editor = detail.querySelector<HTMLInputElement>(
+      '.loom-record-field-editor[data-field-id="field_date"] input[type="date"]',
+    );
+    expect(editor).not.toBeNull();
+    if (editor === null) return;
+    editor.value = '2026-03-04';
+    editor.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(1));
+    expect(onFieldEdit.mock.calls[0]?.[2]).toBe('2026-03-04');
+    await vi.waitFor(() =>
+      expect(detail.querySelector('.loom-record-field-editor')).toBeNull(),
+    );
+  });
+
+  it('keeps the picked value and error when an immediate save fails', async () => {
+    const container = document.createElement('div');
+    const onFieldEdit = vi
+      .fn()
+      .mockRejectedValue(new LoomTableClientError('network', { message: 'raw detail' }));
+    const detail = createRecordDetail(createRecord({ field_select: 'option_active' }), {
+      fields: [createSelectField('field_select', 'Select', 'select')],
+      translate: createTranslator('en'),
+      callbacks: { onFieldEdit },
+    });
+    container.append(detail);
+    document.body.append(container);
+
+    detail.querySelector<HTMLElement>('.loom-record-field-editable')?.click();
+    const select = detail.querySelector<HTMLSelectElement>(
+      '.loom-record-field-editor[data-field-id="field_select"] select',
+    );
+    expect(select).not.toBeNull();
+    if (select === null) return;
+    select.value = 'option_deleted';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+
+    await vi.waitFor(() =>
+      expect(detail.querySelector('.loom-record-field-error')?.textContent).toContain(
+        'save',
+      ),
+    );
+    expect(select.value).toBe('option_deleted');
+    expect(document.activeElement).toBe(select);
   });
 
   it('keeps unavailable Select and MultiSelect options safe in Detail editing', () => {

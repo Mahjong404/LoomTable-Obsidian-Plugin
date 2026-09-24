@@ -441,6 +441,7 @@ Table ID + View ID + Record ID + Field ID
 - 顶部显示 Primary Field 和 Record 操作；
 - 字段按 Field 顺序展示；
 - 每个字段统一显示 Label、Value、Editor、Error 和 Save State；
+- 单次交互即可确定完整值的字段即选即存：Checkbox 点击即提交，Select/Date 在 change 后立即经 `onFieldEdit` 队列提交并关闭编辑器；文本、多值和复合字段保留显式保存/取消；保存失败保留所选值并就地显示字段级错误；
 - 桌面端优先使用 Detail Panel；
 - 移动端优先使用 Sheet；
 - Grid、Map 和未来 View 点击记录时复用同一种 Detail 语义；
