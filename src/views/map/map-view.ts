@@ -1,14 +1,10 @@
 import type {
-  Base,
   Field,
   FilterNode,
   JsonValue,
   LocationValue,
   LoomTableRecord,
   MutationValue,
-  Table,
-  View,
-  Workspace,
 } from '../../client/loomtable-client';
 import { createTranslator, type Translator } from '../../i18n';
 import type { MessageKey } from '../../i18n/messages';
@@ -30,66 +26,12 @@ import { FilterBuilder } from '../../ui/filter-builder';
 import { createRecordCreateForm, type RecordCreateForm } from '../../ui/record-create-form';
 import type { LocationPreviewHandle } from '../../ui/location-preview';
 import { renderSaveStatus } from '../../ui/save-status';
-import {
-  TableShell,
-  type DeletedViewsStatus,
-  type TableShellCallbacks,
-} from '../../ui/table-shell';
-import type { ViewConfigRepairInput } from '../../ui/view-config-repair';
-import type {
-  PendingViewCreateIntent,
-  ViewCopyOutcome,
-  ViewCreateInput,
-  ViewCreateOutcome,
-  ViewIssueAction,
-  ViewWriteIssue,
-  ViewWriteOutcome,
-} from '../../ui/view-write-coordinator';
 import type { MapViewController } from './map-view-controller';
 import type { MapViewState } from './map-view-model';
 
 import { ensureButtonLabels, labelContainer } from '../../ui/a11y';
-export interface MapViewNavigation {
-  readonly workspaces: readonly Workspace[];
-  readonly bases: readonly Base[];
-  readonly tables: readonly Table[];
-  readonly views: readonly View[];
-  readonly fields: readonly Field[];
-  readonly pendingViewIntents: readonly PendingViewCreateIntent[];
-  readonly deletedViews: readonly View[];
-  readonly deletedViewsStatus: DeletedViewsStatus;
-  readonly viewWritePending: readonly string[];
-  readonly viewWriteIssues: Readonly<Record<string, ViewWriteIssue>>;
-  readonly selectedWorkspaceId: string | null;
-  readonly selectedBaseId: string | null;
-  readonly selectedTableId: string | null;
-  readonly selectedViewId: string | null;
-  readonly onWorkspaceChange: (workspaceId: string) => void | Promise<void>;
-  readonly onBaseChange: (baseId: string) => void | Promise<void>;
-  readonly onTableChange: (tableId: string) => void | Promise<void>;
-  readonly onViewChange: (viewId: string) => void | Promise<void>;
-  readonly onCreateView?: (input: ViewCreateInput) => Promise<ViewCreateOutcome>;
-  readonly onRetryViewIntent?: (intentId: string) => void | Promise<void>;
-  readonly onDismissViewIntent?: (intentId: string) => void | Promise<void>;
-  readonly onManageViews?: () => void | Promise<void>;
-  readonly onCloseManageViews?: () => void;
-  readonly onRenameView?: (viewId: string, name: string) => Promise<ViewWriteOutcome>;
-  readonly onCopyView?: (viewId: string, name: string) => Promise<ViewCopyOutcome>;
-  readonly onDeleteView?: (viewId: string) => Promise<ViewWriteOutcome>;
-  readonly onRestoreView?: (viewId: string) => Promise<ViewWriteOutcome>;
-  readonly onSetDefaultView?: (viewId: string) => Promise<ViewWriteOutcome>;
-  readonly onRepairView?: (
-    viewId: string,
-    repair: ViewConfigRepairInput,
-  ) => Promise<ViewWriteOutcome>;
-  readonly onResolveViewIssue?: (
-    viewId: string,
-    action: ViewIssueAction,
-  ) => void | Promise<unknown>;
-}
 export interface MapViewOptions {
   readonly translate?: Translator;
-  readonly navigation?: MapViewNavigation;
   readonly onClusterNextPage?: () => void | Promise<void>;
   readonly onClusterRetry?: () => void | Promise<void>;
   readonly onTileRetry?: () => void | Promise<void>;
@@ -179,9 +121,6 @@ export class MapView {
   readonly #actionButtons = new Map<HTMLButtonElement, MapActionButtonSpec>();
   readonly #clusterActionButtons = new Set<HTMLButtonElement>();
   #focusedAction: MapAction | null = null;
-  #navigation: MapViewNavigation | null = null;
-  #navShell: TableShell | null = null;
-  #navElement: HTMLElement | null = null;
   #filterOpen = false;
   #filterBuilder: FilterBuilder | null = null;
   #filterViewId: string | null = null;
@@ -211,15 +150,6 @@ export class MapView {
     toolbar.className = 'loom-map-toolbar';
     toolbar.setAttribute('role', 'toolbar');
     labelContainer(toolbar, translate('map.region'));
-    this.#navigation = this.options.navigation ?? null;
-    let navigation: HTMLElement | null = null;
-    if (this.#navigation !== null) {
-      this.#navShell = new TableShell(translate, this.#navigationCallbacks(this.#navigation), {
-        className: 'loom-map-navigation',
-      });
-      navigation = this.#navShell.render(this.#navigation);
-      this.#navElement = navigation;
-    }
     const provider =
       this.options.providers === undefined || this.options.selectedProvider === undefined
         ? null
@@ -314,16 +244,7 @@ export class MapView {
     details.className = 'loom-map-details';
     details.setAttribute('role', 'region');
     labelContainer(details, translate('record.details'));
-    root.append(
-      ...(navigation === null ? [] : [navigation]),
-      toolbar,
-      filterHost,
-      createHost,
-      status,
-      tileStatus,
-      mapContainer,
-      details,
-    );
+    root.append(toolbar, filterHost, createHost, status, tileStatus, mapContainer, details);
     ensureButtonLabels(root);
     this.#container.replaceChildren(root);
     this.#status = status;
@@ -333,20 +254,6 @@ export class MapView {
     this.#unsubscribe = this.#controller.subscribe((state) => this.renderState(state));
     this.#controller.mount(mapContainer);
     void this.#controller.load();
-  }
-
-  updateNavigation(navigation: MapViewNavigation): void {
-    this.#navigation = navigation;
-    if (this.#navShell === null || this.#navElement === null || !this.#navElement.isConnected) {
-      return;
-    }
-    const next = this.#navShell.render(navigation);
-    this.#navElement.replaceWith(next);
-    this.#navElement = next;
-  }
-
-  openViewCreateForm(preset?: { type?: 'grid' | 'map'; locationFieldId?: string }): void {
-    this.#navShell?.openCreateForm(preset);
   }
 
   #renderFilterPanel(state: MapViewState, translate: Translator): void {
@@ -422,41 +329,6 @@ export class MapView {
     host.replaceChildren(this.#createForm.element);
   }
 
-  #navigationCallbacks(navigation: MapViewNavigation): TableShellCallbacks {
-    return {
-      onWorkspaceChange: (workspaceId) => this.#navigation?.onWorkspaceChange(workspaceId),
-      onBaseChange: (baseId) => this.#navigation?.onBaseChange(baseId),
-      onTableChange: (tableId) => this.#navigation?.onTableChange(tableId),
-      onViewChange: (viewId) => this.#navigation?.onViewChange(viewId),
-      ...(navigation.onCreateView === undefined
-        ? {}
-        : { onCreateView: (input: ViewCreateInput) => this.#navigation!.onCreateView!(input) }),
-      ...(navigation.onRetryViewIntent === undefined
-        ? {}
-        : {
-            onRetryViewIntent: (intentId) => this.#navigation?.onRetryViewIntent?.(intentId),
-            onDismissViewIntent: (intentId) => this.#navigation?.onDismissViewIntent?.(intentId),
-          }),
-      ...(navigation.onManageViews === undefined
-        ? {}
-        : {
-            onManageViews: () => this.#navigation?.onManageViews?.(),
-            onCloseManageViews: () => this.#navigation?.onCloseManageViews?.(),
-            onRenameView: (viewId: string, name: string) =>
-              this.#navigation!.onRenameView!(viewId, name),
-            onCopyView: (viewId: string, name: string) =>
-              this.#navigation!.onCopyView!(viewId, name),
-            onDeleteView: (viewId: string) => this.#navigation!.onDeleteView!(viewId),
-            onRestoreView: (viewId: string) => this.#navigation!.onRestoreView!(viewId),
-            onSetDefaultView: (viewId: string) => this.#navigation!.onSetDefaultView!(viewId),
-            onRepairView: (viewId: string, repair: ViewConfigRepairInput) =>
-              this.#navigation!.onRepairView!(viewId, repair),
-            onResolveViewIssue: (viewId: string, action: ViewIssueAction) =>
-              this.#navigation?.onResolveViewIssue?.(viewId, action),
-          }),
-    };
-  }
-
   destroy(): void {
     this.#destroyed = true;
     this.#unsubscribe?.();
@@ -471,9 +343,6 @@ export class MapView {
     this.#errorActionButton = null;
     this.#lastState = null;
     this.#focusedAction = null;
-    this.#navigation = null;
-    this.#navShell = null;
-    this.#navElement = null;
     this.#filterBuilder = null;
     this.#filterHost = null;
     this.#filterOpen = false;

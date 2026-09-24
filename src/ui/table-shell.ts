@@ -76,10 +76,6 @@ export interface TableShellCallbacks {
   ) => void | Promise<unknown>;
 }
 
-export interface TableShellOptions {
-  readonly className?: string;
-}
-
 interface CreateDraft {
   name: string;
   type: 'grid' | 'map';
@@ -92,7 +88,6 @@ export class TableShell {
   readonly panelId: string;
   readonly #translate: Translator;
   readonly #callbacks: TableShellCallbacks;
-  readonly #className: string;
   #lastRoot: HTMLElement | null = null;
   #lastState: TableShellState | null = null;
   #restoreFocusKey: string | null = null;
@@ -108,18 +103,12 @@ export class TableShell {
   #repairRemovals = new Set<string>();
   #repairLocation = '';
   #manageFormError: string | null = null;
-  #tabObserver: ResizeObserver | null = null;
   #overlayDismiss: ((event: PointerEvent) => void) | null = null;
   #contextExpanded = false;
 
-  constructor(
-    translate: Translator,
-    callbacks: TableShellCallbacks,
-    options: TableShellOptions = {},
-  ) {
+  constructor(translate: Translator, callbacks: TableShellCallbacks) {
     this.#translate = translate;
     this.#callbacks = callbacks;
-    this.#className = options.className ?? 'loom-grid-navigation';
     this.panelId = `loom-view-panel-${++shellSequence}`;
   }
 
@@ -140,7 +129,7 @@ export class TableShell {
     this.#captureFocus();
     this.#lastState = state;
     const root = document.createElement('div');
-    root.className = `loom-table-shell ${this.#className}`;
+    root.className = 'loom-table-shell';
     root.setAttribute('role', 'group');
     labelContainer(root, this.#translate('grid.status'));
     const context = createElement('div', 'loom-shell-context');
@@ -190,7 +179,7 @@ export class TableShell {
     if (this.#callbacks.onCreateView !== undefined) {
       const addView = document.createElement('button');
       addView.type = 'button';
-      addView.className = 'loom-button loom-view-add';
+      addView.className = 'loom-button loom-shell-action loom-view-add';
       addView.dataset.shellFocus = 'add-view';
       addView.prepend(createUiIcon('view-add'));
       const addLabel = createElement('span', 'loom-button-label');
@@ -207,7 +196,7 @@ export class TableShell {
     if (this.#callbacks.onManageViews !== undefined) {
       const manage = document.createElement('button');
       manage.type = 'button';
-      manage.className = 'loom-button loom-view-manage-toggle';
+      manage.className = 'loom-button loom-shell-action loom-view-manage-toggle';
       manage.dataset.action = 'manage-views';
       manage.dataset.shellFocus = 'manage-views';
       manage.prepend(createUiIcon('view-manage'));
@@ -219,11 +208,9 @@ export class TableShell {
       manage.addEventListener('click', () => this.#toggleManage(state));
       actions.append(manage);
     }
-    const contextRow = createElement('div', 'loom-shell-row loom-shell-row-context');
-    contextRow.append(context);
-    const tabsRow = createElement('div', 'loom-shell-row loom-shell-row-tabs');
-    tabsRow.append(this.#renderTabs(state), actions);
-    root.append(contextRow, tabsRow);
+    const row = createElement('div', 'loom-shell-row');
+    row.append(context, this.#renderViewListToggle(state), this.#renderTabs(state), actions);
+    root.append(row);
     const intents = this.#renderIntents(state);
     if (intents !== null) root.append(intents);
     if (this.#createOpen && this.#callbacks.onCreateView !== undefined) {
@@ -827,21 +814,6 @@ export class TableShell {
       });
       tablist.append(tab);
     }
-    const overflowButton = document.createElement('button');
-    overflowButton.type = 'button';
-    overflowButton.className = 'loom-view-tab-overflow clickable-icon';
-    overflowButton.hidden = true;
-    overflowButton.setAttribute('aria-label', this.#translate('view.overflow.label'));
-    overflowButton.setAttribute('aria-haspopup', 'menu');
-    overflowButton.addEventListener('click', () => {
-      this.#openTabOverflowMenu(tablist, overflowButton, state, duplicateNames);
-    });
-    tablist.append(overflowButton);
-    this.#tabObserver?.disconnect();
-    if (typeof ResizeObserver === 'function') {
-      this.#tabObserver = new ResizeObserver(() => this.#syncTabOverflow(tablist));
-      this.#tabObserver.observe(tablist);
-    }
     tablist.addEventListener('keydown', (event) => {
       const allTabs = [...tablist.querySelectorAll<HTMLElement>('[role="tab"]')].filter(
         (tab) => !tab.hidden,
@@ -860,6 +832,15 @@ export class TableShell {
       });
       allTabs[next]?.focus();
     });
+    // The selected tab must stay discoverable inside the scrollable strip.
+    const selectedTab = tablist.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]');
+    if (selectedTab !== null && typeof selectedTab.scrollIntoView === 'function') {
+      window.setTimeout(() => {
+        if (selectedTab.isConnected) {
+          selectedTab.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+        }
+      }, 0);
+    }
     return tablist;
   }
 
@@ -905,64 +886,61 @@ export class TableShell {
     this.#rerender();
   }
 
-  #syncTabOverflow(tablist: HTMLElement): void {
-    const overflowButton = tablist.querySelector<HTMLElement>('.loom-view-tab-overflow');
-    if (overflowButton === null) return;
-    const tabs = [...tablist.querySelectorAll<HTMLElement>('[role="tab"]')];
-    for (const tab of tabs) tab.hidden = false;
-    overflowButton.hidden = true;
-    const available = tablist.clientWidth;
-    if (available <= 0) return;
-    const gap = Number.parseFloat(getComputedStyle(tablist).columnGap) || 0;
-    const reserve = (overflowButton.offsetWidth || 44) + gap;
-    let used = 0;
-    const overflowed: HTMLElement[] = [];
-    for (const tab of tabs) {
-      const selected = tab.getAttribute('aria-selected') === 'true';
-      const fits = used + tab.offsetWidth <= available - reserve;
-      if (fits || selected) {
-        used += tab.offsetWidth + gap;
-      } else {
-        tab.hidden = true;
-        tab.tabIndex = -1;
-        overflowed.push(tab);
-      }
-    }
-    if (overflowed.length === 0) return;
-    overflowButton.hidden = false;
-    overflowButton.textContent = `+${overflowed.length}`;
-    overflowButton.dataset.overflowIds = overflowed
-      .map((tab) => tab.dataset.viewId ?? '')
-      .filter(Boolean)
-      .join(',');
-  }
-
-  #openTabOverflowMenu(
-    tablist: HTMLElement,
-    anchor: HTMLElement,
-    state: TableShellState,
-    duplicateNames: ReadonlySet<string>,
-  ): void {
-    const ids = (anchor.dataset.overflowIds ?? '').split(',').filter((id) => id.length > 0);
-    const views = state.views.filter(
-      (view) => view.deletedAt === undefined && ids.includes(view.id),
-    );
-    if (views.length === 0) return;
-    const host = tablist.closest<HTMLElement>('.loom-table-shell') ?? tablist;
-    const rect = anchor.getBoundingClientRect();
-    openContextMenu({
-      items: views.map((view) => ({
+  #renderViewListToggle(state: TableShellState): HTMLElement {
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'loom-button loom-shell-action loom-view-list-toggle';
+    toggle.dataset.action = 'view-list';
+    toggle.dataset.shellFocus = 'view-list';
+    toggle.setAttribute('aria-label', this.#translate('view.list'));
+    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.append(createUiIcon('view-list'));
+    const label = createElement('span', 'loom-button-label');
+    label.textContent = this.#translate('view.list');
+    toggle.append(label);
+    toggle.addEventListener('click', () => {
+      const host = toggle.closest<HTMLElement>('.loom-table-shell');
+      if (host === null) return;
+      const rect = toggle.getBoundingClientRect();
+      const active = state.views.filter((view) => view.deletedAt === undefined);
+      const duplicateNames = new Set(
+        active
+          .map((view) => view.name)
+          .filter((name, index, names) => names.indexOf(name) !== index),
+      );
+      const items: ContextMenuItem[] = active.map((view) => ({
         label:
           view.name +
           (duplicateNames.has(view.name) ? ` · ${viewTypeLabel(view, this.#translate)}` : ''),
         icon: view.type === 'map' ? 'view-map' : 'view-grid',
+        current: view.id === state.selectedViewId,
+        dataAction: `view:${view.id}`,
         action: () => void this.#callbacks.onViewChange(view.id),
-      })),
-      x: rect.left,
-      y: rect.bottom + 4,
-      host,
-      label: this.#translate('view.overflow.label'),
+      }));
+      const entries: (ContextMenuItem | 'separator')[] =
+        this.#callbacks.onManageViews === undefined
+          ? items
+          : [
+              ...items,
+              'separator',
+              {
+                label: this.#translate('view.manage'),
+                icon: 'view-manage',
+                dataAction: 'manage-views',
+                action: () => {
+                  if (!this.#manageOpen) this.#toggleManage(state);
+                },
+              },
+            ];
+      openContextMenu({
+        items: entries,
+        x: rect.left,
+        y: rect.bottom + 4,
+        host,
+        label: this.#translate('view.list'),
+      });
     });
+    return toggle;
   }
 
   #renderIntents(state: TableShellState): HTMLElement | null {

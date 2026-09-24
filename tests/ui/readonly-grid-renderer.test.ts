@@ -13,7 +13,7 @@ import { createTranslator } from '../../src/i18n';
 import { ReadonlyGridRenderer, getVirtualRowRange } from '../../src/ui/readonly-grid-renderer';
 import type { GridDisplayPatch } from '../../src/ui/grid-display';
 import type { GridState } from '../../src/ui/grid-view-controller';
-import type { ViewCreateOutcome, ViewWriteOutcome } from '../../src/ui/view-write-coordinator';
+import type { ViewWriteOutcome } from '../../src/ui/view-write-coordinator';
 
 describe('ReadonlyGridRenderer', () => {
   it('renders only the fixed-height viewport window for a large result page', () => {
@@ -947,33 +947,13 @@ describe('ReadonlyGridRenderer', () => {
     expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_multi', ['option_1']);
   });
 
-  it('renders the shared View tabs in the navigation and forwards selection', () => {
-    const container = document.createElement('div');
-    const callbacks = rendererCallbacks();
-    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
-
-    renderer.render(createState(1));
-
-    expect(container.querySelector('[role="tablist"]')).not.toBeNull();
-    const tabs = [...container.querySelectorAll<HTMLElement>('[role="tab"]')];
-    expect(tabs.map((tab) => tab.dataset.viewId)).toEqual(['view_01']);
-    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
-    tabs[0]?.click();
-    expect(callbacks.onViewChange).toHaveBeenCalledWith('view_01');
-  });
-
-  it('offers an explicit View creation entry when the Table has no Views', async () => {
+  it('offers an explicit View creation entry when the Table has no Views', () => {
     const container = document.createElement('div');
     document.body.append(container);
-    const outcomeView = createState(0).views[0];
-    if (outcomeView === undefined) throw new Error('View fixture is missing.');
-    const onCreateView = vi.fn(async (): Promise<ViewCreateOutcome> => ({
-      status: 'created',
-      view: outcomeView,
-    }));
+    const onOpenViewCreateForm = vi.fn();
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
       ...rendererCallbacks(),
-      onCreateView,
+      onOpenViewCreateForm,
     });
 
     renderer.render(
@@ -989,18 +969,7 @@ describe('ReadonlyGridRenderer', () => {
     const entry = container.querySelector<HTMLButtonElement>('.loom-grid-status .loom-button');
     expect(entry?.textContent).toBe('Create a View');
     entry?.click();
-    expect(container.querySelector('.loom-view-create-form')).not.toBeNull();
-    expect(document.activeElement).toBe(container.querySelector('input[name="view-name"]'));
-
-    const form = container.querySelector<HTMLFormElement>('.loom-view-create-form');
-    const name = form?.querySelector<HTMLInputElement>('input[name="view-name"]');
-    if (form === null || name === null || name === undefined) {
-      throw new Error('Create form is missing.');
-    }
-    name.value = 'Board';
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(onCreateView).toHaveBeenCalledTimes(1));
-    expect(onCreateView).toHaveBeenCalledWith({ type: 'grid', name: 'Board' });
+    expect(onOpenViewCreateForm).toHaveBeenCalledTimes(1);
     container.remove();
   });
 });
@@ -1731,10 +1700,6 @@ describe('getVirtualRowRange', () => {
 function rendererCallbacks() {
   return {
     onRefresh: vi.fn(),
-    onWorkspaceChange: vi.fn(),
-    onBaseChange: vi.fn(),
-    onTableChange: vi.fn(),
-    onViewChange: vi.fn(),
     onLoadMore: vi.fn(),
     onRecordOpen: vi.fn(),
     onCellEdit: vi.fn(),

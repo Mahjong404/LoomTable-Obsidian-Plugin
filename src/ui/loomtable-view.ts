@@ -23,8 +23,9 @@ import {
 import { GridViewController, type GridState } from './grid-view-controller';
 import { describeSaveStatus } from './save-status';
 import { ReadonlyGridRenderer } from './readonly-grid-renderer';
+import { TableShell, type TableShellState } from './table-shell';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
-import { MapView, type MapViewNavigation } from '../views/map/map-view';
+import { MapView } from '../views/map/map-view';
 import type { ViewUpdatePatch } from './view-write-coordinator';
 import {
   createAttachmentDownloadCallback,
@@ -71,8 +72,11 @@ export class LoomTableView extends ItemView {
   #mapView: MapView | null = null;
   #gridHost: HTMLElement | null = null;
   #detailHost: HTMLElement | null = null;
+  #navHost: HTMLElement | null = null;
+  #shell: TableShell | null = null;
+  #activeProfile: ConnectionProfile | null = null;
+  #activeMapViewId: string | null = null;
   #gridClient: LoomTableClient | null = null;
-  #gridRenderer: ReadonlyGridRenderer | null = null;
   #locationPreview: LocationPreviewController | null = null;
 
   constructor(
@@ -154,6 +158,8 @@ export class LoomTableView extends ItemView {
 
   private renderGrid(profile: ConnectionProfile, controller: GridViewController): void {
     if (!this.prepareForNavigation()) return;
+    this.#activeProfile = profile;
+    this.#activeMapViewId = null;
     this.#mapView?.destroy();
     this.#mapView = null;
     this.#gridUnsubscribe?.();
@@ -162,6 +168,8 @@ export class LoomTableView extends ItemView {
     this.#invalidationUnsubscribe = null;
     this.contentEl.empty();
     this.contentEl.addClass('loom-root');
+    const navHost = document.createElement('div');
+    navHost.className = 'loom-nav-host';
     const gridHost = document.createElement('div');
     gridHost.className = 'loom-grid-host';
     const detailHost = document.createElement('div');
@@ -172,48 +180,14 @@ export class LoomTableView extends ItemView {
         .querySelector<HTMLElement>('.loom-record-detail')
         ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     });
-    this.contentEl.append(gridHost, detailHost);
+    this.contentEl.append(navHost, gridHost, detailHost);
+    this.#navHost = navHost;
     this.#gridHost = gridHost;
     this.#detailHost = detailHost;
 
     const renderer = new ReadonlyGridRenderer(gridHost, this.getTranslator(), {
       onRefresh: () => controller.refresh(),
-      onWorkspaceChange: async (workspaceId) => {
-        if (!this.prepareForNavigation()) return;
-        await controller.selectWorkspace(workspaceId);
-      },
-      onBaseChange: async (baseId) => {
-        if (!this.prepareForNavigation()) return;
-        await controller.selectBase(baseId);
-      },
-      onTableChange: async (tableId) => {
-        if (!this.prepareForNavigation()) return;
-        await controller.selectTable(tableId);
-      },
-      onViewChange: async (viewId) => {
-        if (!this.prepareForNavigation()) return;
-        await controller.selectView(viewId);
-      },
-      onCreateView: (input) => controller.createView(input),
-      onRetryViewIntent: async (intentId) => {
-        await controller.retryViewIntent(intentId);
-      },
-      onDismissViewIntent: (intentId) => controller.dismissViewIntent(intentId),
-      onManageViews: () => controller.openManageViews(),
-      onCloseManageViews: () => controller.closeManageViews(),
-      onRenameView: (viewId, name) => controller.renameView(viewId, name),
-      onCopyView: (viewId, name) => controller.copyView(viewId, name),
-      onDeleteView: (viewId) => controller.deleteView(viewId),
-      onRestoreView: (viewId) => controller.restoreView(viewId),
-      onSetDefaultView: (viewId) => controller.setDefaultView(viewId),
-      onRepairView: (viewId, repair) => controller.repairView(viewId, repair),
-      onResolveViewIssue: (viewId, action) => {
-        if (action === 'adopt-latest' || action === 're-edit') {
-          return controller.resolveViewConflict(viewId, action);
-        }
-        if (action === 'retry') return controller.retryViewWrite(viewId);
-        return controller.dismissViewWriteIssue(viewId);
-      },
+      onOpenViewCreateForm: () => this.#shell?.openCreateForm(),
       onSearch: (term) => controller.setSearch(term),
       onApplyFilter: (viewId, filter) => controller.applyViewFilter(viewId, filter),
       onQueryFieldValues: (fieldId, request) => controller.queryFieldValues(fieldId, request),
@@ -323,9 +297,9 @@ export class LoomTableView extends ItemView {
         : { onOpenSettings: this.mapContext.openSettings }),
     });
     this.#gridController = controller;
-    this.#gridRenderer = renderer;
     this.#gridUnsubscribe = controller.subscribe((state) => {
       renderer.render(state);
+      this.renderShell(state);
       this.#publishStatusBar(state);
     });
     if (this.invalidations !== null) {
@@ -346,14 +320,22 @@ export class LoomTableView extends ItemView {
   ): void {
     if (view.type !== 'map') return;
     if (!this.prepareForNavigation()) return;
+    this.#activeProfile = profile;
+    this.#activeMapViewId = view.id;
     this.#gridUnsubscribe?.();
     this.#gridUnsubscribe = null;
     this.#invalidationUnsubscribe?.();
     this.#invalidationUnsubscribe = null;
     this.#mapView?.destroy();
-    this.#gridRenderer = null;
     this.#gridHost = null;
     this.#detailHost = null;
+    this.contentEl.empty();
+    const navHost = document.createElement('div');
+    navHost.className = 'loom-nav-host';
+    const mapHost = document.createElement('div');
+    mapHost.className = 'loom-map-host';
+    this.contentEl.append(navHost, mapHost);
+    this.#navHost = navHost;
     const client = this.createClient(profile);
     let mapView: MapView | null = null;
     const instance = this.mapContext.createRenderer();
@@ -376,7 +358,6 @@ export class LoomTableView extends ItemView {
               this.#gridController!.updateView(viewId, patch),
           }),
     });
-    const navigation = this.mapNavigation(profile, navigationState, view);
     const provider = providerForView(this.getSettings(), view.id);
     const attachmentAdd =
       this.#gridController === null
@@ -423,9 +404,8 @@ export class LoomTableView extends ItemView {
             },
           });
     const attachmentDownload = this.createAttachmentDownloadHandler(client);
-    mapView = new MapView(this.contentEl, controller, {
+    mapView = new MapView(mapHost, controller, {
       translate: this.getTranslator(),
-      navigation,
       onClusterNextPage: () => controller.loadNextClusterPage(),
       onClusterRetry: () => controller.retryCluster(),
       onTileRetry: () => controller.retryTiles(),
@@ -543,25 +523,118 @@ export class LoomTableView extends ItemView {
           else this.renderGrid(profile, gridController);
           return;
         }
-        mapView.updateNavigation(this.mapNavigation(profile, state, view));
+        this.renderShell(state);
       });
     }
     if (focusRecordId !== undefined) void controller.openRecord(focusRecordId);
   }
 
-  private mapNavigation(
-    profile: ConnectionProfile,
-    state: GridState,
-    view: Extract<View, { type: 'map' }>,
-  ): MapViewNavigation {
+  private ensureShell(): TableShell {
+    if (this.#shell !== null) return this.#shell;
+    const requireController = (): GridViewController => {
+      const controller = this.#gridController;
+      if (controller === null) throw new Error('Navigation is unavailable.');
+      return controller;
+    };
+    this.#shell = new TableShell(this.getTranslator(), {
+      onWorkspaceChange: (workspaceId) =>
+        this.selectShellContext('workspace', workspaceId),
+      onBaseChange: (baseId) => this.selectShellContext('base', baseId),
+      onTableChange: (tableId) => this.selectShellContext('table', tableId),
+      onViewChange: (viewId) => this.selectShellView(viewId),
+      onCreateView: async (input) => {
+        const controller = requireController();
+        const profile = this.#activeProfile;
+        const outcome = await controller.createView(input);
+        if (
+          outcome.status === 'created' &&
+          outcome.view.type === 'grid' &&
+          this.#mapView !== null &&
+          profile !== null
+        ) {
+          this.renderGrid(profile, controller);
+        }
+        return outcome;
+      },
+      onRetryViewIntent: async (intentId) => {
+        const controller = requireController();
+        const profile = this.#activeProfile;
+        const outcome = await controller.retryViewIntent(intentId);
+        if (
+          outcome?.status === 'created' &&
+          outcome.view.type === 'grid' &&
+          this.#mapView !== null &&
+          profile !== null
+        ) {
+          this.renderGrid(profile, controller);
+        }
+      },
+      onDismissViewIntent: (intentId) => requireController().dismissViewIntent(intentId),
+      onManageViews: () => requireController().openManageViews(),
+      onCloseManageViews: () => requireController().closeManageViews(),
+      onRenameView: (viewId, name) => requireController().renameView(viewId, name),
+      onCopyView: (viewId, name) => requireController().copyView(viewId, name),
+      onDeleteView: (viewId) => requireController().deleteView(viewId),
+      onRestoreView: (viewId) => requireController().restoreView(viewId),
+      onSetDefaultView: (viewId) => requireController().setDefaultView(viewId),
+      onRepairView: (viewId, repair) => requireController().repairView(viewId, repair),
+      onResolveViewIssue: (viewId, action) => {
+        const controller = requireController();
+        if (action === 'adopt-latest' || action === 're-edit') {
+          return controller.resolveViewConflict(viewId, action);
+        }
+        if (action === 'retry') return controller.retryViewWrite(viewId);
+        return controller.dismissViewWriteIssue(viewId);
+      },
+    });
+    return this.#shell;
+  }
+
+  private async selectShellContext(
+    kind: 'workspace' | 'base' | 'table',
+    id: string,
+  ): Promise<void> {
     const controller = this.#gridController;
-    if (controller === null) throw new Error('Grid navigation is unavailable.');
+    const profile = this.#activeProfile;
+    if (controller === null || profile === null || !this.prepareForNavigation()) return;
+    await (kind === 'workspace'
+      ? controller.selectWorkspace(id)
+      : kind === 'base'
+        ? controller.selectBase(id)
+        : controller.selectTable(id));
+    if (this.#mapView !== null) this.showMapForCurrentSelection(profile, controller);
+  }
+
+  private async selectShellView(viewId: string): Promise<void> {
+    const controller = this.#gridController;
+    const profile = this.#activeProfile;
+    if (controller === null || profile === null || !this.prepareForNavigation()) return;
+    const target = controller.state.views.find((candidate) => candidate.id === viewId);
+    await controller.selectView(viewId);
+    if (target?.type === 'grid' && this.#mapView !== null) {
+      this.renderGrid(profile, controller);
+    }
+  }
+
+  private renderShell(state: GridState): void {
+    const navHost = this.#navHost;
+    if (navHost === null) return;
+    const shell = this.ensureShell();
+    navHost.replaceChildren(shell.render(this.shellState(state)));
+    shell.restoreFocus();
+  }
+
+  private shellState(state: GridState): TableShellState {
     return {
       workspaces: state.workspaces,
       bases: state.bases,
       tables: state.tables,
       views: state.views,
       fields: state.fields,
+      selectedWorkspaceId: state.selectedWorkspaceId,
+      selectedBaseId: state.selectedBaseId,
+      selectedTableId: state.selectedTableId,
+      selectedViewId: this.#activeMapViewId ?? state.selectedViewId,
       pendingViewIntents: state.pendingViewIntents.filter(
         (intent) => intent.tableId === state.selectedTableId,
       ),
@@ -569,64 +642,6 @@ export class LoomTableView extends ItemView {
       deletedViewsStatus: state.deletedViewsStatus,
       viewWritePending: state.viewWritePending,
       viewWriteIssues: state.viewWriteIssues,
-      selectedWorkspaceId: state.selectedWorkspaceId,
-      selectedBaseId: state.selectedBaseId,
-      selectedTableId: state.selectedTableId,
-      selectedViewId: view.id,
-      onCreateView: async (input) => {
-        const outcome = await controller.createView(input);
-        if (outcome.status === 'created' && outcome.view.type === 'grid') {
-          this.renderGrid(profile, controller);
-        }
-        return outcome;
-      },
-      onRetryViewIntent: async (intentId) => {
-        const outcome = await controller.retryViewIntent(intentId);
-        if (outcome?.status === 'created' && outcome.view.type === 'grid') {
-          this.renderGrid(profile, controller);
-        }
-      },
-      onDismissViewIntent: (intentId) => controller.dismissViewIntent(intentId),
-      onManageViews: () => controller.openManageViews(),
-      onCloseManageViews: () => controller.closeManageViews(),
-      onRenameView: (viewId, name) => controller.renameView(viewId, name),
-      onCopyView: (viewId, name) => controller.copyView(viewId, name),
-      onDeleteView: (viewId) => controller.deleteView(viewId),
-      onRestoreView: (viewId) => controller.restoreView(viewId),
-      onSetDefaultView: (viewId) => controller.setDefaultView(viewId),
-      onRepairView: (viewId, repair) => controller.repairView(viewId, repair),
-      onResolveViewIssue: (viewId, action) => {
-        if (action === 'adopt-latest' || action === 're-edit') {
-          return controller.resolveViewConflict(viewId, action);
-        }
-        if (action === 'retry') return controller.retryViewWrite(viewId);
-        return controller.dismissViewWriteIssue(viewId);
-      },
-      onWorkspaceChange: async (workspaceId) => {
-        if (!this.prepareForNavigation()) return;
-        await controller.selectWorkspace(workspaceId);
-        this.showMapForCurrentSelection(profile, controller);
-      },
-      onBaseChange: async (baseId) => {
-        if (!this.prepareForNavigation()) return;
-        await controller.selectBase(baseId);
-        this.showMapForCurrentSelection(profile, controller);
-      },
-      onTableChange: async (tableId) => {
-        if (!this.prepareForNavigation()) return;
-        await controller.selectTable(tableId);
-        this.showMapForCurrentSelection(profile, controller);
-      },
-      onViewChange: async (viewId) => {
-        if (!this.prepareForNavigation()) return;
-        const selected = controller.state.views.find((candidate) => candidate.id === viewId);
-        if (selected?.type === 'map') {
-          await controller.selectView(viewId);
-        } else if (selected?.type === 'grid') {
-          await controller.selectView(viewId);
-          this.renderGrid(profile, controller);
-        }
-      },
     };
   }
 
@@ -891,11 +906,7 @@ export class LoomTableView extends ItemView {
   }
 
   private openMapViewCreateForm(fieldId: string): void {
-    if (this.#mapView !== null) {
-      this.#mapView.openViewCreateForm({ type: 'map', locationFieldId: fieldId });
-      return;
-    }
-    this.#gridRenderer?.openViewCreateForm({ type: 'map', locationFieldId: fieldId });
+    this.#shell?.openCreateForm({ type: 'map', locationFieldId: fieldId });
   }
 
   private disposeAll(): void {
@@ -903,7 +914,6 @@ export class LoomTableView extends ItemView {
     this.#locationPreview = null;
     this.#mapView?.destroy();
     this.#mapView = null;
-    this.#gridRenderer = null;
     this.#gridUnsubscribe?.();
     this.#gridUnsubscribe = null;
     this.#invalidationUnsubscribe?.();
@@ -913,6 +923,10 @@ export class LoomTableView extends ItemView {
     this.#gridClient = null;
     this.#gridHost = null;
     this.#detailHost = null;
+    this.#navHost = null;
+    this.#shell = null;
+    this.#activeProfile = null;
+    this.#activeMapViewId = null;
     this.statusSink?.(null);
   }
 

@@ -62,15 +62,7 @@ import {
 } from './grid-clipboard';
 import { describeSaveStatus, renderSaveStatus } from './save-status';
 import { confirmDangerousAction } from './dangerous-action-confirmation';
-import { TableShell } from './table-shell';
-import type { ViewConfigRepairInput } from './view-config-repair';
-import type {
-  ViewCopyOutcome,
-  ViewCreateInput,
-  ViewCreateOutcome,
-  ViewIssueAction,
-  ViewWriteOutcome,
-} from './view-write-coordinator';
+import type { ViewWriteOutcome } from './view-write-coordinator';
 
 export type FieldSaveContext =
   | {
@@ -82,10 +74,6 @@ export type FieldSaveContext =
 
 export interface GridRendererCallbacks {
   readonly onRefresh: () => void | Promise<void>;
-  readonly onWorkspaceChange: (workspaceId: string) => void | Promise<void>;
-  readonly onBaseChange: (baseId: string) => void | Promise<void>;
-  readonly onTableChange: (tableId: string) => void | Promise<void>;
-  readonly onViewChange: (viewId: string) => void | Promise<void>;
   readonly onLoadMore: () => void | Promise<void>;
   readonly onRecordOpen: (record: LoomTableRecord) => void;
   readonly onCellEdit?: (recordId: string, fieldId: string, value: unknown) => void | Promise<void>;
@@ -101,24 +89,7 @@ export interface GridRendererCallbacks {
   ) => Promise<boolean>;
   readonly onRetryEdit?: (recordId: string) => void;
   readonly onOpenSettings?: () => void | Promise<void>;
-  readonly onCreateView?: (input: ViewCreateInput) => Promise<ViewCreateOutcome>;
-  readonly onRetryViewIntent?: (intentId: string) => void | Promise<void>;
-  readonly onDismissViewIntent?: (intentId: string) => void | Promise<void>;
-  readonly onManageViews?: () => void | Promise<void>;
-  readonly onCloseManageViews?: () => void;
-  readonly onRenameView?: (viewId: string, name: string) => Promise<ViewWriteOutcome>;
-  readonly onCopyView?: (viewId: string, name: string) => Promise<ViewCopyOutcome>;
-  readonly onDeleteView?: (viewId: string) => Promise<ViewWriteOutcome>;
-  readonly onRestoreView?: (viewId: string) => Promise<ViewWriteOutcome>;
-  readonly onSetDefaultView?: (viewId: string) => Promise<ViewWriteOutcome>;
-  readonly onRepairView?: (
-    viewId: string,
-    repair: ViewConfigRepairInput,
-  ) => Promise<ViewWriteOutcome>;
-  readonly onResolveViewIssue?: (
-    viewId: string,
-    action: ViewIssueAction,
-  ) => void | Promise<unknown>;
+  readonly onOpenViewCreateForm?: () => void;
   readonly onSearch?: (term: string) => void | Promise<unknown>;
   readonly onApplyFilter?: (
     viewId: string,
@@ -257,7 +228,6 @@ export class ReadonlyGridRenderer {
   readonly #container: HTMLElement;
   readonly #translate: Translator;
   readonly #callbacks: GridRendererCallbacks;
-  readonly #shell: TableShell;
   #virtualGrid: VirtualGridRefs | null = null;
   #focusedCellKey: string | null = null;
   #focusedHeaderFieldId: string | null = null;
@@ -325,32 +295,6 @@ export class ReadonlyGridRenderer {
       event.preventDefault();
       this.#closePanels();
     });
-    this.#shell = new TableShell(translate, {
-      onWorkspaceChange: (workspaceId) => callbacks.onWorkspaceChange(workspaceId),
-      onBaseChange: (baseId) => callbacks.onBaseChange(baseId),
-      onTableChange: (tableId) => callbacks.onTableChange(tableId),
-      onViewChange: (viewId) => callbacks.onViewChange(viewId),
-      ...(callbacks.onCreateView === undefined ? {} : { onCreateView: callbacks.onCreateView }),
-      ...(callbacks.onRetryViewIntent === undefined
-        ? {}
-        : { onRetryViewIntent: callbacks.onRetryViewIntent }),
-      ...(callbacks.onDismissViewIntent === undefined
-        ? {}
-        : { onDismissViewIntent: callbacks.onDismissViewIntent }),
-      ...(callbacks.onManageViews === undefined
-        ? {}
-        : {
-            onManageViews: callbacks.onManageViews,
-            onCloseManageViews: callbacks.onCloseManageViews,
-            onRenameView: callbacks.onRenameView,
-            onCopyView: callbacks.onCopyView,
-            onDeleteView: callbacks.onDeleteView,
-            onRestoreView: callbacks.onRestoreView,
-            onSetDefaultView: callbacks.onSetDefaultView,
-            onRepairView: callbacks.onRepairView,
-            onResolveViewIssue: callbacks.onResolveViewIssue,
-          }),
-    });
   }
 
   /** Shows a transient toast anchored to the Grid; survives re-renders. */
@@ -397,7 +341,7 @@ export class ReadonlyGridRenderer {
     labelContainer(root, this.#translate('grid.table'));
     root.tabIndex = -1;
     const toolbar = this.#renderToolbar(state);
-    root.append(this.#renderNavigation(state), toolbar);
+    root.append(toolbar);
     root.append(this.#renderClipboardNote());
     const queryPanel = this.#renderQueryPanel(state);
     if (queryPanel !== null) {
@@ -478,8 +422,6 @@ export class ReadonlyGridRenderer {
     } else if (this.#focusedAction !== null) {
       this.#restoreFocusedAction();
     } else if (this.#restoreQueryControl(queryFocus)) {
-      return;
-    } else if (this.#shell.restoreFocus()) {
       return;
     } else {
       const restored = this.#restoreFocusedHeader() || this.#restoreFocusedCell();
@@ -1541,13 +1483,6 @@ export class ReadonlyGridRenderer {
     this.render(this.#lastState);
   }
 
-  openViewCreateForm(preset?: { type?: 'grid' | 'map'; locationFieldId?: string }): void {
-    this.#shell.openCreateForm(preset);
-    if (this.#lastState === null) return;
-    this.render(this.#lastState);
-    this.#container.querySelector<HTMLElement>('input[name="view-name"]')?.focus();
-  }
-
   async #submitSearch(term: string): Promise<void> {
     const result = await this.#callbacks.onSearch?.(term);
     if (result === false) {
@@ -1563,27 +1498,6 @@ export class ReadonlyGridRenderer {
 
   #restoreQueryControl(ref: QueryControlFocus | null): boolean {
     return restoreQueryControlFocus(this.#container, ref);
-  }
-
-  #renderNavigation(state: GridState): HTMLElement {
-    return this.#shell.render({
-      workspaces: state.workspaces,
-      bases: state.bases,
-      tables: state.tables,
-      views: state.views,
-      fields: state.fields,
-      selectedWorkspaceId: state.selectedWorkspaceId,
-      selectedBaseId: state.selectedBaseId,
-      selectedTableId: state.selectedTableId,
-      selectedViewId: state.selectedViewId,
-      pendingViewIntents: state.pendingViewIntents.filter(
-        (intent) => intent.tableId === state.selectedTableId,
-      ),
-      deletedViews: state.deletedViews,
-      deletedViewsStatus: state.deletedViewsStatus,
-      viewWritePending: state.viewWritePending,
-      viewWriteIssues: state.viewWriteIssues,
-    });
   }
 
   #renderGrid(state: GridState): HTMLElement {
@@ -3938,18 +3852,13 @@ export class ReadonlyGridRenderer {
     if (
       status === 'empty' &&
       state.emptyReason === 'view' &&
-      this.#callbacks.onCreateView !== undefined
+      this.#callbacks.onOpenViewCreateForm !== undefined
     ) {
       const button = createElement('button', 'loom-button');
       button.type = 'button';
       button.textContent = this.#translate('view.createEntry');
       button.setAttribute('aria-label', this.#translate('view.createEntry'));
-      button.addEventListener('click', () => {
-        this.#shell.openCreateForm();
-        if (this.#lastState === null) return;
-        this.render(this.#lastState);
-        this.#container.querySelector<HTMLElement>('input[name="view-name"]')?.focus();
-      });
+      button.addEventListener('click', () => this.#callbacks.onOpenViewCreateForm?.());
       return button;
     }
     if (status === 'authentication' || status === 'forbidden') {

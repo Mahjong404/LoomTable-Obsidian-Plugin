@@ -6,6 +6,8 @@ export interface ContextMenuItem {
   readonly danger?: boolean;
   readonly disabled?: boolean;
   readonly dataAction?: string;
+  /** Marks the item as the currently active choice (aria-current + check). */
+  readonly current?: boolean;
   readonly action: () => void;
 }
 
@@ -48,6 +50,12 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     item.disabled = entry.disabled === true;
     if (entry.icon !== undefined) item.append(createUiIcon(entry.icon));
     item.append(createTextSpan(entry.label));
+    if (entry.current === true) {
+      item.setAttribute('aria-current', 'true');
+      const check = createUiIcon('menu-check');
+      check.classList.add('loom-context-menu-check');
+      item.append(check);
+    }
     item.setAttribute('aria-label', entry.label);
     item.addEventListener('click', () => {
       close();

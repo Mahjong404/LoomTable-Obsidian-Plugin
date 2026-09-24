@@ -40,6 +40,8 @@ export type UiIconName =
   | 'tool-refresh'
   | 'view-add'
   | 'view-manage'
+  | 'view-list'
+  | 'menu-check'
   | 'nav-prev'
   | 'nav-next'
   | 'detail-close'
@@ -276,6 +278,15 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
     ],
     ['path', { d: 'm2 2 20 20' }],
   ],
+  'view-list': [
+    ['rect', { width: '7', height: '7', x: '3', y: '3', rx: '1' }],
+    ['rect', { width: '7', height: '7', x: '3', y: '14', rx: '1' }],
+    ['line', { x1: '14', x2: '21', y1: '4', y2: '4' }],
+    ['line', { x1: '14', x2: '21', y1: '9', y2: '9' }],
+    ['line', { x1: '14', x2: '21', y1: '15', y2: '15' }],
+    ['line', { x1: '14', x2: '21', y1: '20', y2: '20' }],
+  ],
+  'menu-check': [['path', { d: 'M20 6 9 17l-5-5' }]],
   'view-manage': [
     ['line', { x1: '21', x2: '14', y1: '4', y2: '4' }],
     ['line', { x1: '10', x2: '3', y1: '4', y2: '4' }],

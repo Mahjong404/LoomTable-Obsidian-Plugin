@@ -73,14 +73,13 @@ export const galleryScenarios: readonly GalleryScenario[] = [
     title: 'Navigation & command bar — stable zones (annotated)',
     mount(host) {
       const wrap = block(host, 'loom-gallery-annotated');
+      mountStaticShell(wrap);
       return mountStaticGrid(wrap, createGalleryState(), {
         onCellEdit: () => undefined,
         onSearch: () => undefined,
         onApplyFilter: async () => ({ status: 'saved', view: GALLERY_GRID_VIEW }),
         onApplySort: async () => ({ status: 'saved', view: GALLERY_GRID_VIEW }),
         onApplyDisplay: async () => ({ status: 'saved', view: GALLERY_GRID_VIEW }),
-        onCreateView: async () => ({ status: 'created', view: GALLERY_GRID_VIEW }),
-        onManageViews: () => undefined,
         onCreateRecord: async () => GALLERY_RECORDS[0]!,
         onLoadDeletedRecords: () => undefined,
       });
@@ -377,17 +376,7 @@ export const galleryScenarios: readonly GalleryScenario[] = [
           emptyReason: 'view',
         }),
         {
-          onCreateView: async () => ({
-            status: 'unresolved',
-            kind: 'network',
-            intent: {
-              intentId: 'intent_empty',
-              tableId: 'table_01',
-              request: { name: 'Grid', type: 'grid', config: galleryGridConfig() },
-              createdAt: '2026-08-24T00:00:00Z',
-            },
-            error: { message: 'offline' },
-          }),
+          onOpenViewCreateForm: () => shell.openCreateForm(),
         },
       );
     },
@@ -578,10 +567,6 @@ function mountStaticGrid(
   host.append(container);
   const renderer = new ReadonlyGridRenderer(container, translate, {
     onRefresh: () => undefined,
-    onWorkspaceChange: () => undefined,
-    onBaseChange: () => undefined,
-    onTableChange: () => undefined,
-    onViewChange: () => undefined,
     onLoadMore: () => undefined,
     onRecordOpen: () => undefined,
     confirmDangerousAction: (message, confirmHost, trigger) =>
@@ -590,6 +575,38 @@ function mountStaticGrid(
   });
   renderer.render(state);
   return { dispose: () => container.replaceChildren() };
+}
+
+function galleryShellState(update: Partial<TableShellState> = {}): TableShellState {
+  return {
+    workspaces: [galleryData().workspaces[0]!],
+    bases: [galleryData().bases[0]!],
+    tables: [galleryData().tables[0]!],
+    views: GALLERY_VIEWS,
+    fields: GALLERY_FIELDS,
+    selectedWorkspaceId: 'workspace_01',
+    selectedBaseId: 'base_01',
+    selectedTableId: 'table_01',
+    selectedViewId: 'view_grid',
+    pendingViewIntents: [],
+    deletedViews: [],
+    deletedViewsStatus: 'idle',
+    viewWritePending: [],
+    viewWriteIssues: {},
+    ...update,
+  };
+}
+
+function mountStaticShell(host: HTMLElement, state?: TableShellState): void {
+  const shell = new TableShell(createTranslator('en'), {
+    onWorkspaceChange: () => undefined,
+    onBaseChange: () => undefined,
+    onTableChange: () => undefined,
+    onViewChange: () => undefined,
+    onCreateView: async () => ({ status: 'created', view: GALLERY_GRID_VIEW }),
+    onManageViews: () => undefined,
+  });
+  host.append(shell.render(state ?? galleryShellState()));
 }
 
 async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResult> {
@@ -616,13 +633,39 @@ async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResu
   controller = new GridViewController(client, { mutationQueue: scheduler, translate });
   const grid = controller;
 
+  const navHost = document.createElement('div');
   const layout = document.createElement('div');
   layout.className = 'loom-gallery-split';
   const gridHost = document.createElement('div');
   const detailHost = document.createElement('div');
   detailHost.dataset.role = 'gallery-detail-host';
   layout.append(gridHost, detailHost);
-  host.append(layout);
+  host.append(navHost, layout);
+
+  const shell = new TableShell(translate, {
+    onWorkspaceChange: (id) => grid.selectWorkspace(id),
+    onBaseChange: (id) => grid.selectBase(id),
+    onTableChange: (id) => grid.selectTable(id),
+    onViewChange: (id) => grid.selectView(id),
+    onCreateView: (input) => grid.createView(input),
+    onRetryViewIntent: (intentId) => grid.retryViewIntent(intentId).then(() => undefined),
+    onDismissViewIntent: (intentId) => grid.dismissViewIntent(intentId),
+    onManageViews: () => grid.openManageViews(),
+    onCloseManageViews: () => grid.closeManageViews(),
+    onRenameView: (viewId, name) => grid.renameView(viewId, name),
+    onCopyView: (viewId, name) => grid.copyView(viewId, name),
+    onDeleteView: (viewId) => grid.deleteView(viewId),
+    onRestoreView: (viewId) => grid.restoreView(viewId),
+    onSetDefaultView: (viewId) => grid.setDefaultView(viewId),
+    onRepairView: (viewId, repair) => grid.repairView(viewId, repair),
+    onResolveViewIssue: (viewId, action) => {
+      if (action === 'adopt-latest' || action === 're-edit') {
+        return grid.resolveViewConflict(viewId, action);
+      }
+      if (action === 'retry') return grid.retryViewWrite(viewId);
+      return grid.dismissViewWriteIssue(viewId);
+    },
+  });
 
   const openDetail = async (record: LoomTableRecord): Promise<void> => {
     const fresh = await grid.getRecordForDetail(record);
@@ -663,10 +706,7 @@ async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResu
 
   const renderer = new ReadonlyGridRenderer(gridHost, translate, {
     onRefresh: () => grid.refresh(),
-    onWorkspaceChange: (id) => grid.selectWorkspace(id),
-    onBaseChange: (id) => grid.selectBase(id),
-    onTableChange: (id) => grid.selectTable(id),
-    onViewChange: (id) => grid.selectView(id),
+    onOpenViewCreateForm: () => shell.openCreateForm(),
     onLoadMore: () => grid.loadNextPage(),
     onRecordOpen: (record) => void openDetail(record),
     onCellEdit: (recordId, fieldId, value) =>
@@ -675,23 +715,6 @@ async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResu
     onRetryEdit: (recordId) => grid.retryEdit(recordId),
     confirmDangerousAction: (message, confirmHost, trigger) =>
       confirmDangerousAction(confirmHost, message, translate, trigger),
-    onCreateView: (input) => grid.createView(input),
-    onRetryViewIntent: (intentId) => grid.retryViewIntent(intentId).then(() => undefined),
-    onDismissViewIntent: (intentId) => grid.dismissViewIntent(intentId),
-    onManageViews: () => grid.openManageViews(),
-    onCloseManageViews: () => grid.closeManageViews(),
-    onRenameView: (viewId, name) => grid.renameView(viewId, name),
-    onCopyView: (viewId, name) => grid.copyView(viewId, name),
-    onDeleteView: (viewId) => grid.deleteView(viewId),
-    onRestoreView: (viewId) => grid.restoreView(viewId),
-    onRepairView: (viewId, repair) => grid.repairView(viewId, repair),
-    onResolveViewIssue: (viewId, action) => {
-      if (action === 'adopt-latest' || action === 're-edit') {
-        return grid.resolveViewConflict(viewId, action);
-      }
-      if (action === 'retry') return grid.retryViewWrite(viewId);
-      return grid.dismissViewWriteIssue(viewId);
-    },
     onSearch: (term) => grid.setSearch(term),
     onApplyFilter: (viewId, filter) => grid.applyViewFilter(viewId, filter),
     onApplySort: (viewId, sort) => grid.applyViewSort(viewId, sort),
@@ -707,7 +730,30 @@ async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResu
     onLoadDeletedRecords: () => grid.loadDeletedRecords(),
     onLoadMoreDeletedRecords: () => grid.loadMoreDeletedRecords(),
   });
-  const unsubscribe = grid.subscribe((state) => renderer.render(state));
+  const unsubscribe = grid.subscribe((state) => {
+    renderer.render(state);
+    navHost.replaceChildren(
+      shell.render({
+        workspaces: state.workspaces,
+        bases: state.bases,
+        tables: state.tables,
+        views: state.views,
+        fields: state.fields,
+        selectedWorkspaceId: state.selectedWorkspaceId,
+        selectedBaseId: state.selectedBaseId,
+        selectedTableId: state.selectedTableId,
+        selectedViewId: state.selectedViewId,
+        pendingViewIntents: state.pendingViewIntents.filter(
+          (intent) => intent.tableId === state.selectedTableId,
+        ),
+        deletedViews: state.deletedViews,
+        deletedViewsStatus: state.deletedViewsStatus,
+        viewWritePending: state.viewWritePending,
+        viewWriteIssues: state.viewWriteIssues,
+      }),
+    );
+    shell.restoreFocus();
+  });
   await grid.load();
   return {
     dispose: () => {

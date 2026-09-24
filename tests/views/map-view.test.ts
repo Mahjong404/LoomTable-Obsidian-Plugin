@@ -16,37 +16,15 @@ import { initialMapViewState } from '../../src/views/map/map-view-model';
 import { MapView } from '../../src/views/map/map-view';
 
 describe('MapView', () => {
-  it('mounts the navigation, map container and controller lifecycle seam', () => {
+  it('mounts the map container and controller lifecycle seam', () => {
     const container = document.createElement('div');
     const controller = fakeController();
     const view = new MapView(container, controller as unknown as MapViewController, {
-      navigation: {
-        workspaces: [
-          { id: 'workspace_01', name: 'Workspace', revision: 1, createdAt: '', updatedAt: '' },
-        ],
-        bases: [],
-        tables: [],
-        views: [],
-        fields: [],
-        pendingViewIntents: [],
-        deletedViews: [],
-        deletedViewsStatus: 'idle',
-        viewWritePending: [],
-        viewWriteIssues: {},
-        selectedWorkspaceId: 'workspace_01',
-        selectedBaseId: null,
-        selectedTableId: null,
-        selectedViewId: null,
-        onWorkspaceChange: vi.fn(),
-        onBaseChange: vi.fn(),
-        onTableChange: vi.fn(),
-        onViewChange: vi.fn(),
-      },
+      translate: createTranslator('en'),
     });
 
     view.mount();
 
-    expect(container.querySelector('.loom-map-navigation')).not.toBeNull();
     expect(container.querySelector('.loom-map-container')).not.toBeNull();
     expect(container.querySelector('.loom-map-shell')?.getAttribute('role')).toBe('region');
     expect(container.querySelector('.loom-map-container')?.getAttribute('role')).toBe('region');
@@ -54,8 +32,6 @@ describe('MapView', () => {
     expect(container.querySelector('.loom-map-tile-status')?.getAttribute('aria-live')).toBe(
       'polite',
     );
-    expect(container.querySelectorAll('select')).toHaveLength(3);
-    expect(container.querySelector('[role="tablist"]')).not.toBeNull();
     expect(controller.mount).toHaveBeenCalledTimes(1);
     expect(controller.load).toHaveBeenCalledTimes(1);
 
