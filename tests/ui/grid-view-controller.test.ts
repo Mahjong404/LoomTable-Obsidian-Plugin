@@ -2719,6 +2719,79 @@ describe('Record lifecycle', () => {
     scheduler.stop();
   });
 
+  it('invalidates the stale row counts when an in-page Record is deleted', async () => {
+    const { scheduler, controller } = createLifecycleController(createRecords(4));
+    await startLifecycle(scheduler, controller);
+
+    expect(controller.state.totalCount).toBe(4);
+    expect(controller.state.unfilteredTotal).toBe(4);
+    await controller.deleteRecord('record_01');
+    await scheduler.drain();
+
+    expect(controller.state.records).toHaveLength(3);
+    expect(controller.state.totalCount).toBe(3);
+    expect(controller.state.unfilteredTotal).toBe(3);
+    scheduler.stop();
+  });
+
+  it('invalidates the stale row counts when an external delete lands on the page', async () => {
+    const { scheduler, controller } = createLifecycleController(createRecords(4));
+    await startLifecycle(scheduler, controller);
+
+    const record = controller.state.records.find((candidate) => candidate.id === 'record_01');
+    expect(record).toBeDefined();
+    controller.applyExternalMutation(
+      { ...record!, deletedAt: '2026-09-24T00:00:00Z' },
+      'change_02',
+    );
+
+    expect(controller.state.records).toHaveLength(3);
+    expect(controller.state.totalCount).toBe(3);
+    expect(controller.state.unfilteredTotal).toBe(3);
+    scheduler.stop();
+  });
+
+  it('does not double-count when the same delete arrives on both mutation paths', async () => {
+    const { scheduler, controller } = createLifecycleController(createRecords(4));
+    await startLifecycle(scheduler, controller);
+
+    const record = controller.state.records.find((candidate) => candidate.id === 'record_01');
+    expect(record).toBeDefined();
+    // Production order: the invalidation bus fires before the applied lane event.
+    controller.applyExternalMutation(
+      { ...record!, deletedAt: '2026-09-24T00:00:00Z' },
+      'change_02',
+    );
+    controller.applyExternalMutation(
+      { ...record!, deletedAt: '2026-09-24T00:00:00Z' },
+      'change_03',
+    );
+
+    expect(controller.state.records).toHaveLength(3);
+    expect(controller.state.totalCount).toBe(3);
+    expect(controller.state.unfilteredTotal).toBe(3);
+    scheduler.stop();
+  });
+
+  it('restores the counts when a restored Record rejoins the active set', async () => {
+    const { scheduler, controller } = createLifecycleController(createRecords(4));
+    await startLifecycle(scheduler, controller);
+
+    await controller.deleteRecord('record_01');
+    await scheduler.drain();
+    expect(controller.state.totalCount).toBe(3);
+    const outcome = await controller.restoreRecord('record_01');
+    expect(outcome.status).toBe('restored');
+    await scheduler.drain();
+    // The restored Record re-enters via the mutation-invalidation reload.
+    controller.applyExternalMutation(outcome.record, 'change_03');
+
+    await vi.waitFor(() => expect(controller.state.records).toHaveLength(4));
+    expect(controller.state.totalCount).toBe(4);
+    expect(controller.state.unfilteredTotal).toBe(4);
+    scheduler.stop();
+  });
+
   it('duplicates a Record and reloads the query so the copy appears', async () => {
     const { scheduler, controller } = createLifecycleController();
     await startLifecycle(scheduler, controller);

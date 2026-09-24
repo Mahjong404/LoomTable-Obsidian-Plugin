@@ -1441,6 +1441,9 @@ export class GridViewController {
         this.#optimisticRecords.delete(record.id);
         this.#publish({
           records: this.#state.records.filter((candidate) => candidate.id !== record.id),
+          // The row was counted in both totals while it sat on the page.
+          totalCount: decrementTotal(this.#state.totalCount),
+          unfilteredTotal: decrementTotal(this.#state.unfilteredTotal),
           lastDeletedRecord: record,
           ...cursorPatch,
         });
@@ -2255,8 +2258,11 @@ export class GridViewController {
       hasMore: result.hasMore,
       nextCursor: result.nextCursor ?? null,
       changeCursor: result.changeCursor,
-      totalCount: result.totalCount ?? this.#state.totalCount,
-      unfilteredTotal: result.unfilteredTotal ?? this.#state.unfilteredTotal,
+      // A fresh first page is the authority for both totals — never fall back
+      // to a stale denominator once a successful re-query has landed. Only a
+      // continuation page (which omits totals) keeps the previous values.
+      totalCount: result.totalCount ?? (replace ? null : this.#state.totalCount),
+      unfilteredTotal: result.unfilteredTotal ?? (replace ? null : this.#state.unfilteredTotal),
       emptyReason,
       error: null,
     });
@@ -2282,11 +2288,21 @@ export class GridViewController {
     this.#conflicts.delete(recordId);
     const clearsEditError = this.#state.editErrorRecordId === recordId;
     if (record.deletedAt !== undefined) {
-      // Deleted Records leave the active page immediately; membership/counts
-      // are re-queried through the invalidation path, never recomputed here.
+      // Deleted Records leave the active page immediately. The row is removed
+      // in place, so decrement the displayed totals by one — they count exactly
+      // this Record while it sat on the page. The invalidation event that fired
+      // just before this (onApplied precedes the lane event) may have already
+      // removed the row; guard on presence so the decrement never runs twice.
       this.#optimisticRecords.delete(recordId);
+      const inPage = this.#state.records.some((candidate) => candidate.id === recordId);
       this.#publish({
         records: this.#state.records.filter((candidate) => candidate.id !== recordId),
+        ...(inPage
+          ? {
+              totalCount: decrementTotal(this.#state.totalCount),
+              unfilteredTotal: decrementTotal(this.#state.unfilteredTotal),
+            }
+          : {}),
         conflicts: [...this.#conflicts.values()],
         editStatuses: removeEditStatus(this.#state.editStatuses, recordId),
         editDrafts: removeEditDraftsForRecord(this.#state.editDrafts, recordId),
@@ -2620,6 +2636,10 @@ function queryEmptyReason(state: GridState, result: QueryResult): GridEmptyReaso
     return 'no-match';
   }
   return 'records';
+}
+
+function decrementTotal(value: number | null): number | null {
+  return value === null ? null : Math.max(0, value - 1);
 }
 
 function normalizePageSize(value: number): number {
