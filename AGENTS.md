@@ -14,6 +14,12 @@
 - 合同：`npm run api:generate` 后 `openapi/` 与 `src/generated/transport.ts` 应零 diff
 - 构建：`npm run build`（esbuild → `main.js` + `styles.css`）
 
+## Server 环境
+
+- 正常开发与验证环境使用远端服务器上长期运行的 LoomTable Server（Docker 部署）；部署与连接信息以 `C:\Personal folder\Server\rainyunMahjong404\server.md` 为准，敏感细节不复制进本文件。
+- 不要默认在本机创建 LoomTable Server / 数据库等 Docker 环境。
+- 若某项验证确实必须临时启动本地 Docker，先明确用途；结束后检查并清理本次创建的 containers / networks / volumes，不留遗留测试资源；不得触碰其他项目的 Docker 资源。
+
 ## Obsidian 真机审计（CDP）
 
 UI 观感/交互的核验走 Obsidian 内嵌 Chromium 的 DevTools 协议：
