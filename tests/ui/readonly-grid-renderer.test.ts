@@ -1095,77 +1095,7 @@ describe('Grid query controls', () => {
     container.remove();
   });
 
-  it('cycles the saved sort from the column header', async () => {
-    const container = document.createElement('div');
-    document.body.append(container);
-    const onApplySort = vi.fn(
-      async (_viewId: string, _sort: readonly SortSpec[]) =>
-        ({ status: 'saved', view: createState(0).views[0]! }) as const,
-    );
-    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
-      ...rendererCallbacks(),
-      onApplySort,
-    });
-    renderer.render(createState(1));
-
-    const headerButton = container.querySelector<HTMLButtonElement>(
-      '[data-action="header-sort"][data-field-id="field_name"]',
-    );
-    if (headerButton === null) throw new Error('Sortable header is missing.');
-    headerButton.click();
-    await vi.waitFor(() =>
-      expect(onApplySort).toHaveBeenCalledWith('view_01', [
-        { fieldId: 'field_name', direction: 'asc', nulls: 'last' },
-      ]),
-    );
-
-    const sorted = createState(1);
-    const sortedView = sorted.views[0];
-    if (sortedView?.type !== 'grid') throw new Error('View fixture is missing.');
-    renderer.render({
-      ...sorted,
-      views: [
-        {
-          ...sortedView,
-          config: {
-            ...sortedView.config,
-            sort: [{ fieldId: 'field_name', direction: 'asc', nulls: 'last' }],
-          },
-        },
-      ],
-    });
-    container
-      .querySelector<HTMLButtonElement>('[data-action="header-sort"][data-field-id="field_name"]')
-      ?.click();
-    await vi.waitFor(() =>
-      expect(onApplySort).toHaveBeenLastCalledWith('view_01', [
-        { fieldId: 'field_name', direction: 'desc', nulls: 'last' },
-      ]),
-    );
-
-    const descending = createState(1);
-    const descendingView = descending.views[0];
-    if (descendingView?.type !== 'grid') throw new Error('View fixture is missing.');
-    renderer.render({
-      ...descending,
-      views: [
-        {
-          ...descendingView,
-          config: {
-            ...descendingView.config,
-            sort: [{ fieldId: 'field_name', direction: 'desc', nulls: 'last' }],
-          },
-        },
-      ],
-    });
-    const header = container
-      .querySelector<HTMLElement>('[data-action="header-sort"][data-field-id="field_name"]')
-      ?.closest('[role="columnheader"]');
-    expect(header?.getAttribute('aria-sort')).toBe('descending');
-    container.remove();
-  });
-
-  it('opens the Sort Panel instead of dropping other rules when multiple sorts exist', async () => {
+  it('selects the whole column on header click without sorting', () => {
     const container = document.createElement('div');
     document.body.append(container);
     const onApplySort = vi.fn();
@@ -1173,7 +1103,69 @@ describe('Grid query controls', () => {
       ...rendererCallbacks(),
       onApplySort,
     });
-    const state = createTwoFieldState();
+    renderer.render(createState(3));
+
+    const header = container.querySelector<HTMLElement>(
+      '.loom-grid-header-cell[data-field-id="field_name"]',
+    );
+    expect(header).not.toBeNull();
+    header?.click();
+
+    expect(onApplySort).not.toHaveBeenCalled();
+    expect(header?.classList.contains('is-selected')).toBe(true);
+    expect(header?.getAttribute('aria-selected')).toBe('true');
+    const cells = container.querySelectorAll<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_name"].is-selected',
+    );
+    expect(cells).toHaveLength(3);
+    container.remove();
+  });
+
+  it('keeps sort reachable from the column context menu', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onApplySort = vi.fn(async () => ({
+      status: 'saved' as const,
+      view: createState(1).views[0]!,
+    }));
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplySort,
+    });
+    renderer.render(createState(1));
+
+    const header = container.querySelector<HTMLElement>(
+      '.loom-grid-header-cell[data-field-id="field_name"]',
+    );
+    header?.dispatchEvent(
+      new MouseEvent('contextmenu', { bubbles: true, clientX: 20, clientY: 30 }),
+    );
+    const menu = document.querySelector<HTMLElement>('.loom-context-menu');
+    expect(menu).not.toBeNull();
+    const sortAsc = [...(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])].find(
+      (item) => item.textContent?.includes('Sort ascending'),
+    );
+    expect(sortAsc).not.toBeUndefined();
+    sortAsc?.click();
+    await vi.waitFor(() =>
+      expect(onApplySort).toHaveBeenCalledWith('view_01', [
+        { fieldId: 'field_name', direction: 'asc', nulls: 'last' },
+      ]),
+    );
+    container.remove();
+  });
+
+  it('still reports the active sort on the column header', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplySort: vi.fn(async () => ({
+        status: 'saved' as const,
+        view: createState(1).views[0]!,
+      })),
+    });
+    const state = createState(1);
     const view = state.views[0];
     if (view?.type !== 'grid') throw new Error('View fixture is missing.');
     renderer.render({
@@ -1183,28 +1175,85 @@ describe('Grid query controls', () => {
           ...view,
           config: {
             ...view.config,
-            sort: [
-              { fieldId: 'field_name', direction: 'asc', nulls: 'last' },
-              { fieldId: 'field_second', direction: 'desc', nulls: 'first' },
-            ],
+            sort: [{ fieldId: 'field_name', direction: 'desc', nulls: 'last' }],
           },
         },
       ],
     });
+    const header = container.querySelector<HTMLElement>(
+      '.loom-grid-header-cell[data-field-id="field_name"]',
+    );
+    expect(header?.getAttribute('aria-sort')).toBe('descending');
+    expect(header?.querySelector('.loom-grid-sort-indicator')?.textContent).toBe('↓');
+    container.remove();
+  });
 
-    container
-      .querySelector<HTMLButtonElement>('[data-action="header-sort"][data-field-id="field_name"]')
-      ?.click();
+  it('opens the Field Editor on header double-click', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+    });
+    renderer.render(createTwoFieldState());
 
-    expect(onApplySort).not.toHaveBeenCalled();
-    const panel = container.querySelector('.loom-sort-panel');
+    const header = container.querySelector<HTMLElement>(
+      '.loom-grid-header-cell[data-field-id="field_name"]',
+    );
+    header?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+
+    const panel = container.querySelector<HTMLElement>('.loom-field-editor');
     expect(panel).not.toBeNull();
-    expect(panel?.querySelectorAll('li[data-sort-index]')).toHaveLength(2);
-    expect(
-      document.activeElement instanceof HTMLSelectElement &&
-        document.activeElement.dataset.role === 'sort-field' &&
-        document.activeElement.value === 'field_name',
-    ).toBe(true);
+    expect(panel?.querySelector<HTMLInputElement>('.loom-field-editor-name')?.value).toBe('Name');
+    container.remove();
+  });
+
+  it('opens the Field Editor on Enter and selects the column on Space', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+    });
+    renderer.render(createTwoFieldState());
+
+    const header = container.querySelector<HTMLElement>(
+      '.loom-grid-header-cell[data-field-id="field_name"]',
+    );
+    header?.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    expect(header?.classList.contains('is-selected')).toBe(true);
+
+    header?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    const panel = container.querySelector<HTMLElement>('.loom-field-editor');
+    expect(panel).not.toBeNull();
+    expect(panel?.querySelector<HTMLInputElement>('.loom-field-editor-name')?.value).toBe('Name');
+    container.remove();
+  });
+
+  it('moves focus between headers on Arrow keys and opens the menu on ContextMenu', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+    });
+    renderer.render(createTwoFieldState());
+
+    const first = container.querySelector<HTMLElement>(
+      '.loom-grid-header-cell[data-field-id="field_name"]',
+    );
+    const second = container.querySelector<HTMLElement>(
+      '.loom-grid-header-cell[data-field-id="field_second"]',
+    );
+    first?.focus();
+    first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(document.activeElement).toBe(second);
+
+    second?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    expect(document.activeElement).toBe(first);
+
+    first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ContextMenu', bubbles: true }));
+    expect(document.querySelector('.loom-context-menu')).not.toBeNull();
     container.remove();
   });
 
@@ -1780,6 +1829,41 @@ function createTwoFieldState(): GridState {
   };
 }
 
+function createThreeFieldState(): GridState {
+  const state = createTwoFieldState();
+  const firstField = state.fields[0];
+  const view = state.views[0];
+  const record = state.records[0];
+  if (firstField === undefined || view?.type !== 'grid' || record === undefined) {
+    throw new Error('Grid fixture is missing.');
+  }
+  const thirdField: Field = {
+    ...firstField,
+    id: 'field_third',
+    name: 'Third',
+  };
+  return {
+    ...state,
+    fields: [...state.fields, thirdField],
+    views: [
+      {
+        ...view,
+        config: {
+          ...view.config,
+          projection: ['field_name', 'field_second', 'field_third'],
+          columnOrder: ['field_name', 'field_second', 'field_third'],
+        },
+      },
+    ],
+    records: [
+      {
+        ...record,
+        values: { ...record.values, field_third: 'Third value' },
+      },
+    ],
+  };
+}
+
 function locationState(value: JsonValue | undefined): GridState {
   const state = createState(1);
   const view = state.views[0];
@@ -2068,7 +2152,7 @@ describe('Grid V5 virtualization safety', () => {
 });
 
 describe('Grid V5 header action focus', () => {
-  it('restores focus to the same header sort control after a redraw', () => {
+  it('restores focus to the same column header after a redraw', () => {
     const container = document.createElement('div');
     document.body.append(container);
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
@@ -2080,15 +2164,15 @@ describe('Grid V5 header action focus', () => {
     });
     renderer.render(createTwoFieldState());
 
-    const button = container.querySelector<HTMLElement>(
-      '.loom-grid-sort[data-field-id="field_second"]',
+    const header = container.querySelector<HTMLElement>(
+      '.loom-grid-header-cell[data-field-id="field_second"]',
     );
-    expect(button).not.toBeNull();
-    button?.focus();
+    expect(header).not.toBeNull();
+    header?.focus();
     renderer.render(createTwoFieldState());
 
     expect(document.activeElement).toBe(
-      container.querySelector('.loom-grid-sort[data-field-id="field_second"]'),
+      container.querySelector('.loom-grid-header-cell[data-field-id="field_second"]'),
     );
     container.remove();
   });
@@ -2845,17 +2929,20 @@ describe('Grid record lifecycle', () => {
     expect(secondHeader?.textContent).toContain('Second');
   });
 
-  it('keeps the sort control working when a field type icon is present', () => {
+  it('renders the field type icon and name as header content without a sort button', () => {
     const container = document.createElement('div');
     const callbacks = { ...rendererCallbacks(), onApplySort: vi.fn() };
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
     renderer.render(createState(1));
 
-    const button = container.querySelector<HTMLButtonElement>('.loom-grid-sort');
-    expect(button?.querySelector('.loom-field-type-icon svg')).not.toBeNull();
-    expect(button?.textContent).toContain('Name');
-    button?.click();
-    expect(callbacks.onApplySort).toHaveBeenCalled();
+    const header = container.querySelector<HTMLElement>(
+      '.loom-grid-header-cell[data-field-id="field_name"]',
+    );
+    expect(header?.querySelector('.loom-field-type-icon svg')).not.toBeNull();
+    expect(header?.textContent).toContain('Name');
+    expect(header?.querySelector('button[data-action="header-sort"]')).toBeNull();
+    header?.click();
+    expect(callbacks.onApplySort).not.toHaveBeenCalled();
   });
 
   it('opens a cell context menu with edit, copy, and details actions', () => {
@@ -3729,15 +3816,114 @@ describe('Column drag reorder', () => {
     source?.dispatchEvent(dragstart);
     const dragover = new Event('dragover', { bubbles: true, cancelable: true });
     Object.defineProperty(dragover, 'dataTransfer', { value: transfer });
+    Object.defineProperty(dragover, 'clientX', { value: 1 });
     target?.dispatchEvent(dragover);
-    expect(target?.classList.contains('is-drop-target')).toBe(true);
+    expect(target?.classList.contains('is-drop-after')).toBe(true);
     const drop = new Event('drop', { bubbles: true, cancelable: true });
     Object.defineProperty(drop, 'dataTransfer', { value: transfer });
+    Object.defineProperty(drop, 'clientX', { value: 1 });
     target?.dispatchEvent(drop);
 
     await vi.waitFor(() => expect(onApplyDisplay).toHaveBeenCalledTimes(1));
     expect(onApplyDisplay.mock.calls[0]?.[0]).toBe('view_01');
     expect(onApplyDisplay.mock.calls[0]?.[1]?.columnOrder).toEqual(['field_second', 'field_name']);
+  });
+
+  it('inserts before the target column when the drop lands on the left half', async () => {
+    const container = document.createElement('div');
+    const onApplyDisplay = vi.fn(
+      async (_viewId: string, _patch: GridDisplayPatch): Promise<ViewWriteOutcome> => ({
+        status: 'saved',
+        view: createThreeFieldState().views[0] as View,
+      }),
+    );
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyDisplay,
+    });
+
+    renderer.render(createThreeFieldState());
+    const headers = container.querySelectorAll<HTMLElement>(
+      '.loom-grid-header-cell[data-field-index]',
+    );
+    const source = headers[2];
+    const target = headers[1];
+    vi.spyOn(target!, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      width: 40,
+      top: 0,
+      right: 140,
+      bottom: 36,
+      height: 36,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const transfer = fakeDataTransfer();
+    const dragstart = new Event('dragstart', { bubbles: true });
+    Object.defineProperty(dragstart, 'dataTransfer', { value: transfer });
+    source?.dispatchEvent(dragstart);
+    const dragover = new Event('dragover', { bubbles: true, cancelable: true });
+    Object.defineProperty(dragover, 'dataTransfer', { value: transfer });
+    Object.defineProperty(dragover, 'clientX', { value: 101 });
+    target?.dispatchEvent(dragover);
+    expect(target?.classList.contains('is-drop-before')).toBe(true);
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', { value: transfer });
+    Object.defineProperty(drop, 'clientX', { value: 101 });
+    target?.dispatchEvent(drop);
+
+    await vi.waitFor(() => expect(onApplyDisplay).toHaveBeenCalledTimes(1));
+    expect(onApplyDisplay.mock.calls[0]?.[1]?.columnOrder).toEqual([
+      'field_name',
+      'field_third',
+      'field_second',
+    ]);
+  });
+
+  it('skips the View write when a header drop leaves the column order unchanged', async () => {
+    const container = document.createElement('div');
+    const onApplyDisplay = vi.fn(
+      async (_viewId: string, _patch: GridDisplayPatch): Promise<ViewWriteOutcome> => ({
+        status: 'saved',
+        view: createThreeFieldState().views[0] as View,
+      }),
+    );
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyDisplay,
+    });
+
+    renderer.render(createThreeFieldState());
+    const headers = container.querySelectorAll<HTMLElement>(
+      '.loom-grid-header-cell[data-field-index]',
+    );
+    const source = headers[0];
+    const target = headers[1];
+    vi.spyOn(target!, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      width: 40,
+      top: 0,
+      right: 140,
+      bottom: 36,
+      height: 36,
+      x: 100,
+      y: 0,
+      toJSON: () => ({}),
+    });
+
+    const transfer = fakeDataTransfer();
+    const dragstart = new Event('dragstart', { bubbles: true });
+    Object.defineProperty(dragstart, 'dataTransfer', { value: transfer });
+    source?.dispatchEvent(dragstart);
+    const drop = new Event('drop', { bubbles: true, cancelable: true });
+    Object.defineProperty(drop, 'dataTransfer', { value: transfer });
+    Object.defineProperty(drop, 'clientX', { value: 101 });
+    target?.dispatchEvent(drop);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(onApplyDisplay).not.toHaveBeenCalled();
   });
 });
 

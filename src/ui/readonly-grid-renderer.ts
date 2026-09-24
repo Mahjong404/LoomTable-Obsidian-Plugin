@@ -48,7 +48,6 @@ import {
   createFilterRule,
   filterOperatorsForField,
   isSortableField,
-  nextHeaderSort,
 } from './view-query-model';
 import { isEditableField, normalizeCellValue } from './field-value-editor';
 import {
@@ -295,7 +294,6 @@ export class ReadonlyGridRenderer {
   #serverHistoryFilter: 'all' | ChangeKind = 'all';
   #historyFilter: 'all' | UndoEntryMeta['kind'] = 'all';
   #lastViewId: string | null = null;
-  #sortFocusFieldId: string | null = null;
   #filterBuilder: FilterBuilder | null = null;
   #filterBuilderViewId: string | null = null;
   #sortPanel: SortPanel | null = null;
@@ -365,7 +363,6 @@ export class ReadonlyGridRenderer {
       this.#openPanel = null;
       this.#searchDraft = null;
       this.#searchError = null;
-      this.#sortFocusFieldId = null;
       this.#filterBuilder = null;
       this.#sortPanel = null;
       this.#displayPanel = null;
@@ -1472,17 +1469,6 @@ export class ReadonlyGridRenderer {
   }
 
   #restoreQueryControl(ref: QueryControlFocus | null): boolean {
-    if (this.#sortFocusFieldId !== null) {
-      const fieldId = this.#sortFocusFieldId;
-      this.#sortFocusFieldId = null;
-      const select = [
-        ...this.#container.querySelectorAll<HTMLSelectElement>('select[data-role="sort-field"]'),
-      ].find((element) => element.value === fieldId);
-      if (select !== undefined) {
-        select.focus();
-        return true;
-      }
-    }
     return restoreQueryControlFocus(this.#container, ref);
   }
 
@@ -1535,7 +1521,7 @@ export class ReadonlyGridRenderer {
     indexHeader.setAttribute('aria-colindex', '1');
     header.append(indexHeader);
     for (const [fieldIndex, field] of fields.entries()) {
-      const fieldHeader = createGridCell(field.name, 'loom-grid-header-cell');
+      const fieldHeader = createGridCell('', 'loom-grid-header-cell');
       if (field.description !== undefined && field.description !== '') {
         fieldHeader.title = `${field.name}: ${field.description}`;
       }
@@ -1543,12 +1529,75 @@ export class ReadonlyGridRenderer {
       fieldHeader.setAttribute('aria-colindex', String(fieldIndex + 2));
       fieldHeader.dataset.fieldIndex = String(fieldIndex);
       fieldHeader.dataset.fieldId = field.id;
-      // Programmatic focus only (header keyboard navigation keeps its own
-      // roving model); used to restore focus after field-editor close.
-      fieldHeader.tabIndex = -1;
+      // The header itself is the interactive element: click selects the whole
+      // column, double-click edits the field, drag reorders, the divider
+      // resizes, and the context-menu button/key opens the column menu.
+      // Sorting is not bound to the header; it lives in the Sort Panel and
+      // the column menu.
+      fieldHeader.tabIndex = 0;
+      fieldHeader.addEventListener('focus', () => {
+        this.#focusedHeaderFieldId = field.id;
+      });
       fieldHeader.addEventListener('click', (event) => {
-        if ((event.target as HTMLElement).closest('button') !== null) return;
+        if ((event.target as HTMLElement).closest('button, .loom-grid-col-resize') !== null) {
+          return;
+        }
         this.#selectColumn(fieldIndex);
+      });
+      if (this.#callbacks.onFieldSave !== undefined) {
+        fieldHeader.addEventListener('dblclick', (event) => {
+          if ((event.target as HTMLElement).closest('button, .loom-grid-col-resize') !== null) {
+            return;
+          }
+          event.preventDefault();
+          const rect = fieldHeader.getBoundingClientRect();
+          this.#openFieldEditorPanel(
+            { mode: 'edit', fieldId: field.id },
+            rect.left,
+            rect.bottom + 4,
+            fieldHeader,
+            field,
+          );
+        });
+      }
+      fieldHeader.addEventListener('keydown', (event) => {
+        if (event.target !== fieldHeader) return;
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+          const direction = event.key === 'ArrowRight' ? 1 : -1;
+          const headers = [
+            ...this.#container.querySelectorAll<HTMLElement>(
+              '.loom-grid-header-cell[data-field-index]',
+            ),
+          ];
+          const next = headers[headers.indexOf(fieldHeader) + direction];
+          if (next !== undefined) {
+            event.preventDefault();
+            next.focus();
+          }
+          return;
+        }
+        if (event.key === ' ') {
+          event.preventDefault();
+          this.#selectColumn(fieldIndex);
+          return;
+        }
+        if (event.key === 'Enter' && this.#callbacks.onFieldSave !== undefined) {
+          event.preventDefault();
+          const rect = fieldHeader.getBoundingClientRect();
+          this.#openFieldEditorPanel(
+            { mode: 'edit', fieldId: field.id },
+            rect.left,
+            rect.bottom + 4,
+            fieldHeader,
+            field,
+          );
+          return;
+        }
+        if (event.key === 'ContextMenu') {
+          event.preventDefault();
+          const rect = fieldHeader.getBoundingClientRect();
+          this.#openColumnMenu(field, rect.left, rect.bottom + 4);
+        }
       });
       if (this.#callbacks.onApplyDisplay !== undefined) {
         fieldHeader.draggable = true;
@@ -1567,17 +1616,21 @@ export class ReadonlyGridRenderer {
           event.preventDefault();
           if (event.dataTransfer !== null) event.dataTransfer.dropEffect = 'move';
           this.#clearDropTargets();
-          fieldHeader.classList.add('is-drop-target');
+          const rect = fieldHeader.getBoundingClientRect();
+          const side = event.clientX > rect.left + rect.width / 2 ? 'after' : 'before';
+          fieldHeader.classList.add(side === 'after' ? 'is-drop-after' : 'is-drop-before');
         });
         fieldHeader.addEventListener('dragleave', () => {
-          fieldHeader.classList.remove('is-drop-target');
+          fieldHeader.classList.remove('is-drop-before', 'is-drop-after');
         });
         fieldHeader.addEventListener('drop', (event) => {
           event.preventDefault();
+          const rect = fieldHeader.getBoundingClientRect();
+          const side = event.clientX > rect.left + rect.width / 2 ? 'after' : 'before';
           this.#clearDropTargets();
           const draggedFieldId = event.dataTransfer?.getData('text/plain');
           if (draggedFieldId !== undefined && draggedFieldId !== field.id) {
-            this.#moveColumn(draggedFieldId, field.id);
+            this.#moveColumn(draggedFieldId, field.id, side);
           }
         });
       }
@@ -1587,44 +1640,27 @@ export class ReadonlyGridRenderer {
         fieldHeader.style.left = `${frozenOffset}px`;
         if (field.id === lastFrozenId) fieldHeader.classList.add('loom-grid-frozen-last');
       }
+      const sortEntry =
+        gridView !== null && isSortableField(field) && this.#callbacks.onApplySort !== undefined
+          ? gridView.config.sort.find((sort) => sort.fieldId === field.id)
+          : undefined;
       if (gridView !== null && isSortableField(field) && this.#callbacks.onApplySort) {
-        const entry = gridView.config.sort.find((sort) => sort.fieldId === field.id);
         fieldHeader.setAttribute(
           'aria-sort',
-          entry === undefined ? 'none' : entry.direction === 'asc' ? 'ascending' : 'descending',
+          sortEntry === undefined
+            ? 'none'
+            : sortEntry.direction === 'asc'
+              ? 'ascending'
+              : 'descending',
         );
-        const button = createElement('button', 'loom-grid-sort clickable-icon');
-        button.type = 'button';
-        button.dataset.action = 'header-sort';
-        button.dataset.fieldId = field.id;
-        const label = createElement('span', 'loom-grid-header-label');
-        label.append(createFieldTypeIcon(field.type), createTextElement('span', field.name));
-        const indicator = createElement('span', 'loom-grid-sort-indicator');
-        indicator.setAttribute('aria-hidden', 'true');
-        indicator.textContent = entry === undefined ? '' : entry.direction === 'asc' ? '↑' : '↓';
-        button.append(label, indicator);
-        button.addEventListener('focus', () => {
-          this.#focusedHeaderFieldId = field.id;
-        });
-        button.addEventListener('click', () => {
-          const next = nextHeaderSort(gridView.config.sort, field.id);
-          if (next === null) {
-            this.#dismissOverlay();
-            this.#openPanel = 'sort';
-            this.#sortFocusFieldId = field.id;
-            this.#rerenderSelf();
-            return;
-          }
-          void this.#callbacks.onApplySort?.(gridView.id, next);
-        });
-        fieldHeader.replaceChildren(button);
-      } else {
-        const label = createElement('span', 'loom-grid-header-label');
-        label.append(createFieldTypeIcon(field.type), createTextElement('span', field.name));
-        const indicator = createElement('span', 'loom-grid-sort-indicator');
-        indicator.setAttribute('aria-hidden', 'true');
-        fieldHeader.replaceChildren(label, indicator);
       }
+      const label = createElement('span', 'loom-grid-header-label');
+      label.append(createFieldTypeIcon(field.type), createTextElement('span', field.name));
+      const indicator = createElement('span', 'loom-grid-sort-indicator');
+      indicator.setAttribute('aria-hidden', 'true');
+      indicator.textContent =
+        sortEntry === undefined ? '' : sortEntry.direction === 'asc' ? '↑' : '↓';
+      fieldHeader.append(label, indicator);
       const menuButton = createElement('button', 'loom-grid-header-menu clickable-icon');
       menuButton.type = 'button';
       menuButton.dataset.action = 'field-menu';
@@ -3316,10 +3352,10 @@ export class ReadonlyGridRenderer {
 
   #restoreFocusedHeader(): boolean {
     if (this.#focusedHeaderFieldId === null) return false;
-    const target = [...this.#container.querySelectorAll<HTMLElement>('.loom-grid-sort')].find(
-      (element) => element.dataset.fieldId === this.#focusedHeaderFieldId,
+    const target = this.#container.querySelector<HTMLElement>(
+      `.loom-grid-header-cell[data-field-id="${this.#focusedHeaderFieldId}"]`,
     );
-    if (target === undefined) return false;
+    if (target === undefined || target === null) return false;
     target.focus();
     return true;
   }
@@ -3571,14 +3607,14 @@ export class ReadonlyGridRenderer {
       .querySelectorAll<HTMLElement>('.loom-grid-header-cell[data-field-index]')
       .forEach((headerCell) => {
         const fieldIndex = Number(headerCell.dataset.fieldIndex);
-        headerCell.classList.toggle(
-          'is-selected',
+        const selected =
           rect !== null &&
-            fieldIndex >= rect.left &&
-            fieldIndex <= rect.right &&
-            rect.top === 0 &&
-            rect.bottom === lastRow,
-        );
+          fieldIndex >= rect.left &&
+          fieldIndex <= rect.right &&
+          rect.top === 0 &&
+          rect.bottom === lastRow;
+        headerCell.classList.toggle('is-selected', selected);
+        headerCell.setAttribute('aria-selected', String(selected));
       });
     const aggregateCount = this.#container.querySelector<HTMLElement>('.loom-grid-aggregate-count');
     if (aggregateCount !== null) {
@@ -3623,8 +3659,10 @@ export class ReadonlyGridRenderer {
 
   #clearDropTargets(): void {
     this.#container
-      .querySelectorAll('.loom-grid-header-cell.is-drop-target')
-      .forEach((cell) => cell.classList.remove('is-drop-target'));
+      .querySelectorAll(
+        '.loom-grid-header-cell.is-drop-before, .loom-grid-header-cell.is-drop-after',
+      )
+      .forEach((cell) => cell.classList.remove('is-drop-before', 'is-drop-after'));
   }
 
   #clearRowDropTargets(): void {
@@ -3633,18 +3671,17 @@ export class ReadonlyGridRenderer {
       .forEach((row) => row.classList.remove('is-drop-target'));
   }
 
-  #moveColumn(fromFieldId: string, toFieldId: string): void {
+  #moveColumn(fromFieldId: string, toFieldId: string, side: 'before' | 'after'): void {
     const state = this.#lastState;
     const gridView = state === null ? null : selectedGridView(state);
     if (gridView === null || this.#callbacks.onApplyDisplay === undefined) return;
     const config = gridView.config;
-    const order = [...config.columnOrder];
-    const fromIndex = order.indexOf(fromFieldId);
+    if (fromFieldId === toFieldId || !config.columnOrder.includes(fromFieldId)) return;
+    const order = config.columnOrder.filter((fieldId) => fieldId !== fromFieldId);
     const toIndex = order.indexOf(toFieldId);
-    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return;
-    const moved = order.splice(fromIndex, 1)[0];
-    if (moved === undefined) return;
-    order.splice(toIndex, 0, moved);
+    if (toIndex < 0) return;
+    order.splice(side === 'after' ? toIndex + 1 : toIndex, 0, fromFieldId);
+    if (order.every((fieldId, index) => fieldId === config.columnOrder[index])) return;
     void this.#callbacks.onApplyDisplay(gridView.id, {
       projection: config.projection,
       columnOrder: order,

@@ -854,22 +854,11 @@
   font-size: var(--loom-font-ui-smaller);
 }
 
-.loom-grid-sort {
-  display: flex;
-  align-items: center;
-  gap: var(--loom-space-1);
-  width: 100%;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-  text-align: start;
+.loom-grid-header-cell:hover {
+  background: var(--loom-bg-hover);
 }
 
-.loom-grid-sort:focus-visible {
+.loom-grid-header-cell:focus-visible {
   outline: 2px solid var(--loom-text-accent);
   outline-offset: -2px;
 }
@@ -3407,8 +3396,12 @@
   opacity: 0.45;
 }
 
-.loom-grid-header-cell.is-drop-target {
+.loom-grid-header-cell.is-drop-before {
   box-shadow: inset 3px 0 0 var(--loom-accent);
+}
+
+.loom-grid-header-cell.is-drop-after {
+  box-shadow: inset -3px 0 0 var(--loom-accent);
 }
 
 /* Attachment thumbnails */
