@@ -47,3 +47,7 @@ P1.6 是 P1.5（功能交付）与 P2.0（新产品功能）之间的过渡稳�
 ## 当前交接
 
 - 2026-09：阶段定义，P1.5 已交付封存（见 [P1.5 状态表](../p1.5/status.md)）。种子工作项按上节推进；每个会话在此更新最近交接。
+- 审计 `docs/local/ux-audit-2026-09-24.md` 确认项实施中（本轮用户授权连续推进全部切片）：
+  - ✅ Map：空 Leaflet pane 不再截获 Marker 事件；`ready` 后收起瓦片就绪常驻状态条（loading/error/config 仍可见，ready 保留 aria 播报）。已 CDP 真机验证点击/拖拽/hover，已提交 `3426920`。
+  - ✅ 字段浮层焦点与草稿行焦点：Field Editor 打开经 `setTimeout`+有界重试（真实 click 手势窗口期内 `focus()` 会被静默丢弃）；Tab/Shift+Tab 面板内循环；Esc/外点/宿主滚动关闭并恢复稳定触发源；`closed` 幂等与其他面板对齐；`render()` 保留存活 overlay 不再被 `replaceChildren` 摘除；行内新建提交后焦点落到新记录 cell（不可见则回落新增入口，失败粘性恢复草稿），用户主动移焦后异步结果不抢焦点。已 CDP 验证打开聚焦/Tab 圈/Esc 恢复/render 存活/草稿提交落焦。
+  - ⏳ 进行中：计数失效、Default View/Display stale、O2 reorder（含 Server）、列头交互重构（单击选列/双击编辑/拖拽重排/分隔线调宽/键盘）、O3 导航两行 + 工具栏 `…` + 容器响应式、Filter 渐进披露、Detail select/date 即选即存。

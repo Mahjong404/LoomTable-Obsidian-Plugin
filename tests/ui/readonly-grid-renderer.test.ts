@@ -425,19 +425,19 @@ describe('ReadonlyGridRenderer', () => {
     );
 
     renderer.render(locationState(undefined));
-    const unsetCell = container.querySelector('[data-field-id="field_location"]');
+    const unsetCell = container.querySelector('.loom-grid-cell[data-field-id="field_location"]');
     expect(unsetCell?.textContent).toBe('');
     expect(unsetCell?.querySelector('.loom-field-value')?.getAttribute('data-value-state')).toBe(
       'unset',
     );
     renderer.render(locationState({ label: 'No coordinates' }));
-    expect(container.querySelector('[data-field-id="field_location"]')?.textContent).toBe(
-      'Unlocated',
-    );
+    expect(
+      container.querySelector('.loom-grid-cell[data-field-id="field_location"]')?.textContent,
+    ).toBe('Unlocated');
     renderer.render(locationState({ lat: 90, lng: 0 }));
-    expect(container.querySelector('[data-field-id="field_location"]')?.textContent).toContain(
-      'Not renderable',
-    );
+    expect(
+      container.querySelector('.loom-grid-cell[data-field-id="field_location"]')?.textContent,
+    ).toContain('Not renderable');
   });
 
   it('keeps offline Grid Cells read-only and does not start an editor', () => {
@@ -2171,6 +2171,53 @@ describe('Grid record create', () => {
     expect(callbacks.onDismissRecordCreate).toHaveBeenCalledWith('op_done');
     container.remove();
   });
+
+  it('does not count applied create ops in the toolbar pending badge', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const created: LoomTableRecord = {
+      id: 'record_new',
+      tableId: 'table_01',
+      revision: 1,
+      values: {},
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord: vi.fn(async () => created),
+    });
+    renderer.render(
+      createState(1, {
+        recordCreateOps: [
+          {
+            operationId: 'op_done',
+            tableId: 'table_01',
+            state: 'idle',
+            createdRecord: created,
+          },
+        ],
+      }),
+    );
+    expect(container.querySelector('.loom-grid-query-count')).toBeNull();
+
+    renderer.render(
+      createState(1, {
+        recordCreateOps: [
+          { operationId: 'op_pending', tableId: 'table_01', state: 'sending' },
+          { operationId: 'op_failed', tableId: 'table_01', state: 'error' },
+          {
+            operationId: 'op_done',
+            tableId: 'table_01',
+            state: 'idle',
+            createdRecord: created,
+          },
+        ],
+      }),
+    );
+    expect(container.querySelector('.loom-grid-query-count')?.textContent).toBe('2 pending');
+    container.remove();
+  });
 });
 
 describe('Grid record lifecycle', () => {
@@ -2910,6 +2957,120 @@ describe('Grid record lifecycle', () => {
     container.remove();
   });
 
+  it('moves focus to the created record cell once inline create lands', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const record: LoomTableRecord = {
+      id: 'record_new',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_name: 'Drafted' },
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    const onCreateRecord = vi.fn(async () => record);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createState(1));
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const editor = container.querySelector<HTMLInputElement>(
+      '.loom-grid-draft-row .loom-grid-editor',
+    );
+    editor!.value = 'Drafted';
+    editor?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalledWith({ field_name: 'Drafted' }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // An intermediate publish (create-op applied) without the record must not
+    // resolve the pending focus yet.
+    renderer.render(createState(1));
+    expect(container.querySelector('.loom-grid-cell[data-record-id="record_new"]')).toBeNull();
+
+    // The refetch publish arrives with the created record visible.
+    renderer.render(createState(1, { records: [record], changeCursor: 'change_02' }));
+
+    expect(document.activeElement).toBe(
+      container.querySelector(
+        '.loom-grid-cell[data-record-id="record_new"][data-field-id="field_name"]',
+      ),
+    );
+    container.remove();
+  });
+
+  it('returns focus to the create entry when the new record is filtered out', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const record: LoomTableRecord = {
+      id: 'record_new',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_name: 'Drafted' },
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    const onCreateRecord = vi.fn(async () => record);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createState(1));
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const editor = container.querySelector<HTMLInputElement>(
+      '.loom-grid-draft-row .loom-grid-editor',
+    );
+    editor!.value = 'Drafted';
+    editor?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalledWith({ field_name: 'Drafted' }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The post-create refetch landed without the record (e.g. an active
+    // filter) — focus falls back to the stable create entry point.
+    renderer.render(createState(1, { changeCursor: 'change_02' }));
+
+    expect(document.activeElement).toBe(container.querySelector('.loom-grid-record-create'));
+    container.remove();
+  });
+
+  it('restores the draft row and its focus when inline create fails', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onCreateRecord = vi.fn(async () => {
+      throw new Error('create failed');
+    });
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createState(1));
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    const editor = container.querySelector<HTMLInputElement>(
+      '.loom-grid-draft-row .loom-grid-editor',
+    );
+    editor!.value = 'Drafted';
+    editor?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalled());
+    await vi.waitFor(() => expect(container.querySelector('.loom-grid-draft-row')).not.toBeNull());
+
+    const draftRow = container.querySelector<HTMLElement>('.loom-grid-draft-row');
+    const restoredEditor = draftRow?.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(restoredEditor?.value).toBe('Drafted');
+    expect(document.activeElement).toBe(restoredEditor);
+    container.remove();
+  });
+
   it('clears an editable cell value from the context menu', () => {
     const container = document.createElement('div');
     document.body.append(container);
@@ -2973,6 +3134,105 @@ describe('column menu and field editor', () => {
     const panel = container.querySelector<HTMLElement>('.loom-field-editor');
     expect(panel).not.toBeNull();
     expect(panel?.querySelectorAll('.loom-field-editor-type')).toHaveLength(10);
+    container.remove();
+  });
+
+  it('moves focus to the field name input once the editor is installed', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+    await vi.waitFor(() => {
+      expect(document.activeElement).toBe(container.querySelector('.loom-field-editor-name'));
+    });
+    container.remove();
+  });
+
+  it('keeps the open field editor and its focus across a re-render', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+    const name = container.querySelector<HTMLInputElement>('.loom-field-editor-name');
+    await vi.waitFor(() => expect(document.activeElement).toBe(name));
+    name!.value = 'Notes';
+
+    // A publish-driven re-render while the editor is open must not destroy the
+    // overlay or steal the user's focus.
+    renderer.render(createState(1));
+
+    const panel = container.querySelector<HTMLElement>('.loom-field-editor');
+    expect(panel).not.toBeNull();
+    expect(document.activeElement).toBe(name);
+    expect(container.querySelector<HTMLInputElement>('.loom-field-editor-name')?.value).toBe(
+      'Notes',
+    );
+    container.remove();
+  });
+
+  it('returns focus to the add-field trigger when the editor closes', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+    await vi.waitFor(() => expect(container.querySelector('.loom-field-editor')).not.toBeNull());
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    expect(container.querySelector('.loom-field-editor')).toBeNull();
+    expect(document.activeElement).toBe(container.querySelector('.loom-grid-add-field-button'));
+    container.remove();
+  });
+
+  it('keeps Tab cycling inside the field editor', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(),
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+    const panel = container.querySelector<HTMLElement>('.loom-field-editor');
+    await vi.waitFor(() =>
+      expect(document.activeElement).toBe(panel?.querySelector('.loom-field-editor-name')),
+    );
+
+    // Tab must be intercepted and cycle inside the dialog rather than escaping
+    // into the background UI.
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', cancelable: true });
+    document.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(true);
+    const moved = document.activeElement;
+    expect(moved).not.toBe(panel?.querySelector('.loom-field-editor-name'));
+    expect(panel?.contains(moved)).toBe(true);
+    for (let index = 0; index < 12; index += 1) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', cancelable: true }));
+      expect(panel?.contains(document.activeElement)).toBe(true);
+    }
+    const shiftTab = new KeyboardEvent('keydown', {
+      key: 'Tab',
+      shiftKey: true,
+      cancelable: true,
+    });
+    document.dispatchEvent(shiftTab);
+    expect(shiftTab.defaultPrevented).toBe(true);
+    expect(panel?.contains(document.activeElement)).toBe(true);
     container.remove();
   });
 

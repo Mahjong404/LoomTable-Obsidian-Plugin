@@ -102,7 +102,7 @@ export async function runAfterDangerousConfirmation(
   return true;
 }
 
-function getFocusableElements(dialog: HTMLElement): HTMLElement[] {
+export function getFocusableElements(dialog: HTMLElement): HTMLElement[] {
   return [
     ...dialog.querySelectorAll<HTMLElement>(
       'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',

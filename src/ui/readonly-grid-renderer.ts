@@ -283,6 +283,13 @@ export class ReadonlyGridRenderer {
   #searchError: string | null = null;
   #draftCreateValues: Record<string, MutationValue> | null = null;
   #draftRowEl: HTMLElement | null = null;
+  #draftLastFieldId: string | null = null;
+  #pendingCreateFocus: {
+    recordId: string | null;
+    fieldId: string;
+    failed: boolean;
+    cursor: string | null;
+  } | null = null;
   #filterSeedFieldId: string | null = null;
   #statusPanelMode: 'ops' | 'history' | 'deleted' = 'ops';
   #serverHistoryFilter: 'all' | ChangeKind = 'all';
@@ -305,6 +312,7 @@ export class ReadonlyGridRenderer {
   } | null = null;
   #panelDismiss: ((event: PointerEvent) => void) | null = null;
   #overlayClose: (() => void) | null = null;
+  #overlayEl: HTMLElement | null = null;
 
   constructor(container: HTMLElement, translate: Translator, callbacks: GridRendererCallbacks) {
     this.#container = container;
@@ -361,6 +369,8 @@ export class ReadonlyGridRenderer {
       this.#sortPanel = null;
       this.#displayPanel = null;
       this.#rowHeightAnchor = null;
+      this.#pendingCreateFocus = null;
+      this.#dismissOverlay();
     }
     const previousGrid = this.#virtualGrid;
     const nextRowHeight = rowHeightPixels(state);
@@ -429,9 +439,23 @@ export class ReadonlyGridRenderer {
     this.#lastConflictIds = conflictIds;
     ensureButtonLabels(root);
     root.append(this.#toastStack);
-    this.#container.replaceChildren(root);
+    // A live overlay (field editor/converter/context surface) is preserved
+    // across re-renders: replacing it would destroy the user's draft input and
+    // drop focus to <body>.
+    const overlay =
+      this.#overlayEl !== null && this.#overlayEl.isConnected ? this.#overlayEl : null;
+    if (overlay === null) {
+      this.#container.replaceChildren(root);
+    } else {
+      for (const child of [...this.#container.children]) {
+        if (child !== overlay) child.remove();
+      }
+      this.#container.insertBefore(root, overlay);
+    }
     this.#restoreRowHeightAnchor();
     this.#syncActionButtons();
+    const overlayFocused =
+      overlay !== null && overlay.contains(this.#container.ownerDocument.activeElement);
     if (hasNewConflict) {
       this.showToast({
         kind: 'error',
@@ -441,7 +465,13 @@ export class ReadonlyGridRenderer {
           run: () => this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus(),
         },
       });
-      this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus();
+      if (!overlayFocused) {
+        this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus();
+      }
+    } else if (overlayFocused) {
+      // The overlay owns focus; the re-render must not steal it back.
+    } else if (this.#restorePendingCreateFocus()) {
+      return;
     } else if (this.#restoreFailedEditDraft(state)) {
       return;
     } else if (this.#focusedAction !== null) {
@@ -475,11 +505,16 @@ export class ReadonlyGridRenderer {
       createButton.dataset.action = 'toggle-create';
       createButton.append(createUiIcon('tool-create'));
       createButton.append(createTextElement('span', this.#translate('record.create.add')));
-      if (state.recordCreateOps.length > 0) {
+      // Only unfinished ops count as pending; an applied op keeps its "open the
+      // new record" affordance in the ops list but is already done.
+      const pendingCreates = state.recordCreateOps.filter(
+        (op) => op.createdRecord === undefined,
+      ).length;
+      if (pendingCreates > 0) {
         const count = createElement('span', 'loom-grid-query-count');
         count.textContent = this.#translate('record.create.pendingCount').replace(
           '{count}',
-          String(state.recordCreateOps.length),
+          String(pendingCreates),
         );
         createButton.append(count);
       }
@@ -896,6 +931,17 @@ export class ReadonlyGridRenderer {
   #dismissOverlay(): void {
     this.#overlayClose?.();
     this.#overlayClose = null;
+    this.#overlayEl = null;
+  }
+
+  /**
+   * Tracks the element an overlay panel appended to the container so render()
+   * can preserve it (and any focus inside) across re-renders.
+   */
+  #trackOverlay(close: () => void): void {
+    const element = this.#container.lastElementChild;
+    this.#overlayEl = element instanceof HTMLElement ? element : null;
+    this.#overlayClose = close;
   }
 
   #anchorQueryPanel(toolbar: HTMLElement, panel: HTMLElement): void {
@@ -1477,6 +1523,10 @@ export class ReadonlyGridRenderer {
       fieldHeader.setAttribute('role', 'columnheader');
       fieldHeader.setAttribute('aria-colindex', String(fieldIndex + 2));
       fieldHeader.dataset.fieldIndex = String(fieldIndex);
+      fieldHeader.dataset.fieldId = field.id;
+      // Programmatic focus only (header keyboard navigation keeps its own
+      // roving model); used to restore focus after field-editor close.
+      fieldHeader.tabIndex = -1;
       fieldHeader.addEventListener('click', (event) => {
         if ((event.target as HTMLElement).closest('button') !== null) return;
         this.#selectColumn(fieldIndex);
@@ -2370,6 +2420,8 @@ export class ReadonlyGridRenderer {
       this.#rerenderSelf();
       return;
     }
+    this.#pendingCreateFocus = null;
+    this.#draftLastFieldId = null;
     this.#draftCreateValues ??= {};
     this.render(state);
     const grid = this.#virtualGrid;
@@ -2384,26 +2436,145 @@ export class ReadonlyGridRenderer {
     if (this.#draftCreateValues === null) return;
     this.#draftCreateValues = null;
     this.#draftRowEl = null;
+    this.#draftLastFieldId = null;
+    this.#pendingCreateFocus = null;
     this.render(this.#virtualGrid?.state ?? this.#emptyState());
   }
 
   #commitDraftCreate(): void {
     const values = this.#draftCreateValues;
     if (values === null) return;
+    const lastFieldId =
+      this.#draftLastFieldId ??
+      this.#virtualGrid?.fields.find((field) => isEditableField(field))?.id ??
+      null;
     this.#draftCreateValues = null;
     this.#draftRowEl = null;
+    this.#draftLastFieldId = null;
+    // The draft row is gone; drop the stale cell-focus memory so this render
+    // does not snap focus to an unrelated row.
+    this.#focusedCellKey = null;
+    this.#focusedCellPosition = null;
     this.render(this.#virtualGrid?.state ?? this.#emptyState());
     const hasValue = Object.values(values).some(
       (value) => value !== undefined && value !== null && value !== '',
     );
     const onCreateRecord = this.#callbacks.onCreateRecord;
-    if (!hasValue || onCreateRecord === undefined) return;
-    void Promise.resolve(onCreateRecord({ ...values })).catch(() => {
-      // Keep the typed draft so a failed create can be retried instead of
-      // silently losing what the user entered.
-      this.#draftCreateValues = values;
-      this.render(this.#virtualGrid?.state ?? this.#emptyState());
-    });
+    if (!hasValue || onCreateRecord === undefined || lastFieldId === null) return;
+    const pending = {
+      recordId: null as string | null,
+      fieldId: lastFieldId,
+      failed: false,
+      cursor: this.#lastState?.changeCursor ?? null,
+    };
+    this.#pendingCreateFocus = pending;
+    void Promise.resolve(onCreateRecord({ ...values })).then(
+      (record) => {
+        if (this.#pendingCreateFocus !== pending) return;
+        pending.recordId = record.id;
+        // The publish render may already have landed; try now and let the next
+        // render retry if the row is not in the DOM yet.
+        this.#restorePendingCreateFocus();
+      },
+      () => {
+        if (this.#pendingCreateFocus !== pending) return;
+        pending.failed = true;
+        // Keep the typed draft so a failed create can be retried instead of
+        // silently losing what the user entered.
+        this.#draftCreateValues = values;
+        this.render(this.#virtualGrid?.state ?? this.#emptyState());
+      },
+    );
+  }
+
+  /**
+   * Focus target for a just-committed inline create: the new record's cell in
+   * the last edited field, the stable create entry point when the record is
+   * not visible, or — after a failure — the restored draft cell. Never steals
+   * focus the user moved deliberately while the create was in flight.
+   */
+  #restorePendingCreateFocus(): boolean {
+    const pending = this.#pendingCreateFocus;
+    if (pending === null) return false;
+    if (this.#pendingFocusUserMoved()) {
+      this.#pendingCreateFocus = null;
+      return false;
+    }
+    if (pending.failed) {
+      const grid = this.#virtualGrid;
+      if (grid === null || this.#draftCreateValues === null) {
+        this.#pendingCreateFocus = null;
+        return false;
+      }
+      const fieldIndex = grid.fields.findIndex((field) => field.id === pending.fieldId);
+      const pendingField = fieldIndex >= 0 ? grid.fields[fieldIndex] : undefined;
+      const target =
+        pendingField !== undefined && isEditableField(pendingField)
+          ? fieldIndex
+          : this.#nextEditableFieldIndex(grid.fields, -1, 1);
+      if (target === null) {
+        this.#pendingCreateFocus = null;
+        return false;
+      }
+      // Keep `pending` armed: a follow-up render (e.g. the error-op publish)
+      // rebuilds the draft row and would otherwise drop focus to <body>.
+      this.#focusDraftCell(target);
+      return true;
+    }
+    if (pending.recordId === null) return false;
+    const recordId = pending.recordId;
+    const recordIndex = (this.#lastState?.records ?? []).findIndex(
+      (record) => record.id === recordId,
+    );
+    if (recordIndex === -1) {
+      // The applied record joins `records` through the cursor-refetch publish;
+      // while no post-create refetch has landed, keep waiting.
+      const refetchLanded =
+        this.#lastState !== null && this.#lastState.changeCursor !== pending.cursor;
+      if (!refetchLanded) return false;
+      // Applied but filtered/paginated out of view: land on the stable create
+      // entry point rather than nowhere.
+      this.#pendingCreateFocus = null;
+      const entry =
+        this.#container.querySelector<HTMLElement>('.loom-grid-record-create') ??
+        this.#container.querySelector<HTMLElement>('[data-action="grid-add-row"]');
+      entry?.focus();
+      return entry !== null;
+    }
+    let cell = this.#findCellForRecordField(recordId, pending.fieldId);
+    const grid = this.#virtualGrid;
+    if (cell === null && grid !== null) {
+      // Outside the virtual window — scroll the row in and retry.
+      grid.viewport.scrollTop = recordIndex * grid.rowHeight;
+      this.#renderVirtualRows();
+      cell = this.#findCellForRecordField(recordId, pending.fieldId);
+    }
+    if (cell === null) {
+      cell =
+        [...this.#container.querySelectorAll<HTMLElement>('.loom-grid-cell')].find(
+          (candidate) => candidate.dataset.recordId === recordId,
+        ) ?? null;
+    }
+    if (cell === null) return false;
+    cell.focus();
+    this.#pendingCreateFocus = null;
+    return true;
+  }
+
+  /**
+   * True when focus sits somewhere the user put it (a cell, editor, control,
+   * or UI outside the grid) — as opposed to <body> or the grid's own neutral
+   * fallback surfaces — so a late async result must not steal it.
+   */
+  #pendingFocusUserMoved(): boolean {
+    const doc = this.#container.ownerDocument;
+    const active = doc.activeElement;
+    if (!(active instanceof HTMLElement) || active === doc.body || active === doc.documentElement) {
+      return false;
+    }
+    if (!this.#container.contains(active)) return true;
+    if (active === this.#virtualGrid?.viewport) return false;
+    return !active.classList.contains('loom-grid-shell');
   }
 
   #finishDraftCell(
@@ -2415,6 +2586,7 @@ export class ReadonlyGridRenderer {
     const values = this.#draftCreateValues;
     if (values === null) return;
     values[fieldId] = value;
+    this.#draftLastFieldId = fieldId;
     const grid = this.#virtualGrid;
     const state = grid?.state ?? this.#emptyState();
     const next =
@@ -2695,18 +2867,31 @@ export class ReadonlyGridRenderer {
     field?: Field,
   ): void {
     this.#closePanels();
-    this.#overlayClose = openFieldEditor({
-      mode: context.mode,
-      ...(context.mode === 'edit' && field !== undefined ? { field } : {}),
-      x,
-      y,
-      host: this.#container,
-      translate: this.#translate,
-      ...(trigger === undefined ? {} : { trigger }),
-      onSubmit: async (input) => {
-        await this.#callbacks.onFieldSave?.(input, context);
-      },
-    });
+    const anchorFieldId =
+      field?.id ?? (context.mode === 'create' ? context.anchorFieldId : undefined);
+    this.#trackOverlay(
+      openFieldEditor({
+        mode: context.mode,
+        ...(context.mode === 'edit' && field !== undefined ? { field } : {}),
+        x,
+        y,
+        host: this.#container,
+        translate: this.#translate,
+        ...(trigger === undefined ? {} : { trigger }),
+        // The trigger is destroyed by the close-panels re-render; resolve a
+        // stable replacement (the field's header cell, else the add-field
+        // button) so close can still restore focus.
+        restoreFocusTarget: () =>
+          (anchorFieldId !== undefined
+            ? this.#container.querySelector<HTMLElement>(
+                `.loom-grid-header-cell[data-field-id="${anchorFieldId}"]`,
+              )
+            : null) ?? this.#container.querySelector<HTMLElement>('.loom-grid-add-field-button'),
+        onSubmit: async (input) => {
+          await this.#callbacks.onFieldSave?.(input, context);
+        },
+      }),
+    );
   }
 
   #openConvertPanel(field: Field, x: number, y: number): void {
@@ -2719,33 +2904,37 @@ export class ReadonlyGridRenderer {
     const onPreview = this.#callbacks.onConversionPreview;
     const onConvert = this.#callbacks.onConvertField;
     this.#closePanels();
-    this.#overlayClose = openFieldConverter({
-      field,
-      x,
-      y,
-      host: this.#container,
-      translate: this.#translate,
-      onPreview: (fieldId, type) => onPreview(fieldId, type),
-      onConvert: (fieldId, request) => onConvert(fieldId, request),
-    });
+    this.#trackOverlay(
+      openFieldConverter({
+        field,
+        x,
+        y,
+        host: this.#container,
+        translate: this.#translate,
+        onPreview: (fieldId, type) => onPreview(fieldId, type),
+        onConvert: (fieldId, request) => onConvert(fieldId, request),
+      }),
+    );
   }
 
   #openNumberFormatPanel(field: Extract<Field, { type: 'number' }>, x: number, y: number): void {
     if (this.#callbacks.onFieldSave === undefined) return;
     this.#closePanels();
-    this.#overlayClose = openNumberFormatPanel({
-      field,
-      x,
-      y,
-      host: this.#container,
-      translate: this.#translate,
-      onSubmit: async (format) => {
-        await this.#callbacks.onFieldSave?.(
-          { name: field.name, type: 'number', format },
-          { mode: 'edit', fieldId: field.id },
-        );
-      },
-    });
+    this.#trackOverlay(
+      openNumberFormatPanel({
+        field,
+        x,
+        y,
+        host: this.#container,
+        translate: this.#translate,
+        onSubmit: async (format) => {
+          await this.#callbacks.onFieldSave?.(
+            { name: field.name, type: 'number', format },
+            { mode: 'edit', fieldId: field.id },
+          );
+        },
+      }),
+    );
   }
 
   #openRecordContextMenu(record: LoomTableRecord, x: number, y: number): void {

@@ -5,6 +5,7 @@ import type {
   SelectOptionInput,
 } from '../client/loomtable-client';
 import type { Translator } from '../i18n';
+import { getFocusableElements } from './dangerous-action-confirmation';
 import { createFieldTypeIcon } from './field-type-icon';
 import { createUiIcon } from './icons';
 
@@ -50,6 +51,8 @@ export interface FieldEditorOptions {
   readonly y: number;
   readonly host: HTMLElement;
   readonly trigger?: HTMLElement;
+  /** Resolves the focus target on close when `trigger` is gone (re-rendered). */
+  readonly restoreFocusTarget?: () => HTMLElement | null;
   readonly translate: Translator;
   readonly onSubmit: (input: FieldEditorSubmit) => void | Promise<void>;
 }
@@ -292,12 +295,17 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
   submit.className = 'loom-field-editor-submit loom-button-primary';
   submit.textContent = t(options.mode === 'create' ? 'field.submit.create' : 'field.submit.save');
 
+  let closed = false;
   const close = (): void => {
+    if (closed) return;
+    closed = true;
     panel.remove();
     options.host.removeEventListener('scroll', onScroll);
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('keydown', onKeyDown, true);
-    options.trigger?.focus();
+    const connectedTrigger =
+      options.trigger !== undefined && options.trigger.isConnected ? options.trigger : null;
+    (connectedTrigger ?? options.restoreFocusTarget?.() ?? null)?.focus();
   };
 
   const doSubmit = async (): Promise<void> => {
@@ -340,6 +348,25 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
       close();
       return;
     }
+    if (event.key === 'Tab') {
+      // Dialog semantics: Tab/Shift+Tab cycle inside the panel and must not
+      // leak into the grid behind it.
+      event.preventDefault();
+      const focusable = getFocusableElements(panel);
+      if (focusable.length === 0) return;
+      const active = document.activeElement;
+      const index = active instanceof HTMLElement ? focusable.indexOf(active) : -1;
+      const next =
+        event.shiftKey === true
+          ? index <= 0
+            ? focusable.length - 1
+            : index - 1
+          : index === -1 || index === focusable.length - 1
+            ? 0
+            : index + 1;
+      focusable[next]?.focus();
+      return;
+    }
     if (event.key === 'Enter' && event.target === nameInput) {
       event.preventDefault();
       void doSubmit();
@@ -360,8 +387,27 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
   options.host.addEventListener('scroll', onScroll);
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('keydown', onKeyDown, true);
-  nameInput.focus();
-  nameInput.select();
+  // Focus is deferred past the opening click's dispatch: opening the editor
+  // re-renders the grid, which detaches the clicked trigger mid-dispatch, and
+  // the browser then resets focus to <body> — undoing a synchronous focus().
+  // Browsers additionally swallow focus() calls made while the click gesture
+  // is still settling, so retry briefly until the input actually holds focus.
+  // Retries stop when the panel closed (e.g. outside click) or focus already
+  // lives inside it, so a deliberate click-away is never overridden.
+  let focusAttempts = 0;
+  const focusName = (): void => {
+    if (closed || !panel.isConnected) return;
+    const active = document.activeElement;
+    if (active instanceof Node && panel.contains(active)) return;
+    nameInput.focus();
+    if (document.activeElement === nameInput) {
+      nameInput.select();
+      return;
+    }
+    focusAttempts += 1;
+    if (focusAttempts < 12) window.setTimeout(focusName, 50);
+  };
+  window.setTimeout(focusName, 0);
   return close;
 }
 
