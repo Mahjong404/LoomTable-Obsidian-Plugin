@@ -200,9 +200,13 @@ LoomTable 使用双模式交互：
 ### View Tabs
 
 - View Tabs 只负责 View 导航，不承载 Record 编辑动作；
+- 顶部导航属于共享 Table/View Shell，由 View 宿主统一挂载；Grid、Map 与未来 View MUST 复用同一 Shell 实例，不在各自 Renderer 内重复渲染顶栏；
+- Shell 为单行结构：Table 上下文、View 列表入口、View 快捷 Tabs 与 View 管理动作位于同一行，不为 View Tabs 单独占用第二行；
+- View 快捷 Tabs 横向连续排列；空间不足时横向滚动，MUST NOT 用 `+N` 折叠隐藏 View；
+- 「全部视图」入口打开完整 View 列表，标明当前 View 并支持切换，同时保留 View 管理入口；
 - 当前 View 必须有明确选中状态；
-- 添加 View 与 View 管理入口必须可发现；
-- 桌面端可以使用横向 Tabs，移动端可以使用横向滚动或 Sheet；
+- 添加 View、管理 View 与同级动作使用同一层级的轻量按钮样式，普通动作不得比选中态 Tab 更抢视觉权重；
+- 移动端可以使用横向滚动或 Sheet；
 - View 名称可以修改，但导航、缓存和恢复必须使用稳定 View ID；
 - View 类型名称遵守领域术语，不使用 Table、网格和数据表混称。
 
@@ -407,7 +411,8 @@ Focus 必须有明确 Focus Ring，Selected 必须与 Focus 可区分，Editing 
 ### Pointer 与键盘
 
 - 单击只负责选中和聚焦；
-- 双击或 Enter 进入编辑；
+- 双击或 Enter 进入编辑；不可编辑 Cell 上的 Enter 打开 Record Detail；
+- Grid 就绪且页面焦点空闲（落在 `body`）时，自动聚焦当前 View 首个可编辑 Cell；该聚焦是软焦点：滚动锚点恢复与用户显式操作优先，重绘不得为它抢回滚动位置，用户点击或按键后提升为普通选中焦点；
 - 选中后直接输入可替换原值并进入编辑；
 - Enter 提交并保留当前 Cell；
 - Tab 提交并移动到右侧 Cell；
@@ -457,6 +462,17 @@ Table ID + View ID + Record ID + Field ID
 - 已提交但仍在 Saving 时可以切换，但保存必须继续由队列处理；
 - 保存失败或 Conflict 时切换前必须明确处理或保留状态；
 - 删除和恢复遵守普通 Mutation/Conflict 流程。
+
+### Record 创建
+
+- 「新增记录」是单一直接动作：点击立即在 Grid 中展开行内草稿行，不再提供二级创建菜单；
+- 行内草稿入口不因 `hasMore`（存在未加载分页）而隐藏；
+- 草稿行位置：手动排序 View 中跟随当前显式聚焦/选中的记录之后，其余情况（非手动序、无显式焦点、软焦点）追加到已加载记录末尾；
+- 草稿激活时其后行视觉下移让位；该位移是位置预告，非已持久化顺序；
+- 手动排序下创建成功后通过 `moveRecord(afterRecordId)` 持久化锚点位置；
+- Enter/失焦提交草稿，Esc 取消，空草稿静默丢弃；
+- 创建失败保留已输入草稿值并恢复草稿焦点，不得静默丢失用户输入；用户主动移走焦点后不抢回；
+- 字段间 Enter/Tab 推进草稿编辑而不提前提交。
 
 ### Conflict Panel
 

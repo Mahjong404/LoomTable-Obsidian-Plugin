@@ -59,3 +59,10 @@ P1.6 是 P1.5（功能交付）与 P2.0（新产品功能）之间的过渡稳�
   - ✅ Detail select/date 即选即存：Select/Date 编辑器 change 后立即经 `onFieldEdit` 队列提交并关闭编辑器（与 Checkbox 对齐）；失败保留所选值与字段级错误，焦点回编辑器；MultiSelect 逐选语义未定，维持显式保存/取消。已 CDP 真机验证（建临时 Select/Date 字段，验证后删除），提交 `e3a8f9b`。
   - 决策记录：O5（列头值清单筛选）确认推迟至 P2.0；O6 不做列菜单"设置列宽"项（列宽经表头边缘拖拽与 Display Panel 精确输入）；Detail 标题内联编辑仍为待决 P3 项。
   - 验证基线：`npx vitest run` 66 文件 932 测试全绿；`tsc --noEmit` 0 error；`eslint` 0 error（存量风格 warning）；Server `go test ./...` 含 Postgres 集成测试通过。
+- 2026-09-25 修复轮（真实审计 `docs/local/ux-audit-2026-09-25.md`，五问题全修复）：
+  - ✅ 环境纠偏：清理上轮误建的 `loomtable-test-pg` 容器与匿名卷；`AGENTS.md` 登记远端 Server 约束（不默认本地起 Docker），提交 `b786f9e`。
+  - ✅ P0 编辑锁死 + 编辑视觉残留（同根因）：`finish()` 各退出路径统一就地移除 `.loom-grid-editor` 并重建 cell 显示；编辑器消费键 `stopPropagation` 阻断 Enter 冒泡重入；新增编辑器焦点有界重试（10×50ms，blur 后即停）。CDP 实测连续编辑/blur/Esc/Tab 无锁死无残留，提交 `72b12b2`。
+  - ✅ 共享 Table/View Shell：`TableShell` 从 Grid/Map 两个 Renderer 内上提为 `LoomTableView` 单实例（nav DOM 跨 View 不销毁）；两行收敛单行（上下文+视图列表+快捷 tabs+管理动作同层）；「全部视图」按钮开完整 View 列表（aria-current+勾标当前）；删 `+N` 折叠改横滚；`.loom-table-shell-actions` 选择器错配修正，Add/Manage 与 tabs 同为轻量样式。提交 `4cd4122`。
+  - ✅ 新增记录简化：删 split caret/菜单/相关 i18n 与 CSS；`+` 行与工具栏按钮直接展开行内草稿；`hasMore` 不再阻断；手动序（`manualSort:true && sort:[]`）草稿落在显式焦点行下且提交后 `moveRecord` 持久化，非手动序一律落已加载末尾；Esc 取消/blur 提交/失败保留草稿恢复焦点；Grid 就绪且焦点空闲时软聚焦首个可编辑 cell（不抢滚动锚点）。提交 `faf92fd`。
+  - 新发现待决（审计文档第二节）：F-1 按钮触发菜单覆盖触发器（P3）；F-2 行内创建失败无可见错误提示（P2）；F-3 `Σ` 底部条与工具栏行数重复（P3 待产品决策）；F-4 状态面板模式图标无 roving tabindex（P3）；F-5 Enter 偶发未进入编辑（P3 低置信，未复现）。
+  - 验证基线：`npx vitest run` 66 文件 939 测试全绿；`tsc --noEmit` 0 error；`eslint` 0 error；`prettier --check` 通过；`api:generate` 零 diff；`git diff --check` 干净；`npm run build` 成功。
