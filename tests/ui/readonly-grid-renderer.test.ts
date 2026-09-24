@@ -1566,6 +1566,26 @@ describe('Grid query controls', () => {
     container.remove();
   });
 
+  it('focuses the first editable cell once a ready Grid mounts with idle focus', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+    });
+    renderer.render(createState(2));
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"][data-field-id="field_name"]',
+    );
+    expect(document.activeElement).toBe(cell);
+
+    // A re-render refocuses the equivalent rebuilt cell.
+    renderer.render({ ...createState(2), saveStatus: 'saving' });
+    const focused = document.activeElement as HTMLElement | null;
+    expect(focused?.dataset.focusKey).toBe(cell?.dataset.focusKey);
+    container.remove();
+  });
+
   it('keeps the query toggles in the start group while Search expands beside them', () => {
     const container = document.createElement('div');
     document.body.append(container);
@@ -2245,46 +2265,21 @@ describe('Grid V5 bounded DOM', () => {
 });
 
 describe('Grid record create', () => {
-  it('opens the create form from the toolbar and submits through onCreateRecord', async () => {
+  it('begins an inline draft directly from the toolbar create button', () => {
     const container = document.createElement('div');
     document.body.append(container);
-    const record: LoomTableRecord = {
-      id: 'record_new',
-      tableId: 'table_01',
-      revision: 1,
-      values: { field_name: 'Fresh' },
-      createdAt: '2026-08-15T00:00:00Z',
-      updatedAt: '2026-08-15T00:00:00Z',
-    };
     const callbacks = {
       ...rendererCallbacks(),
-      onCreateRecord: vi.fn(async () => record),
+      onCreateRecord: vi.fn(async () => ({ id: 'record_new' }) as never),
     };
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
     renderer.render(createState(1));
 
-    const caret = container.querySelector<HTMLButtonElement>('[data-action="create-menu"]');
-    expect(caret).not.toBeNull();
-    caret?.click();
-    container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item').forEach((item) => {
-      if (item.textContent?.includes('Open create form')) item.click();
-    });
-    const form = container.querySelector<HTMLElement>('.loom-record-create');
-    expect(form).not.toBeNull();
-    const input = container.querySelector<HTMLInputElement>('.loom-record-create-fields input');
-    expect(input).not.toBeNull();
-    if (input === null) return;
-    input.value = 'Fresh';
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    form?.querySelector<HTMLButtonElement>('.loom-record-create-submit')?.click();
-    await vi.waitFor(() => expect(callbacks.onCreateRecord).toHaveBeenCalled());
-    expect(callbacks.onCreateRecord).toHaveBeenCalledWith({ field_name: 'Fresh' });
-    await vi.waitFor(() =>
-      expect(callbacks.onRecordOpen).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 'record_new' }),
-      ),
-    );
-    expect(container.querySelector('.loom-record-create')).toBeNull();
+    // No split-button: the single action goes straight to the draft row.
+    expect(container.querySelector('[data-action="create-menu"]')).toBeNull();
+    expect(container.querySelector('.loom-split-button')).toBeNull();
+    container.querySelector<HTMLButtonElement>('.loom-grid-record-create')?.click();
+    expect(container.querySelector('.loom-grid-draft-row')).not.toBeNull();
     container.remove();
   });
 
@@ -3094,14 +3089,112 @@ describe('Grid record lifecycle', () => {
     container.remove();
   });
 
-  it('does not render the inline add row while more pages remain', () => {
+  it('keeps the inline add row reachable while more pages remain', () => {
     const container = document.createElement('div');
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
       ...rendererCallbacks(),
       onCreateRecord: vi.fn(async () => ({ id: 'record_new' }) as never),
     });
     renderer.render(createState(2, { hasMore: true, nextCursor: 'cursor_2' }));
-    expect(container.querySelector('.loom-grid-add-row')).toBeNull();
+    expect(container.querySelector('.loom-grid-add-row')).not.toBeNull();
+    container.remove();
+  });
+
+  it('opens the draft below the focused record and persists that anchor on create', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const record: LoomTableRecord = {
+      id: 'record_new',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_name: 'Drafted' },
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    const onCreateRecord = vi.fn(async () => record);
+    const onMoveRecord = vi.fn(async () => undefined);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+      onMoveRecord,
+    });
+    const base = createState(3);
+    const view = base.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...base,
+      views: [{ ...view, config: { ...view.config, manualSort: true } }],
+    });
+
+    // An explicit click selects record_02 — the draft must slot in below it.
+    container
+      .querySelector<HTMLElement>(
+        '.loom-grid-cell[data-record-id="record_02"][data-field-id="field_name"]',
+      )
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    container.querySelector<HTMLButtonElement>('.loom-grid-record-create')?.click();
+
+    const draftRow = container.querySelector<HTMLElement>('.loom-grid-draft-row');
+    expect(draftRow).not.toBeNull();
+    const rowHeight = 36;
+    expect(draftRow?.style.top).toBe(`${2 * rowHeight}px`);
+    // The row that held index 2 slides down to keep the draft slot visible.
+    const shifted = container.querySelector<HTMLElement>('.loom-grid-row[data-row-index="2"]');
+    expect(shifted?.style.top).toBe(`${3 * rowHeight}px`);
+
+    const editor = draftRow?.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor).not.toBeNull();
+    if (editor === null || editor === undefined) return;
+    editor.value = 'Drafted';
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(onMoveRecord).toHaveBeenCalledWith('record_new', {
+        afterRecordId: 'record_02',
+      }),
+    );
+    container.remove();
+  });
+
+  it('appends the draft at the loaded end when the View is not manual order', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const record: LoomTableRecord = {
+      id: 'record_new',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_name: 'Drafted' },
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    const onCreateRecord = vi.fn(async () => record);
+    const onMoveRecord = vi.fn(async () => undefined);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+      onMoveRecord,
+    });
+    renderer.render(createState(3));
+
+    container
+      .querySelector<HTMLElement>(
+        '.loom-grid-cell[data-record-id="record_01"][data-field-id="field_name"]',
+      )
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    container.querySelector<HTMLButtonElement>('.loom-grid-record-create')?.click();
+
+    const draftRow = container.querySelector<HTMLElement>('.loom-grid-draft-row');
+    expect(draftRow).not.toBeNull();
+    // The draft occupies the tail slot, not below the focused record.
+    expect(draftRow?.style.top).toBe(`${3 * 36}px`);
+
+    const editor = draftRow?.querySelector<HTMLInputElement>('.loom-grid-editor');
+    editor!.value = 'Drafted';
+    editor!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(onMoveRecord).not.toHaveBeenCalled();
+    container.remove();
   });
 
   it('creates a record inline from the draft row on Enter', async () => {

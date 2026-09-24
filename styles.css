@@ -3335,29 +3335,6 @@
   color: var(--loom-text-muted);
 }
 
-/* Split button (main action + caret menu) */
-
-.loom-split-button {
-  display: inline-flex;
-  align-items: stretch;
-}
-
-.loom-split-button .loom-split-main {
-  border-start-end-radius: 0;
-  border-end-end-radius: 0;
-}
-
-.loom-split-button .loom-split-caret {
-  border-start-start-radius: 0;
-  border-end-start-radius: 0;
-  border-inline-start: 0;
-  padding-inline: var(--loom-space-1);
-}
-
-.loom-split-button .loom-split-caret .loom-ui-icon {
-  margin-inline-end: 0;
-}
-
 /* Search highlight + grid footer bar */
 
 .loom-search-hit {

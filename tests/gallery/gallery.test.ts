@@ -180,25 +180,24 @@ describe('Grid states', () => {
     });
   });
 
-  it('creates a record through the real create form and queue', async () => {
+  it('creates a record through the inline draft row and queue', async () => {
     const host = await mount('grid-interactive');
     await vi.waitFor(() => {
       expect(host.querySelectorAll('.loom-grid-row').length).toBeGreaterThan(0);
     });
-    host.querySelector<HTMLButtonElement>('[data-action="create-menu"]')?.click();
-    host.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item').forEach((item) => {
-      if (item.textContent?.includes('Open create form')) item.click();
-    });
-    const form = host.querySelector<HTMLFormElement>('.loom-record-create');
-    expect(form).not.toBeNull();
-    const titleInput = host.querySelector<HTMLInputElement>('[data-field-id="field_title"] input');
-    expect(titleInput).not.toBeNull();
-    titleInput!.value = 'Gallery record';
-    titleInput!.dispatchEvent(new Event('input', { bubbles: true }));
-    const before = host.querySelectorAll('.loom-grid-row').length;
-    form!.requestSubmit();
+    const realRows = () => host.querySelectorAll('.loom-grid-row:not(.loom-grid-draft-row)').length;
+    const before = realRows();
+    host.querySelector<HTMLButtonElement>('.loom-grid-record-create')?.click();
+    const draftRow = host.querySelector<HTMLElement>('.loom-grid-draft-row');
+    expect(draftRow).not.toBeNull();
+    const editor = draftRow?.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor).not.toBeNull();
+    editor!.value = 'Gallery record';
+    // Leaving the draft row commits it — same contract as a user clicking away.
+    editor!.blur();
+    draftRow!.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
     await vi.waitFor(() => {
-      expect(host.querySelectorAll('.loom-grid-row').length).toBeGreaterThan(before);
+      expect(realRows()).toBeGreaterThan(before);
     });
     expect(host.textContent).toContain('Gallery record');
   });

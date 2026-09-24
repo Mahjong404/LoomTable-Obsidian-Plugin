@@ -29,7 +29,6 @@ import { openNumberFormatPanel } from './number-format-panel';
 import { createToastStack, pushToast, type ToastOptions } from './toast';
 import { SortPanel } from './sort-panel';
 import { DisplayPanel } from './display-panel';
-import { createRecordCreateForm, type RecordCreateForm } from './record-create-form';
 import {
   clampGridColumnWidth,
   GRID_COLUMN_WIDTH_DEFAULT,
@@ -245,13 +244,14 @@ export class ReadonlyGridRenderer {
   readonly #pendingActions = new Set<GridAction>();
   readonly #actionButtons = new Map<HTMLButtonElement, GridActionButtonSpec>();
   #focusedAction: GridAction | null = null;
-  #openPanel: 'filter' | 'sort' | 'display' | 'create' | 'status' | null = null;
+  #openPanel: 'filter' | 'sort' | 'display' | 'status' | null = null;
   #searchDraft: string | null = null;
   #searchExpanded = false;
   #searchDebounceTimer: number | null = null;
   #searchError: string | null = null;
   #draftCreateValues: Record<string, MutationValue> | null = null;
   #draftRowEl: HTMLElement | null = null;
+  #draftAnchor: { index: number; afterRecordId: string | null } | null = null;
   #toolbarObserver: ResizeObserver | null = null;
   #draftLastFieldId: string | null = null;
   #pendingCreateFocus: {
@@ -273,7 +273,11 @@ export class ReadonlyGridRenderer {
   #displayPanel: DisplayPanel | null = null;
   #displayPanelViewId: string | null = null;
   #displayPanelFieldsKey = '';
-  #createForm: RecordCreateForm | null = null;
+  #autoFocusedViewId: string | null = null;
+  // Focus placed by #autoFocusFirstCell is tentative: re-renders refocus it
+  // when visible but never scroll the viewport back to it. An explicit cell
+  // selection promotes the focus to the normal sticky kind.
+  #softFocusedCell = false;
   #clipboardNotice: string | null = null;
   #rowHeightAnchor: {
     readonly recordId: string | null;
@@ -425,10 +429,31 @@ export class ReadonlyGridRenderer {
       return;
     } else {
       const restored = this.#restoreFocusedHeader() || this.#restoreFocusedCell();
-      if ((this.#focusedCellKey !== null || this.#focusedHeaderFieldId !== null) && !restored) {
-        this.#focusGridFallback();
+      if (!restored) {
+        if (this.#focusedCellKey !== null || this.#focusedHeaderFieldId !== null) {
+          this.#focusGridFallback();
+        } else {
+          this.#autoFocusFirstCell(state);
+        }
       }
     }
+  }
+
+  // A freshly loaded Grid focuses its first editable cell once per View so
+  // keyboard entry works without a preliminary click. It never steals focus
+  // back — only the <body> landing spot qualifies.
+  #autoFocusFirstCell(state: GridState): void {
+    if (this.#autoFocusedViewId === state.selectedViewId) return;
+    if (state.status !== 'ready' || state.records.length === 0) return;
+    const grid = this.#virtualGrid;
+    if (grid === null) return;
+    const active = this.#container.ownerDocument.activeElement;
+    if (active !== null && active !== this.#container.ownerDocument.body) return;
+    const fieldIndex = grid.fields.findIndex((field) => isEditableField(field));
+    if (fieldIndex < 0) return;
+    this.#autoFocusedViewId = state.selectedViewId;
+    this.#softFocusedCell = true;
+    this.#focusCellAt(0, fieldIndex);
   }
 
   #renderToolbar(state: GridState): HTMLElement {
@@ -439,13 +464,9 @@ export class ReadonlyGridRenderer {
     const end = createElement('div', 'loom-toolbar-group loom-toolbar-end');
     const gridView = selectedGridView(state);
     if (this.#callbacks.onCreateRecord !== undefined && state.selectedTableId !== null) {
-      const split = createElement('span', 'loom-split-button');
-      const createButton = createElement(
-        'button',
-        'loom-button loom-grid-record-create loom-split-main',
-      );
+      const createButton = createElement('button', 'loom-button loom-grid-record-create');
       createButton.type = 'button';
-      createButton.dataset.action = 'toggle-create';
+      createButton.dataset.action = 'create-record';
       createButton.append(createUiIcon('tool-create'));
       createButton.append(createTextElement('span', this.#translate('record.create.add')));
       // Only unfinished ops count as pending; an applied op keeps its "open the
@@ -463,40 +484,7 @@ export class ReadonlyGridRenderer {
       }
       createButton.disabled = state.status === 'offline';
       createButton.addEventListener('click', () => this.#beginDraftCreate());
-      const caret = createElement('button', 'loom-button loom-split-caret clickable-icon');
-      caret.type = 'button';
-      caret.dataset.action = 'create-menu';
-      caret.setAttribute('aria-label', this.#translate('record.create.menu'));
-      caret.setAttribute('aria-haspopup', 'menu');
-      caret.disabled = createButton.disabled;
-      caret.append(createUiIcon('caret-down'));
-      caret.addEventListener('click', () => {
-        const rect = caret.getBoundingClientRect();
-        openContextMenu({
-          label: this.#translate('record.create.menu'),
-          x: rect.left,
-          y: rect.bottom + 4,
-          host: this.#container,
-          items: [
-            {
-              label: this.#translate('record.create.menu.append'),
-              icon: 'tool-create',
-              action: () => this.#beginDraftCreate(),
-            },
-            {
-              label: this.#translate('record.create.menu.form'),
-              icon: 'menu-open',
-              action: () => {
-                this.#dismissOverlay();
-                this.#openPanel = 'create';
-                this.#rerenderSelf();
-              },
-            },
-          ],
-        });
-      });
-      split.append(createButton, caret);
-      start.append(split);
+      start.append(createButton);
     }
     let searchControls: HTMLElement | null = null;
     if (gridView !== null) {
@@ -813,7 +801,7 @@ export class ReadonlyGridRenderer {
   }
 
   #toggleButton(
-    panel: 'filter' | 'sort' | 'display' | 'create',
+    panel: 'filter' | 'sort' | 'display',
     label: string,
     activeCount: number,
     activeKey: MessageKey,
@@ -855,7 +843,6 @@ export class ReadonlyGridRenderer {
   }
 
   #renderQueryPanel(state: GridState): HTMLElement | null {
-    if (this.#openPanel === 'create') return this.#renderCreatePanel(state);
     if (this.#openPanel === 'status') return this.#renderStatusPanel(state);
     const view = selectedGridView(state);
     if (view === null || this.#openPanel === null) return null;
@@ -974,7 +961,6 @@ export class ReadonlyGridRenderer {
     this.#displayPanel = null;
     this.#displayPanelViewId = null;
     this.#displayPanelFieldsKey = '';
-    this.#createForm = null;
     this.#dismissOverlay();
     this.#rerenderSelf();
   }
@@ -1053,37 +1039,6 @@ export class ReadonlyGridRenderer {
     };
     this.#container.ownerDocument.addEventListener('pointerdown', onPointerDown, true);
     this.#panelDismiss = onPointerDown;
-  }
-
-  #renderCreatePanel(state: GridState): HTMLElement | null {
-    const onCreateRecord = this.#callbacks.onCreateRecord;
-    if (onCreateRecord === undefined) return null;
-    const host = createElement('div', 'loom-query-panel');
-    host.dataset.panel = 'create';
-    if (this.#createForm === null) {
-      this.#createForm = createRecordCreateForm({
-        fields: state.fields.filter((field) => field.deletedAt === undefined),
-        translate: this.#translate,
-        offline: state.status === 'offline',
-        confirmDiscard: (message) => this.#requestDangerousConfirmation(message, this.#container),
-        onSubmit: async (values) => {
-          this.#createForm?.setBusy(true);
-          try {
-            const record = await onCreateRecord(values);
-            this.#closePanels();
-            this.#callbacks.onRecordOpen(record);
-          } catch (error) {
-            this.#createForm?.setBusy(false);
-            this.#createForm?.showError(
-              error instanceof Error ? error.message : this.#translate('record.create.failed'),
-            );
-          }
-        },
-        onCancel: () => this.#closePanels(),
-      });
-    }
-    host.append(this.#createForm.element);
-    return host;
   }
 
   #renderCreateOps(state: GridState): HTMLElement | null {
@@ -1728,13 +1683,15 @@ export class ReadonlyGridRenderer {
     }
 
     const canvas = createElement('div', 'loom-grid-canvas');
-    canvas.style.height = `${state.records.length * rowHeight}px`;
+    // An active draft row occupies its own slot in the canvas; reserve the
+    // extra height so the rows shifted below it stay inside the scroll area.
+    const draftSlot = this.#draftCreateValues !== null ? 1 : 0;
+    canvas.style.height = `${(state.records.length + draftSlot) * rowHeight}px`;
     canvas.style.backgroundImage = gridFillerBackground(columns, fields, rowHeight);
     const rowLayer = createElement('div', 'loom-grid-row-layer');
     canvas.append(rowLayer);
     const canCreate =
       state.status === 'ready' &&
-      !state.hasMore &&
       state.selectedTableId !== null &&
       this.#callbacks.onCreateRecord !== undefined;
     if (canCreate && this.#draftCreateValues !== null) {
@@ -2039,19 +1996,30 @@ export class ReadonlyGridRenderer {
         if (editor === document.activeElement) focusedEditor = editor;
       }
     }
+    // Rows at or below the draft insertion slot slide down one row so the
+    // draft visually opens a gap at the focused position.
+    const draftIndex = this.#draftCreateValues !== null ? this.#draftAnchor?.index : undefined;
+    const shiftedTop = (rowIndex: number): string =>
+      `${(rowIndex + (draftIndex !== undefined && rowIndex >= draftIndex ? 1 : 0)) * grid.rowHeight}px`;
     grid.rowLayer.replaceChildren();
     for (let rowIndex = range.start; rowIndex < range.end; rowIndex += 1) {
       const kept = editingRows.get(rowIndex);
       if (kept !== undefined) {
+        kept.style.top = shiftedTop(rowIndex);
         grid.rowLayer.append(kept);
         continue;
       }
       const record = grid.state.records[rowIndex];
       if (record === undefined) continue;
-      grid.rowLayer.append(this.#renderRow(record, rowIndex, grid.fields, grid.rowHeight));
+      const row = this.#renderRow(record, rowIndex, grid.fields, grid.rowHeight);
+      if (draftIndex !== undefined && rowIndex >= draftIndex) row.style.top = shiftedTop(rowIndex);
+      grid.rowLayer.append(row);
     }
     for (const [rowIndex, row] of editingRows) {
-      if (rowIndex < range.start || rowIndex >= range.end) grid.rowLayer.append(row);
+      if (rowIndex < range.start || rowIndex >= range.end) {
+        row.style.top = shiftedTop(rowIndex);
+        grid.rowLayer.append(row);
+      }
     }
     focusedEditor?.focus();
     if (this.#focusedCellKey !== null) this.#restoreFocusedCell();
@@ -2356,7 +2324,7 @@ export class ReadonlyGridRenderer {
 
   #renderDraftRow(state: GridState, fields: readonly Field[], rowHeight: number): HTMLElement {
     const draftRecord = this.#draftRecord(state);
-    const rowIndex = state.records.length;
+    const rowIndex = this.#draftAnchor?.index ?? state.records.length;
     const row = createElement('div', 'loom-grid-row loom-grid-draft-row');
     row.setAttribute('role', 'row');
     row.setAttribute('aria-rowindex', String(rowIndex + 2));
@@ -2456,25 +2424,45 @@ export class ReadonlyGridRenderer {
     return row;
   }
 
+  /**
+   * Where the draft row goes: below the Record the user focused (an explicit
+   * selection only — the tentative ready-focus does not pick an anchor), or
+   * after the last loaded row when nothing is focused. `index` is the row the
+   * draft occupies; `afterRecordId` persists that position on commit.
+   */
+  #resolveDraftAnchor(state: GridState): { index: number; afterRecordId: string | null } {
+    const position = this.#focusedCellPosition;
+    const records = state.records;
+    const manual = manualOrderEnabled(state);
+    if (!this.#softFocusedCell && position !== null && records.length > 0 && manual) {
+      const rowIndex = Math.max(0, Math.min(records.length - 1, position.rowIndex));
+      return { index: rowIndex + 1, afterRecordId: records[rowIndex]?.id ?? null };
+    }
+    // Sorted/filtered views cannot honor an insertion anchor — the draft sits
+    // at the loaded tail and the Server places the Record. In manual order a
+    // tail draft still needs the move while more pages are unloaded.
+    const afterRecordId =
+      manual && state.hasMore ? (records.at(-1)?.id ?? null) : null;
+    return { index: records.length, afterRecordId };
+  }
+
   #beginDraftCreate(): void {
     const state = this.#virtualGrid?.state ?? this.#lastState;
     if (state === null || this.#callbacks.onCreateRecord === undefined) return;
     if (state.status !== 'ready' || state.selectedTableId === null) return;
-    if (state.hasMore) {
-      // The trailing draft row only exists at the end of a fully loaded grid;
-      // fall back to the create form while more pages remain unloaded.
-      this.#dismissOverlay();
-      this.#openPanel = 'create';
-      this.#rerenderSelf();
-      return;
-    }
     this.#pendingCreateFocus = null;
     this.#draftLastFieldId = null;
     this.#draftCreateValues ??= {};
+    const anchor = this.#resolveDraftAnchor(state);
+    this.#draftAnchor = anchor;
     this.render(state);
     const grid = this.#virtualGrid;
     if (grid !== null) {
-      grid.viewport.scrollTop = state.records.length * grid.rowHeight;
+      const draftTop = anchor.index * grid.rowHeight;
+      const viewBottom = grid.viewport.scrollTop + (grid.viewport.clientHeight || 360);
+      if (draftTop < grid.viewport.scrollTop || draftTop + grid.rowHeight > viewBottom) {
+        grid.viewport.scrollTop = draftTop;
+      }
       const first = this.#nextEditableFieldIndex(grid.fields, -1, 1);
       if (first !== null) this.#focusDraftCell(first);
     }
@@ -2485,6 +2473,7 @@ export class ReadonlyGridRenderer {
     this.#draftCreateValues = null;
     this.#draftRowEl = null;
     this.#draftLastFieldId = null;
+    this.#draftAnchor = null;
     this.#pendingCreateFocus = null;
     this.render(this.#virtualGrid?.state ?? this.#emptyState());
   }
@@ -2499,6 +2488,8 @@ export class ReadonlyGridRenderer {
     this.#draftCreateValues = null;
     this.#draftRowEl = null;
     this.#draftLastFieldId = null;
+    const anchor = this.#draftAnchor;
+    this.#draftAnchor = null;
     // The draft row is gone; drop the stale cell-focus memory so this render
     // does not snap focus to an unrelated row.
     this.#focusedCellKey = null;
@@ -2517,9 +2508,24 @@ export class ReadonlyGridRenderer {
     };
     this.#pendingCreateFocus = pending;
     void Promise.resolve(onCreateRecord({ ...values })).then(
-      (record) => {
+      async (record) => {
         if (this.#pendingCreateFocus !== pending) return;
         pending.recordId = record.id;
+        // Persist the drafted position in manual-order views; a failed move
+        // leaves the Record at the order's end where undo still applies.
+        const onMoveRecord = this.#callbacks.onMoveRecord;
+        if (
+          anchor !== null &&
+          anchor.afterRecordId !== null &&
+          onMoveRecord !== undefined &&
+          manualOrderEnabled(this.#lastState ?? undefined)
+        ) {
+          try {
+            await onMoveRecord(record.id, { afterRecordId: anchor.afterRecordId });
+          } catch {
+            // Same contract as insertRecordBelow: creation already succeeded.
+          }
+        }
         // The publish render may already have landed; try now and let the next
         // render retry if the row is not in the DOM yet.
         this.#restorePendingCreateFocus();
@@ -2530,6 +2536,7 @@ export class ReadonlyGridRenderer {
         // Keep the typed draft so a failed create can be retried instead of
         // silently losing what the user entered.
         this.#draftCreateValues = values;
+        this.#draftAnchor = anchor;
         this.render(this.#virtualGrid?.state ?? this.#emptyState());
       },
     );
@@ -2664,7 +2671,7 @@ export class ReadonlyGridRenderer {
       cell,
       this.#draftRecord(grid.state),
       field,
-      grid.state.records.length,
+      this.#draftAnchor?.index ?? grid.state.records.length,
       fieldIndex,
     );
   }
@@ -3385,6 +3392,7 @@ export class ReadonlyGridRenderer {
       );
       target = this.#findCellAt(rowIndex, fieldIndex);
       if (target === null) {
+        if (this.#softFocusedCell) return false;
         grid.viewport.scrollTop = rowIndex * grid.rowHeight;
         this.#renderVirtualRows();
         return true;
@@ -3490,6 +3498,7 @@ export class ReadonlyGridRenderer {
   }
 
   #selectCell(rowIndex: number, fieldIndex: number, extend: boolean): void {
+    this.#softFocusedCell = false;
     if (extend && this.#selection !== null) {
       this.#selection = {
         anchor: this.#selection.anchor,
