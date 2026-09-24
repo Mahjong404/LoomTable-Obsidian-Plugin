@@ -83,6 +83,7 @@ export class FilterBuilder {
   #applyQueued = false;
   #applyTimer: number | null = null;
   readonly #localValueFields = new Set<string>();
+  readonly #touchedPaths = new Set<string>();
 
   constructor(initial: FilterNode | undefined, options: FilterBuilderOptions) {
     this.#applied = initial;
@@ -93,6 +94,15 @@ export class FilterBuilder {
     this.#onInvalidate = options.onInvalidate;
     this.#host = options.host;
     this.#loadFieldValues = options.loadFieldValues;
+    const seedTouched = (node: FilterNode | undefined, path: number[]): void => {
+      if (node === undefined) return;
+      if (node.kind === 'rule') {
+        this.#touchedPaths.add(pathKey(path));
+        return;
+      }
+      node.children.forEach((child, index) => seedTouched(child, [...path, index]));
+    };
+    seedTouched(initial, []);
   }
 
   render(): HTMLElement {
@@ -139,7 +149,11 @@ export class FilterBuilder {
       }
     }
 
-    const issues = validateFilterDraft(this.#draft, this.#fields);
+    const issues = validateFilterDraft(this.#draft, this.#fields).filter(
+      (issue) =>
+        (issue.reason !== 'value-missing' && issue.reason !== 'value-invalid') ||
+        this.#touchedPaths.has(pathKey(issue.path)),
+    );
     for (const issue of issues) {
       const host =
         issue.path.length === 0
@@ -195,7 +209,7 @@ export class FilterBuilder {
     });
     head.append(operator);
     head.append(this.#addRuleButton(path), this.#addGroupButton(path));
-    const remove = this.#removeButton(path);
+    const remove = this.#removeButton(path, 'group');
     if (remove !== null) head.append(remove);
     container.append(head);
     const children = createElement('div', 'loom-filter-children');
@@ -258,8 +272,18 @@ export class FilterBuilder {
       row.append(this.#valueControl(field, rule, path));
     }
 
-    const remove = this.#removeButton(path);
+    const remove = this.#removeButton(path, 'rule');
     if (remove !== null) row.append(remove);
+    row.addEventListener('change', () => this.#markTouched(path), true);
+    row.addEventListener(
+      'focusout',
+      (event) => {
+        if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) return;
+        if (!this.#markTouched(path)) return;
+        window.setTimeout(() => this.#rerender(), 0);
+      },
+      true,
+    );
     return row;
   }
 
@@ -408,12 +432,9 @@ export class FilterBuilder {
       const field = this.#fields.find((candidate) => candidate.deletedAt === undefined);
       if (field === undefined) return;
       if (this.#draft === undefined) {
-        this.#draft = {
-          kind: 'group',
-          operator: 'and',
-          children: [createFilterRule(field)],
-        };
+        this.#draft = createFilterRule(field);
       } else {
+        this.#promoteTouchedRootRule();
         this.#draft = addFilterChild(this.#draft, path, 'rule', field);
       }
       this.#scheduleApply();
@@ -431,6 +452,7 @@ export class FilterBuilder {
       if (this.#draft === undefined) return;
       const field = this.#fields.find((candidate) => candidate.deletedAt === undefined);
       if (field === undefined) return;
+      this.#promoteTouchedRootRule();
       this.#draft = addFilterChild(this.#draft, path, 'group', field);
       this.#scheduleApply();
       this.#rerender();
@@ -438,19 +460,52 @@ export class FilterBuilder {
     return button;
   }
 
-  #removeButton(path: FilterPath): HTMLButtonElement | null {
+  #removeButton(path: FilterPath, target: 'rule' | 'group'): HTMLButtonElement | null {
     if (this.#draft === undefined) return null;
     const button = createElement('button', 'loom-button');
     button.type = 'button';
     button.dataset.action = 'filter-remove';
-    button.textContent = this.#translate('filter.remove');
+    button.textContent = this.#translate(
+      target === 'rule' ? 'filter.removeRule' : 'filter.removeGroup',
+    );
     button.addEventListener('click', () => {
       if (this.#draft === undefined) return;
       this.#draft = removeFilterNodeAt(this.#draft, path);
+      this.#retireTouchedPath(path);
+      if (this.#draft === undefined) this.#touchedPaths.clear();
       this.#scheduleApply();
       this.#rerender();
     });
     return button;
+  }
+
+  #markTouched(path: FilterPath): boolean {
+    const key = pathKey(path);
+    if (this.#touchedPaths.has(key)) return false;
+    this.#touchedPaths.add(key);
+    return true;
+  }
+
+  #promoteTouchedRootRule(): void {
+    if (this.#draft?.kind === 'rule' && this.#touchedPaths.delete('')) {
+      this.#touchedPaths.add('0');
+    }
+  }
+
+  #retireTouchedPath(path: FilterPath): void {
+    const parent = path.slice(0, -1);
+    const index = path[path.length - 1]!;
+    const next = new Set<string>();
+    for (const key of this.#touchedPaths) {
+      const parts = key === '' ? [] : key.split('.').map(Number);
+      const sameParent =
+        parts.length > parent.length && parent.every((value, i) => parts[i] === value);
+      if (sameParent && parts[parent.length] === index) continue;
+      if (sameParent && parts[parent.length]! > index) parts[parent.length]! -= 1;
+      next.add(parts.join('.'));
+    }
+    this.#touchedPaths.clear();
+    for (const key of next) this.#touchedPaths.add(key);
   }
 
   #scheduleApply(): void {
@@ -496,6 +551,7 @@ export class FilterBuilder {
 
   async #clear(): Promise<void> {
     this.#draft = undefined;
+    this.#touchedPaths.clear();
     this.#applying = true;
     this.#rerender();
     try {

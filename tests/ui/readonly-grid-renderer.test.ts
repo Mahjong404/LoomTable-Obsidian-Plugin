@@ -1042,9 +1042,10 @@ describe('Grid query controls', () => {
     await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled(), { timeout: 1000 });
     expect(onApplyFilter.mock.calls[0]?.[0]).toBe('view_01');
     expect(onApplyFilter.mock.calls[0]?.[1]).toEqual({
-      kind: 'group',
-      operator: 'and',
-      children: [{ kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'needle' }],
+      kind: 'rule',
+      fieldId: 'field_name',
+      operator: 'is',
+      value: 'needle',
     });
 
     renderer.render(savedState);

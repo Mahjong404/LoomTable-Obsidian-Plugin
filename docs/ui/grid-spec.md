@@ -108,7 +108,8 @@ P1.5 要实现单条 Create/Delete/Restore。Create 不需要 `expectedRevision`
 ## Filter、Sort 和 Search
 
 - Filter Builder 根据共享字段能力只显示该 Field Type 支持的 Operator。
-- 支持嵌套 `AND` / `OR` Filter Group。
+- 支持嵌套 `AND` / `OR` Filter Group；单条条件以裸规则呈现，出现第二条条件才升级为分组（见 HIG 的 Filter 渐进披露）。
+- 新建条件的缺值/无效值错误在该行被编辑或失焦后才就地提示；未完成草稿不提交 Server。
 - 支持多字段 Sort，并明确每个 Sort 的方向和空值位置。
 - Filter、Sort 和 Search 全部提交 Server 执行；Plugin 不对缓存页进行本地重算。
 - 修改 Query 后丢弃旧 Query 的分页 Cursor，从第一页重新加载。

@@ -163,7 +163,10 @@ export function removeFilterNodeAt(root: FilterNode, path: FilterPath): FilterNo
     const children = parent.children.filter((_, position) => position !== index);
     return { ...parent, children };
   });
-  return collapseEmptyGroups(next);
+  const collapsed = collapseEmptyGroups(next);
+  return collapsed !== undefined && collapsed.kind === 'group' && collapsed.children.length === 1
+    ? collapsed.children[0]
+    : collapsed;
 }
 
 function collapseEmptyGroups(node: FilterNode): FilterNode | undefined {

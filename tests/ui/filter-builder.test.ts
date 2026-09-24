@@ -83,7 +83,7 @@ describe('FilterBuilder', () => {
     const host = mount(builder);
 
     host.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
-    const ruleRow = host.querySelector<HTMLElement>('[data-path="0"]');
+    const ruleRow = host.querySelector<HTMLElement>('[data-path=""]');
     expect(ruleRow).not.toBeNull();
     const fieldSelect = ruleRow?.querySelector<HTMLSelectElement>(
       'select[data-role="filter-field"]',
@@ -100,7 +100,7 @@ describe('FilterBuilder', () => {
     const host = mount(builder);
     host.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
 
-    const row = host.querySelector<HTMLElement>('[data-path="0"]');
+    const row = host.querySelector<HTMLElement>('[data-path=""]');
     const valueInput = row?.querySelector<HTMLInputElement>('input[data-role="filter-value"]');
     if (valueInput === null || valueInput === undefined) throw new Error('value input missing');
     valueInput.value = '  alpha ';
@@ -109,9 +109,10 @@ describe('FilterBuilder', () => {
     await waitForApply(onApply);
     const sent = onApply.mock.calls[0]?.[0];
     expect(sent).toEqual({
-      kind: 'group',
-      operator: 'and',
-      children: [{ kind: 'rule', fieldId: 'field_name', operator: 'is', value: '  alpha ' }],
+      kind: 'rule',
+      fieldId: 'field_name',
+      operator: 'is',
+      value: '  alpha ',
     });
     host.remove();
   });
@@ -227,7 +228,112 @@ describe('FilterBuilder', () => {
     expect(onInvalidate).toHaveBeenCalled();
     const rebuilt = builder.render();
     host.append(rebuilt);
-    expect(rebuilt.querySelector('[data-path="0"]')).not.toBeNull();
+    expect(rebuilt.querySelector('[data-path=""]')).not.toBeNull();
+    host.remove();
+  });
+
+  it('shows the first rule without group chrome and wraps it on the second rule', () => {
+    const builder = createBuilder(undefined, {});
+    const host = mount(builder);
+    host.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
+
+    expect(host.querySelector('[data-path=""]')?.classList.contains('loom-filter-row')).toBe(
+      true,
+    );
+    expect(host.querySelector('select[data-role="filter-group-op"]')).toBeNull();
+
+    host
+      .querySelector<HTMLButtonElement>(
+        '.loom-filter-root-actions [data-action="filter-add-rule"]',
+      )
+      ?.click();
+    expect(host.querySelector('select[data-role="filter-group-op"]')).not.toBeNull();
+    expect(host.querySelectorAll('.loom-filter-row')).toHaveLength(2);
+    host.remove();
+  });
+
+  it('suppresses the missing-value issue on a fresh rule until the row is touched', async () => {
+    const onApply = vi.fn();
+    const builder = createBuilder(undefined, { onApply });
+    const host = mount(builder);
+    host.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
+
+    expect(host.querySelector('.loom-filter-issue')).toBeNull();
+
+    host
+      .querySelector<HTMLElement>('select[data-role="filter-field"]')
+      ?.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(host.querySelector('.loom-filter-issue')).not.toBeNull();
+
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(onApply).not.toHaveBeenCalled();
+    host.remove();
+  });
+
+  it('reveals the missing-value issue when focus leaves a fresh rule', async () => {
+    const builder = createBuilder(undefined, {});
+    const host = mount(builder);
+    host.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
+    expect(host.querySelector('.loom-filter-issue')).toBeNull();
+
+    host
+      .querySelector('select[data-role="filter-field"]')
+      ?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
+    await vi.waitFor(() =>
+      expect(host.querySelector('.loom-filter-issue')).not.toBeNull(),
+    );
+    host.remove();
+  });
+
+  it('collapses the root group back to a bare rule when one child remains', async () => {
+    const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
+    const initial: FilterNode = {
+      kind: 'group',
+      operator: 'and',
+      children: [
+        { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+        { kind: 'rule', fieldId: 'field_count', operator: 'greaterThan', value: 2 },
+      ],
+    };
+    const builder = createBuilder(initial, { onApply });
+    const host = mount(builder);
+    host
+      .querySelector<HTMLButtonElement>('[data-path="1"] [data-action="filter-remove"]')
+      ?.click();
+    await waitForApply(onApply);
+    expect(onApply.mock.calls[0]?.[0]).toEqual({
+      kind: 'rule',
+      fieldId: 'field_name',
+      operator: 'is',
+      value: 'a',
+    });
+    expect(host.querySelector('select[data-role="filter-group-op"]')).toBeNull();
+    host.remove();
+  });
+
+  it('names rule and group remove buttons after their targets', () => {
+    const initial: FilterNode = {
+      kind: 'group',
+      operator: 'and',
+      children: [
+        { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+        {
+          kind: 'group',
+          operator: 'or',
+          children: [{ kind: 'rule', fieldId: 'field_count', operator: 'is', value: 1 }],
+        },
+      ],
+    };
+    const builder = createBuilder(initial, {});
+    const host = mount(builder);
+    const groupRemove = host.querySelector<HTMLElement>(
+      '.loom-filter-group[data-path=""] > .loom-filter-group-head [data-action="filter-remove"]',
+    );
+    expect(groupRemove?.textContent).toBe('Remove group');
+    const ruleRemove = host.querySelector<HTMLElement>(
+      '.loom-filter-row > [data-action="filter-remove"]',
+    );
+    expect(ruleRemove?.textContent).toBe('Remove rule');
     host.remove();
   });
 

@@ -150,14 +150,18 @@ describe('view-query-model Filter draft editing', () => {
     expect(nested.children).toHaveLength(1);
   });
 
-  it('removes a node and collapses empty non-root groups upward', () => {
+  it('removes a node and collapses emptied groups upward', () => {
     const root = group('and', [
       rule('field_text', 'contains', 'a'),
       group('or', [rule('field_number', 'is', 1)]),
     ]);
-    const next = removeFilterNodeAt(root, [1, 0]) as FilterGroup;
-    expect(next.children).toHaveLength(1);
-    expect(next.children[0]?.kind).toBe('rule');
+    const next = removeFilterNodeAt(root, [1, 0]);
+    expect(next).toEqual(rule('field_text', 'contains', 'a'));
+  });
+
+  it('collapses a single-child root group into its child after removal', () => {
+    const root = group('and', [rule('field_text', 'is', 'a'), rule('field_number', 'is', 1)]);
+    expect(removeFilterNodeAt(root, [1])).toEqual(rule('field_text', 'is', 'a'));
   });
 
   it('returns undefined when the last root rule is removed', () => {
