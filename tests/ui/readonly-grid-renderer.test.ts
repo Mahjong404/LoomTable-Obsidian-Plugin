@@ -217,8 +217,90 @@ describe('ReadonlyGridRenderer', () => {
     const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(editor).not.toBeNull();
     editor?.dispatchEvent(new Event('blur', { bubbles: true }));
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => window.setTimeout(resolve, 10));
     expect(callbacks.onCellEdit).not.toHaveBeenCalled();
+    container.remove();
+  });
+
+  it('removes the editor and restores cell content on an unchanged blur', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1));
+    const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor).not.toBeNull();
+
+    editor?.blur();
+    await new Promise((resolve) => window.setTimeout(resolve, 10));
+
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
+    expect(cell?.querySelector('input, textarea, select')).toBeNull();
+    expect(cell?.childElementCount).toBeGreaterThan(0);
+    container.remove();
+  });
+
+  it('allows re-editing the same cell after an unchanged blur', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1));
+    const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    container.querySelector<HTMLElement>('.loom-grid-editor')?.blur();
+    await new Promise((resolve) => window.setTimeout(resolve, 10));
+
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(editor).not.toBeNull();
+    editor!.value = 'Second edit';
+    editor?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(callbacks.onCellEdit).toHaveBeenCalledWith('record_01', 'field_name', 'Second edit');
+    container.remove();
+  });
+
+  it('does not accumulate stale editors across cells', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(2));
+    const first = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-row-index="0"].loom-grid-editable',
+    );
+    const second = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-row-index="1"].loom-grid-editable',
+    );
+    first?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    container.querySelector<HTMLElement>('.loom-grid-editor')?.blur();
+    await new Promise((resolve) => window.setTimeout(resolve, 10));
+
+    second?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(container.querySelectorAll('.loom-grid-editor')).toHaveLength(1);
+    container.remove();
+  });
+
+  it('removes the editor immediately on an Enter commit', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+
+    renderer.render(createState(1));
+    const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    editor!.value = 'Committed';
+    editor?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(callbacks.onCellEdit).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
     container.remove();
   });
 
@@ -4043,7 +4125,7 @@ describe('Column drag reorder', () => {
     Object.defineProperty(drop, 'dataTransfer', { value: transfer });
     Object.defineProperty(drop, 'clientX', { value: 101 });
     target?.dispatchEvent(drop);
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => window.setTimeout(resolve, 20));
 
     expect(onApplyDisplay).not.toHaveBeenCalled();
   });

@@ -2248,24 +2248,8 @@ export class ReadonlyGridRenderer {
     row.append(indexCell);
 
     for (const [fieldIndex, field] of fields.entries()) {
-      const displayValue = defaultFieldRendererRegistry.render(field, record.values[field.id], {
-        translate: this.#translate,
-      });
       const cell = createGridCell('', 'loom-grid-cell');
-      cell.append(
-        createRenderedFieldValueElement(
-          displayValue.state === 'unset' ? { ...displayValue, text: '' } : displayValue,
-          {
-            compactAttachments: true,
-            ...(this.#callbacks.attachmentThumbnail === undefined
-              ? {}
-              : { attachmentThumbnail: this.#callbacks.attachmentThumbnail }),
-            ...(gridState?.search !== undefined && gridState.search !== ''
-              ? { highlight: gridState.search }
-              : {}),
-          },
-        ),
-      );
+      this.#fillCellDisplay(cell, record, field);
       cell.setAttribute('role', 'gridcell');
       cell.setAttribute('aria-colindex', String(fieldIndex + 2));
       const frozenOffset = this.#virtualGrid?.columns.frozenOffsets.get(field.id);
@@ -2293,7 +2277,6 @@ export class ReadonlyGridRenderer {
         record.id,
         field.id,
       );
-      cell.dataset.valueState = displayValue.state;
       if (editStatus !== undefined) cell.dataset.editState = editStatus;
       if (this.#isCellSelected(rowIndex, fieldIndex)) cell.classList.add('is-selected');
       if (this.#isRowSelected(rowIndex)) indexCell.classList.add('is-selected');
@@ -3152,6 +3135,37 @@ export class ReadonlyGridRenderer {
     };
   }
 
+  #fillCellDisplay(
+    cell: HTMLElement,
+    record: LoomTableRecord,
+    field: Field,
+    value: unknown = record.values[field.id],
+  ): void {
+    const gridState = this.#virtualGrid?.state;
+    const displayValue = defaultFieldRendererRegistry.render(
+      field,
+      value as JsonValue | undefined,
+      {
+        translate: this.#translate,
+      },
+    );
+    cell.replaceChildren(
+      createRenderedFieldValueElement(
+        displayValue.state === 'unset' ? { ...displayValue, text: '' } : displayValue,
+        {
+          compactAttachments: true,
+          ...(this.#callbacks.attachmentThumbnail === undefined
+            ? {}
+            : { attachmentThumbnail: this.#callbacks.attachmentThumbnail }),
+          ...(gridState?.search !== undefined && gridState.search !== ''
+            ? { highlight: gridState.search }
+            : {}),
+        },
+      ),
+    );
+    cell.dataset.valueState = displayValue.state;
+  }
+
   #beginCellEdit(
     cell: HTMLElement,
     record: LoomTableRecord,
@@ -3213,6 +3227,13 @@ export class ReadonlyGridRenderer {
         );
         return;
       }
+      // Restore the display content and drop the editor immediately on every
+      // exit path; a finished editor must never linger as a dead overlay that
+      // swallows input and blocks re-editing the cell.
+      const hadFocus = document.activeElement === editor;
+      this.#fillCellDisplay(cell, record, field, normalized.ok ? normalized.value : value);
+      cell.tabIndex = 0;
+      if (hadFocus && moveOffset === 0) cell.focus();
       if (normalized.ok && jsonEqual(normalized.value, record.values[field.id])) {
         if (moveOffset !== 0) {
           const state = this.#virtualGrid?.state ?? this.#emptyState();
@@ -3241,9 +3262,11 @@ export class ReadonlyGridRenderer {
       const keyboardEvent = event as KeyboardEvent;
       if (keyboardEvent.key === 'Escape') {
         keyboardEvent.preventDefault();
+        keyboardEvent.stopPropagation();
         finish(false);
       } else if (keyboardEvent.key === 'Enter' && !composing && !keyboardEvent.isComposing) {
         keyboardEvent.preventDefault();
+        keyboardEvent.stopPropagation();
         if (keyboardEvent.altKey && editor instanceof HTMLTextAreaElement) {
           // Alt+Enter inserts a line break inside multiline editors; plain
           // Enter (and Ctrl/Cmd+Enter) commits the edit.
@@ -3255,15 +3278,33 @@ export class ReadonlyGridRenderer {
         }
       } else if (keyboardEvent.key === 'Tab' && !composing && !keyboardEvent.isComposing) {
         keyboardEvent.preventDefault();
+        keyboardEvent.stopPropagation();
         finish(true, keyboardEvent.shiftKey ? -1 : 1, true);
       }
     });
+    let blurred = false;
     editor.addEventListener('blur', () => {
+      blurred = true;
       window.setTimeout(() => {
         if (!finished && !composing && document.activeElement !== editor) finish(true);
       }, 0);
     });
+    // editor.focus() can be silently dropped when called outside the input
+    // gesture window; retry briefly, but stop as soon as the editor blurs once
+    // or focus lands elsewhere deliberately.
+    let focusRetries = 0;
+    const ensureEditorFocus = (): void => {
+      if (finished || blurred || !editor.isConnected) return;
+      if (document.activeElement === editor) return;
+      const active = document.activeElement;
+      if (active !== null && active !== cell && active !== document.body) return;
+      if (focusRetries >= 10) return;
+      focusRetries += 1;
+      editor.focus();
+      window.setTimeout(ensureEditorFocus, 50);
+    };
     editor.focus();
+    window.setTimeout(ensureEditorFocus, 0);
     if (
       selectAll &&
       (editor instanceof HTMLInputElement || editor instanceof HTMLTextAreaElement)
