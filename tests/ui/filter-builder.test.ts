@@ -237,15 +237,11 @@ describe('FilterBuilder', () => {
     const host = mount(builder);
     host.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
 
-    expect(host.querySelector('[data-path=""]')?.classList.contains('loom-filter-row')).toBe(
-      true,
-    );
+    expect(host.querySelector('[data-path=""]')?.classList.contains('loom-filter-row')).toBe(true);
     expect(host.querySelector('select[data-role="filter-group-op"]')).toBeNull();
 
     host
-      .querySelector<HTMLButtonElement>(
-        '.loom-filter-root-actions [data-action="filter-add-rule"]',
-      )
+      .querySelector<HTMLButtonElement>('.loom-filter-root-actions [data-action="filter-add-rule"]')
       ?.click();
     expect(host.querySelector('select[data-role="filter-group-op"]')).not.toBeNull();
     expect(host.querySelectorAll('.loom-filter-row')).toHaveLength(2);
@@ -279,9 +275,7 @@ describe('FilterBuilder', () => {
     host
       .querySelector('select[data-role="filter-field"]')
       ?.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
-    await vi.waitFor(() =>
-      expect(host.querySelector('.loom-filter-issue')).not.toBeNull(),
-    );
+    await vi.waitFor(() => expect(host.querySelector('.loom-filter-issue')).not.toBeNull());
     host.remove();
   });
 
@@ -297,9 +291,7 @@ describe('FilterBuilder', () => {
     };
     const builder = createBuilder(initial, { onApply });
     const host = mount(builder);
-    host
-      .querySelector<HTMLButtonElement>('[data-path="1"] [data-action="filter-remove"]')
-      ?.click();
+    host.querySelector<HTMLButtonElement>('[data-path="1"] [data-action="filter-remove"]')?.click();
     await waitForApply(onApply);
     expect(onApply.mock.calls[0]?.[0]).toEqual({
       kind: 'rule',

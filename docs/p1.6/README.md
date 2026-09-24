@@ -47,7 +47,15 @@ P1.6 是 P1.5（功能交付）与 P2.0（新产品功能）之间的过渡稳�
 ## 当前交接
 
 - 2026-09：阶段定义，P1.5 已交付封存（见 [P1.5 状态表](../p1.5/status.md)）。种子工作项按上节推进；每个会话在此更新最近交接。
-- 审计 `docs/local/ux-audit-2026-09-24.md` 确认项实施中（本轮用户授权连续推进全部切片）：
-  - ✅ Map：空 Leaflet pane 不再截获 Marker 事件；`ready` 后收起瓦片就绪常驻状态条（loading/error/config 仍可见，ready 保留 aria 播报）。已 CDP 真机验证点击/拖拽/hover，已提交 `3426920`。
-  - ✅ 字段浮层焦点与草稿行焦点：Field Editor 打开经 `setTimeout`+有界重试（真实 click 手势窗口期内 `focus()` 会被静默丢弃）；Tab/Shift+Tab 面板内循环；Esc/外点/宿主滚动关闭并恢复稳定触发源；`closed` 幂等与其他面板对齐；`render()` 保留存活 overlay 不再被 `replaceChildren` 摘除；行内新建提交后焦点落到新记录 cell（不可见则回落新增入口，失败粘性恢复草稿），用户主动移焦后异步结果不抢焦点。已 CDP 验证打开聚焦/Tab 圈/Esc 恢复/render 存活/草稿提交落焦。
-  - ⏳ 进行中：计数失效、Default View/Display stale、O2 reorder（含 Server）、列头交互重构（单击选列/双击编辑/拖拽重排/分隔线调宽/键盘）、O3 导航两行 + 工具栏 `…` + 容器响应式、Filter 渐进披露、Detail select/date 即选即存。
+- 审计 `docs/local/ux-audit-2026-09-24.md` 确认项已全部实施完成（本轮用户授权连续推进全部切片）：
+  - ✅ Map：空 Leaflet pane 不再截获 Marker 事件；`ready` 后收起瓦片就绪常驻状态条（loading/error/config 仍可见，ready 保留 aria 播报）。已 CDP 真机验证点击/拖拽/hover，提交 `3426920`。
+  - ✅ 字段浮层焦点与草稿行焦点：Field Editor 打开经 `setTimeout`+有界重试（真实 click 手势窗口期内 `focus()` 会被静默丢弃）；Tab/Shift+Tab 面板内循环；Esc/外点/宿主滚动关闭并恢复稳定触发源；`closed` 幂等与其他面板对齐；`render()` 保留存活 overlay 不再被 `replaceChildren` 摘除；行内新建提交后焦点落到新记录 cell（不可见则回落新增入口，失败粘性恢复草稿），用户主动移焦后异步结果不抢焦点。已 CDP 验证打开聚焦/Tab 圈/Esc 恢复/render 存活/草稿提交落焦，提交 `2445f02`。
+  - ✅ 计数失效：in-page 删除/恢复同步递减 `totalCount`/`unfilteredTotal`（presence 守卫防双减），`replace` 重查不再用旧分母兜底；`3/4 行` 伪筛选态消除。提交 `6dcb989`。
+  - ✅ Default View 全量同步 + DisplayPanel 过期草稿：`setDefaultView` 成功后以 `listViews(tableId)` 原子替换 View 列表；DisplayPanel 增加 `hasPendingEdits()`/`isInSyncWith()` 门控，与 Filter/Sort 一致的重建条件。已 CDP 验证默认互斥即时生效，提交 `6dcb989`。
+  - ✅ O2 行排序边界：Server `neighbor()` 改用可空扫描（空邻居走 `before ± 1024` 边界路径），含首/尾单锚点集成测试（Server 提交 `5f4827f`）；Plugin 侧 `GridState.moveError` 独立槽位（含 recordId+details），不再被无关成功编辑误清（Plugin 提交 `011fb22`）。
+  - ✅ 列头交互重构：单击选整列、双击/Enter 开 Field Editor、Space 选列、ContextMenu 键开列菜单、方向键在列头间移动、拖拽重排带 before/after 指示；排序改由列菜单与 Sort Panel 承载。已 CDP 验证全交互矩阵，提交 `09ab7cd`。
+  - ✅ O3 导航两行 + O4 工具栏 `⋯` 收容 + O8 容器响应式：导航固定两行（第一行 Workspace/Base/Table 上下文，第二行 View 页签 + Add/Manage，保留 `+N` 溢出与 tablist 键盘语义）；工具栏宽度不足时 Sort/Display/Undo/Redo 依序收容进 `⋯` 菜单，激活项以徽标提示，菜单项复用原控件 `click()`；布局断点迁往 `.loom-root` 具名 query container（`@container loom`），窄容器 query/status 面板转为锚定宿主 pane 的底部 Sheet。已 CDP 验证全宽/分栏/300px 窄容器、真实 692px 分栏、Map 分栏回归，提交 `c269ab8`。
+  - ✅ Filter 渐进披露 + touched 校验：首条条件以裸规则行呈现（合同允许的 rule 根节点），第二条条件才升级为分组，删回单条时根组收敛回裸规则；新建条件行的 value-missing/value-invalid 提示在该行 change 或失焦后才显示，结构性错误保持即时提示；未完成草稿仍不提交 Server；规则/分组移除按钮在文案与可访问名称中注明对象。已 CDP 验证，提交 `002cd59`。
+  - ✅ Detail select/date 即选即存：Select/Date 编辑器 change 后立即经 `onFieldEdit` 队列提交并关闭编辑器（与 Checkbox 对齐）；失败保留所选值与字段级错误，焦点回编辑器；MultiSelect 逐选语义未定，维持显式保存/取消。已 CDP 真机验证（建临时 Select/Date 字段，验证后删除），提交 `e3a8f9b`。
+  - 决策记录：O5（列头值清单筛选）确认推迟至 P2.0；O6 不做列菜单"设置列宽"项（列宽经表头边缘拖拽与 Display Panel 精确输入）；Detail 标题内联编辑仍为待决 P3 项。
+  - 验证基线：`npx vitest run` 66 文件 932 测试全绿；`tsc --noEmit` 0 error；`eslint` 0 error（存量风格 warning）；Server `go test ./...` 含 Postgres 集成测试通过。

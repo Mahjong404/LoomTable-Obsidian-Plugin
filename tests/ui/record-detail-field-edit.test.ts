@@ -228,9 +228,7 @@ describe('Record Detail scalar field editing', () => {
 
     await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(1));
     expect(onFieldEdit.mock.calls[0]?.[2]).toBe('option_deleted');
-    await vi.waitFor(() =>
-      expect(detail.querySelector('.loom-record-field-editor')).toBeNull(),
-    );
+    await vi.waitFor(() => expect(detail.querySelector('.loom-record-field-editor')).toBeNull());
     expect(document.activeElement).toBe(
       detail.querySelector<HTMLElement>('.loom-record-field-editable'),
     );
@@ -269,9 +267,7 @@ describe('Record Detail scalar field editing', () => {
 
     await vi.waitFor(() => expect(onFieldEdit).toHaveBeenCalledTimes(1));
     expect(onFieldEdit.mock.calls[0]?.[2]).toBe('2026-03-04');
-    await vi.waitFor(() =>
-      expect(detail.querySelector('.loom-record-field-editor')).toBeNull(),
-    );
+    await vi.waitFor(() => expect(detail.querySelector('.loom-record-field-editor')).toBeNull());
   });
 
   it('keeps the picked value and error when an immediate save fails', async () => {
@@ -297,9 +293,7 @@ describe('Record Detail scalar field editing', () => {
     select.dispatchEvent(new Event('change', { bubbles: true }));
 
     await vi.waitFor(() =>
-      expect(detail.querySelector('.loom-record-field-error')?.textContent).toContain(
-        'save',
-      ),
+      expect(detail.querySelector('.loom-record-field-error')?.textContent).toContain('save'),
     );
     expect(select.value).toBe('option_deleted');
     expect(document.activeElement).toBe(select);
