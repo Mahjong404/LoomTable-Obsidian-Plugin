@@ -3775,6 +3775,127 @@ describe('Undo/redo wiring', () => {
   });
 });
 
+describe('Toolbar overflow', () => {
+  function stubResizeObserver(): ResizeObserverCallback[] {
+    const callbacks: ResizeObserverCallback[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          callbacks.push(callback);
+        }
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
+    return callbacks;
+  }
+
+  function overflowRenderer(container: HTMLElement) {
+    const onUndo = vi.fn();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter: vi.fn(async () => ({ status: 'saved' }) as never),
+      onApplySort: vi.fn(async () => ({ status: 'saved' }) as never),
+      onApplyDisplay: vi.fn(async () => ({ status: 'saved' }) as never),
+      onUndo,
+      onRedo: vi.fn(),
+    });
+    return { renderer, onUndo };
+  }
+
+  it('collapses secondary actions behind a ⋯ menu when the toolbar overflows', async () => {
+    const roCallbacks = stubResizeObserver();
+    const container = document.createElement('div');
+    document.body.append(container);
+    const { renderer, onUndo } = overflowRenderer(container);
+    renderer.render(createState(1));
+
+    const toolbar = container.querySelector<HTMLElement>('.loom-grid-toolbar');
+    if (toolbar === null) throw new Error('toolbar missing');
+    Object.defineProperty(toolbar, 'clientWidth', { value: 220, configurable: true });
+    Object.defineProperty(toolbar, 'scrollWidth', { value: 560, configurable: true });
+    for (const callback of roCallbacks) callback([], {} as ResizeObserver);
+
+    const overflow = toolbar.querySelector<HTMLElement>('.loom-toolbar-overflow');
+    expect(overflow?.hidden).toBe(false);
+    for (const selector of [
+      '[data-action="toggle-sort"]',
+      '[data-action="toggle-display"]',
+      '[aria-label="Undo"]',
+      '[aria-label="Redo"]',
+    ]) {
+      expect(toolbar.querySelector<HTMLElement>(selector)?.hidden).toBe(true);
+    }
+    // The keep-list stays on the main row.
+    expect(toolbar.querySelector<HTMLElement>('[data-action="toggle-filter"]')?.hidden).toBe(false);
+    expect(toolbar.querySelector<HTMLElement>('[data-action="toggle-status"]')?.hidden).toBe(false);
+    expect(toolbar.querySelector<HTMLElement>('[data-action="search-expand"]')?.hidden).toBe(false);
+
+    overflow?.click();
+    const menu = container.querySelector('.loom-context-menu');
+    expect(menu).not.toBeNull();
+    const items = [...(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+    expect(items.map((item) => item.textContent)).toEqual(['Sort', 'Display', 'Undo', 'Redo']);
+    items[2]?.click();
+    await vi.waitFor(() => expect(onUndo).toHaveBeenCalledTimes(1));
+    container.remove();
+  });
+
+  it('keeps every action on the main row when the toolbar fits', () => {
+    const roCallbacks = stubResizeObserver();
+    const container = document.createElement('div');
+    document.body.append(container);
+    const { renderer } = overflowRenderer(container);
+    renderer.render(createState(1));
+
+    const toolbar = container.querySelector<HTMLElement>('.loom-grid-toolbar');
+    if (toolbar === null) throw new Error('toolbar missing');
+    Object.defineProperty(toolbar, 'clientWidth', { value: 900, configurable: true });
+    Object.defineProperty(toolbar, 'scrollWidth', { value: 560, configurable: true });
+    for (const callback of roCallbacks) callback([], {} as ResizeObserver);
+
+    const overflow = toolbar.querySelector<HTMLElement>('.loom-toolbar-overflow');
+    expect(overflow?.hidden).toBe(true);
+    expect(toolbar.querySelector<HTMLElement>('[data-action="toggle-sort"]')?.hidden).toBe(false);
+    container.remove();
+  });
+
+  it('badges the ⋯ button when an overflowed toggle is active', () => {
+    const roCallbacks = stubResizeObserver();
+    const container = document.createElement('div');
+    document.body.append(container);
+    const { renderer } = overflowRenderer(container);
+    const state = createState(1);
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...state,
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            sort: [{ fieldId: 'field_name', direction: 'asc', nulls: 'last' }],
+          },
+        },
+      ],
+    });
+
+    const toolbar = container.querySelector<HTMLElement>('.loom-grid-toolbar');
+    if (toolbar === null) throw new Error('toolbar missing');
+    Object.defineProperty(toolbar, 'clientWidth', { value: 220, configurable: true });
+    Object.defineProperty(toolbar, 'scrollWidth', { value: 560, configurable: true });
+    for (const callback of roCallbacks) callback([], {} as ResizeObserver);
+
+    const overflow = toolbar.querySelector<HTMLElement>('.loom-toolbar-overflow');
+    expect(overflow?.hidden).toBe(false);
+    expect(overflow?.querySelector('.loom-grid-query-count')?.textContent).toBe('1');
+    container.remove();
+  });
+});
+
 describe('Column drag reorder', () => {
   function fakeDataTransfer(): DataTransfer {
     const store: Record<string, string> = {};

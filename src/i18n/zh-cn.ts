@@ -139,6 +139,7 @@ export const simplifiedChineseMessages = {
   'grid.menu.clear': '清空内容',
   'grid.undo': '撤销',
   'grid.redo': '重做',
+  'grid.toolbar.more': '更多操作',
   'grid.selectedCount': '已选 {count} 格',
   'grid.selectedRows': '已选 {count} 行',
   'grid.selectRow': '选择此行',

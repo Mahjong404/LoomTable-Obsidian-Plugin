@@ -219,7 +219,11 @@ export class TableShell {
       manage.addEventListener('click', () => this.#toggleManage(state));
       actions.append(manage);
     }
-    root.append(context, this.#renderTabs(state), actions);
+    const contextRow = createElement('div', 'loom-shell-row loom-shell-row-context');
+    contextRow.append(context);
+    const tabsRow = createElement('div', 'loom-shell-row loom-shell-row-tabs');
+    tabsRow.append(this.#renderTabs(state), actions);
+    root.append(contextRow, tabsRow);
     const intents = this.#renderIntents(state);
     if (intents !== null) root.append(intents);
     if (this.#createOpen && this.#callbacks.onCreateView !== undefined) {

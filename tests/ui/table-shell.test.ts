@@ -140,6 +140,26 @@ describe('TableShell tabs', () => {
     host.remove();
   });
 
+  it('keeps the context selectors on their own row above the tab strip', () => {
+    const { shell } = createShell();
+    const host = mount(shell, shellState());
+
+    const shellEl = host.querySelector('.loom-table-shell');
+    const contextRow = host.querySelector('.loom-shell-context')?.parentElement;
+    const tabRow = host.querySelector('.loom-view-tabs')?.parentElement;
+    expect(contextRow).not.toBeNull();
+    expect(tabRow).not.toBeNull();
+    expect(contextRow).not.toBe(tabRow);
+    expect(tabRow?.querySelector('.loom-shell-actions')).not.toBeNull();
+
+    const rows = [...(shellEl?.children ?? [])].filter((el) =>
+      el.classList.contains('loom-shell-row'),
+    );
+    expect(rows[0]).toBe(contextRow);
+    expect(rows[1]).toBe(tabRow);
+    host.remove();
+  });
+
   it('renders a compact context crumb that toggles the selects open', () => {
     const { shell } = createShell();
     const host = mount(shell, shellState());

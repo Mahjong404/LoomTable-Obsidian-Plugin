@@ -282,6 +282,7 @@ export class ReadonlyGridRenderer {
   #searchError: string | null = null;
   #draftCreateValues: Record<string, MutationValue> | null = null;
   #draftRowEl: HTMLElement | null = null;
+  #toolbarObserver: ResizeObserver | null = null;
   #draftLastFieldId: string | null = null;
   #pendingCreateFocus: {
     recordId: string | null;
@@ -583,6 +584,10 @@ export class ReadonlyGridRenderer {
         true,
       );
       redoButton.disabled = state.canRedo === false;
+      undoButton.dataset.overflow = 'undo';
+      undoButton.dataset.overflowLabel = this.#translate('grid.undo');
+      redoButton.dataset.overflow = 'redo';
+      redoButton.dataset.overflowLabel = this.#translate('grid.redo');
       end.append(undoButton, redoButton);
     }
     end.append(count);
@@ -613,12 +618,93 @@ export class ReadonlyGridRenderer {
       }
     });
     end.append(statusToggle);
+    const overflowButton = createElement(
+      'button',
+      'loom-button loom-toolbar-overflow clickable-icon',
+    );
+    overflowButton.type = 'button';
+    overflowButton.hidden = true;
+    overflowButton.dataset.action = 'toolbar-overflow';
+    overflowButton.setAttribute('aria-label', this.#translate('grid.toolbar.more'));
+    overflowButton.setAttribute('aria-haspopup', 'menu');
+    overflowButton.append(createUiIcon('menu-ellipsis'));
+    overflowButton.addEventListener('click', () => {
+      this.#openToolbarOverflowMenu(toolbar, overflowButton);
+    });
+    end.prepend(overflowButton);
     if (searchControls !== null) {
       toolbar.append(start, searchControls, end);
     } else {
       toolbar.append(start, end);
     }
+    this.#toolbarObserver?.disconnect();
+    if (typeof ResizeObserver === 'function') {
+      this.#toolbarObserver = new ResizeObserver(() => this.#syncToolbarOverflow(toolbar));
+      this.#toolbarObserver.observe(toolbar);
+    }
     return toolbar;
+  }
+
+  // Secondary actions (Sort, Display, Undo, Redo) collapse behind a ⋯ menu when
+  // the toolbar's own width runs out; create, Filter, Search, and the save
+  // status always stay on the main row.
+  #syncToolbarOverflow(toolbar: HTMLElement): void {
+    const overflowButton = toolbar.querySelector<HTMLElement>('.loom-toolbar-overflow');
+    if (overflowButton === null) return;
+    const items = [...toolbar.querySelectorAll<HTMLElement>('[data-overflow]')];
+    for (const item of items) item.hidden = false;
+    overflowButton.hidden = true;
+    if (toolbar.clientWidth <= 0 || toolbar.scrollWidth <= toolbar.clientWidth) return;
+    for (const key of ['redo', 'undo', 'display', 'sort']) {
+      if (toolbar.scrollWidth <= toolbar.clientWidth) break;
+      const item = items.find((candidate) => candidate.dataset.overflow === key);
+      if (item !== undefined) item.hidden = true;
+    }
+    const hiddenItems = items.filter((item) => item.hidden);
+    if (hiddenItems.length === 0) return;
+    overflowButton.hidden = false;
+    const activeCount = hiddenItems.filter(
+      (item) => item.querySelector('.loom-grid-query-count') !== null,
+    ).length;
+    let badge = overflowButton.querySelector<HTMLElement>('.loom-grid-query-count');
+    if (activeCount === 0) {
+      badge?.remove();
+    } else {
+      if (badge === null) {
+        badge = createElement('span', 'loom-grid-query-count');
+        overflowButton.append(badge);
+      }
+      badge.textContent = String(activeCount);
+    }
+  }
+
+  #openToolbarOverflowMenu(toolbar: HTMLElement, anchor: HTMLElement): void {
+    const hiddenItems = [...toolbar.querySelectorAll<HTMLElement>('[data-overflow]')].filter(
+      (item) => item.hidden,
+    );
+    if (hiddenItems.length === 0) return;
+    const icons: Record<string, UiIconName> = {
+      sort: 'tool-sort',
+      display: 'tool-display',
+      undo: 'tool-undo',
+      redo: 'tool-redo',
+    };
+    const rect = anchor.getBoundingClientRect();
+    openContextMenu({
+      label: this.#translate('grid.toolbar.more'),
+      x: rect.left,
+      y: rect.bottom + 4,
+      host: this.#container,
+      items: hiddenItems.map((item) => {
+        const icon = icons[item.dataset.overflow ?? ''];
+        return {
+          label: item.dataset.overflowLabel ?? item.textContent ?? '',
+          ...(icon === undefined ? {} : { icon }),
+          disabled: item instanceof HTMLButtonElement ? item.disabled : false,
+          action: () => item.click(),
+        };
+      }),
+    });
   }
 
   #renderClipboardNote(): HTMLElement {
@@ -760,6 +846,7 @@ export class ReadonlyGridRenderer {
           view.config.sort.length,
           'grid.sort.active',
           'tool-sort',
+          true,
         ),
       );
     }
@@ -776,6 +863,7 @@ export class ReadonlyGridRenderer {
           ).length,
           'grid.display.active',
           'tool-display',
+          true,
         ),
       );
     }
@@ -788,10 +876,15 @@ export class ReadonlyGridRenderer {
     activeCount: number,
     activeKey: MessageKey,
     icon?: UiIconName,
+    overflowable = false,
   ): HTMLButtonElement {
     const button = createElement('button', 'loom-button loom-grid-query-toggle');
     button.type = 'button';
     button.dataset.action = `toggle-${panel}`;
+    if (overflowable) {
+      button.dataset.overflow = panel;
+      button.dataset.overflowLabel = label;
+    }
     button.setAttribute('aria-pressed', this.#openPanel === panel ? 'true' : 'false');
     if (icon !== undefined) button.append(createUiIcon(icon));
     const labelSpan = createTextElement('span', label);

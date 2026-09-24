@@ -147,6 +147,7 @@ export const englishMessages = {
   'grid.menu.clear': 'Clear cell',
   'grid.undo': 'Undo',
   'grid.redo': 'Redo',
+  'grid.toolbar.more': 'More actions',
   'grid.selectedCount': '{count} selected',
   'grid.selectedRows': '{count} rows selected',
   'grid.selectRow': 'Select row',
