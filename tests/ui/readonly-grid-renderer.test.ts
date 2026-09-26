@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   Field,
@@ -16,6 +16,14 @@ import type { GridState } from '../../src/ui/grid-view-controller';
 import type { ViewWriteOutcome } from '../../src/ui/view-write-coordinator';
 
 describe('ReadonlyGridRenderer', () => {
+  // Tests assert on document.activeElement, so stale focus must not leak
+  // between cases: blur whatever survived (including detached editors jsdom
+  // keeps as activeElement) and drop leftover containers.
+  afterEach(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    document.body.replaceChildren();
+  });
+
   it('renders only the fixed-height viewport window for a large result page', () => {
     const container = document.createElement('div');
     const callbacks = rendererCallbacks();
@@ -118,7 +126,7 @@ describe('ReadonlyGridRenderer', () => {
     );
   });
 
-  it('moves focus to the Grid status when the focused Record disappears', () => {
+  it('lands DOM focus on the viewport when the focused Record disappears', () => {
     const container = document.createElement('div');
     document.body.append(container);
     const renderer = new ReadonlyGridRenderer(
@@ -131,7 +139,9 @@ describe('ReadonlyGridRenderer', () => {
     container.querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_02"]')?.focus();
     renderer.render(createState(0));
 
-    expect(document.activeElement).toBe(container.querySelector('.loom-grid-status'));
+    // An emptied Grid has no real Cell — activeCell is null and DOM focus
+    // falls to the stable viewport, never a fabricated cell.
+    expect(document.activeElement).toBe(container.querySelector('.loom-grid-viewport'));
   });
 
   it('commits Tab and Shift+Tab edits while keeping focus in the adjacent cell', () => {
@@ -145,8 +155,7 @@ describe('ReadonlyGridRenderer', () => {
     const firstCell = container.querySelector<HTMLElement>(
       '.loom-grid-cell[data-field-id="field_name"]',
     );
-    firstCell?.click();
-    firstCell?.click();
+    firstCell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     const firstEditor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(firstEditor).not.toBeNull();
     firstEditor!.value = 'Renamed Record';
@@ -157,8 +166,9 @@ describe('ReadonlyGridRenderer', () => {
       container.querySelector('.loom-grid-cell[data-field-id="field_second"]'),
     );
 
-    container.querySelector<HTMLElement>('.loom-grid-cell[data-field-id="field_second"]')?.click();
-    container.querySelector<HTMLElement>('.loom-grid-cell[data-field-id="field_second"]')?.click();
+    container
+      .querySelector<HTMLElement>('.loom-grid-cell[data-field-id="field_second"]')
+      ?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     const secondEditor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(secondEditor).not.toBeNull();
     secondEditor!.value = 'Changed Second';
@@ -187,8 +197,7 @@ describe('ReadonlyGridRenderer', () => {
 
     renderer.render(createState(1));
     const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
-    cell?.click();
-    cell?.click();
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(editor).not.toBeNull();
     editor!.value = 'Edited value';
@@ -212,8 +221,7 @@ describe('ReadonlyGridRenderer', () => {
 
     renderer.render(createState(1));
     const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
-    cell?.click();
-    cell?.click();
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(editor).not.toBeNull();
     editor?.dispatchEvent(new Event('blur', { bubbles: true }));
@@ -546,8 +554,7 @@ describe('ReadonlyGridRenderer', () => {
 
     renderer.render(createState(1));
     const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
-    cell?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    cell?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(editor).not.toBeNull();
     if (editor === null) return;
@@ -924,8 +931,7 @@ describe('ReadonlyGridRenderer', () => {
     ).toEqual(['Old (Deleted option)', 'One']);
     expect(cell?.textContent).not.toContain('option_old');
 
-    cell?.click();
-    cell?.click();
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     const editor = container.querySelector<HTMLSelectElement>('.loom-grid-editor');
     expect(editor?.multiple).toBe(true);
     expect([...(editor?.selectedOptions ?? [])].map((option) => option.value)).toEqual([
@@ -2196,8 +2202,7 @@ describe('Grid V5 virtualization safety', () => {
     const cell = container.querySelector<HTMLElement>(
       '.loom-grid-cell[data-record-id="record_01"]',
     );
-    cell?.click();
-    cell?.click();
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(editor).not.toBeNull();
     if (editor === null) return;
@@ -3764,7 +3769,7 @@ function createTwoByTwoState(): GridState {
 }
 
 describe('Cell selection model', () => {
-  it('selects a Cell on click and enters edit on second click', () => {
+  it('moves the Active Cell on click and edits only on double-click', () => {
     const container = document.createElement('div');
     const callbacks = rendererCallbacks();
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
@@ -3774,9 +3779,13 @@ describe('Cell selection model', () => {
       '.loom-grid-cell[data-field-id="field_name"][data-record-id="record_01"]',
     );
     cell?.click();
-    expect(cell?.classList.contains('is-selected')).toBe(true);
+    // A single click only activates the Cell — the persistent accent border
+    // moves, no editor opens.
+    expect(cell?.classList.contains('is-active')).toBe(true);
     expect(container.querySelector('.loom-grid-editor')).toBeNull();
     cell?.click();
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
     expect(container.querySelector('.loom-grid-editor')).not.toBeNull();
   });
 
@@ -4735,5 +4744,284 @@ describe('Record drag reorder', () => {
     dispatchDrag(first?.querySelector<HTMLElement>('.loom-grid-index-cell'), 'dragstart', transfer);
     dispatchDrag(first, 'drop', transfer);
     expect(onMoveRecord).not.toHaveBeenCalled();
+  });
+});
+
+describe('Grid Active Cell contract (P1.6 Slice A)', () => {
+  // Same hygiene as the main block: no focus/DOM leaks between cases.
+  afterEach(() => {
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    document.body.replaceChildren();
+  });
+
+  it('marks the first editable Cell active on mount without entering edit', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(3));
+
+    const active = container.querySelector<HTMLElement>('.loom-grid-cell.is-active');
+    expect(active?.dataset.recordId).toBe('record_01');
+    expect(active?.dataset.fieldId).toBe('field_name');
+    expect(active?.tabIndex).toBe(0);
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
+  });
+
+  it('keeps the Active Cell accent after DOM focus leaves the Grid', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(3));
+
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_02"][data-field-id="field_name"]',
+    );
+    cell?.focus();
+    expect(cell?.classList.contains('is-active')).toBe(true);
+
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    renderer.render(createState(3));
+
+    const repainted = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_02"][data-field-id="field_name"]',
+    );
+    expect(repainted?.classList.contains('is-active')).toBe(true);
+    expect(document.activeElement).toBe(outside);
+  });
+
+  it('moves Active Cell and DOM focus together on Arrow keys', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createTwoFieldState());
+
+    const first = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"][data-field-id="field_name"]',
+    );
+    first?.focus();
+    first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+
+    const next = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"][data-field-id="field_second"]',
+    );
+    expect(document.activeElement).toBe(next);
+    expect(next?.classList.contains('is-active')).toBe(true);
+    expect(first?.classList.contains('is-active')).toBe(false);
+  });
+
+  it('edits the Active Cell on Enter or F2, never on a second click', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(2));
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"][data-field-id="field_name"]',
+    );
+
+    cell?.focus();
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
+    expect(container.querySelector('.loom-grid-editor')).not.toBeNull();
+    container
+      .querySelector<HTMLElement>('.loom-grid-editor')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
+    // Escape cancelled the edit but the Active Cell survived — the cancel path
+    // re-renders, so re-query the live element.
+    const repainted = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"][data-field-id="field_name"]',
+    );
+    expect(repainted?.classList.contains('is-active')).toBe(true);
+    expect(document.activeElement).toBe(repainted);
+
+    repainted?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(container.querySelector('.loom-grid-editor')).not.toBeNull();
+  });
+
+  it('collapses a range selection to the Active Cell on Escape without clearing it', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(3));
+
+    container.querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_01"]')?.click();
+    const head = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_03"]',
+    );
+    head?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, shiftKey: true }));
+    head?.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+    expect(container.querySelectorAll('.loom-grid-cell.is-selected').length).toBeGreaterThan(1);
+
+    head?.focus();
+    head?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+
+    expect(container.querySelectorAll('.loom-grid-cell.is-selected')).toHaveLength(0);
+    expect(head?.classList.contains('is-active')).toBe(true);
+  });
+
+  it('tracks the Active Cell by record identity across a row reorder', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    const state = createState(3);
+    renderer.render(state);
+
+    container.querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_02"]')?.focus();
+
+    renderer.render({ ...state, records: [...state.records].reverse() });
+
+    const repainted = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_02"][data-field-id="field_name"]',
+    );
+    expect(repainted?.classList.contains('is-active')).toBe(true);
+    expect(repainted?.dataset.rowIndex).toBe('1');
+    expect(document.activeElement).toBe(repainted);
+  });
+
+  it('tracks the Active Cell by field identity across a column reorder', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    const state = createTwoFieldState();
+    renderer.render(state);
+    container.querySelector<HTMLElement>('.loom-grid-cell[data-field-id="field_second"]')?.focus();
+
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...state,
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            projection: ['field_second', 'field_name'],
+            columnOrder: ['field_second', 'field_name'],
+          },
+        },
+      ],
+    });
+
+    const repainted = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-field-id="field_second"]',
+    );
+    expect(repainted?.classList.contains('is-active')).toBe(true);
+    expect(repainted?.dataset.fieldIndex).toBe('0');
+    expect(document.activeElement).toBe(repainted);
+  });
+
+  it('does not snap the viewport back when the Active Cell scrolls away', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(200));
+
+    container.querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_01"]')?.focus();
+    const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    if (viewport === null) throw new Error('viewport missing');
+    viewport.scrollTop = 36 * 60;
+    viewport.dispatchEvent(new Event('scroll'));
+
+    expect(viewport.scrollTop).toBe(36 * 60);
+    expect(container.querySelector('.loom-grid-cell[data-record-id="record_01"]')).toBeNull();
+  });
+
+  it('exposes an explicit create entry on an empty Grid instead of implicit keys', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onCreateRecord = vi.fn(async () => ({ id: 'record_new' }) as never);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createState(0, { status: 'empty', emptyReason: 'no-match', totalCount: 0 }));
+
+    // The create entries are real buttons — Tab/Enter/Space reachable.
+    const toolbarCreate = container.querySelector<HTMLButtonElement>('.loom-grid-record-create');
+    const gridCreate = container.querySelector<HTMLButtonElement>('.loom-grid-add-row');
+    expect(toolbarCreate?.type).toBe('button');
+    expect(gridCreate?.type).toBe('button');
+    expect(container.querySelector('.loom-grid-cell.is-active')).toBeNull();
+
+    const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    if (viewport === null) throw new Error('viewport missing');
+    viewport.focus();
+    viewport.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    viewport.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', bubbles: true }));
+    expect(onCreateRecord).not.toHaveBeenCalled();
+    expect(container.querySelector('.loom-grid-draft-row')).toBeNull();
+  });
+
+  it('restores the working session through the shared session map', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const sessions = new Map();
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+      sessions,
+    );
+    const state = createState(50);
+    renderer.render(state);
+
+    container.querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_02"]')?.click();
+    const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    if (viewport === null) throw new Error('viewport missing');
+    viewport.scrollTop = 36;
+    viewport.dispatchEvent(new Event('scroll'));
+
+    // The View shell stashes the session before a Map View (or another View)
+    // replaces the Grid, then hands the same map to the next renderer.
+    renderer.captureSession();
+
+    const revived = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+      sessions,
+    );
+    revived.render(state);
+
+    const restoredViewport = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    expect(restoredViewport?.scrollTop).toBe(36);
+    const active = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_02"]',
+    );
+    expect(active?.classList.contains('is-active')).toBe(true);
+    expect(document.activeElement).toBe(active);
   });
 });

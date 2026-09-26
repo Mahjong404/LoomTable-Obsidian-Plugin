@@ -22,7 +22,7 @@ import {
 } from './mutation-invalidation';
 import { GridViewController, type GridState } from './grid-view-controller';
 import { describeSaveStatus } from './save-status';
-import { ReadonlyGridRenderer } from './readonly-grid-renderer';
+import { ReadonlyGridRenderer, type GridSessionSnapshot } from './readonly-grid-renderer';
 import { TableShell, type TableShellState } from './table-shell';
 import { MapViewController, type MapViewportSource } from '../views/map/map-view-controller';
 import { MapView } from '../views/map/map-view';
@@ -70,6 +70,13 @@ export class LoomTableView extends ItemView {
   #invalidationUnsubscribe: (() => void) | null = null;
   #gridController: GridViewController | null = null;
   #mapView: MapView | null = null;
+  #gridRenderer: ReadonlyGridRenderer | null = null;
+  /**
+   * Per-View working sessions (Active Cell, selection, scroll anchor, status
+   * mode) for Grid ↔ Map ↔ Grid and View A ↔ B ↔ A restoration. In-memory
+   * only — cleared whenever the controller/profile world resets.
+   */
+  #gridSessions = new Map<string, GridSessionSnapshot>();
   #gridHost: HTMLElement | null = null;
   #detailHost: HTMLElement | null = null;
   #navHost: HTMLElement | null = null;
@@ -158,6 +165,10 @@ export class LoomTableView extends ItemView {
 
   private renderGrid(profile: ConnectionProfile, controller: GridViewController): void {
     if (!this.prepareForNavigation()) return;
+    // Stash the outgoing Grid session before the renderer is replaced — the
+    // renderer itself also captures on in-place View switches.
+    this.#gridRenderer?.captureSession();
+    this.#gridRenderer = null;
     this.#activeProfile = profile;
     this.#activeMapViewId = null;
     this.#mapView?.destroy();
@@ -185,117 +196,124 @@ export class LoomTableView extends ItemView {
     this.#gridHost = gridHost;
     this.#detailHost = detailHost;
 
-    const renderer = new ReadonlyGridRenderer(gridHost, this.getTranslator(), {
-      onRefresh: () => controller.refresh(),
-      onCreateDefaultView: () => this.#shell?.createDefaultView(),
-      onSearch: (term) => controller.setSearch(term),
-      onApplyFilter: (viewId, filter) => controller.applyViewFilter(viewId, filter),
-      onQueryFieldValues: (fieldId, request) => controller.queryFieldValues(fieldId, request),
-      onSetFieldAggregation: (fieldId, fn) => controller.setFieldAggregation(fieldId, fn),
-      onApplySort: (viewId, sort) => controller.applyViewSort(viewId, sort),
-      onApplyManualSort: (viewId, enabled) => controller.applyViewManualSort(viewId, enabled),
-      onMoveRecord: (recordId, anchors) => controller.moveRecord(recordId, anchors),
-      onApplyDisplay: (viewId, patch) => controller.applyViewDisplay(viewId, patch),
-      onFieldSave: (input, context) =>
-        context.mode === 'edit'
-          ? controller.updateField(context.fieldId, {
-              name: input.name,
-              ...(input.options === undefined ? {} : { options: input.options }),
-              ...(input.maxCount === undefined ? {} : { maxCount: input.maxCount }),
-              ...(input.description === undefined ? {} : { description: input.description }),
-              ...(input.format === undefined ? {} : { format: input.format }),
-            })
-          : controller.createField(
-              input,
-              context.anchorFieldId === undefined
-                ? null
-                : { fieldId: context.anchorFieldId, side: context.side ?? 'right' },
-            ),
-      onFieldDelete: (fieldId) => controller.deleteField(fieldId),
-      ...(controller.supportsRecordCreate
-        ? {
-            onCreateRecord: (values: Readonly<Record<string, MutationValue>>) =>
-              controller.createRecord(values),
-            onRetryRecordCreate: (operationId: string) => controller.retryRecordCreate(operationId),
-            onDiscardRecordCreate: (operationId: string) =>
-              controller.discardRecordCreate(operationId),
-            onDismissRecordCreate: (operationId: string) =>
-              controller.dismissRecordCreate(operationId),
-          }
-        : {}),
-      ...(controller.supportsRecordLifecycle
-        ? {
-            onDeleteRecord: async (recordId: string) => {
-              await controller.deleteRecord(recordId);
-            },
-            onDuplicateRecord: async (recordId: string) => {
-              await controller.duplicateRecord(recordId);
-              renderer.showToast({
-                kind: 'success',
-                text: this.getTranslator()('record.duplicate.done'),
-              });
-            },
-            onInsertRecordBelow: async (recordId: string) => {
-              await controller.insertRecordBelow(recordId);
-            },
-            onUndoDelete: async () => {
-              try {
-                await controller.undoDelete();
-              } catch {
+    const renderer = new ReadonlyGridRenderer(
+      gridHost,
+      this.getTranslator(),
+      {
+        onRefresh: () => controller.refresh(),
+        onCreateDefaultView: () => this.#shell?.createDefaultView(),
+        onSearch: (term) => controller.setSearch(term),
+        onApplyFilter: (viewId, filter) => controller.applyViewFilter(viewId, filter),
+        onQueryFieldValues: (fieldId, request) => controller.queryFieldValues(fieldId, request),
+        onSetFieldAggregation: (fieldId, fn) => controller.setFieldAggregation(fieldId, fn),
+        onApplySort: (viewId, sort) => controller.applyViewSort(viewId, sort),
+        onApplyManualSort: (viewId, enabled) => controller.applyViewManualSort(viewId, enabled),
+        onMoveRecord: (recordId, anchors) => controller.moveRecord(recordId, anchors),
+        onApplyDisplay: (viewId, patch) => controller.applyViewDisplay(viewId, patch),
+        onFieldSave: (input, context) =>
+          context.mode === 'edit'
+            ? controller.updateField(context.fieldId, {
+                name: input.name,
+                ...(input.options === undefined ? {} : { options: input.options }),
+                ...(input.maxCount === undefined ? {} : { maxCount: input.maxCount }),
+                ...(input.description === undefined ? {} : { description: input.description }),
+                ...(input.format === undefined ? {} : { format: input.format }),
+              })
+            : controller.createField(
+                input,
+                context.anchorFieldId === undefined
+                  ? null
+                  : { fieldId: context.anchorFieldId, side: context.side ?? 'right' },
+              ),
+        onFieldDelete: (fieldId) => controller.deleteField(fieldId),
+        ...(controller.supportsRecordCreate
+          ? {
+              onCreateRecord: (values: Readonly<Record<string, MutationValue>>) =>
+                controller.createRecord(values),
+              onRetryRecordCreate: (operationId: string) =>
+                controller.retryRecordCreate(operationId),
+              onDiscardRecordCreate: (operationId: string) =>
+                controller.discardRecordCreate(operationId),
+              onDismissRecordCreate: (operationId: string) =>
+                controller.dismissRecordCreate(operationId),
+            }
+          : {}),
+        ...(controller.supportsRecordLifecycle
+          ? {
+              onDeleteRecord: async (recordId: string) => {
+                await controller.deleteRecord(recordId);
+              },
+              onDuplicateRecord: async (recordId: string) => {
+                await controller.duplicateRecord(recordId);
                 renderer.showToast({
-                  kind: 'error',
-                  text: this.getTranslator()('toast.undoFailed'),
+                  kind: 'success',
+                  text: this.getTranslator()('record.duplicate.done'),
                 });
-              }
-            },
-            onDismissDeleteNotice: () => controller.dismissDeleteNotice(),
-            onLoadDeletedRecords: () => controller.loadDeletedRecords(),
-            onLoadMoreDeletedRecords: () => controller.loadMoreDeletedRecords(),
-            onLoadServerHistory: (kind) =>
-              controller.loadServerHistory(kind === undefined ? {} : { kind }),
-            onLoadMoreServerHistory: (kind) => controller.loadMoreServerHistory(kind),
-            onConversionPreview: (fieldId, type) =>
-              controller.previewFieldConversion(fieldId, type),
-            onConvertField: (fieldId, request) => controller.convertField(fieldId, request),
-            onRestoreRecord: async (recordId: string) => {
-              await controller.restoreRecord(recordId);
-            },
+              },
+              onInsertRecordBelow: async (recordId: string) => {
+                await controller.insertRecordBelow(recordId);
+              },
+              onUndoDelete: async () => {
+                try {
+                  await controller.undoDelete();
+                } catch {
+                  renderer.showToast({
+                    kind: 'error',
+                    text: this.getTranslator()('toast.undoFailed'),
+                  });
+                }
+              },
+              onDismissDeleteNotice: () => controller.dismissDeleteNotice(),
+              onLoadDeletedRecords: () => controller.loadDeletedRecords(),
+              onLoadMoreDeletedRecords: () => controller.loadMoreDeletedRecords(),
+              onLoadServerHistory: (kind) =>
+                controller.loadServerHistory(kind === undefined ? {} : { kind }),
+              onLoadMoreServerHistory: (kind) => controller.loadMoreServerHistory(kind),
+              onConversionPreview: (fieldId, type) =>
+                controller.previewFieldConversion(fieldId, type),
+              onConvertField: (fieldId, request) => controller.convertField(fieldId, request),
+              onRestoreRecord: async (recordId: string) => {
+                await controller.restoreRecord(recordId);
+              },
+            }
+          : {}),
+        onLoadMore: () => controller.loadNextPage(),
+        onRecordOpen: (record) => void this.showRecordDetail(record, profile, controller),
+        onCellEdit: (recordId, fieldId, value) => {
+          void controller.editCell(recordId, fieldId, value);
+        },
+        onUndo: async () => {
+          try {
+            await controller.undo();
+          } catch {
+            renderer.showToast({ kind: 'error', text: this.getTranslator()('toast.undoFailed') });
           }
-        : {}),
-      onLoadMore: () => controller.loadNextPage(),
-      onRecordOpen: (record) => void this.showRecordDetail(record, profile, controller),
-      onCellEdit: (recordId, fieldId, value) => {
-        void controller.editCell(recordId, fieldId, value);
+        },
+        onRedo: async () => {
+          try {
+            await controller.redo();
+          } catch {
+            renderer.showToast({ kind: 'error', text: this.getTranslator()('toast.redoFailed') });
+          }
+        },
+        onUndoTo: async (index) => {
+          try {
+            await controller.undoUntil(index);
+          } catch {
+            renderer.showToast({ kind: 'error', text: this.getTranslator()('toast.undoFailed') });
+          }
+        },
+        attachmentThumbnail: this.attachmentThumbnail,
+        onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
+        confirmDiscardAll: () => window.confirm(this.getTranslator()('grid.discardAllConfirm')),
+        onRetryEdit: (recordId) => controller.retryEdit(recordId),
+        ...(this.mapContext.openSettings === undefined
+          ? {}
+          : { onOpenSettings: this.mapContext.openSettings }),
       },
-      onUndo: async () => {
-        try {
-          await controller.undo();
-        } catch {
-          renderer.showToast({ kind: 'error', text: this.getTranslator()('toast.undoFailed') });
-        }
-      },
-      onRedo: async () => {
-        try {
-          await controller.redo();
-        } catch {
-          renderer.showToast({ kind: 'error', text: this.getTranslator()('toast.redoFailed') });
-        }
-      },
-      onUndoTo: async (index) => {
-        try {
-          await controller.undoUntil(index);
-        } catch {
-          renderer.showToast({ kind: 'error', text: this.getTranslator()('toast.undoFailed') });
-        }
-      },
-      attachmentThumbnail: this.attachmentThumbnail,
-      onConflictAction: (recordId, action) => controller.resolveConflict(recordId, action),
-      confirmDiscardAll: () => window.confirm(this.getTranslator()('grid.discardAllConfirm')),
-      onRetryEdit: (recordId) => controller.retryEdit(recordId),
-      ...(this.mapContext.openSettings === undefined
-        ? {}
-        : { onOpenSettings: this.mapContext.openSettings }),
-    });
+      this.#gridSessions,
+    );
+    this.#gridRenderer = renderer;
     this.#gridController = controller;
     this.#gridUnsubscribe = controller.subscribe((state) => {
       renderer.render(state);
@@ -327,6 +345,9 @@ export class LoomTableView extends ItemView {
     this.#invalidationUnsubscribe?.();
     this.#invalidationUnsubscribe = null;
     this.#mapView?.destroy();
+    // Preserve the Grid working session for a later Map → Grid return.
+    this.#gridRenderer?.captureSession();
+    this.#gridRenderer = null;
     this.#gridHost = null;
     this.#detailHost = null;
     this.contentEl.empty();
@@ -915,6 +936,8 @@ export class LoomTableView extends ItemView {
     this.#gridController?.dispose();
     this.#gridController = null;
     this.#gridClient = null;
+    this.#gridRenderer = null;
+    this.#gridSessions.clear();
     this.#gridHost = null;
     this.#detailHost = null;
     this.#navHost = null;

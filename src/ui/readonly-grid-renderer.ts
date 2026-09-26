@@ -223,20 +223,87 @@ export interface VirtualRowRange {
   readonly end: number;
 }
 
+/** Stable Cell identity — independent of position, DOM node or focus. */
+export interface GridCellRef {
+  readonly recordId: string;
+  readonly fieldId: string;
+}
+
+/**
+ * The business selection, stored by Record/Field identity so reorders,
+ * removals and field changes reconcile instead of corrupting it. `null`
+ * means the Active Cell alone is selected (the degenerate 1×1 case).
+ */
+type GridSelection =
+  | { readonly kind: 'range'; readonly anchor: GridCellRef; readonly head: GridCellRef }
+  | {
+      readonly kind: 'rows';
+      readonly recordIds: ReadonlySet<string>;
+      readonly anchorRecordId: string | null;
+    }
+  | { readonly kind: 'column'; readonly fieldId: string };
+
+/** Serializable form of GridSelection (the rows set becomes an array). */
+type StoredGridSelection =
+  | { readonly kind: 'range'; readonly anchor: GridCellRef; readonly head: GridCellRef }
+  | {
+      readonly kind: 'rows';
+      readonly recordIds: readonly string[];
+      readonly anchorRecordId: string | null;
+    }
+  | { readonly kind: 'column'; readonly fieldId: string };
+
+/**
+ * Per-View working session, held in memory by the LoomTableView and restored
+ * when the user comes back to the View (Grid ↔ Map ↔ Grid, View A ↔ B).
+ * Only stable state is kept — no live editors, menus or pointer state.
+ */
+export interface GridSessionSnapshot {
+  readonly tableId: string | null;
+  readonly activeCell: GridCellRef | null;
+  readonly selection: StoredGridSelection | null;
+  readonly rowAnchorRecordId: string | null;
+  readonly scroll: {
+    readonly anchorRecordId: string | null;
+    readonly anchorIndex: number;
+    readonly offsetPx: number;
+    readonly rowHeight: number;
+    readonly left: number;
+  };
+  readonly statusPanelMode: 'ops' | 'history' | 'deleted';
+}
+
 export class ReadonlyGridRenderer {
   readonly #container: HTMLElement;
   readonly #translate: Translator;
   readonly #callbacks: GridRendererCallbacks;
+  readonly #sessions: Map<string, GridSessionSnapshot>;
   #virtualGrid: VirtualGridRefs | null = null;
-  #focusedCellKey: string | null = null;
+  /**
+   * The Active Cell is business state, not DOM focus: it survives the user
+   * moving focus to the Toolbar, Search or status panels, keeps its accent
+   * border while off-screen, and reconciles by identity after deletes,
+   * reorders, filter and View changes. `null` only when no data Cell exists.
+   */
+  #activeCell: GridCellRef | null = null;
+  /** Last resolved position of the Active Cell — the reconcile fallback. */
+  #activeCellHint: { readonly rowIndex: number; readonly fieldIndex: number } | null = null;
+  #selection: GridSelection | null = null;
+  /** The fixed end a Shift+click extends from — the last plain selection. */
+  #selectionAnchor: GridCellRef | null = null;
+  /**
+   * Mousedown marker so the focus event fired mid-gesture knows a Shift+click
+   * is coming: the head cell takes DOM focus, the anchor must stay behind.
+   */
+  #pendingClickShift = false;
+  #rowAnchorRecordId: string | null = null;
   #focusedHeaderFieldId: string | null = null;
-  #focusedCellPosition: { readonly rowIndex: number; readonly fieldIndex: number } | null = null;
-  #selection: {
-    readonly anchor: { readonly rowIndex: number; readonly fieldIndex: number };
-    readonly head: { readonly rowIndex: number; readonly fieldIndex: number };
-  } | null = null;
-  #selectedRows = new Set<number>();
-  #rowAnchorIndex: number | null = null;
+  #pendingScrollAnchor: GridSessionSnapshot['scroll'] | null = null;
+  /**
+   * The draft-commit render lands focus on the neutral viewport instead of a
+   * data Cell — the pending-create handoff then decides where focus belongs.
+   */
+  #suppressActiveFocusOnce = false;
   #lastConflictIds = new Set<string>();
   #lastState: GridState | null = null;
   readonly #toastStack: HTMLElement = createToastStack();
@@ -274,10 +341,6 @@ export class ReadonlyGridRenderer {
   #displayPanelViewId: string | null = null;
   #displayPanelFieldsKey = '';
   #autoFocusedViewId: string | null = null;
-  // Focus placed by #autoFocusFirstCell is tentative: re-renders refocus it
-  // when visible but never scroll the viewport back to it. An explicit cell
-  // selection promotes the focus to the normal sticky kind.
-  #softFocusedCell = false;
   #clipboardNotice: string | null = null;
   #rowHeightAnchor: {
     readonly recordId: string | null;
@@ -288,10 +351,16 @@ export class ReadonlyGridRenderer {
   #overlayClose: (() => void) | null = null;
   #overlayEl: HTMLElement | null = null;
 
-  constructor(container: HTMLElement, translate: Translator, callbacks: GridRendererCallbacks) {
+  constructor(
+    container: HTMLElement,
+    translate: Translator,
+    callbacks: GridRendererCallbacks,
+    sessions?: Map<string, GridSessionSnapshot>,
+  ) {
     this.#container = container;
     this.#translate = translate;
     this.#callbacks = callbacks;
+    this.#sessions = sessions ?? new Map<string, GridSessionSnapshot>();
     container.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape' || this.#openPanel === null || event.defaultPrevented) return;
       const el = event.target instanceof Element ? event.target : null;
@@ -308,6 +377,9 @@ export class ReadonlyGridRenderer {
 
   render(state: GridState): void {
     if (state.selectedViewId !== this.#lastViewId) {
+      // Stash the outgoing View's session before switching — either to another
+      // Grid View (in place) or before a Map View replaces this renderer.
+      this.captureSession();
       this.#lastViewId = state.selectedViewId;
       this.#openPanel = null;
       this.#searchDraft = null;
@@ -318,7 +390,14 @@ export class ReadonlyGridRenderer {
       this.#rowHeightAnchor = null;
       this.#pendingCreateFocus = null;
       this.#dismissOverlay();
+      this.#restoreSession(state);
     }
+    const doc = this.#container.ownerDocument;
+    // Focus bookkeeping gates the restore chain below: only a Grid-internal
+    // focus that this render actually destroyed may be re-established, and a
+    // deliberate external focus is never stolen back.
+    const preActive = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
+    const preFocusInside = preActive !== null && this.#container.contains(preActive);
     const previousGrid = this.#virtualGrid;
     const nextRowHeight = rowHeightPixels(state);
     if (
@@ -338,6 +417,9 @@ export class ReadonlyGridRenderer {
     }
     const queryFocus = captureQueryControlFocus(this.#container);
     this.#lastState = state;
+    // Reconcile the Active Cell + selection by identity before any paint so
+    // the rows below project the correct `.is-active` border.
+    this.#reconcileActiveCell(state);
     this.#virtualGrid = null;
     this.#actionButtons.clear();
     const root = createElement('div', 'loom-grid-shell');
@@ -364,21 +446,25 @@ export class ReadonlyGridRenderer {
 
     if (state.status === 'loading' && state.records.length === 0) {
       root.append(this.#renderStatus('loading', state));
-    } else if (state.records.length === 0) {
+    } else if (state.fields.length === 0) {
       root.append(this.#renderStatus(state.status, state));
-    } else {
-      const showStatusBand = state.status !== 'ready' && state.status !== 'loading';
-      if (showStatusBand) root.append(this.#renderStatus(state.status, state));
-      if (state.fields.length === 0) {
+      if (state.records.length > 0) {
         root.append(
           this.#renderStatus('server-error', {
             ...state,
             error: { message: this.#translate('grid.noFields') },
           }),
         );
-      } else {
-        root.append(this.#renderGrid(state));
       }
+    } else {
+      // An empty Grid still renders its skeleton: the persistent create entry
+      // stays reachable even when the Active Cell has nothing to point at
+      // (activeCell === null). The status band carries the empty/no-match
+      // message and its actions above the Grid.
+      const showStatusBand =
+        state.records.length === 0 || (state.status !== 'ready' && state.status !== 'loading');
+      if (showStatusBand) root.append(this.#renderStatus(state.status, state));
+      root.append(this.#renderGrid(state));
     }
 
     const conflictIds = new Set(state.conflicts.map((conflict) => conflict.recordId));
@@ -402,6 +488,7 @@ export class ReadonlyGridRenderer {
       this.#container.insertBefore(root, overlay);
     }
     this.#restoreRowHeightAnchor();
+    this.#restoreScrollAnchor();
     this.#syncActionButtons();
     const overlayFocused =
       overlay !== null && overlay.contains(this.#container.ownerDocument.activeElement);
@@ -417,8 +504,21 @@ export class ReadonlyGridRenderer {
       if (!overlayFocused) {
         this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus();
       }
-    } else if (overlayFocused) {
-      // The overlay owns focus; the re-render must not steal it back.
+    } else if (overlayFocused || (preFocusInside && preActive.isConnected)) {
+      // The overlay (or another surviving node) owns focus; the re-render
+      // must not steal it back.
+    } else if (
+      !preFocusInside &&
+      preActive !== null &&
+      preActive !== doc.body &&
+      preActive !== doc.documentElement &&
+      preActive.isConnected
+    ) {
+      // Focus lives outside the Grid on purpose — a publish must not pull it
+      // back. Any armed create-focus landing would steal it, so disarm it.
+      // A detached node can never be a real focus owner (browsers blur on
+      // removal), so it falls through to the restore chain as neutral.
+      this.#pendingCreateFocus = null;
     } else if (this.#restorePendingCreateFocus()) {
       return;
     } else if (this.#restoreFailedEditDraft(state)) {
@@ -428,9 +528,12 @@ export class ReadonlyGridRenderer {
     } else if (this.#restoreQueryControl(queryFocus)) {
       return;
     } else {
-      const restored = this.#restoreFocusedHeader() || this.#restoreFocusedCell();
+      const restored =
+        !this.#suppressActiveFocusOnce &&
+        (this.#restoreFocusedHeader() || this.#restoreActiveCellFocus());
+      this.#suppressActiveFocusOnce = false;
       if (!restored) {
-        if (this.#focusedCellKey !== null || this.#focusedHeaderFieldId !== null) {
+        if (preFocusInside || this.#focusedHeaderFieldId !== null) {
           this.#focusGridFallback();
         } else {
           this.#autoFocusFirstCell(state);
@@ -439,21 +542,21 @@ export class ReadonlyGridRenderer {
     }
   }
 
-  // A freshly loaded Grid focuses its first editable cell once per View so
-  // keyboard entry works without a preliminary click. It never steals focus
-  // back — only the <body> landing spot qualifies.
+  // A freshly loaded Grid focuses its Active Cell once per View so keyboard
+  // entry works without a preliminary click. It never steals focus back —
+  // only the <body> landing spot qualifies — and never enters editing.
   #autoFocusFirstCell(state: GridState): void {
     if (this.#autoFocusedViewId === state.selectedViewId) return;
     if (state.status !== 'ready' || state.records.length === 0) return;
-    const grid = this.#virtualGrid;
-    if (grid === null) return;
+    if (this.#virtualGrid === null) return;
     const active = this.#container.ownerDocument.activeElement;
     if (active !== null && active !== this.#container.ownerDocument.body) return;
-    const fieldIndex = grid.fields.findIndex((field) => isEditableField(field));
-    if (fieldIndex < 0) return;
+    const ref = this.#activeCell;
+    if (ref === null) return;
+    const cell = this.#findCellForRecordField(ref.recordId, ref.fieldId);
+    if (cell === null) return;
     this.#autoFocusedViewId = state.selectedViewId;
-    this.#softFocusedCell = true;
-    this.#focusCellAt(0, fieldIndex);
+    cell.focus({ preventScroll: true });
   }
 
   #renderToolbar(state: GridState): HTMLElement {
@@ -1474,6 +1577,9 @@ export class ReadonlyGridRenderer {
     labelContainer(viewport, this.#translate('grid.table'));
     viewport.setAttribute('aria-rowcount', String(state.records.length + 1));
     viewport.setAttribute('aria-colcount', String(fields.length + (hasAddField ? 2 : 1)));
+    // When the viewport itself owns focus, Grid keys resume from the Active
+    // Cell — the Active Cell may be scrolled out of the virtual window.
+    viewport.addEventListener('keydown', (event) => this.#onViewportKeydown(event));
 
     const header = createElement('div', 'loom-grid-header');
     header.setAttribute('role', 'row');
@@ -1504,7 +1610,7 @@ export class ReadonlyGridRenderer {
         if ((event.target as HTMLElement).closest('button, .loom-grid-col-resize') !== null) {
           return;
         }
-        this.#selectColumn(fieldIndex);
+        this.#selectColumn(field.id);
       });
       if (this.#callbacks.onFieldSave !== undefined) {
         fieldHeader.addEventListener('dblclick', (event) => {
@@ -1540,7 +1646,7 @@ export class ReadonlyGridRenderer {
         }
         if (event.key === ' ') {
           event.preventDefault();
-          this.#selectColumn(fieldIndex);
+          this.#selectColumn(field.id);
           return;
         }
         if (event.key === 'Enter' && this.#callbacks.onFieldSave !== undefined) {
@@ -1691,7 +1797,7 @@ export class ReadonlyGridRenderer {
     const rowLayer = createElement('div', 'loom-grid-row-layer');
     canvas.append(rowLayer);
     const canCreate =
-      state.status === 'ready' &&
+      (state.status === 'ready' || state.status === 'empty') &&
       state.selectedTableId !== null &&
       this.#callbacks.onCreateRecord !== undefined;
     if (canCreate && this.#draftCreateValues !== null) {
@@ -2021,8 +2127,9 @@ export class ReadonlyGridRenderer {
         grid.rowLayer.append(row);
       }
     }
-    focusedEditor?.focus();
-    if (this.#focusedCellKey !== null) this.#restoreFocusedCell();
+    focusedEditor?.focus({ preventScroll: true });
+    // No Cell-focus restore here: scrolling is passive and must neither steal
+    // DOM focus nor move the viewport back toward the Active Cell.
   }
 
   #renderRow(
@@ -2037,6 +2144,7 @@ export class ReadonlyGridRenderer {
     row.tabIndex = -1;
     row.setAttribute('aria-rowindex', String(rowIndex + 2));
     row.dataset.rowIndex = String(rowIndex);
+    row.dataset.recordId = record.id;
     row.style.gridTemplateColumns =
       this.#virtualGrid?.columnTemplate ?? columnTemplateFor(fields, this.#virtualGrid?.state);
     row.style.height = rowHeight + 'px';
@@ -2053,12 +2161,12 @@ export class ReadonlyGridRenderer {
     dragHandle.setAttribute('aria-hidden', 'true');
     const check = createElement('input', 'loom-grid-row-check');
     check.type = 'checkbox';
-    check.checked = this.#isRowSelected(rowIndex);
+    check.checked = this.#isRowSelected(record.id);
     check.tabIndex = -1;
     check.setAttribute('aria-label', this.#translate('grid.selectRow'));
     check.addEventListener('click', (event) => {
       event.stopPropagation();
-      this.#toggleRowSelected(rowIndex, event.shiftKey);
+      this.#toggleRowSelected(record.id, event.shiftKey);
     });
     const open = document.createElement('button');
     open.type = 'button';
@@ -2074,12 +2182,12 @@ export class ReadonlyGridRenderer {
     indexCell.addEventListener('click', (event) => {
       event.stopPropagation();
       if ((event.target as HTMLElement).closest('input') !== null) return;
-      if (event.shiftKey && this.#rowAnchorIndex !== null) {
-        this.#selectRowRange(this.#rowAnchorIndex, rowIndex);
+      if (event.shiftKey && this.#rowAnchorRecordId !== null) {
+        this.#selectRowRange(this.#rowAnchorRecordId, record.id);
       } else if (event.ctrlKey || event.metaKey) {
-        this.#toggleRowSelected(rowIndex);
+        this.#toggleRowSelected(record.id);
       } else {
-        this.#selectRow(rowIndex);
+        this.#selectRow(record.id);
       }
     });
     indexCell.addEventListener('contextmenu', (event) => {
@@ -2140,7 +2248,13 @@ export class ReadonlyGridRenderer {
         cell.style.left = `${frozenOffset}px`;
         if (field.id === lastFrozenId) cell.classList.add('loom-grid-frozen-last');
       }
-      cell.tabIndex = 0;
+      const isActive =
+        this.#activeCell !== null &&
+        this.#activeCell.recordId === record.id &&
+        this.#activeCell.fieldId === field.id;
+      // Roving tabindex: only the Active Cell joins the Tab order; every
+      // other cell is reached by arrows/click, not by tabbing through all.
+      cell.tabIndex = isActive ? 0 : -1;
       const editStatus = gridState?.editStatuses[record.id];
       const canEdit =
         gridState?.status === 'ready' && editStatus !== 'queued' && editStatus !== 'saving';
@@ -2160,25 +2274,33 @@ export class ReadonlyGridRenderer {
         field.id,
       );
       if (editStatus !== undefined) cell.dataset.editState = editStatus;
-      if (this.#isCellSelected(rowIndex, fieldIndex)) cell.classList.add('is-selected');
-      if (this.#isRowSelected(rowIndex)) indexCell.classList.add('is-selected');
+      // `.is-active` is business state, independent of DOM focus — the accent
+      // border must survive the user focusing the Toolbar, Search or panels.
+      if (isActive) {
+        cell.classList.add('is-active');
+        cell.setAttribute('aria-selected', 'true');
+      }
+      if (this.#isCellSelected(record.id, field.id)) cell.classList.add('is-selected');
+      if (this.#isRowSelected(record.id)) indexCell.classList.add('is-selected');
+      cell.addEventListener('mousedown', (event) => {
+        this.#pendingClickShift = event.shiftKey;
+      });
       cell.addEventListener('focus', () => {
         this.#focusedHeaderFieldId = null;
-        this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
+        // DOM focus landing on a Cell is a navigation signal — keep the
+        // business Active Cell in lockstep with it.
+        this.#trackFocus({ recordId: record.id, fieldId: field.id }, { rowIndex, fieldIndex });
       });
       cell.addEventListener('click', (event) => {
         event.stopPropagation();
-        this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
-        const wasActive =
-          this.#selection !== null &&
-          this.#selection.anchor.rowIndex === rowIndex &&
-          this.#selection.anchor.fieldIndex === fieldIndex &&
-          this.#selection.head.rowIndex === rowIndex &&
-          this.#selection.head.fieldIndex === fieldIndex;
-        this.#selectCell(rowIndex, fieldIndex, event.shiftKey);
-        if (wasActive && !event.shiftKey && isEditableField(field) && canEdit) {
-          this.#beginCellEdit(cell, record, field, rowIndex, fieldIndex);
+        this.#pendingClickShift = false;
+        if (event.shiftKey) {
+          this.#selectRangeTo({ recordId: record.id, fieldId: field.id }, { rowIndex, fieldIndex });
+          return;
         }
+        // A single click only moves the Active Cell; editing requires a
+        // deliberate double-click or keyboard intent (Enter/F2/typing).
+        this.#setActive({ recordId: record.id, fieldId: field.id }, { rowIndex, fieldIndex });
       });
       cell.addEventListener('dblclick', (event) => {
         event.stopPropagation();
@@ -2201,6 +2323,20 @@ export class ReadonlyGridRenderer {
       });
       cell.addEventListener('keydown', (event) => {
         event.stopPropagation();
+        if (event.key === 'Escape') {
+          // Escape collapses the outermost layer only: a multi-selection folds
+          // back to the Active Cell, an open panel closes — the Active Cell
+          // itself is never cleared by Escape.
+          if (this.#selection !== null) {
+            event.preventDefault();
+            this.#selection = null;
+            this.#applySelection();
+          } else if (this.#openPanel !== null) {
+            event.preventDefault();
+            this.#closePanels();
+          }
+          return;
+        }
         if (event.key === 'Tab') {
           const grid = this.#virtualGrid;
           if (grid === null || grid.fields.length === 0) return;
@@ -2425,18 +2561,22 @@ export class ReadonlyGridRenderer {
   }
 
   /**
-   * Where the draft row goes: below the Record the user focused (an explicit
-   * selection only — the tentative ready-focus does not pick an anchor), or
-   * after the last loaded row when nothing is focused. `index` is the row the
-   * draft occupies; `afterRecordId` persists that position on commit.
+   * Where the draft row goes: below the Record holding the Active Cell — but
+   * only when the view still guarantees that position, i.e. manual order with
+   * no explicit Sort or Filter (D-2). `index` is the row the draft occupies;
+   * `afterRecordId` persists the position on commit. In every other query
+   * state the draft sits at the loaded tail and the Server places the Record.
    */
   #resolveDraftAnchor(state: GridState): { index: number; afterRecordId: string | null } {
-    const position = this.#focusedCellPosition;
     const records = state.records;
-    const manual = manualOrderEnabled(state);
-    if (!this.#softFocusedCell && position !== null && records.length > 0 && manual) {
-      const rowIndex = Math.max(0, Math.min(records.length - 1, position.rowIndex));
-      return { index: rowIndex + 1, afterRecordId: records[rowIndex]?.id ?? null };
+    const view = selectedGridView(state);
+    const manual = manualOrderEnabled(state) && view !== null && view.config.filter === undefined;
+    const active = this.#activeCell;
+    if (active !== null && records.length > 0 && manual) {
+      const rowIndex = records.findIndex((record) => record.id === active.recordId);
+      if (rowIndex >= 0) {
+        return { index: rowIndex + 1, afterRecordId: records[rowIndex]?.id ?? null };
+      }
     }
     // Sorted/filtered views cannot honor an insertion anchor — the draft sits
     // at the loaded tail and the Server places the Record. In manual order a
@@ -2448,7 +2588,9 @@ export class ReadonlyGridRenderer {
   #beginDraftCreate(): void {
     const state = this.#virtualGrid?.state ?? this.#lastState;
     if (state === null || this.#callbacks.onCreateRecord === undefined) return;
-    if (state.status !== 'ready' || state.selectedTableId === null) return;
+    if ((state.status !== 'ready' && state.status !== 'empty') || state.selectedTableId === null) {
+      return;
+    }
     this.#pendingCreateFocus = null;
     this.#draftLastFieldId = null;
     this.#draftCreateValues ??= {};
@@ -2489,10 +2631,10 @@ export class ReadonlyGridRenderer {
     this.#draftLastFieldId = null;
     const anchor = this.#draftAnchor;
     this.#draftAnchor = null;
-    // The draft row is gone; drop the stale cell-focus memory so this render
-    // does not snap focus to an unrelated row.
-    this.#focusedCellKey = null;
-    this.#focusedCellPosition = null;
+    // The draft row is gone; land focus on the neutral viewport this render —
+    // a data-Cell landing would look like a deliberate move to the
+    // pending-create focus handoff and get it cancelled.
+    this.#suppressActiveFocusOnce = true;
     this.render(this.#virtualGrid?.state ?? this.#emptyState());
     const hasValue = Object.values(values).some(
       (value) => value !== undefined && value !== null && value !== '',
@@ -3107,7 +3249,9 @@ export class ReadonlyGridRenderer {
     if (cell.querySelector('input, textarea, select') !== null) return;
 
     this.#dismissedEditDraftKey = null;
-    this.#rememberCell(cell.dataset.focusKey ?? '', rowIndex, fieldIndex);
+    if (record.id !== DRAFT_RECORD_ID) {
+      this.#setActive({ recordId: record.id, fieldId: field.id }, { rowIndex, fieldIndex });
+    }
     const editor = defaultFieldRendererRegistry.createEditor(
       field,
       initialValue as JsonValue | undefined,
@@ -3152,12 +3296,24 @@ export class ReadonlyGridRenderer {
       // swallows input and blocks re-editing the cell.
       const hadFocus = document.activeElement === editor;
       this.#fillCellDisplay(cell, record, field, normalized.ok ? normalized.value : value);
-      cell.tabIndex = 0;
+      // Roving tabindex: the cell rejoins the Tab order only while it remains
+      // the Active Cell.
+      const stillActive =
+        this.#activeCell?.recordId === record.id && this.#activeCell.fieldId === field.id;
+      cell.tabIndex = stillActive ? 0 : -1;
       if (hadFocus && moveOffset === 0) cell.focus();
+      // When the commit moves to the next cell, aim the Active Cell there
+      // first so the render's focus restore lands on the target directly.
+      const aimNext = (): void => {
+        const target = this.#positionRef(rowIndex, fieldIndex + moveOffset);
+        if (target !== null) {
+          this.#setActive(target, { rowIndex, fieldIndex: fieldIndex + moveOffset });
+        }
+      };
       if (normalized.ok && jsonEqual(normalized.value, record.values[field.id])) {
         if (moveOffset !== 0) {
           const state = this.#virtualGrid?.state ?? this.#emptyState();
-          this.#focusedCellKey = null;
+          aimNext();
           this.render(state);
           this.#focusAdjacentCell(rowIndex, fieldIndex, moveOffset, true);
         }
@@ -3167,7 +3323,7 @@ export class ReadonlyGridRenderer {
       if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
       if (moveOffset !== 0) {
         const state = this.#virtualGrid?.state ?? this.#emptyState();
-        this.#focusedCellKey = null;
+        aimNext();
         this.render(state);
         this.#focusAdjacentCell(rowIndex, fieldIndex, moveOffset, true);
       }
@@ -3338,20 +3494,330 @@ export class ReadonlyGridRenderer {
     };
   }
 
-  #rememberCell(key: string, rowIndex: number, fieldIndex: number): void {
-    if (key === '') return;
-    this.#focusedCellKey = key;
-    this.#focusedCellPosition = { rowIndex, fieldIndex };
-  }
-
-  #findCellByKey(key: string): HTMLElement | null {
+  /**
+   * Resolve a position to a stable Cell identity. Positions are how the user
+   * navigates; identity is what the renderer remembers.
+   */
+  #positionRef(rowIndex: number, fieldIndex: number): GridCellRef | null {
     const grid = this.#virtualGrid;
     if (grid === null) return null;
-    return (
-      [...grid.rowLayer.querySelectorAll<HTMLElement>('.loom-grid-cell')].find(
-        (cell) => cell.dataset.focusKey === key,
-      ) ?? null
+    const record = grid.state.records[rowIndex];
+    const field = grid.fields[fieldIndex];
+    if (record === undefined || field === undefined) return null;
+    return { recordId: record.id, fieldId: field.id };
+  }
+
+  /** Resolve an identity back to its current position; null when either side
+   * no longer exists (deleted Record, hidden Field, filtered-out row). */
+  #resolveCellRef(
+    ref: GridCellRef,
+  ): { readonly rowIndex: number; readonly fieldIndex: number } | null {
+    const grid = this.#virtualGrid;
+    if (grid === null) return null;
+    const rowIndex = grid.state.records.findIndex((record) => record.id === ref.recordId);
+    const fieldIndex = grid.fields.findIndex((field) => field.id === ref.fieldId);
+    if (rowIndex < 0 || fieldIndex < 0) return null;
+    return { rowIndex, fieldIndex };
+  }
+
+  /**
+   * The single write path for the Active Cell. Deliberate selection — click,
+   * keyboard navigation, editing entry — goes through here so the accent
+   * border, roving tabindex, range anchor and draft-create anchor can never
+   * drift apart. A plain move also collapses any multi-selection.
+   */
+  #setActive(
+    ref: GridCellRef,
+    hint?: { readonly rowIndex: number; readonly fieldIndex: number },
+  ): void {
+    if (ref.recordId === DRAFT_RECORD_ID) return;
+    const unchanged =
+      this.#activeCell?.recordId === ref.recordId && this.#activeCell.fieldId === ref.fieldId;
+    this.#activeCell = ref;
+    if (hint !== undefined) this.#activeCellHint = hint;
+    this.#selectionAnchor = ref;
+    const collapsed = this.#selection !== null;
+    this.#selection = null;
+    if (!unchanged || collapsed) this.#applySelection();
+  }
+
+  /**
+   * DOM focus landing on a Cell is a navigation signal — keep the business
+   * Active Cell in lockstep with it. Unlike #setActive this does not collapse
+   * an existing multi-selection: focus also fires as a side effect of
+   * restores and of Shift+click, neither of which should destroy a range.
+   */
+  #trackFocus(
+    ref: GridCellRef,
+    hint: { readonly rowIndex: number; readonly fieldIndex: number },
+  ): void {
+    if (ref.recordId === DRAFT_RECORD_ID) return;
+    if (this.#pendingClickShift) {
+      // A Shift+click focuses the head cell before the click resolves the
+      // range — move the Active Cell to the head but keep the stored anchor.
+      this.#activeCell = ref;
+      this.#activeCellHint = hint;
+      this.#applySelection();
+      return;
+    }
+    const unchanged =
+      this.#activeCell?.recordId === ref.recordId && this.#activeCell.fieldId === ref.fieldId;
+    this.#activeCell = ref;
+    this.#activeCellHint = hint;
+    this.#selectionAnchor = ref;
+    if (!unchanged) this.#applySelection();
+  }
+
+  /** Shift+click range extension from the stored anchor to the clicked Cell. */
+  #selectRangeTo(
+    ref: GridCellRef,
+    hint?: { readonly rowIndex: number; readonly fieldIndex: number },
+  ): void {
+    const anchor = this.#selectionAnchor ?? this.#activeCell;
+    if (anchor === null) {
+      this.#setActive(ref, hint);
+      return;
+    }
+    this.#selection = { kind: 'range', anchor, head: ref };
+    this.#activeCell = ref;
+    if (hint !== undefined) this.#activeCellHint = hint;
+    this.#applySelection();
+  }
+
+  /**
+   * Re-establish DOM focus on the Active Cell after a re-render, only when
+   * the cell is actually inside the virtual window. Never scrolls — the
+   * Active Cell may legitimately sit off-screen and must not pull the user
+   * back (G-1/G-2 root cause).
+   */
+  #restoreActiveCellFocus(): boolean {
+    const ref = this.#activeCell;
+    if (ref === null) return false;
+    const cell = this.#findCellForRecordField(ref.recordId, ref.fieldId);
+    if (cell === null) return false;
+    if (cell.contains(document.activeElement)) return true;
+    cell.focus();
+    return true;
+  }
+
+  /**
+   * Keep the Active Cell pointing at a real Cell. Identity is the source of
+   * truth; when the Record or Field disappears (delete, filter, hide), fall
+   * back to the last resolved position, clamped into what survived. An empty
+   * Grid legitimately has no Active Cell; the first incoming Record seeds one
+   * at the first editable (else first selectable) Field.
+   */
+  #reconcileActiveCell(state: GridState): void {
+    const records = state.records;
+    const fields = orderedFields(state);
+    const active = this.#activeCell;
+    if (active !== null) {
+      const rowIndex = records.findIndex((record) => record.id === active.recordId);
+      const fieldIndex = fields.findIndex((field) => field.id === active.fieldId);
+      if (rowIndex >= 0 && fieldIndex >= 0) {
+        this.#activeCellHint = { rowIndex, fieldIndex };
+      } else if (records.length > 0 && fields.length > 0) {
+        const hint = this.#activeCellHint;
+        const row = Math.max(0, Math.min(records.length - 1, hint?.rowIndex ?? 0));
+        const col = Math.max(0, Math.min(fields.length - 1, hint?.fieldIndex ?? 0));
+        const record = records[row];
+        const field = fields[col];
+        this.#activeCell =
+          record === undefined || field === undefined
+            ? null
+            : { recordId: record.id, fieldId: field.id };
+        this.#activeCellHint =
+          this.#activeCell === null ? null : { rowIndex: row, fieldIndex: col };
+      } else {
+        this.#activeCell = null;
+        this.#activeCellHint = null;
+      }
+    } else if (records.length > 0 && fields.length > 0) {
+      const editable = fields.findIndex((field) => isEditableField(field));
+      const fieldIndex = editable >= 0 ? editable : 0;
+      const record = records[0];
+      const field = fields[fieldIndex];
+      if (record !== undefined && field !== undefined) {
+        this.#activeCell = { recordId: record.id, fieldId: field.id };
+        this.#activeCellHint = { rowIndex: 0, fieldIndex };
+      }
+    } else {
+      this.#activeCellHint = null;
+    }
+    this.#reconcileSelection(records, fields);
+  }
+
+  /** Selection uses the same identity rules: endpoints that no longer exist
+   * drop the range back to the lone Active Cell instead of guessing. */
+  #reconcileSelection(records: readonly LoomTableRecord[], fields: readonly Field[]): void {
+    const selection = this.#selection;
+    if (selection === null) return;
+    if (selection.kind === 'column') {
+      if (!fields.some((field) => field.id === selection.fieldId)) this.#selection = null;
+      return;
+    }
+    if (selection.kind === 'rows') {
+      const alive = new Set(records.map((record) => record.id));
+      const next = new Set([...selection.recordIds].filter((id) => alive.has(id)));
+      if (next.size === 0) {
+        this.#selection = null;
+        return;
+      }
+      const anchor =
+        selection.anchorRecordId !== null && next.has(selection.anchorRecordId)
+          ? selection.anchorRecordId
+          : (next.values().next().value ?? null);
+      this.#selection = { kind: 'rows', recordIds: next, anchorRecordId: anchor };
+      return;
+    }
+    const endpointsAlive = [selection.anchor, selection.head].every(
+      (ref) =>
+        records.some((record) => record.id === ref.recordId) &&
+        fields.some((field) => field.id === ref.fieldId),
     );
+    if (!endpointsAlive) this.#selection = null;
+  }
+
+  /**
+   * Stash the current View's working session — Active Cell, selection, scroll
+   * anchor, status-panel mode — for Grid ↔ Map ↔ Grid and View A ↔ B ↔ A
+   * restoration. Memory-only by contract: never written to Server, View
+   * config or LocalStorage, and editors/menus are deliberately not captured.
+   */
+  captureSession(): void {
+    const viewId = this.#lastViewId;
+    if (viewId === null) return;
+    const grid = this.#virtualGrid;
+    const selection = this.#selection;
+    let scroll: GridSessionSnapshot['scroll'] = {
+      anchorRecordId: null,
+      anchorIndex: 0,
+      offsetPx: 0,
+      rowHeight: 0,
+      left: 0,
+    };
+    if (grid !== null) {
+      const topIndex = Math.max(
+        0,
+        Math.min(
+          Math.max(grid.state.records.length - 1, 0),
+          Math.floor(grid.viewport.scrollTop / grid.rowHeight),
+        ),
+      );
+      scroll = {
+        anchorRecordId: grid.state.records[topIndex]?.id ?? null,
+        anchorIndex: topIndex,
+        offsetPx: grid.viewport.scrollTop - topIndex * grid.rowHeight,
+        rowHeight: grid.rowHeight,
+        left: grid.viewport.scrollLeft,
+      };
+    }
+    this.#sessions.set(viewId, {
+      tableId: this.#lastState?.selectedTableId ?? null,
+      activeCell: this.#activeCell,
+      selection:
+        selection === null
+          ? null
+          : selection.kind === 'rows'
+            ? {
+                kind: 'rows',
+                recordIds: [...selection.recordIds],
+                anchorRecordId: selection.anchorRecordId,
+              }
+            : selection,
+      rowAnchorRecordId: this.#rowAnchorRecordId,
+      scroll,
+      statusPanelMode: this.#statusPanelMode,
+    });
+  }
+
+  /** Load a stashed session for the incoming View; reconcile applies the
+   * identity rules afterwards, so stale references simply fade. */
+  #restoreSession(state: GridState): void {
+    const stored =
+      state.selectedViewId === null ? undefined : this.#sessions.get(state.selectedViewId);
+    const session =
+      stored !== undefined && stored.tableId === state.selectedTableId ? stored : undefined;
+    this.#activeCell = session?.activeCell ?? null;
+    this.#activeCellHint = null;
+    this.#selectionAnchor = session?.activeCell ?? null;
+    this.#selection =
+      session === undefined || session.selection === null
+        ? null
+        : session.selection.kind === 'rows'
+          ? {
+              kind: 'rows',
+              recordIds: new Set(session.selection.recordIds),
+              anchorRecordId: session.selection.anchorRecordId,
+            }
+          : session.selection;
+    this.#rowAnchorRecordId = session?.rowAnchorRecordId ?? null;
+    this.#statusPanelMode = session?.statusPanelMode ?? 'ops';
+    this.#pendingScrollAnchor = session?.scroll ?? null;
+    this.#focusedHeaderFieldId = null;
+  }
+
+  /** Session scroll restore is one of the few legitimate scrollTop writers —
+   * a deliberate View-switch reveal, anchored to a Record, not a render. */
+  #restoreScrollAnchor(): void {
+    const anchor = this.#pendingScrollAnchor;
+    if (anchor === null) return;
+    this.#pendingScrollAnchor = null;
+    const grid = this.#virtualGrid;
+    if (grid === null) return;
+    const records = grid.state.records;
+    let topIndex = anchor.anchorIndex;
+    if (anchor.anchorRecordId !== null) {
+      const resolved = records.findIndex((record) => record.id === anchor.anchorRecordId);
+      if (resolved >= 0) topIndex = resolved;
+    }
+    grid.viewport.scrollTop = topIndex * grid.rowHeight + anchor.offsetPx;
+    grid.viewport.scrollLeft = anchor.left;
+    this.#renderVirtualRows();
+  }
+
+  /**
+   * The viewport is a legitimate focus landing spot under roving tabindex.
+   * While it owns focus, Grid keys keep operating on the Active Cell — which
+   * may be scrolled out of the virtual window.
+   */
+  #onViewportKeydown(event: KeyboardEvent): void {
+    if (event.target !== this.#virtualGrid?.viewport) return;
+    const grid = this.#virtualGrid;
+    if (grid === null || grid.fields.length === 0) return;
+    const active = this.#activeCell;
+    const position = active === null ? null : this.#resolveCellRef(active);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (position === null) this.#focusCellAt(0, 0);
+      else {
+        this.#focusAdjacentCell(
+          position.rowIndex,
+          position.fieldIndex,
+          event.key === 'ArrowDown' ? 1 : -1,
+        );
+      }
+      return;
+    }
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+      event.preventDefault();
+      if (position === null) this.#focusCellAt(0, 0);
+      else {
+        this.#focusAdjacentCell(
+          position.rowIndex,
+          position.fieldIndex,
+          event.key === 'ArrowRight' ? 1 : -1,
+          true,
+        );
+      }
+      return;
+    }
+    if (event.key === 'Enter' && position !== null) {
+      // Focus the Active Cell first; a second Enter then edits it, matching
+      // what Enter does on the cell itself.
+      event.preventDefault();
+      this.#focusCellAt(position.rowIndex, position.fieldIndex);
+    }
   }
 
   #findCellAt(rowIndex: number, fieldIndex: number): HTMLElement | null {
@@ -3374,35 +3840,6 @@ export class ReadonlyGridRenderer {
         (cell) => cell.dataset.recordId === recordId && cell.dataset.fieldId === fieldId,
       ) ?? null
     );
-  }
-
-  #restoreFocusedCell(): boolean {
-    const grid = this.#virtualGrid;
-    if (grid === null || this.#focusedCellKey === null) return false;
-    let target = this.#findCellByKey(this.#focusedCellKey);
-    if (target === null && this.#focusedCellPosition !== null && grid.state.records.length > 0) {
-      const rowIndex = Math.max(
-        0,
-        Math.min(grid.state.records.length - 1, this.#focusedCellPosition.rowIndex),
-      );
-      const fieldIndex = Math.max(
-        0,
-        Math.min(grid.fields.length - 1, this.#focusedCellPosition.fieldIndex),
-      );
-      target = this.#findCellAt(rowIndex, fieldIndex);
-      if (target === null) {
-        if (this.#softFocusedCell) return false;
-        grid.viewport.scrollTop = rowIndex * grid.rowHeight;
-        this.#renderVirtualRows();
-        return true;
-      }
-      this.#focusedCellPosition = { rowIndex, fieldIndex };
-      this.#focusedCellKey = target.dataset.focusKey ?? this.#focusedCellKey;
-    }
-    if (target === null) return false;
-    if (target.contains(document.activeElement)) return true;
-    target.focus();
-    return true;
   }
 
   #restoreFocusedHeader(): boolean {
@@ -3496,90 +3933,81 @@ export class ReadonlyGridRenderer {
     this.#focusCellAt(targetRow, targetField);
   }
 
-  #selectCell(rowIndex: number, fieldIndex: number, extend: boolean): void {
-    this.#softFocusedCell = false;
-    if (extend && this.#selection !== null) {
-      this.#selection = {
-        anchor: this.#selection.anchor,
-        head: { rowIndex, fieldIndex },
-      };
-    } else {
-      this.#selection = {
-        anchor: { rowIndex, fieldIndex },
-        head: { rowIndex, fieldIndex },
-      };
-    }
-    this.#selectedRows.clear();
-    this.#applySelection();
-  }
-
-  #selectRow(rowIndex: number): void {
+  #selectRow(recordId: string): void {
     const grid = this.#virtualGrid;
     if (grid === null || grid.fields.length === 0) return;
     this.#selection = {
-      anchor: { rowIndex, fieldIndex: 0 },
-      head: { rowIndex, fieldIndex: grid.fields.length - 1 },
+      kind: 'rows',
+      recordIds: new Set([recordId]),
+      anchorRecordId: recordId,
     };
-    this.#selectedRows = new Set([rowIndex]);
-    this.#rowAnchorIndex = rowIndex;
+    this.#rowAnchorRecordId = recordId;
     this.#applySelection();
   }
 
-  #selectRowRange(from: number, to: number): void {
+  #selectRowRange(fromRecordId: string, toRecordId: string): void {
     const grid = this.#virtualGrid;
     if (grid === null || grid.fields.length === 0) return;
+    const records = grid.state.records;
+    const from = records.findIndex((record) => record.id === fromRecordId);
+    const to = records.findIndex((record) => record.id === toRecordId);
+    if (from < 0 || to < 0) return;
     const top = Math.min(from, to);
     const bottom = Math.max(from, to);
-    this.#selection = {
-      anchor: { rowIndex: top, fieldIndex: 0 },
-      head: { rowIndex: bottom, fieldIndex: grid.fields.length - 1 },
-    };
-    this.#selectedRows = new Set<number>();
-    for (let index = top; index <= bottom; index += 1) this.#selectedRows.add(index);
+    const recordIds = new Set<string>();
+    for (let index = top; index <= bottom; index += 1) {
+      const record = records[index];
+      if (record !== undefined) recordIds.add(record.id);
+    }
+    this.#selection = { kind: 'rows', recordIds, anchorRecordId: fromRecordId };
     this.#applySelection();
   }
 
-  #toggleRowSelected(rowIndex: number, extend = false): void {
+  #toggleRowSelected(recordId: string, extend = false): void {
     const grid = this.#virtualGrid;
     if (grid === null || grid.fields.length === 0) return;
-    if (extend && this.#rowAnchorIndex !== null) {
-      this.#selectRowRange(this.#rowAnchorIndex, rowIndex);
+    if (extend && this.#rowAnchorRecordId !== null) {
+      this.#selectRowRange(this.#rowAnchorRecordId, recordId);
       return;
     }
-    const next = new Set(this.#selectedRows);
-    if (next.has(rowIndex)) {
-      next.delete(rowIndex);
+    const current = this.#selection?.kind === 'rows' ? this.#selection.recordIds : undefined;
+    const next = new Set(current);
+    if (next.has(recordId)) {
+      next.delete(recordId);
     } else {
-      next.add(rowIndex);
-      this.#rowAnchorIndex = rowIndex;
+      next.add(recordId);
+      this.#rowAnchorRecordId = recordId;
     }
-    this.#selectedRows = next;
-    this.#selection = null;
+    const anchor = this.#rowAnchorRecordId;
+    this.#selection =
+      next.size === 0
+        ? null
+        : {
+            kind: 'rows',
+            recordIds: next,
+            anchorRecordId:
+              anchor !== null && next.has(anchor) ? anchor : (next.values().next().value ?? null),
+          };
     this.#applySelection();
   }
 
-  #isRowSelected(rowIndex: number): boolean {
-    if (this.#selectedRows.has(rowIndex)) return true;
+  #isRowSelected(recordId: string): boolean {
+    const selection = this.#selection;
+    if (selection === null) return false;
+    if (selection.kind === 'rows') return selection.recordIds.has(recordId);
+    if (selection.kind === 'column') return false;
     const grid = this.#virtualGrid;
     const rect = this.#selectionRect();
-    return (
-      rect !== null &&
-      grid !== null &&
-      rect.left === 0 &&
-      rect.right === grid.fields.length - 1 &&
-      rowIndex >= rect.top &&
-      rowIndex <= rect.bottom
-    );
+    if (rect === null || grid === null) return false;
+    if (rect.left !== 0 || rect.right !== grid.fields.length - 1) return false;
+    const rowIndex = grid.state.records.findIndex((record) => record.id === recordId);
+    return rowIndex >= rect.top && rowIndex <= rect.bottom;
   }
 
-  #selectColumn(fieldIndex: number): void {
+  #selectColumn(fieldId: string): void {
     const grid = this.#virtualGrid;
     if (grid === null || grid.state.records.length === 0) return;
-    this.#selection = {
-      anchor: { rowIndex: 0, fieldIndex },
-      head: { rowIndex: grid.state.records.length - 1, fieldIndex },
-    };
-    this.#selectedRows.clear();
+    this.#selection = { kind: 'column', fieldId };
     this.#applySelection();
   }
 
@@ -3588,15 +4016,24 @@ export class ReadonlyGridRenderer {
     if (grid === null || grid.fields.length === 0 || grid.state.records.length === 0) {
       return;
     }
+    const first = grid.state.records[0];
+    const last = grid.state.records[grid.state.records.length - 1];
+    const firstField = grid.fields[0];
+    const lastField = grid.fields[grid.fields.length - 1];
+    if (
+      first === undefined ||
+      last === undefined ||
+      firstField === undefined ||
+      lastField === undefined
+    ) {
+      return;
+    }
     this.#selection = {
-      anchor: { rowIndex: 0, fieldIndex: 0 },
-      head: {
-        rowIndex: grid.state.records.length - 1,
-        fieldIndex: grid.fields.length - 1,
-      },
+      kind: 'range',
+      anchor: { recordId: first.id, fieldId: firstField.id },
+      head: { recordId: last.id, fieldId: lastField.id },
     };
-    this.#selectedRows = new Set(grid.state.records.map((_, index) => index));
-    this.#rowAnchorIndex = 0;
+    this.#rowAnchorRecordId = first.id;
     this.#applySelection();
   }
 
@@ -3607,27 +4044,39 @@ export class ReadonlyGridRenderer {
     readonly right: number;
   } | null {
     const selection = this.#selection;
-    if (selection === null) return null;
+    if (selection === null || selection.kind === 'rows') return null;
     const grid = this.#virtualGrid;
     const lastRow = Math.max(0, (grid?.state.records.length ?? 1) - 1);
     const lastCol = Math.max(0, (grid?.fields.length ?? 1) - 1);
+    if (selection.kind === 'column') {
+      const fieldIndex = (grid?.fields ?? []).findIndex((field) => field.id === selection.fieldId);
+      if (fieldIndex < 0) return null;
+      return { top: 0, bottom: lastRow, left: fieldIndex, right: fieldIndex };
+    }
+    const anchor = this.#resolveCellRef(selection.anchor);
+    const head = this.#resolveCellRef(selection.head);
+    if (anchor === null || head === null) return null;
     return {
-      top: Math.min(selection.anchor.rowIndex, selection.head.rowIndex),
-      bottom: Math.min(Math.max(selection.anchor.rowIndex, selection.head.rowIndex), lastRow),
-      left: Math.min(selection.anchor.fieldIndex, selection.head.fieldIndex),
-      right: Math.min(Math.max(selection.anchor.fieldIndex, selection.head.fieldIndex), lastCol),
+      top: Math.min(anchor.rowIndex, head.rowIndex),
+      bottom: Math.min(Math.max(anchor.rowIndex, head.rowIndex), lastRow),
+      left: Math.min(anchor.fieldIndex, head.fieldIndex),
+      right: Math.min(Math.max(anchor.fieldIndex, head.fieldIndex), lastCol),
     };
   }
 
-  #isCellSelected(rowIndex: number, fieldIndex: number): boolean {
-    if (this.#selectedRows.has(rowIndex)) return true;
+  #isCellSelected(recordId: string, fieldId: string): boolean {
+    const selection = this.#selection;
+    if (selection === null) return false;
+    if (selection.kind === 'rows') return selection.recordIds.has(recordId);
+    if (selection.kind === 'column') return selection.fieldId === fieldId;
+    const position = this.#resolveCellRef({ recordId, fieldId });
     const rect = this.#selectionRect();
-    if (rect === null) return false;
+    if (position === null || rect === null) return false;
     return (
-      rowIndex >= rect.top &&
-      rowIndex <= rect.bottom &&
-      fieldIndex >= rect.left &&
-      fieldIndex <= rect.right
+      position.rowIndex >= rect.top &&
+      position.rowIndex <= rect.bottom &&
+      position.fieldIndex >= rect.left &&
+      position.fieldIndex <= rect.right
     );
   }
 
@@ -3635,26 +4084,36 @@ export class ReadonlyGridRenderer {
     const grid = this.#virtualGrid;
     if (grid === null) return;
     const rect = this.#selectionRect();
+    const rows = this.#selection?.kind === 'rows' ? this.#selection.recordIds : null;
     const lastRow = grid.state.records.length - 1;
     grid.viewport.querySelectorAll<HTMLElement>('.loom-grid-cell').forEach((cell) => {
+      const isActive =
+        this.#activeCell !== null &&
+        cell.dataset.recordId === this.#activeCell.recordId &&
+        cell.dataset.fieldId === this.#activeCell.fieldId;
+      // Keep the persistent border and the roving tabindex in lockstep with
+      // the Active Cell without forcing a full re-render.
+      cell.classList.toggle('is-active', isActive);
+      cell.tabIndex = isActive ? 0 : -1;
       const rowIndex = Number(cell.dataset.rowIndex);
       const fieldIndex = Number(cell.dataset.fieldIndex);
-      cell.classList.toggle(
-        'is-selected',
-        this.#selectedRows.has(rowIndex) ||
-          (rect !== null &&
-            rowIndex >= rect.top &&
-            rowIndex <= rect.bottom &&
-            fieldIndex >= rect.left &&
-            fieldIndex <= rect.right),
-      );
+      const selected =
+        (rows !== null && rows.has(cell.dataset.recordId ?? '')) ||
+        (rect !== null &&
+          rowIndex >= rect.top &&
+          rowIndex <= rect.bottom &&
+          fieldIndex >= rect.left &&
+          fieldIndex <= rect.right);
+      cell.classList.toggle('is-selected', selected);
+      if (selected || isActive) cell.setAttribute('aria-selected', 'true');
+      else cell.removeAttribute('aria-selected');
     });
     grid.viewport
       .querySelectorAll<HTMLElement>('.loom-grid-row .loom-grid-index-cell')
       .forEach((indexCell) => {
         const row = indexCell.closest<HTMLElement>('.loom-grid-row');
-        const rowIndex = Number(row?.dataset.rowIndex);
-        const selected = this.#isRowSelected(rowIndex);
+        const recordId = row?.dataset.recordId;
+        const selected = recordId !== undefined && this.#isRowSelected(recordId);
         indexCell.classList.toggle('is-selected', selected);
         const check = indexCell.querySelector<HTMLInputElement>('.loom-grid-row-check');
         if (check !== null) check.checked = selected;
@@ -3675,9 +4134,10 @@ export class ReadonlyGridRenderer {
     const aggregateCount = this.#container.querySelector<HTMLElement>('.loom-grid-aggregate-count');
     if (aggregateCount !== null) {
       const base = this.#rowsCountText(grid.state);
+      const rowCount = rows?.size ?? 0;
       aggregateCount.textContent =
-        this.#selectedRows.size > 1
-          ? `${base} · ${this.#translate('grid.selectedRows').replace('{count}', String(this.#selectedRows.size))}`
+        rowCount > 1
+          ? `${base} · ${this.#translate('grid.selectedRows').replace('{count}', String(rowCount))}`
           : rect !== null && (rect.bottom - rect.top + 1) * (rect.right - rect.left + 1) > 1
             ? `${base} · ${this.#translate('grid.selectedCount').replace('{count}', String((rect.bottom - rect.top + 1) * (rect.right - rect.left + 1)))}`
             : base;
@@ -3786,9 +4246,12 @@ export class ReadonlyGridRenderer {
   #focusCellAt(targetRow: number, targetField: number): void {
     const grid = this.#virtualGrid;
     if (grid === null) return;
-    this.#focusedCellPosition = { rowIndex: targetRow, fieldIndex: targetField };
+    const ref = this.#positionRef(targetRow, targetField);
+    if (ref !== null) this.#setActive(ref, { rowIndex: targetRow, fieldIndex: targetField });
     const target = this.#findCellAt(targetRow, targetField);
     if (target === null) {
+      // Deliberate keyboard navigation is a legitimate reveal — scrolling to
+      // the requested row is the requested behavior, not a pull-back.
       grid.viewport.scrollTop = targetRow * grid.rowHeight;
       this.#renderVirtualRows();
     }

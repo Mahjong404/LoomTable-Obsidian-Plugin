@@ -3420,6 +3420,13 @@
   box-shadow: inset 0 0 0 2px var(--loom-selection-border);
 }
 
+/* The Active Cell is business state, not DOM focus — the accent border
+   survives the user focusing the Toolbar, Search or another pane. */
+.loom-grid-cell.is-active {
+  z-index: 3;
+  box-shadow: inset 0 0 0 2px var(--loom-selection-border);
+}
+
 .loom-grid-index-cell.is-selected,
 .loom-grid-header-cell.is-selected {
   background: var(--loom-accent-soft);
