@@ -2192,7 +2192,7 @@ describe('Grid V5 cell interactions', () => {
 });
 
 describe('Grid V5 virtualization safety', () => {
-  it('keeps an active editor mounted when virtual scrolling past its row', () => {
+  it('keeps an active editor mounted when virtual scrolling past its row', async () => {
     const container = document.createElement('div');
     document.body.append(container);
     const callbacks = rendererCallbacks();
@@ -2214,6 +2214,8 @@ describe('Grid V5 virtualization safety', () => {
     if (viewport === null) return;
     viewport.scrollTop = 36 * 150;
     viewport.dispatchEvent(new Event('scroll'));
+    // Scroll paints are rAF-coalesced; wait a frame so the reconcile ran.
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     const kept = container.querySelector<HTMLInputElement>('.loom-grid-editor');
     expect(kept).toBe(editor);
@@ -4939,7 +4941,7 @@ describe('Grid Active Cell contract (P1.6 Slice A)', () => {
     expect(document.activeElement).toBe(repainted);
   });
 
-  it('does not snap the viewport back when the Active Cell scrolls away', () => {
+  it('does not snap the viewport back when the Active Cell scrolls away', async () => {
     const container = document.createElement('div');
     document.body.append(container);
     const renderer = new ReadonlyGridRenderer(
@@ -4954,6 +4956,8 @@ describe('Grid Active Cell contract (P1.6 Slice A)', () => {
     if (viewport === null) throw new Error('viewport missing');
     viewport.scrollTop = 36 * 60;
     viewport.dispatchEvent(new Event('scroll'));
+    // Scroll paints are rAF-coalesced; wait a frame before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 20));
 
     expect(viewport.scrollTop).toBe(36 * 60);
     expect(container.querySelector('.loom-grid-cell[data-record-id="record_01"]')).toBeNull();
@@ -5023,5 +5027,159 @@ describe('Grid Active Cell contract (P1.6 Slice A)', () => {
     );
     expect(active?.classList.contains('is-active')).toBe(true);
     expect(document.activeElement).toBe(active);
+  });
+});
+
+describe('Grid stable viewport contract (P1.6 Slice B)', () => {
+  const flushScroll = () => new Promise((resolve) => setTimeout(resolve, 20));
+  afterEach(() => {
+    document.body.replaceChildren();
+  });
+
+  it('keeps the same viewport element and scrollTop across a same-View re-render', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(200));
+    const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    if (viewport === null) throw new Error('viewport missing');
+    viewport.scrollTop = 36 * 10;
+
+    // A state push with identical View context must reuse the viewport —
+    // scrollTop survives because the element is never torn down.
+    renderer.render(createState(200));
+
+    const again = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    expect(again).toBe(viewport);
+    expect(again?.scrollTop).toBe(36 * 10);
+    container.remove();
+  });
+
+  it('reuses row elements by record identity while scrolling between windows', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(200));
+    const row05 = container.querySelector<HTMLElement>(
+      '.loom-grid-row[data-record-id="record_05"]',
+    );
+    expect(row05).not.toBeNull();
+    const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    if (viewport === null) throw new Error('viewport missing');
+
+    // Same-window scroll: the row element instance is retained, not rebuilt.
+    viewport.scrollTop = 36 * 2;
+    viewport.dispatchEvent(new Event('scroll'));
+    await flushScroll();
+    expect(container.querySelector<HTMLElement>('.loom-grid-row[data-record-id="record_05"]')).toBe(
+      row05,
+    );
+
+    // Far scroll: record_05 leaves the window and is cleaned up.
+    viewport.scrollTop = 36 * 150;
+    viewport.dispatchEvent(new Event('scroll'));
+    await flushScroll();
+    expect(container.querySelector('.loom-grid-row[data-record-id="record_05"]')).toBeNull();
+    expect(container.querySelector('.loom-grid-row[data-record-id="record_151"]')).not.toBeNull();
+    container.remove();
+  });
+
+  it('keeps an in-flight Cell editor and focus through a same-View state push', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(5));
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-cell[data-record-id="record_01"][data-field-id="field_name"]',
+    );
+    cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    if (editor === null) throw new Error('editor missing');
+    editor.value = 'in-flight draft';
+    editor.focus();
+
+    // A Server publish (fresh state object, same View context) must not
+    // destroy the editor or its draft content.
+    renderer.render(createState(5));
+
+    const kept = container.querySelector<HTMLInputElement>('.loom-grid-editor');
+    expect(kept).toBe(editor);
+    expect(kept?.value).toBe('in-flight draft');
+    expect(document.activeElement).toBe(editor);
+    container.remove();
+  });
+
+  it('reserves the tail create slot inside the canvas so the footer cannot cover it', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onCreateRecord = vi.fn(async () => ({ id: 'record_new' }) as never);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+      onSetFieldAggregation: vi.fn(),
+    });
+    renderer.render(createState(5));
+
+    const canvas = container.querySelector<HTMLElement>('.loom-grid-canvas');
+    const addRow = container.querySelector<HTMLElement>('.loom-grid-add-row');
+    const footer = container.querySelector<HTMLElement>('.loom-grid-aggregate');
+    expect(canvas).not.toBeNull();
+    expect(addRow).not.toBeNull();
+    // The `+` row occupies the reserved slot fully inside canvas height.
+    expect(canvas?.style.height).toBe(`${6 * 36}px`);
+    expect(addRow?.style.top).toBe(`${5 * 36}px`);
+    // The aggregate footer is a layout sibling below the viewport, never an
+    // overlay inside the scroll area.
+    expect(footer?.parentElement?.classList.contains('loom-grid-wrapper')).toBe(true);
+    expect(footer?.closest('.loom-grid-viewport')).toBeNull();
+    container.remove();
+  });
+
+  it('shares the add-affordance visual language between record and field create', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord: vi.fn(async () => ({ id: 'record_new' }) as never),
+      onFieldSave: vi.fn(),
+    });
+    renderer.render(createState(2));
+
+    const addRow = container.querySelector<HTMLElement>('.loom-grid-add-row');
+    const addField = container.querySelector<HTMLElement>('.loom-grid-add-field-button');
+    expect(addRow?.classList.contains('loom-add-affordance')).toBe(true);
+    expect(addField?.classList.contains('loom-add-affordance')).toBe(true);
+    container.remove();
+  });
+
+  it('mirrors horizontal scroll onto the detached aggregate footer', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onSetFieldAggregation: vi.fn(),
+    });
+    renderer.render(createState(3));
+    const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport');
+    const footer = container.querySelector<HTMLElement>('.loom-grid-aggregate');
+    if (viewport === null || footer === null) throw new Error('grid chrome missing');
+
+    viewport.scrollLeft = 42;
+    viewport.dispatchEvent(new Event('scroll'));
+    await flushScroll();
+    expect(footer.scrollLeft).toBe(42);
+    container.remove();
   });
 });

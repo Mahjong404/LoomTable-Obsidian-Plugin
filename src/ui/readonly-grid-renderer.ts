@@ -209,19 +209,41 @@ interface GridActionButtonSpec {
 }
 
 interface VirtualGridRefs {
+  // The viewport/wrapper/canvas/rowLayer persist across renders as long as the
+  // View context key stays identical — that keeps scrollTop/scrollLeft, row
+  // DOM and the focused node alive instead of rebuilding the whole tree.
+  readonly wrapper: HTMLElement;
   readonly viewport: HTMLElement;
+  readonly canvas: HTMLElement;
+  header: HTMLElement;
   readonly rowLayer: HTMLElement;
-  readonly state: GridState;
+  state: GridState;
   readonly fields: readonly Field[];
   readonly columns: ResolvedGridColumns;
   readonly columnTemplate: string;
   readonly rowHeight: number;
+  readonly contextKey: string;
+  /** Last state actually painted into rows — identity shortcut for no-op renders. */
+  renderedState: GridState | null;
+  lastRange: VirtualRowRange | null;
+  /** Draft insertion index used for the last paint (`null` = no draft slot). */
+  lastDraftIndex: number | null;
+  /** Aggregate footer — a wrapper sibling below the viewport (G-4). */
+  footer: HTMLElement | null;
+  loadMore: HTMLButtonElement | null;
 }
 
 export interface VirtualRowRange {
   readonly start: number;
   readonly end: number;
 }
+
+/**
+ * The Record object a rendered row was built from — keyed reuse keeps a row
+ * element only while this reference is identical, so event closures never go
+ * stale.
+ */
+const renderedRowRecords = new WeakMap<HTMLElement, LoomTableRecord>();
 
 /** Stable Cell identity — independent of position, DOM node or focus. */
 export interface GridCellRef {
@@ -420,7 +442,8 @@ export class ReadonlyGridRenderer {
     // Reconcile the Active Cell + selection by identity before any paint so
     // the rows below project the correct `.is-active` border.
     this.#reconcileActiveCell(state);
-    this.#virtualGrid = null;
+    // The previous Virtual Grid is intentionally kept alive: #renderGrid
+    // decides per context key whether to reuse it (stable viewport) or swap.
     this.#actionButtons.clear();
     const root = createElement('div', 'loom-grid-shell');
     root.setAttribute('role', 'region');
@@ -487,11 +510,38 @@ export class ReadonlyGridRenderer {
       }
       this.#container.insertBefore(root, overlay);
     }
+    // A cycle that did not re-render the Grid (status-only views) leaves the
+    // previous viewport outside the live tree — drop the refs.
+    if (this.#virtualGrid !== null && !this.#container.contains(this.#virtualGrid.wrapper)) {
+      this.#virtualGrid = null;
+    }
     this.#restoreRowHeightAnchor();
     this.#restoreScrollAnchor();
     this.#syncActionButtons();
     const overlayFocused =
       overlay !== null && overlay.contains(this.#container.ownerDocument.activeElement);
+    // Post-swap truth: the surviving viewport/canvas move may keep a focused
+    // node connected yet still blur it (jsdom does; some browser paths do
+    // too). Only the live activeElement inside the container counts as
+    // "focus survived" — a connected-but-blurred node must fall through to
+    // the restore chain.
+    const postActive = doc.activeElement;
+    const focusSurvivedInside =
+      postActive instanceof HTMLElement &&
+      postActive !== doc.body &&
+      postActive !== doc.documentElement &&
+      this.#container.contains(postActive);
+    // Reparenting the stable wrapper into the new shell can blur a focused
+    // descendant — the node lives on inside the new tree while focus fell to
+    // <body>. That blur was caused by this render, so the node becomes a
+    // repair target (ranked below deliberately armed restore targets).
+    const blurredByMove =
+      !focusSurvivedInside &&
+      preFocusInside &&
+      preActive !== null &&
+      preActive !== doc.body &&
+      preActive !== doc.documentElement &&
+      this.#container.contains(preActive);
     if (hasNewConflict) {
       this.showToast({
         kind: 'error',
@@ -504,7 +554,7 @@ export class ReadonlyGridRenderer {
       if (!overlayFocused) {
         this.#container.querySelector<HTMLElement>('.loom-grid-conflicts')?.focus();
       }
-    } else if (overlayFocused || (preFocusInside && preActive.isConnected)) {
+    } else if (overlayFocused || focusSurvivedInside) {
       // The overlay (or another surviving node) owns focus; the re-render
       // must not steal it back.
     } else if (
@@ -523,6 +573,13 @@ export class ReadonlyGridRenderer {
       return;
     } else if (this.#restoreFailedEditDraft(state)) {
       return;
+    } else if (blurredByMove && preActive !== null) {
+      // Reparenting the stable wrapper into the new shell can blur a focused
+      // descendant (jsdom always does; some browser paths do too). The node
+      // still lives inside the new tree, so the blur was caused by this
+      // render — refocus the very same element rather than a fallback.
+      // Deliberately armed restore targets above outrank this repair.
+      preActive.focus({ preventScroll: true });
     } else if (this.#focusedAction !== null) {
       this.#restoreFocusedAction();
     } else if (this.#restoreQueryControl(queryFocus)) {
@@ -1559,7 +1616,6 @@ export class ReadonlyGridRenderer {
   }
 
   #renderGrid(state: GridState): HTMLElement {
-    const wrapper = createElement('div', 'loom-grid-wrapper');
     const gridView = selectedGridView(state);
     const columns = resolveGridColumns(state.fields, gridView?.config);
     const fields = columns.ordered;
@@ -1570,7 +1626,46 @@ export class ReadonlyGridRenderer {
       '56px',
       ...fields.map((field) => `${columns.widths.get(field.id) ?? 180}px`),
     ].join(' ');
+    const canCreate =
+      (state.status === 'ready' || state.status === 'empty') &&
+      state.selectedTableId !== null &&
+      this.#callbacks.onCreateRecord !== undefined;
+    // The context key captures everything that would invalidate row/cell
+    // closures: view identity, field identity+shape, column layout, row
+    // height and create affordances. Record pushes reuse the same Grid —
+    // rows are diffed by identity inside the stable viewport instead.
+    const contextKey = [
+      state.selectedTableId ?? '-',
+      state.selectedViewId ?? '-',
+      fields.map((field) => `${field.id}:${field.revision}:${field.name}:${field.type}`).join(','),
+      columnTemplate,
+      rowHeight,
+      hasAddField ? 1 : 0,
+      canCreate ? 1 : 0,
+    ].join('|');
 
+    const existing = this.#virtualGrid;
+    if (
+      existing !== null &&
+      existing.contextKey === contextKey &&
+      // `contains` (not isConnected) so test environments with detached
+      // containers still exercise the reuse path.
+      this.#container.contains(existing.wrapper)
+    ) {
+      // Same View context — keep the viewport (scrollTop/scrollLeft, row DOM
+      // and live focus survive) and only reconcile what actually changed.
+      existing.state = state;
+      existing.viewport.setAttribute('aria-rowcount', String(state.records.length + 1));
+      this.#syncHeaderSort(existing, state, gridView);
+      this.#syncCanvasTail(existing, state, canCreate);
+      this.#syncAggregate(existing, state, fields, columnTemplate, hasAddField);
+      this.#syncLoadMore(existing, state);
+      this.#renderVirtualRows();
+      this.#applySelection();
+      return existing.wrapper;
+    }
+
+    const wrapper = createElement('div', 'loom-grid-wrapper');
     const viewport = createElement('div', 'loom-grid-viewport');
     viewport.tabIndex = 0;
     viewport.setAttribute('role', 'grid');
@@ -1776,7 +1871,10 @@ export class ReadonlyGridRenderer {
     if (this.#callbacks.onFieldSave !== undefined) {
       const addField = createGridCell('', 'loom-grid-header-cell loom-grid-add-field');
       addField.setAttribute('role', 'columnheader');
-      const addButton = createElement('button', 'loom-grid-add-field-button clickable-icon');
+      const addButton = createElement(
+        'button',
+        'loom-grid-add-field-button loom-add-affordance clickable-icon',
+      );
       addButton.type = 'button';
       addButton.setAttribute('aria-label', this.#translate('field.add'));
       addButton.append(createUiIcon('field-add'));
@@ -1789,71 +1887,204 @@ export class ReadonlyGridRenderer {
     }
 
     const canvas = createElement('div', 'loom-grid-canvas');
-    // An active draft row occupies its own slot in the canvas; reserve the
-    // extra height so the rows shifted below it stay inside the scroll area.
-    const draftSlot = this.#draftCreateValues !== null ? 1 : 0;
+    // The canvas reserves the tail create slot explicitly: the draft row
+    // (while open) or the bottom `+` affordance lives inside the scrollable
+    // height, so it can never be covered by the aggregate footer (G-4).
+    const draftSlot = this.#draftCreateValues !== null || canCreate ? 1 : 0;
     canvas.style.height = `${(state.records.length + draftSlot) * rowHeight}px`;
     canvas.style.backgroundImage = gridFillerBackground(columns, fields, rowHeight);
     const rowLayer = createElement('div', 'loom-grid-row-layer');
     canvas.append(rowLayer);
-    const canCreate =
-      (state.status === 'ready' || state.status === 'empty') &&
-      state.selectedTableId !== null &&
-      this.#callbacks.onCreateRecord !== undefined;
-    if (canCreate && this.#draftCreateValues !== null) {
-      const draftRow = this.#renderDraftRow(state, fields, rowHeight);
-      canvas.append(draftRow);
-      this.#draftRowEl = draftRow;
-    } else if (canCreate) {
-      const addRow = createElement('button', 'loom-grid-add-row clickable-icon');
-      addRow.type = 'button';
-      addRow.dataset.action = 'grid-add-row';
-      addRow.style.top = `${state.records.length * rowHeight}px`;
-      addRow.style.height = `${rowHeight}px`;
-      addRow.style.width = `${GRID_INDEX_COLUMN_WIDTH}px`;
-      const indexCell = createElement('span', 'loom-grid-index-cell loom-grid-add-row-index');
-      indexCell.append(createUiIcon('tool-create'));
-      addRow.append(indexCell);
-      addRow.setAttribute('aria-label', this.#translate('record.create.add'));
-      addRow.addEventListener('click', () => this.#beginDraftCreate());
-      canvas.append(addRow);
-    }
-    const aggregateRow =
-      this.#callbacks.onSetFieldAggregation === undefined
-        ? null
-        : this.#renderAggregateRow(
-            state,
-            fields,
-            hasAddField ? `${columnTemplate} 2.5rem` : columnTemplate,
-            rowHeight,
-          );
     viewport.append(header, canvas);
-    if (aggregateRow !== null) viewport.append(aggregateRow);
+    wrapper.append(viewport);
     this.#virtualGrid = {
+      wrapper,
       viewport,
+      canvas,
+      header,
       rowLayer,
       state,
       fields,
       columns,
       columnTemplate,
       rowHeight,
+      contextKey,
+      renderedState: null,
+      lastRange: null,
+      lastDraftIndex: null,
+      footer: null,
+      loadMore: null,
     };
-    viewport.addEventListener('scroll', () => this.#renderVirtualRows());
+    this.#syncCanvasTail(this.#virtualGrid, state, canCreate);
+    this.#syncAggregate(this.#virtualGrid, state, fields, columnTemplate, hasAddField);
+    this.#syncLoadMore(this.#virtualGrid, state);
+    // Scroll bursts coalesce into one paint per frame; the keyed reconcile is
+    // then a no-op while the visible window is unchanged (G-5).
+    const win = viewport.ownerDocument.defaultView ?? window;
+    let scrollRaf = 0;
+    viewport.addEventListener('scroll', () => {
+      if (scrollRaf !== 0) return;
+      const raf =
+        win.requestAnimationFrame?.bind(win) ??
+        ((cb: FrameRequestCallback) => win.setTimeout(() => cb(0), 16));
+      scrollRaf = raf(() => {
+        scrollRaf = 0;
+        this.#renderVirtualRows();
+        this.#syncFooterScroll();
+      });
+    });
     this.#renderVirtualRows();
+    return wrapper;
+  }
 
-    wrapper.append(viewport);
-    if (state.hasMore) {
+  /**
+   * Reconciles the canvas tail slot — draft row while a create draft is open,
+   * else the bottom `+` affordance — without touching the row layer.
+   */
+  #syncCanvasTail(grid: VirtualGridRefs, state: GridState, canCreate: boolean): void {
+    grid.canvas.style.height = `${
+      (state.records.length + (this.#draftCreateValues !== null || canCreate ? 1 : 0)) *
+      grid.rowHeight
+    }px`;
+    const existingAdd = grid.canvas.querySelector<HTMLElement>('.loom-grid-add-row');
+    if (this.#draftCreateValues !== null) {
+      existingAdd?.remove();
+      if (this.#draftRowEl === null || this.#draftRowEl.parentElement !== grid.canvas) {
+        const draftRow = this.#renderDraftRow(state, grid.fields, grid.rowHeight);
+        grid.canvas.append(draftRow);
+        this.#draftRowEl = draftRow;
+      }
+      return;
+    }
+    // The draft ref may already be cleared by cancel/commit paths — sweep by
+    // DOM presence so no orphan draft row lingers on the stable canvas.
+    grid.canvas.querySelectorAll('.loom-grid-draft-row').forEach((row) => row.remove());
+    this.#draftRowEl = null;
+    if (canCreate) {
+      const addRow = existingAdd ?? this.#buildAddRowButton();
+      addRow.style.top = `${state.records.length * grid.rowHeight}px`;
+      addRow.style.height = `${grid.rowHeight}px`;
+      if (existingAdd === null) grid.canvas.append(addRow);
+    } else {
+      existingAdd?.remove();
+    }
+  }
+
+  #buildAddRowButton(): HTMLElement {
+    const addRow = createElement('button', 'loom-grid-add-row loom-add-affordance clickable-icon');
+    addRow.type = 'button';
+    addRow.dataset.action = 'grid-add-row';
+    addRow.style.width = `${GRID_INDEX_COLUMN_WIDTH}px`;
+    const indexCell = createElement('span', 'loom-grid-index-cell loom-grid-add-row-index');
+    indexCell.append(createUiIcon('tool-create'));
+    addRow.append(indexCell);
+    addRow.setAttribute('aria-label', this.#translate('record.create.add'));
+    addRow.addEventListener('click', () => this.#beginDraftCreate());
+    return addRow;
+  }
+
+  /**
+   * The aggregate footer is a wrapper sibling below the viewport — it owns its
+   * own layout region and follows horizontal scroll via scrollLeft sync.
+   */
+  #syncAggregate(
+    grid: VirtualGridRefs,
+    state: GridState,
+    fields: readonly Field[],
+    columnTemplate: string,
+    hasAddField: boolean,
+  ): void {
+    if (this.#callbacks.onSetFieldAggregation === undefined) {
+      grid.footer?.remove();
+      grid.footer = null;
+      return;
+    }
+    const fingerprint = JSON.stringify([
+      state.fieldAggregations,
+      state.aggregateStatus,
+      state.aggregateResults,
+      state.records.length,
+      state.totalCount,
+      state.unfilteredTotal,
+      fields.map((field) => field.id),
+      hasAddField,
+    ]);
+    if (grid.footer !== null && grid.footer.dataset.fingerprint === fingerprint) {
+      grid.footer.scrollLeft = grid.viewport.scrollLeft;
+      return;
+    }
+    const footer = this.#renderAggregateRow(
+      state,
+      fields,
+      hasAddField ? `${columnTemplate} 2.5rem` : columnTemplate,
+      grid.rowHeight,
+    );
+    footer.dataset.fingerprint = fingerprint;
+    footer.scrollLeft = grid.viewport.scrollLeft;
+    grid.footer?.remove();
+    grid.footer = footer;
+    grid.wrapper.insertBefore(footer, grid.loadMore);
+  }
+
+  #syncLoadMore(grid: VirtualGridRefs, state: GridState): void {
+    if (!state.hasMore) {
+      grid.loadMore?.remove();
+      grid.loadMore = null;
+      return;
+    }
+    if (grid.loadMore === null) {
       const loadMore = createElement('button', 'loom-button loom-grid-load-more');
       loadMore.type = 'button';
-      loadMore.textContent =
-        state.status === 'loading'
-          ? this.#translate('grid.loadingMore')
-          : this.#translate('grid.loadMore');
-      loadMore.disabled = state.status === 'loading';
       loadMore.addEventListener('click', () => void this.#callbacks.onLoadMore());
-      wrapper.append(loadMore);
+      grid.loadMore = loadMore;
+      grid.wrapper.append(loadMore);
     }
-    return wrapper;
+    grid.loadMore.textContent =
+      state.status === 'loading'
+        ? this.#translate('grid.loadingMore')
+        : this.#translate('grid.loadMore');
+    grid.loadMore.disabled = state.status === 'loading';
+  }
+
+  /** Repaints sort affordances on the stable header without rebuilding it. */
+  #syncHeaderSort(
+    grid: VirtualGridRefs,
+    state: GridState,
+    gridView: ReturnType<typeof selectedGridView>,
+  ): void {
+    for (const cell of grid.header.querySelectorAll<HTMLElement>(
+      '.loom-grid-header-cell[data-field-index]',
+    )) {
+      const field = grid.fields[Number(cell.dataset.fieldIndex)];
+      if (field === undefined) continue;
+      const sortEntry =
+        gridView !== null && isSortableField(field) && this.#callbacks.onApplySort !== undefined
+          ? gridView.config.sort.find((sort) => sort.fieldId === field.id)
+          : undefined;
+      if (gridView !== null && isSortableField(field) && this.#callbacks.onApplySort) {
+        cell.setAttribute(
+          'aria-sort',
+          sortEntry === undefined
+            ? 'none'
+            : sortEntry.direction === 'asc'
+              ? 'ascending'
+              : 'descending',
+        );
+      }
+      const indicator = cell.querySelector<HTMLElement>('.loom-grid-sort-indicator');
+      if (indicator !== null) {
+        indicator.textContent =
+          sortEntry === undefined ? '' : sortEntry.direction === 'asc' ? '↑' : '↓';
+      }
+    }
+  }
+
+  /** Keeps the detached aggregate footer aligned with horizontal scrolling. */
+  #syncFooterScroll(): void {
+    const grid = this.#virtualGrid;
+    if (grid?.footer !== null && grid !== null) {
+      grid.footer.scrollLeft = grid.viewport.scrollLeft;
+    }
   }
 
   #renderAggregateRow(
@@ -2093,41 +2324,78 @@ export class ReadonlyGridRenderer {
       grid.viewport.clientHeight || 360,
       grid.rowHeight,
     );
-    const editingRows = new Map<number, HTMLElement>();
-    let focusedEditor: HTMLElement | null = null;
-    for (const row of grid.rowLayer.querySelectorAll<HTMLElement>('.loom-grid-row')) {
-      const editor = row.querySelector<HTMLElement>('.loom-grid-editor');
-      if (editor !== null) {
-        editingRows.set(Number(row.dataset.rowIndex), row);
-        if (editor === document.activeElement) focusedEditor = editor;
-      }
-    }
     // Rows at or below the draft insertion slot slide down one row so the
     // draft visually opens a gap at the focused position.
-    const draftIndex = this.#draftCreateValues !== null ? this.#draftAnchor?.index : undefined;
+    const draftIndex = this.#draftCreateValues !== null ? (this.#draftAnchor?.index ?? null) : null;
+    // No-op fast path: scrolling inside the same window with unchanged data
+    // must not churn DOM (G-5) — and a redundant render() leaves rows alone.
+    if (
+      grid.lastRange !== null &&
+      grid.lastRange.start === range.start &&
+      grid.lastRange.end === range.end &&
+      grid.renderedState === grid.state &&
+      grid.lastDraftIndex === draftIndex
+    ) {
+      return;
+    }
+    grid.lastRange = range;
+    grid.renderedState = grid.state;
+    grid.lastDraftIndex = draftIndex;
     const shiftedTop = (rowIndex: number): string =>
-      `${(rowIndex + (draftIndex !== undefined && rowIndex >= draftIndex ? 1 : 0)) * grid.rowHeight}px`;
-    grid.rowLayer.replaceChildren();
+      `${(rowIndex + (draftIndex !== null && rowIndex >= draftIndex ? 1 : 0)) * grid.rowHeight}px`;
+
+    const existing = new Map<
+      string,
+      { row: HTMLElement; record: LoomTableRecord; rowIndex: number; hasEditor: boolean }
+    >();
+    for (const row of grid.rowLayer.querySelectorAll<HTMLElement>('.loom-grid-row')) {
+      const recordId = row.dataset.recordId ?? '';
+      existing.set(recordId, {
+        row,
+        record: renderedRowRecords.get(row) as LoomTableRecord,
+        rowIndex: Number(row.dataset.rowIndex),
+        hasEditor: row.querySelector('.loom-grid-editor') !== null,
+      });
+    }
+    // Keyed reuse: a row element is kept only when its Record object and slot
+    // are unchanged (fresh handlers stay valid); rows hosting a live editor
+    // are pinned regardless so an in-flight edit survives any rebuild.
+    const desired: HTMLElement[] = [];
     for (let rowIndex = range.start; rowIndex < range.end; rowIndex += 1) {
-      const kept = editingRows.get(rowIndex);
-      if (kept !== undefined) {
-        kept.style.top = shiftedTop(rowIndex);
-        grid.rowLayer.append(kept);
-        continue;
-      }
       const record = grid.state.records[rowIndex];
       if (record === undefined) continue;
-      const row = this.#renderRow(record, rowIndex, grid.fields, grid.rowHeight);
-      if (draftIndex !== undefined && rowIndex >= draftIndex) row.style.top = shiftedTop(rowIndex);
-      grid.rowLayer.append(row);
-    }
-    for (const [rowIndex, row] of editingRows) {
-      if (rowIndex < range.start || rowIndex >= range.end) {
-        row.style.top = shiftedTop(rowIndex);
-        grid.rowLayer.append(row);
+      const slot = existing.get(record.id);
+      if (
+        slot !== undefined &&
+        (slot.hasEditor || (slot.record === record && slot.rowIndex === rowIndex))
+      ) {
+        slot.row.style.top = shiftedTop(rowIndex);
+        desired.push(slot.row);
+      } else {
+        desired.push(this.#renderRow(record, rowIndex, grid.fields, grid.rowHeight));
       }
     }
-    focusedEditor?.focus({ preventScroll: true });
+    for (const slot of existing.values()) {
+      if (slot.hasEditor && !desired.includes(slot.row)) {
+        slot.row.style.top = shiftedTop(slot.rowIndex);
+        desired.push(slot.row);
+      }
+    }
+    // Minimal DOM mutation: rows already in place are never touched (a
+    // remove+insert would blur a focused editor); only genuinely displaced
+    // nodes move.
+    const desiredSet = new Set(desired);
+    for (const child of [...grid.rowLayer.children]) {
+      if (!desiredSet.has(child as HTMLElement)) child.remove();
+    }
+    let cursor = grid.rowLayer.firstElementChild;
+    for (const row of desired) {
+      if (row === cursor) {
+        cursor = cursor.nextElementSibling;
+        continue;
+      }
+      grid.rowLayer.insertBefore(row, cursor);
+    }
     // No Cell-focus restore here: scrolling is passive and must neither steal
     // DOM focus nor move the viewport back toward the Active Cell.
   }
@@ -2145,6 +2413,7 @@ export class ReadonlyGridRenderer {
     row.setAttribute('aria-rowindex', String(rowIndex + 2));
     row.dataset.rowIndex = String(rowIndex);
     row.dataset.recordId = record.id;
+    renderedRowRecords.set(row, record);
     row.style.gridTemplateColumns =
       this.#virtualGrid?.columnTemplate ?? columnTemplateFor(fields, this.#virtualGrid?.state);
     row.style.height = rowHeight + 'px';
@@ -3272,6 +3541,13 @@ export class ReadonlyGridRenderer {
           return;
         }
         this.#dismissedEditDraftKey = editDraftKey(record.id, field.id);
+        // Keyed row reuse keeps this row's DOM alive across the render, so
+        // the cancelled editor must be torn down explicitly — restore the
+        // display content instead of relying on a full rebuild.
+        this.#fillCellDisplay(cell, record, field, record.values[field.id]);
+        const stillActiveCell =
+          this.#activeCell?.recordId === record.id && this.#activeCell.fieldId === field.id;
+        cell.tabIndex = stillActiveCell ? 0 : -1;
         this.render(this.#virtualGrid?.state ?? this.#emptyState());
         return;
       }
@@ -3773,6 +4049,7 @@ export class ReadonlyGridRenderer {
     }
     grid.viewport.scrollTop = topIndex * grid.rowHeight + anchor.offsetPx;
     grid.viewport.scrollLeft = anchor.left;
+    this.#syncFooterScroll();
     this.#renderVirtualRows();
   }
 
