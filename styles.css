@@ -31,6 +31,7 @@
   --loom-radius-sm: var(--radius-s, 4px);
   --loom-radius-md: var(--radius-m, 8px);
   --loom-control-min-height: 2rem;
+  --loom-control-compact-height: 1.75rem;
   --loom-control-padding-block: var(--loom-space-1);
   --loom-control-padding-inline: var(--loom-space-2);
   --loom-map-control-size: 2rem;
@@ -182,6 +183,7 @@
   display: inline-flex;
   align-items: center;
   width: 6.5em;
+  min-height: var(--loom-control-compact-height);
   padding: 0 var(--loom-space-1);
   border: 0;
   overflow: hidden;
@@ -244,8 +246,9 @@
 
 .loom-action-icon {
   justify-content: center;
-  width: 1.9rem;
-  min-width: 1.9rem;
+  width: var(--loom-control-compact-height);
+  min-width: var(--loom-control-compact-height);
+  min-height: var(--loom-control-compact-height);
   padding-inline: 0;
 }
 
@@ -399,7 +402,7 @@
 
 .loom-grid-toolbar .loom-button,
 .loom-map-toolbar .loom-button {
-  min-height: 1.875rem;
+  min-height: var(--loom-control-compact-height);
   padding-block: 0;
   border-color: transparent;
   background: transparent;
@@ -408,7 +411,7 @@
 }
 
 .loom-table-shell .loom-shell-action {
-  min-height: 1.75rem;
+  min-height: var(--loom-control-compact-height);
   padding-block: 0;
   padding-inline: 0.625rem;
   border-color: transparent;
@@ -561,7 +564,7 @@
 
 .loom-view-tab {
   box-sizing: border-box;
-  min-height: 1.75rem;
+  min-height: var(--loom-control-compact-height);
   padding: 0 0.625rem;
   border: none;
   border-radius: var(--loom-radius-md);
@@ -828,6 +831,11 @@
   position: relative;
   flex: 0 0 auto;
   flex-wrap: nowrap;
+}
+
+.loom-grid-search-toggle,
+.loom-grid-search-clear {
+  min-height: var(--loom-control-compact-height);
 }
 
 .loom-grid-search.is-expanded {
@@ -1215,6 +1223,7 @@
   position: sticky;
   top: 0;
   z-index: 6;
+  flex: 0 0 auto;
   overflow: hidden;
   border-bottom: 1px solid var(--loom-grid-line-strong);
   background: var(--loom-header-bg);
@@ -1389,6 +1398,8 @@
 
 .loom-grid-viewport {
   position: relative;
+  display: flex;
+  flex-direction: column;
   height: min(60vh, 34rem);
   overflow: auto;
   border: 1px solid var(--loom-grid-line-strong);
@@ -1399,8 +1410,8 @@
 
 .loom-grid-canvas {
   position: relative;
+  flex: 1 0 auto;
   min-width: max-content;
-  min-height: 100%;
 }
 
 .loom-grid-row-layer {
@@ -2735,6 +2746,10 @@
   }
 }
 
+.loom-nav-host {
+  margin-block-end: var(--loom-space-2);
+}
+
 .loom-grid-host {
   position: relative;
 }
@@ -2759,7 +2774,7 @@
   align-items: center;
   gap: var(--loom-space-2);
   width: 100%;
-  min-height: 1.75rem;
+  min-height: var(--loom-control-compact-height);
   margin: 0;
   padding: 0 var(--loom-space-2);
   border: none;
@@ -3801,6 +3816,7 @@
   position: sticky;
   bottom: 0;
   z-index: 3;
+  flex: 0 0 auto;
   display: grid;
   background: var(--loom-bg-secondary);
   border-top: 1px solid var(--loom-grid-line);
