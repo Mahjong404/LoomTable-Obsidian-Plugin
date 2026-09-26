@@ -83,7 +83,7 @@ export function openNumberFormatPanel(options: NumberFormatPanelOptions): () => 
   panel.append(actions);
 
   const error = createTextElement('p', '');
-  error.className = 'loom-view-manage-error';
+  error.className = 'loom-view-panel-error';
   error.setAttribute('role', 'alert');
   error.hidden = true;
   panel.append(error);

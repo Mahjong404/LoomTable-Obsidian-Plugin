@@ -356,8 +356,6 @@ export const galleryScenarios: readonly GalleryScenario[] = [
         selectedTableId: 'table_01',
         selectedViewId: null,
         pendingViewIntents: [],
-        deletedViews: [],
-        deletedViewsStatus: 'idle',
         viewWritePending: [],
         viewWriteIssues: {},
       };
@@ -376,7 +374,7 @@ export const galleryScenarios: readonly GalleryScenario[] = [
           emptyReason: 'view',
         }),
         {
-          onOpenViewCreateForm: () => shell.openCreateForm(),
+          onCreateDefaultView: () => shell.createDefaultView(),
         },
       );
     },
@@ -589,8 +587,6 @@ function galleryShellState(update: Partial<TableShellState> = {}): TableShellSta
     selectedTableId: 'table_01',
     selectedViewId: 'view_grid',
     pendingViewIntents: [],
-    deletedViews: [],
-    deletedViewsStatus: 'idle',
     viewWritePending: [],
     viewWriteIssues: {},
     ...update,
@@ -604,7 +600,6 @@ function mountStaticShell(host: HTMLElement, state?: TableShellState): void {
     onTableChange: () => undefined,
     onViewChange: () => undefined,
     onCreateView: async () => ({ status: 'created', view: GALLERY_GRID_VIEW }),
-    onManageViews: () => undefined,
   });
   host.append(shell.render(state ?? galleryShellState()));
 }
@@ -650,12 +645,9 @@ async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResu
     onCreateView: (input) => grid.createView(input),
     onRetryViewIntent: (intentId) => grid.retryViewIntent(intentId).then(() => undefined),
     onDismissViewIntent: (intentId) => grid.dismissViewIntent(intentId),
-    onManageViews: () => grid.openManageViews(),
-    onCloseManageViews: () => grid.closeManageViews(),
     onRenameView: (viewId, name) => grid.renameView(viewId, name),
     onCopyView: (viewId, name) => grid.copyView(viewId, name),
     onDeleteView: (viewId) => grid.deleteView(viewId),
-    onRestoreView: (viewId) => grid.restoreView(viewId),
     onSetDefaultView: (viewId) => grid.setDefaultView(viewId),
     onRepairView: (viewId, repair) => grid.repairView(viewId, repair),
     onResolveViewIssue: (viewId, action) => {
@@ -706,7 +698,7 @@ async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResu
 
   const renderer = new ReadonlyGridRenderer(gridHost, translate, {
     onRefresh: () => grid.refresh(),
-    onOpenViewCreateForm: () => shell.openCreateForm(),
+    onCreateDefaultView: () => shell.createDefaultView(),
     onLoadMore: () => grid.loadNextPage(),
     onRecordOpen: (record) => void openDetail(record),
     onCellEdit: (recordId, fieldId, value) =>
@@ -746,8 +738,6 @@ async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResu
         pendingViewIntents: state.pendingViewIntents.filter(
           (intent) => intent.tableId === state.selectedTableId,
         ),
-        deletedViews: state.deletedViews,
-        deletedViewsStatus: state.deletedViewsStatus,
         viewWritePending: state.viewWritePending,
         viewWriteIssues: state.viewWriteIssues,
       }),
@@ -795,8 +785,6 @@ function mountShell(host: HTMLElement): GalleryMountResult {
         createdAt: '2026-08-24T00:00:00Z',
       },
     ],
-    deletedViews: [],
-    deletedViewsStatus: 'idle',
     viewWritePending: ['view_daily_a'],
     viewWriteIssues: {
       view_daily_b: {
@@ -844,11 +832,6 @@ function mountShell(host: HTMLElement): GalleryMountResult {
       rerender();
       return { status: 'created', view };
     },
-    onManageViews: async () => {
-      state = { ...state, deletedViews: [GALLERY_DELETED_VIEW], deletedViewsStatus: 'ready' };
-      rerender();
-    },
-    onCloseManageViews: () => undefined,
     onRenameView: async (viewId, name) => {
       const view = state.views.find((candidate) => candidate.id === viewId);
       if (view === undefined) return { status: 'deleted' };
@@ -898,25 +881,24 @@ function mountShell(host: HTMLElement): GalleryMountResult {
       state = {
         ...state,
         views: state.views.filter((candidate) => candidate.id !== viewId),
-        deletedViews: [
-          ...state.deletedViews,
-          { ...view, revision: view.revision + 1, deletedAt: '2026-08-25T00:00:00Z' },
-        ],
       };
       rerender();
       return { status: 'deleted' };
     },
-    onRestoreView: async (viewId) => {
-      const deleted = state.deletedViews.find((candidate) => candidate.id === viewId);
-      if (deleted === undefined) return { status: 'deleted' };
-      const restored = await client.restoreView(viewId, deleted.revision);
+    onSetDefaultView: (viewId) => {
+      const view = state.views.find((candidate) => candidate.id === viewId);
+      if (view === undefined) return Promise.resolve({ status: 'deleted' as const });
+      const saved = { ...view, isDefault: true };
       state = {
         ...state,
-        deletedViews: state.deletedViews.filter((candidate) => candidate.id !== viewId),
-        views: [...state.views, restored],
+        views: state.views.map((candidate) =>
+          candidate.id === viewId || candidate.isDefault
+            ? { ...candidate, isDefault: candidate.id === viewId }
+            : candidate,
+        ),
       };
       rerender();
-      return { status: 'saved', view: restored };
+      return Promise.resolve({ status: 'saved' as const, view: saved });
     },
     onRetryViewIntent: () => {
       state = { ...state, pendingViewIntents: [] };

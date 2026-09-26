@@ -950,10 +950,10 @@ describe('ReadonlyGridRenderer', () => {
   it('offers an explicit View creation entry when the Table has no Views', () => {
     const container = document.createElement('div');
     document.body.append(container);
-    const onOpenViewCreateForm = vi.fn();
+    const onCreateDefaultView = vi.fn();
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
       ...rendererCallbacks(),
-      onOpenViewCreateForm,
+      onCreateDefaultView,
     });
 
     renderer.render(
@@ -969,7 +969,7 @@ describe('ReadonlyGridRenderer', () => {
     const entry = container.querySelector<HTMLButtonElement>('.loom-grid-status .loom-button');
     expect(entry?.textContent).toBe('Create a View');
     entry?.click();
-    expect(onOpenViewCreateForm).toHaveBeenCalledTimes(1);
+    expect(onCreateDefaultView).toHaveBeenCalledTimes(1);
     container.remove();
   });
 });

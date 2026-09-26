@@ -88,7 +88,7 @@ export interface GridRendererCallbacks {
   ) => Promise<boolean>;
   readonly onRetryEdit?: (recordId: string) => void;
   readonly onOpenSettings?: () => void | Promise<void>;
-  readonly onOpenViewCreateForm?: () => void;
+  readonly onCreateDefaultView?: () => void;
   readonly onSearch?: (term: string) => void | Promise<unknown>;
   readonly onApplyFilter?: (
     viewId: string,
@@ -2441,8 +2441,7 @@ export class ReadonlyGridRenderer {
     // Sorted/filtered views cannot honor an insertion anchor — the draft sits
     // at the loaded tail and the Server places the Record. In manual order a
     // tail draft still needs the move while more pages are unloaded.
-    const afterRecordId =
-      manual && state.hasMore ? (records.at(-1)?.id ?? null) : null;
+    const afterRecordId = manual && state.hasMore ? (records.at(-1)?.id ?? null) : null;
     return { index: records.length, afterRecordId };
   }
 
@@ -3861,13 +3860,13 @@ export class ReadonlyGridRenderer {
     if (
       status === 'empty' &&
       state.emptyReason === 'view' &&
-      this.#callbacks.onOpenViewCreateForm !== undefined
+      this.#callbacks.onCreateDefaultView !== undefined
     ) {
       const button = createElement('button', 'loom-button');
       button.type = 'button';
       button.textContent = this.#translate('view.createEntry');
       button.setAttribute('aria-label', this.#translate('view.createEntry'));
-      button.addEventListener('click', () => this.#callbacks.onOpenViewCreateForm?.());
+      button.addEventListener('click', () => this.#callbacks.onCreateDefaultView?.());
       return button;
     }
     if (status === 'authentication' || status === 'forbidden') {

@@ -32,8 +32,6 @@ export type {
 } from './view-write-coordinator';
 export type { ViewConfigRepairInput } from './view-config-repair';
 
-export type DeletedViewsStatus = 'idle' | 'loading' | 'ready' | 'error';
-
 export interface TableShellState {
   readonly workspaces: readonly Workspace[];
   readonly bases: readonly Base[];
@@ -45,8 +43,6 @@ export interface TableShellState {
   readonly selectedTableId: string | null;
   readonly selectedViewId: string | null;
   readonly pendingViewIntents: readonly PendingViewCreateIntent[];
-  readonly deletedViews: readonly View[];
-  readonly deletedViewsStatus: DeletedViewsStatus;
   readonly viewWritePending: readonly string[];
   readonly viewWriteIssues: Readonly<Record<string, ViewWriteIssue>>;
 }
@@ -59,12 +55,9 @@ export interface TableShellCallbacks {
   readonly onCreateView?: (input: ViewCreateInput) => Promise<ViewCreateOutcome>;
   readonly onRetryViewIntent?: (intentId: string) => void | Promise<void>;
   readonly onDismissViewIntent?: (intentId: string) => void | Promise<void>;
-  readonly onManageViews?: () => void | Promise<void>;
-  readonly onCloseManageViews?: () => void;
   readonly onRenameView?: (viewId: string, name: string) => Promise<ViewWriteOutcome>;
   readonly onCopyView?: (viewId: string, name: string) => Promise<ViewCopyOutcome>;
   readonly onDeleteView?: (viewId: string) => Promise<ViewWriteOutcome>;
-  readonly onRestoreView?: (viewId: string) => Promise<ViewWriteOutcome>;
   readonly onSetDefaultView?: (viewId: string) => Promise<ViewWriteOutcome>;
   readonly onRepairView?: (
     viewId: string,
@@ -82,6 +75,14 @@ interface CreateDraft {
   locationFieldId: string;
 }
 
+interface InlineEdit {
+  readonly viewId: string;
+  readonly mode: 'rename' | 'copy';
+  value: string;
+  error: string | null;
+  pending: boolean;
+}
+
 let shellSequence = 0;
 
 export class TableShell {
@@ -95,14 +96,15 @@ export class TableShell {
   #createPending = false;
   #createError: string | null = null;
   #createDraft: CreateDraft = { name: '', type: 'grid', locationFieldId: '' };
-  #manageOpen = false;
-  #manageTableId: string | null = null;
-  #manageEdit: { viewId: string; mode: 'rename' | 'copy' } | null = null;
+  #viewListOpen = false;
+  #panelTableId: string | null = null;
+  #inlineEdit: InlineEdit | null = null;
   #confirmDeleteId: string | null = null;
   #repairViewId: string | null = null;
   #repairRemovals = new Set<string>();
   #repairLocation = '';
-  #manageFormError: string | null = null;
+  #panelFormError: string | null = null;
+  #createDefaultPending = false;
   #overlayDismiss: ((event: PointerEvent) => void) | null = null;
   #contextExpanded = false;
 
@@ -175,72 +177,38 @@ export class TableShell {
         (value) => void this.#callbacks.onTableChange(value),
       ),
     );
-    const actions = createElement('div', 'loom-shell-actions');
-    if (this.#callbacks.onCreateView !== undefined) {
-      const addView = document.createElement('button');
-      addView.type = 'button';
-      addView.className = 'loom-button loom-shell-action loom-view-add';
-      addView.dataset.shellFocus = 'add-view';
-      addView.prepend(createUiIcon('view-add'));
-      const addLabel = createElement('span', 'loom-button-label');
-      addLabel.textContent = this.#translate('view.add');
-      addView.append(addLabel);
-      addView.setAttribute('aria-label', this.#translate('view.add'));
-      addView.addEventListener('click', () => {
-        this.#createOpen = true;
-        this.#createError = null;
-        this.#rerender();
-      });
-      actions.append(addView);
-    }
-    if (this.#callbacks.onManageViews !== undefined) {
-      const manage = document.createElement('button');
-      manage.type = 'button';
-      manage.className = 'loom-button loom-shell-action loom-view-manage-toggle';
-      manage.dataset.action = 'manage-views';
-      manage.dataset.shellFocus = 'manage-views';
-      manage.prepend(createUiIcon('view-manage'));
-      const manageLabel = createElement('span', 'loom-button-label');
-      manageLabel.textContent = this.#translate('view.manage');
-      manage.append(manageLabel);
-      manage.setAttribute('aria-label', this.#translate('view.manage'));
-      manage.setAttribute('aria-expanded', this.#manageOpen ? 'true' : 'false');
-      manage.addEventListener('click', () => this.#toggleManage(state));
-      actions.append(manage);
-    }
     const row = createElement('div', 'loom-shell-row');
-    row.append(context, this.#renderViewListToggle(state), this.#renderTabs(state), actions);
+    row.append(context, this.#renderViewListToggle(state), this.#renderTabs(state));
     root.append(row);
     const intents = this.#renderIntents(state);
     if (intents !== null) root.append(intents);
     if (this.#createOpen && this.#callbacks.onCreateView !== undefined) {
       root.append(this.#renderCreateForm(state));
     }
-    if (this.#manageOpen) {
-      if (this.#manageTableId !== state.selectedTableId) {
-        this.#manageTableId = state.selectedTableId;
-        this.#resetManageForms();
-        void this.#callbacks.onManageViews?.();
+    if (this.#viewListOpen) {
+      if (this.#panelTableId !== state.selectedTableId) {
+        this.#panelTableId = state.selectedTableId;
+        this.#resetPanelForms();
       }
-      root.append(this.#renderManagePanel(state));
+      root.append(this.#renderViewPanel(state));
     }
     ensureButtonLabels(root);
     this.#lastRoot = root;
     this.#syncOverlayDismissal(root);
     root.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
-      if (!this.#createOpen && !this.#manageOpen) return;
+      if (!this.#createOpen && !this.#viewListOpen) return;
       event.preventDefault();
       this.#createOpen = false;
-      this.#manageOpen = false;
-      this.#manageEdit = null;
+      this.#closeViewPanel();
       this.#rerender();
+      this.#focusViewListToggle();
     });
     return root;
   }
 
   #syncOverlayDismissal(root: HTMLElement): void {
-    const open = this.#createOpen || this.#manageOpen;
+    const open = this.#createOpen || this.#viewListOpen;
     if (!open) {
       if (this.#overlayDismiss !== null) {
         root.ownerDocument.removeEventListener('pointerdown', this.#overlayDismiss, true);
@@ -253,258 +221,382 @@ export class TableShell {
       const el = event.target instanceof Element ? event.target : null;
       if (
         el !== null &&
-        el.closest('.loom-view-create-form, .loom-view-manage, .loom-shell-actions') !== null
+        el.closest('.loom-view-create-form, .loom-view-panel, .loom-view-list-toggle') !== null
       ) {
         return;
       }
       this.#createOpen = false;
-      this.#manageOpen = false;
-      this.#manageEdit = null;
+      this.#closeViewPanel();
       this.#rerender();
     };
     root.ownerDocument.addEventListener('pointerdown', onPointerDown, true);
     this.#overlayDismiss = onPointerDown;
   }
 
-  #toggleManage(state: TableShellState): void {
-    this.#manageOpen = !this.#manageOpen;
-    if (this.#manageOpen) {
-      this.#manageTableId = state.selectedTableId;
-      this.#resetManageForms();
-      void this.#callbacks.onManageViews?.();
+  #toggleViewPanel(state: TableShellState): void {
+    this.#viewListOpen = !this.#viewListOpen;
+    if (this.#viewListOpen) {
+      this.#panelTableId = state.selectedTableId;
+      this.#resetPanelForms();
     } else {
-      this.#resetManageForms();
-      this.#callbacks.onCloseManageViews?.();
+      this.#resetPanelForms();
     }
     this.#rerender();
+    if (this.#viewListOpen) {
+      this.#lastRoot?.querySelector<HTMLElement>('.loom-view-panel .loom-view-panel-item')?.focus();
+    }
   }
 
-  #resetManageForms(): void {
-    this.#manageEdit = null;
+  #closeViewPanel(): void {
+    this.#viewListOpen = false;
+    this.#resetPanelForms();
+  }
+
+  #focusViewListToggle(): void {
+    this.#lastRoot?.querySelector<HTMLElement>('[data-shell-focus="view-list"]')?.focus();
+  }
+
+  #resetPanelForms(): void {
+    this.#inlineEdit = null;
     this.#confirmDeleteId = null;
     this.#repairViewId = null;
     this.#repairRemovals = new Set();
     this.#repairLocation = '';
-    this.#manageFormError = null;
+    this.#panelFormError = null;
+    this.#createDefaultPending = false;
   }
 
-  #renderManagePanel(state: TableShellState): HTMLElement {
-    const panel = createElement('section', 'loom-view-manage');
-    panel.setAttribute('role', 'region');
-    labelContainer(panel, this.#translate('view.manage'));
+  #renderViewPanel(state: TableShellState): HTMLElement {
+    const panel = createElement('section', 'loom-view-panel');
+    labelContainer(panel, this.#translate('view.list'));
 
-    const header = createElement('div', 'loom-view-manage-header');
-    header.append(createTextElement('h3', this.#translate('view.manage')));
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'loom-button';
-    close.dataset.action = 'manage-close';
-    close.dataset.shellFocus = 'manage-close';
-    close.textContent = this.#translate('view.manage.close');
-    close.setAttribute('aria-label', this.#translate('view.manage.close'));
-    close.addEventListener('click', () => this.#toggleManage(state));
-    header.append(close);
-    panel.append(header);
-
-    const activeSection = createElement('div', 'loom-view-manage-active');
-    activeSection.append(createTextElement('h4', this.#translate('view.manage.active')));
-    const list = createElement('ul', 'loom-view-manage-list');
+    const list = createElement('ul', 'loom-view-panel-list');
+    list.setAttribute('role', 'list');
     const active = state.views.filter((view) => view.deletedAt === undefined);
+    const duplicateNames = new Set(
+      active.map((view) => view.name).filter((name, index, names) => names.indexOf(name) !== index),
+    );
     for (const view of active) {
-      list.append(this.#renderManageRow(view, state));
+      list.append(this.#renderViewPanelRow(view, state, duplicateNames.has(view.name)));
     }
-    activeSection.append(list);
-    panel.append(activeSection);
+    panel.append(list);
 
-    const deletedSection = createElement('div', 'loom-view-manage-deleted');
-    deletedSection.append(createTextElement('h4', this.#translate('view.manage.deleted')));
-    if (state.deletedViewsStatus === 'loading' || state.deletedViewsStatus === 'idle') {
-      deletedSection.append(createTextElement('p', this.#translate('view.manage.deletedLoading')));
-    } else if (state.deletedViewsStatus === 'error') {
-      deletedSection.append(createTextElement('p', this.#translate('view.manage.deletedError')));
-    } else if (state.deletedViews.length === 0) {
-      deletedSection.append(createTextElement('p', this.#translate('view.manage.deletedEmpty')));
-    } else {
-      const deletedList = createElement('ul', 'loom-view-manage-list');
-      for (const view of state.deletedViews) {
-        const row = createElement('li', 'loom-view-manage-row');
-        row.dataset.viewId = view.id;
-        const pending = state.viewWritePending.includes(view.id);
-        row.setAttribute('aria-busy', pending ? 'true' : 'false');
-        row.append(
-          createTextElement('span', `${view.name} · ${viewTypeLabel(view, this.#translate)}`),
-        );
-        const restore = document.createElement('button');
-        restore.type = 'button';
-        restore.className = 'loom-button';
-        restore.dataset.action = 'restore';
-        restore.dataset.shellFocus = `restore:${view.id}`;
-        restore.textContent = this.#translate('view.manage.restore');
-        restore.disabled = pending || this.#callbacks.onRestoreView === undefined;
-        restore.addEventListener('click', () => void this.#runViewWrite('restore', view.id));
-        row.append(restore);
-        const deletedIssue = this.#renderViewIssue(view.id, state);
-        if (deletedIssue !== null) row.append(deletedIssue);
-        deletedList.append(row);
-      }
-      deletedSection.append(deletedList);
+    const divider = createElement('div', 'loom-view-panel-divider');
+    divider.setAttribute('aria-hidden', 'true');
+    panel.append(divider);
+
+    const actions = createElement('div', 'loom-view-panel-actions');
+    if (this.#callbacks.onCreateView !== undefined) {
+      const create = document.createElement('button');
+      create.type = 'button';
+      create.className = 'loom-button loom-view-panel-create';
+      create.dataset.action = 'create-view';
+      create.dataset.shellFocus = 'view-create';
+      create.prepend(createUiIcon('view-add'));
+      const label = createElement('span', 'loom-button-label');
+      label.textContent = this.#translate('view.list.create');
+      create.append(label);
+      create.setAttribute('aria-label', this.#translate('view.list.create'));
+      create.disabled = this.#createDefaultPending;
+      create.setAttribute('aria-busy', this.#createDefaultPending ? 'true' : 'false');
+      create.addEventListener('click', () => this.#createDefaultView());
+      actions.append(create);
     }
-    panel.append(deletedSection);
+    if (this.#panelFormError !== null) {
+      const error = createTextElement('p', this.#panelFormError);
+      error.classList.add('loom-view-panel-error');
+      error.setAttribute('role', 'alert');
+      actions.append(error);
+    }
+    panel.append(actions);
     return panel;
   }
 
-  #renderManageRow(view: View, state: TableShellState): HTMLElement {
-    const row = createElement('li', 'loom-view-manage-row');
+  #renderViewPanelRow(view: View, state: TableShellState, duplicateName: boolean): HTMLElement {
+    const row = createElement('li', 'loom-view-panel-row');
     row.dataset.viewId = view.id;
     const pending = state.viewWritePending.includes(view.id);
     row.setAttribute('aria-busy', pending ? 'true' : 'false');
 
-    const name = createTextElement(
-      'span',
-      `${view.name} · ${viewTypeLabel(view, this.#translate)}`,
-    );
-    name.classList.add('loom-view-manage-name');
-    row.append(name);
-
     const issues = findBrokenViewFieldIds(view, state.fields);
     const broken = issues.queryFieldIds.length + issues.presentationFieldIds.length > 0;
-    if (broken) {
-      const badge = createTextElement('span', this.#translate('view.manage.broken'));
-      badge.classList.add('loom-view-broken');
-      row.append(badge);
-    }
+    const editing = this.#inlineEdit?.viewId === view.id;
 
-    const actions = createElement('div', 'loom-view-manage-actions');
-    const addAction = (action: string, labelKey: MessageKey, onClick: () => void): void => {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'loom-button';
-      button.dataset.action = action;
-      button.dataset.shellFocus = `${action}:${view.id}`;
-      button.textContent = this.#translate(labelKey);
-      button.disabled = pending;
-      button.addEventListener('click', onClick);
-      actions.append(button);
-    };
-    addAction('rename', 'view.manage.rename', () => {
-      this.#manageEdit = { viewId: view.id, mode: 'rename' };
-      this.#confirmDeleteId = null;
-      this.#repairViewId = null;
-      this.#manageFormError = null;
-      this.#rerender();
-    });
-    addAction('copy', 'view.manage.copy', () => {
-      this.#manageEdit = { viewId: view.id, mode: 'copy' };
-      this.#confirmDeleteId = null;
-      this.#repairViewId = null;
-      this.#manageFormError = null;
-      this.#rerender();
-    });
-    if (broken) {
-      addAction('repair', 'view.manage.repair', () => {
-        this.#repairViewId = view.id;
-        this.#repairRemovals = new Set();
-        this.#repairLocation = '';
-        this.#manageEdit = null;
-        this.#confirmDeleteId = null;
-        this.#manageFormError = null;
+    if (editing && this.#inlineEdit !== null) {
+      row.append(this.#renderInlineEdit(view, this.#inlineEdit));
+    } else {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'loom-view-panel-item';
+      item.dataset.shellFocus = `view-item:${view.id}`;
+      item.disabled = pending;
+      if (view.id === state.selectedViewId) {
+        item.classList.add('is-current');
+        item.setAttribute('aria-current', 'true');
+      }
+      item.append(createUiIcon(view.type === 'map' ? 'view-map' : 'view-grid'));
+      const label = createTextElement(
+        'span',
+        view.name + (duplicateName ? ` · ${viewTypeLabel(view, this.#translate)}` : ''),
+      );
+      label.classList.add('loom-view-panel-name');
+      item.append(label);
+      item.addEventListener('click', () => {
+        this.#closeViewPanel();
+        void this.#callbacks.onViewChange(view.id);
         this.#rerender();
       });
-    }
-    addAction('delete', 'view.manage.delete', () => {
-      this.#confirmDeleteId = view.id;
-      this.#manageEdit = null;
-      this.#repairViewId = null;
-      this.#manageFormError = null;
-      this.#rerender();
-    });
-    row.append(actions);
+      row.append(item);
 
-    if (this.#manageEdit?.viewId === view.id) {
-      row.append(this.#renderEditForm(view, this.#manageEdit.mode));
+      if (broken) {
+        const badge = createTextElement('span', this.#translate('view.manage.broken'));
+        badge.classList.add('loom-view-broken');
+        row.append(badge);
+      }
+
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'loom-view-panel-more clickable-icon';
+      more.dataset.action = 'view-more';
+      more.dataset.shellFocus = `view-more:${view.id}`;
+      more.setAttribute('aria-haspopup', 'menu');
+      more.setAttribute('aria-label', this.#translate('view.more'));
+      more.append(createUiIcon('menu-ellipsis'));
+      more.disabled = pending;
+      more.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.#openRowMenu(view, more, row, broken);
+      });
+      row.append(more);
     }
+
+    const issueElement = this.#renderViewIssue(view.id, state);
+    if (issueElement !== null) row.append(issueElement);
     if (this.#confirmDeleteId === view.id) {
       row.append(this.#renderDeleteConfirm(view));
     }
-    const issueElement = this.#renderViewIssue(view.id, state);
-    if (issueElement !== null) row.append(issueElement);
     if (this.#repairViewId === view.id) {
       row.append(this.#renderRepairForm(view, state, issues));
     }
     return row;
   }
 
-  #renderEditForm(view: View, mode: 'rename' | 'copy'): HTMLElement {
+  #openRowMenu(view: View, anchor: HTMLElement, host: HTMLElement, broken: boolean): void {
+    const items: (ContextMenuItem | 'separator')[] = [
+      {
+        label: this.#translate('view.manage.rename'),
+        icon: 'menu-edit',
+        disabled: this.#callbacks.onRenameView === undefined,
+        dataAction: 'rename',
+        action: () => this.#startInlineEdit(view, 'rename'),
+      },
+      {
+        label: this.#translate('view.manage.copy'),
+        icon: 'menu-duplicate',
+        disabled: this.#callbacks.onCopyView === undefined,
+        dataAction: 'copy',
+        action: () => this.#startInlineEdit(view, 'copy'),
+      },
+      {
+        label: this.#translate('view.manage.setDefault'),
+        icon: 'view-default',
+        disabled: view.isDefault || this.#callbacks.onSetDefaultView === undefined,
+        dataAction: 'set-default',
+        action: () => void this.#runViewAction('default', view.id),
+      },
+    ];
+    if (broken) {
+      items.push({
+        label: this.#translate('view.manage.repair'),
+        icon: 'menu-edit',
+        disabled: this.#callbacks.onRepairView === undefined,
+        dataAction: 'repair',
+        action: () => {
+          this.#repairViewId = view.id;
+          this.#repairRemovals = new Set();
+          this.#repairLocation = '';
+          this.#inlineEdit = null;
+          this.#confirmDeleteId = null;
+          this.#panelFormError = null;
+          this.#rerender();
+        },
+      });
+    }
+    items.push('separator', {
+      label: this.#translate('view.manage.delete'),
+      icon: 'menu-delete',
+      danger: true,
+      disabled: this.#callbacks.onDeleteView === undefined,
+      dataAction: 'delete',
+      action: () => {
+        this.#confirmDeleteId = view.id;
+        this.#inlineEdit = null;
+        this.#repairViewId = null;
+        this.#panelFormError = null;
+        this.#rerender();
+        this.#lastRoot
+          ?.querySelector<HTMLElement>(`[data-shell-focus="delete-confirm:${view.id}"]`)
+          ?.focus();
+      },
+    });
+    const rect = anchor.getBoundingClientRect();
+    openContextMenu({
+      items,
+      x: rect.left,
+      y: rect.bottom + 4,
+      host: host.closest<HTMLElement>('.loom-view-panel') ?? host,
+      label: view.name,
+    });
+  }
+
+  #startInlineEdit(view: View, mode: 'rename' | 'copy'): void {
+    const active = (this.#lastState?.views ?? []).filter((item) => item.deletedAt === undefined);
+    const names = new Set(active.map((item) => item.name));
+    const value = mode === 'rename' ? view.name : nextAvailableViewName(view.name, names);
+    this.#inlineEdit = { viewId: view.id, mode, value, error: null, pending: false };
+    this.#confirmDeleteId = null;
+    this.#repairViewId = null;
+    this.#panelFormError = null;
+    this.#rerender();
+    const input = this.#lastRoot?.querySelector<HTMLInputElement>(
+      '[data-shell-focus="inline-edit"]',
+    );
+    input?.focus();
+    input?.select();
+  }
+
+  #renderInlineEdit(view: View, edit: InlineEdit): HTMLElement {
     const form = document.createElement('form');
-    form.dataset.manageForm = mode;
-    form.className = 'loom-view-manage-form';
-    const label = createElement('label', 'loom-view-create-field');
-    label.append(document.createTextNode(this.#translate('view.create.name')));
+    form.dataset.panelForm = edit.mode;
+    form.className = 'loom-view-inline-edit';
+    form.append(createUiIcon(view.type === 'map' ? 'view-map' : 'view-grid'));
     const input = document.createElement('input');
     input.name = 'view-name';
     input.type = 'text';
     input.required = true;
-    input.value = view.name;
-    input.dataset.shellFocus = `${mode}-name`;
-    label.append(input);
-    form.append(label);
+    input.value = edit.value;
+    input.dataset.shellFocus = 'inline-edit';
+    input.setAttribute('aria-label', this.#translate('view.create.name'));
+    input.addEventListener('input', () => {
+      edit.value = input.value;
+    });
+    form.append(input);
 
-    if (this.#manageFormError !== null) {
-      const error = createTextElement('p', this.#manageFormError);
-      error.classList.add('loom-view-manage-error');
+    if (edit.error !== null) {
+      const error = createTextElement('p', edit.error);
+      error.classList.add('loom-view-panel-error');
       error.setAttribute('role', 'alert');
       form.append(error);
     }
 
-    const actions = createElement('div', 'loom-view-create-actions');
-    const submit = document.createElement('button');
-    submit.type = 'submit';
-    submit.className = 'loom-button';
-    submit.textContent = this.#translate(
-      mode === 'rename' ? 'view.manage.rename' : 'view.manage.copy',
-    );
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.className = 'loom-button';
-    cancel.dataset.action = 'cancel';
-    cancel.textContent = this.#translate('common.cancel');
-    cancel.addEventListener('click', () => {
-      this.#manageEdit = null;
-      this.#manageFormError = null;
-      this.#rerender();
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        const viewId = view.id;
+        this.#inlineEdit = null;
+        this.#restoreFocusKey = `view-item:${viewId}`;
+        this.#rerender();
+      }
     });
-    actions.append(submit, cancel);
-    form.append(actions);
-
+    input.addEventListener('blur', () => {
+      // A blur fired by detaching the input (panel rerender while a commit is
+      // in flight) is not a user blur; only commit on a connected input.
+      if (!input.isConnected) return;
+      if (this.#inlineEdit !== edit) return;
+      this.#commitInlineEdit(view, edit, input.value);
+    });
     form.addEventListener('submit', (event) => {
       event.preventDefault();
-      const normalized = normalizeResourceName(input.value);
-      if (!normalized.ok) {
-        this.#manageFormError = this.#translate(
-          normalized.reason === 'empty'
-            ? 'view.create.nameRequired'
-            : normalized.reason === 'control-character'
-              ? 'view.create.nameControl'
-              : 'view.create.nameTooLong',
-        );
-        this.#rerender();
-        return;
-      }
-      const callback =
-        mode === 'rename' ? this.#callbacks.onRenameView : this.#callbacks.onCopyView;
-      if (callback === undefined) return;
-      void callback(view.id, normalized.name)
-        .then((outcome) => this.#handleManageOutcome(view.id, outcome))
-        .catch(() => {
-          this.#manageFormError = this.#translate('view.manage.formError');
-          this.#rerender();
-        });
+      this.#commitInlineEdit(view, edit, input.value);
     });
     return form;
   }
 
+  #commitInlineEdit(view: View, edit: InlineEdit, rawValue: string): void {
+    if (edit.pending || this.#inlineEdit !== edit) return;
+    const normalized = normalizeResourceName(rawValue);
+    if (!normalized.ok) {
+      edit.error = this.#translate(
+        normalized.reason === 'empty'
+          ? 'view.create.nameRequired'
+          : normalized.reason === 'control-character'
+            ? 'view.create.nameControl'
+            : 'view.create.nameTooLong',
+      );
+      this.#rerender();
+      return;
+    }
+    if (edit.mode === 'rename' && normalized.name === view.name) {
+      this.#inlineEdit = null;
+      this.#restoreFocusKey = `view-item:${view.id}`;
+      this.#rerender();
+      return;
+    }
+    const callback =
+      edit.mode === 'rename' ? this.#callbacks.onRenameView : this.#callbacks.onCopyView;
+    if (callback === undefined) return;
+    const viewId = view.id;
+    edit.pending = true;
+    void callback(viewId, normalized.name)
+      .then((outcome) => {
+        edit.pending = false;
+        if (outcome.status === 'failed' || outcome.status === 'repair-required') {
+          edit.error = this.#translate(
+            outcome.status === 'repair-required'
+              ? 'view.manage.repairRequired'
+              : 'view.manage.formError',
+          );
+          this.#rerender();
+          return;
+        }
+        this.#inlineEdit = null;
+        this.#restoreFocusKey = `view-item:${viewId}`;
+        this.#rerender();
+      })
+      .catch(() => {
+        edit.pending = false;
+        edit.error = this.#translate('view.manage.formError');
+        this.#rerender();
+      });
+  }
+
+  #createDefaultView(): void {
+    const state = this.#lastState;
+    const onCreateView = this.#callbacks.onCreateView;
+    if (state === null || onCreateView === undefined || this.#createDefaultPending) return;
+    const active = state.views.filter((view) => view.deletedAt === undefined);
+    const name = nextAvailableViewName(
+      this.#translate('view.create.defaultName'),
+      new Set(active.map((view) => view.name)),
+    );
+    this.#createDefaultPending = true;
+    this.#panelFormError = null;
+    this.#rerender();
+    void onCreateView({ type: 'grid', name })
+      .then((outcome) => {
+        this.#createDefaultPending = false;
+        if (outcome.status === 'failed') {
+          this.#panelFormError = this.#translate('view.create.failed');
+          this.#rerender();
+          return;
+        }
+        this.#closeViewPanel();
+        this.#rerender();
+      })
+      .catch(() => {
+        this.#createDefaultPending = false;
+        this.#panelFormError = this.#translate('view.create.failed');
+        this.#rerender();
+      });
+  }
+
+  createDefaultView(): void {
+    this.#createDefaultView();
+  }
+
   #renderDeleteConfirm(view: View): HTMLElement {
-    const box = createElement('div', 'loom-view-manage-confirm');
+    const box = createElement('div', 'loom-view-panel-confirm');
     box.setAttribute('role', 'alertdialog');
     labelContainer(box, this.#translate('common.confirmationTitle'));
     box.append(
@@ -513,20 +605,29 @@ export class TableShell {
         this.#translate('view.manage.deleteConfirm').replace('{name}', view.name),
       ),
     );
+    if (this.#panelFormError !== null) {
+      const error = createTextElement('p', this.#panelFormError);
+      error.classList.add('loom-view-panel-error');
+      error.setAttribute('role', 'alert');
+      box.append(error);
+    }
     const confirm = document.createElement('button');
     confirm.type = 'button';
     confirm.className = 'loom-button loom-button-danger';
     confirm.dataset.action = 'delete-confirm';
     confirm.dataset.shellFocus = `delete-confirm:${view.id}`;
     confirm.textContent = this.#translate('view.manage.delete');
-    confirm.addEventListener('click', () => void this.#runViewWrite('delete', view.id));
+    confirm.addEventListener('click', () => void this.#runViewAction('delete', view.id));
     const cancel = document.createElement('button');
     cancel.type = 'button';
     cancel.className = 'loom-button';
     cancel.dataset.action = 'delete-cancel';
+    cancel.dataset.shellFocus = `delete-cancel:${view.id}`;
     cancel.textContent = this.#translate('common.cancel');
     cancel.addEventListener('click', () => {
       this.#confirmDeleteId = null;
+      this.#panelFormError = null;
+      this.#restoreFocusKey = `view-more:${view.id}`;
       this.#rerender();
     });
     box.append(confirm, cancel);
@@ -588,8 +689,8 @@ export class TableShell {
     issues: { queryFieldIds: readonly string[]; presentationFieldIds: readonly string[] },
   ): HTMLElement {
     const form = document.createElement('form');
-    form.dataset.manageForm = 'repair';
-    form.className = 'loom-view-manage-form';
+    form.dataset.panelForm = 'repair';
+    form.className = 'loom-view-panel-form';
     labelContainer(form, this.#translate('view.manage.repair.title'));
     form.append(createTextElement('h5', this.#translate('view.manage.repair.title')));
 
@@ -641,9 +742,9 @@ export class TableShell {
       form.append(createTextElement('p', this.#translate('view.manage.repair.presentationHint')));
     }
 
-    if (this.#manageFormError !== null) {
-      const error = createTextElement('p', this.#manageFormError);
-      error.classList.add('loom-view-manage-error');
+    if (this.#panelFormError !== null) {
+      const error = createTextElement('p', this.#panelFormError);
+      error.classList.add('loom-view-panel-error');
       error.setAttribute('role', 'alert');
       form.append(error);
     }
@@ -660,7 +761,7 @@ export class TableShell {
     cancel.textContent = this.#translate('common.cancel');
     cancel.addEventListener('click', () => {
       this.#repairViewId = null;
-      this.#manageFormError = null;
+      this.#panelFormError = null;
       this.#rerender();
     });
     actions.append(submit, cancel);
@@ -681,34 +782,34 @@ export class TableShell {
         (input as { locationFieldId?: string }).locationFieldId = this.#repairLocation;
       }
       void onRepairView(view.id, input)
-        .then((outcome) => this.#handleManageOutcome(view.id, outcome))
+        .then((outcome) => this.#handlePanelOutcome(view.id, outcome))
         .catch(() => {
-          this.#manageFormError = this.#translate('view.manage.formError');
+          this.#panelFormError = this.#translate('view.manage.formError');
           this.#rerender();
         });
     });
     return form;
   }
 
-  #runViewWrite(kind: 'delete' | 'restore' | 'default', viewId: string): Promise<void> {
+  #runViewAction(kind: 'delete' | 'default', viewId: string): Promise<void> {
     const callback =
-      kind === 'delete'
-        ? this.#callbacks.onDeleteView
-        : kind === 'restore'
-          ? this.#callbacks.onRestoreView
-          : this.#callbacks.onSetDefaultView;
+      kind === 'delete' ? this.#callbacks.onDeleteView : this.#callbacks.onSetDefaultView;
     if (callback === undefined) return Promise.resolve();
     return callback(viewId)
-      .then((outcome) => this.#handleManageOutcome(viewId, outcome))
+      .then((outcome) => this.#handlePanelOutcome(viewId, outcome, kind))
       .catch(() => {
-        this.#manageFormError = this.#translate('view.manage.formError');
+        this.#panelFormError = this.#translate('view.manage.formError');
         this.#rerender();
       });
   }
 
-  #handleManageOutcome(viewId: string, outcome: ViewWriteOutcome | ViewCopyOutcome): void {
+  #handlePanelOutcome(
+    viewId: string,
+    outcome: ViewWriteOutcome | ViewCopyOutcome,
+    kind?: 'delete' | 'default',
+  ): void {
     if (outcome.status === 'failed' || outcome.status === 'repair-required') {
-      this.#manageFormError = this.#translate(
+      this.#panelFormError = this.#translate(
         outcome.status === 'repair-required'
           ? 'view.manage.repairRequired'
           : 'view.manage.formError',
@@ -716,10 +817,11 @@ export class TableShell {
       this.#rerender();
       return;
     }
-    if (this.#manageEdit?.viewId === viewId) this.#manageEdit = null;
+    if (this.#inlineEdit?.viewId === viewId) this.#inlineEdit = null;
     if (this.#confirmDeleteId === viewId) this.#confirmDeleteId = null;
     if (this.#repairViewId === viewId) this.#repairViewId = null;
-    this.#manageFormError = null;
+    this.#panelFormError = null;
+    this.#restoreFocusKey = kind === 'delete' ? 'view-list' : `view-more:${viewId}`;
     this.#rerender();
   }
 
@@ -850,40 +952,56 @@ export class TableShell {
         label: this.#translate('view.manage.rename'),
         icon: 'menu-edit',
         disabled: this.#callbacks.onRenameView === undefined,
-        action: () => this.#openManageFor(view, 'rename'),
+        action: () => this.#openViewPanelFor(view, 'rename'),
       },
       {
         label: this.#translate('view.manage.copy'),
-        icon: 'menu-copy',
+        icon: 'menu-duplicate',
         disabled: this.#callbacks.onCopyView === undefined,
-        action: () => this.#openManageFor(view, 'copy'),
+        action: () => this.#openViewPanelFor(view, 'copy'),
       },
       {
         label: this.#translate('view.manage.setDefault'),
         icon: 'view-default',
         disabled: view.isDefault || this.#callbacks.onSetDefaultView === undefined,
-        action: () => void this.#runViewWrite('default', view.id),
+        action: () => void this.#runViewAction('default', view.id),
       },
       {
         label: this.#translate('view.manage.delete'),
         icon: 'menu-delete',
         danger: true,
         disabled: this.#callbacks.onDeleteView === undefined,
-        action: () => this.#openManageFor(view, 'delete'),
+        action: () => this.#openViewPanelFor(view, 'delete'),
       },
     ];
     openContextMenu({ items, x, y, host, label: view.name });
   }
 
-  #openManageFor(view: View, edit: 'rename' | 'copy' | 'delete'): void {
-    this.#manageOpen = true;
-    this.#manageTableId = view.tableId;
+  #openViewPanelFor(view: View, action: 'rename' | 'copy' | 'delete'): void {
+    this.#viewListOpen = true;
+    this.#panelTableId = view.tableId;
     this.#createOpen = false;
-    this.#manageEdit = edit === 'delete' ? null : { viewId: view.id, mode: edit };
-    this.#confirmDeleteId = edit === 'delete' ? view.id : null;
+    this.#confirmDeleteId = action === 'delete' ? view.id : null;
     this.#repairViewId = null;
-    this.#manageFormError = null;
+    this.#panelFormError = null;
+    if (action === 'delete') {
+      this.#inlineEdit = null;
+      this.#rerender();
+      this.#lastRoot
+        ?.querySelector<HTMLElement>(`[data-shell-focus="delete-confirm:${view.id}"]`)
+        ?.focus();
+      return;
+    }
+    const active = (this.#lastState?.views ?? []).filter((item) => item.deletedAt === undefined);
+    const names = new Set(active.map((item) => item.name));
+    const value = action === 'rename' ? view.name : nextAvailableViewName(view.name, names);
+    this.#inlineEdit = { viewId: view.id, mode: action, value, error: null, pending: false };
     this.#rerender();
+    const input = this.#lastRoot?.querySelector<HTMLInputElement>(
+      '[data-shell-focus="inline-edit"]',
+    );
+    input?.focus();
+    input?.select();
   }
 
   #renderViewListToggle(state: TableShellState): HTMLElement {
@@ -893,53 +1011,13 @@ export class TableShell {
     toggle.dataset.action = 'view-list';
     toggle.dataset.shellFocus = 'view-list';
     toggle.setAttribute('aria-label', this.#translate('view.list'));
-    toggle.setAttribute('aria-haspopup', 'menu');
+    toggle.setAttribute('aria-haspopup', 'true');
+    toggle.setAttribute('aria-expanded', this.#viewListOpen ? 'true' : 'false');
     toggle.append(createUiIcon('view-list'));
     const label = createElement('span', 'loom-button-label');
     label.textContent = this.#translate('view.list');
     toggle.append(label);
-    toggle.addEventListener('click', () => {
-      const host = toggle.closest<HTMLElement>('.loom-table-shell');
-      if (host === null) return;
-      const rect = toggle.getBoundingClientRect();
-      const active = state.views.filter((view) => view.deletedAt === undefined);
-      const duplicateNames = new Set(
-        active
-          .map((view) => view.name)
-          .filter((name, index, names) => names.indexOf(name) !== index),
-      );
-      const items: ContextMenuItem[] = active.map((view) => ({
-        label:
-          view.name +
-          (duplicateNames.has(view.name) ? ` · ${viewTypeLabel(view, this.#translate)}` : ''),
-        icon: view.type === 'map' ? 'view-map' : 'view-grid',
-        current: view.id === state.selectedViewId,
-        dataAction: `view:${view.id}`,
-        action: () => void this.#callbacks.onViewChange(view.id),
-      }));
-      const entries: (ContextMenuItem | 'separator')[] =
-        this.#callbacks.onManageViews === undefined
-          ? items
-          : [
-              ...items,
-              'separator',
-              {
-                label: this.#translate('view.manage'),
-                icon: 'view-manage',
-                dataAction: 'manage-views',
-                action: () => {
-                  if (!this.#manageOpen) this.#toggleManage(state);
-                },
-              },
-            ];
-      openContextMenu({
-        items: entries,
-        x: rect.left,
-        y: rect.bottom + 4,
-        host,
-        label: this.#translate('view.list'),
-      });
-    });
+    toggle.addEventListener('click', () => this.#toggleViewPanel(state));
     return toggle;
   }
 
@@ -1137,6 +1215,13 @@ export class TableShell {
 
 function viewTypeLabel(view: View, translate: Translator): string {
   return translate(view.type === 'grid' ? 'view.type.grid' : 'view.type.map');
+}
+
+function nextAvailableViewName(base: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(base)) return base;
+  let index = 2;
+  while (taken.has(`${base} ${index}`)) index += 1;
+  return `${base} ${index}`;
 }
 
 function repairUsages(view: View): Map<string, string[]> {

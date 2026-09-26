@@ -214,14 +214,21 @@ describe('View shell', () => {
     expect(host.querySelector('[data-action="retry-intent"]')).not.toBeNull();
   });
 
-  it('shows the deleted view, write issue and repair affordance in manage views', async () => {
+  it('shows the write issue and repair affordance in the View panel', async () => {
     const host = await mount('shell');
-    host.querySelector<HTMLButtonElement>('[data-action="manage-views"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-action="view-list"]')?.click();
     await vi.waitFor(() => {
-      expect(host.textContent).toContain('Retired view');
+      expect(host.querySelector('.loom-view-panel')).not.toBeNull();
     });
-    expect(host.querySelector('[data-action="repair"]')).not.toBeNull();
+    expect(host.textContent).not.toContain('Retired view');
+    expect(host.querySelector('li[data-view-id="view_broken"] .loom-view-broken')).not.toBeNull();
     expect(host.textContent).toContain('changed on the Server');
+    host
+      .querySelector<HTMLButtonElement>('li[data-view-id="view_broken"] [data-action="view-more"]')
+      ?.click();
+    await vi.waitFor(() => {
+      expect(host.querySelector('.loom-context-menu [data-action="repair"]')).not.toBeNull();
+    });
   });
 
   it('shows the no-view empty state with a create entry', async () => {
@@ -327,7 +334,7 @@ describe('Layout', () => {
     const shell = host.querySelector('.loom-table-shell');
     expect(shell?.querySelector('.loom-shell-context')).not.toBeNull();
     expect(shell?.querySelector('.loom-view-tabs')).not.toBeNull();
-    expect(shell?.querySelector('.loom-shell-actions')).not.toBeNull();
+    expect(shell?.querySelector('.loom-view-list-toggle')).not.toBeNull();
     const toolbar = host.querySelector('.loom-grid-toolbar');
     expect(toolbar?.querySelector('.loom-toolbar-start')).not.toBeNull();
     expect(toolbar?.querySelector('.loom-toolbar-end')).not.toBeNull();

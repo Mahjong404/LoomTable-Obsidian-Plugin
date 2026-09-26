@@ -187,7 +187,7 @@ export class LoomTableView extends ItemView {
 
     const renderer = new ReadonlyGridRenderer(gridHost, this.getTranslator(), {
       onRefresh: () => controller.refresh(),
-      onOpenViewCreateForm: () => this.#shell?.openCreateForm(),
+      onCreateDefaultView: () => this.#shell?.createDefaultView(),
       onSearch: (term) => controller.setSearch(term),
       onApplyFilter: (viewId, filter) => controller.applyViewFilter(viewId, filter),
       onQueryFieldValues: (fieldId, request) => controller.queryFieldValues(fieldId, request),
@@ -537,8 +537,7 @@ export class LoomTableView extends ItemView {
       return controller;
     };
     this.#shell = new TableShell(this.getTranslator(), {
-      onWorkspaceChange: (workspaceId) =>
-        this.selectShellContext('workspace', workspaceId),
+      onWorkspaceChange: (workspaceId) => this.selectShellContext('workspace', workspaceId),
       onBaseChange: (baseId) => this.selectShellContext('base', baseId),
       onTableChange: (tableId) => this.selectShellContext('table', tableId),
       onViewChange: (viewId) => this.selectShellView(viewId),
@@ -570,12 +569,9 @@ export class LoomTableView extends ItemView {
         }
       },
       onDismissViewIntent: (intentId) => requireController().dismissViewIntent(intentId),
-      onManageViews: () => requireController().openManageViews(),
-      onCloseManageViews: () => requireController().closeManageViews(),
       onRenameView: (viewId, name) => requireController().renameView(viewId, name),
       onCopyView: (viewId, name) => requireController().copyView(viewId, name),
       onDeleteView: (viewId) => requireController().deleteView(viewId),
-      onRestoreView: (viewId) => requireController().restoreView(viewId),
       onSetDefaultView: (viewId) => requireController().setDefaultView(viewId),
       onRepairView: (viewId, repair) => requireController().repairView(viewId, repair),
       onResolveViewIssue: (viewId, action) => {
@@ -638,8 +634,6 @@ export class LoomTableView extends ItemView {
       pendingViewIntents: state.pendingViewIntents.filter(
         (intent) => intent.tableId === state.selectedTableId,
       ),
-      deletedViews: state.deletedViews,
-      deletedViewsStatus: state.deletedViewsStatus,
       viewWritePending: state.viewWritePending,
       viewWriteIssues: state.viewWriteIssues,
     };

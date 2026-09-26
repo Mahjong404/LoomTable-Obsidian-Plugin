@@ -3,7 +3,10 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Field, View, ViewBase } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
 import { TableShell, type TableShellState, type ViewCreateOutcome } from '../../src/ui/table-shell';
-import type { PendingViewCreateIntent } from '../../src/ui/view-write-coordinator';
+import type {
+  PendingViewCreateIntent,
+  ViewWriteOutcome,
+} from '../../src/ui/view-write-coordinator';
 
 const WORKSPACE = { id: 'ws_01', name: 'Personal', revision: 1, createdAt: '', updatedAt: '' };
 const BASE = {
@@ -83,8 +86,6 @@ function shellState(update: Partial<TableShellState> = {}): TableShellState {
     selectedTableId: 'table_01',
     selectedViewId: 'view_grid',
     pendingViewIntents: [],
-    deletedViews: [],
-    deletedViewsStatus: 'idle',
     viewWritePending: [],
     viewWriteIssues: {},
     ...update,
@@ -140,7 +141,7 @@ describe('TableShell tabs', () => {
     host.remove();
   });
 
-  it('keeps context, View switcher, tabs and actions on one shell row', () => {
+  it('keeps context, View switcher and tabs on one shell row', () => {
     const { shell } = createShell();
     const host = mount(shell, shellState());
 
@@ -150,7 +151,7 @@ describe('TableShell tabs', () => {
     expect(row?.querySelector('.loom-shell-context')).not.toBeNull();
     expect(row?.querySelector('[data-action="view-list"]')).not.toBeNull();
     expect(row?.querySelector('.loom-view-tabs')).not.toBeNull();
-    expect(row?.querySelector('.loom-shell-actions')).not.toBeNull();
+    expect(row?.querySelector('.loom-shell-actions')).toBeNull();
 
     const rows = [...(shellEl?.children ?? [])].filter((el) =>
       el.classList.contains('loom-shell-row'),
@@ -424,9 +425,8 @@ describe('TableShell unresolved intents', () => {
   });
 });
 
-describe('TableShell View management', () => {
-  function manageShell(callbacks: Record<string, unknown> = {}) {
-    const onManageViews = vi.fn(async () => undefined);
+describe('TableShell View panel', () => {
+  function panelShell(callbacks: Record<string, unknown> = {}) {
     const onRenameView = vi.fn(async () => ({
       status: 'saved' as const,
       view: gridView('view_grid'),
@@ -436,10 +436,6 @@ describe('TableShell View management', () => {
       view: gridView('view_copy'),
     }));
     const onDeleteView = vi.fn(async () => ({ status: 'deleted' as const }));
-    const onRestoreView = vi.fn(async () => ({
-      status: 'saved' as const,
-      view: gridView('view_deleted'),
-    }));
     const onRepairView = vi.fn(async () => ({
       status: 'saved' as const,
       view: gridView('view_grid'),
@@ -449,12 +445,10 @@ describe('TableShell View management', () => {
       view: { ...gridView('view_grid'), isDefault: true },
     }));
     const onResolveViewIssue = vi.fn(async () => undefined);
-    const { shell } = createShell({
-      onManageViews,
+    const { shell, onViewChange, onCreateView } = createShell({
       onRenameView,
       onCopyView,
       onDeleteView,
-      onRestoreView,
       onRepairView,
       onSetDefaultView,
       onResolveViewIssue,
@@ -462,161 +456,261 @@ describe('TableShell View management', () => {
     });
     return {
       shell,
-      onManageViews,
+      onViewChange,
+      onCreateView,
       onRenameView,
       onCopyView,
       onDeleteView,
-      onRestoreView,
       onRepairView,
       onSetDefaultView,
       onResolveViewIssue,
     };
   }
 
-  function openManage(shell: TableShell, state: TableShellState): HTMLElement {
+  function openPanel(shell: TableShell, state: TableShellState): HTMLElement {
     const host = mount(shell, state);
-    host.querySelector<HTMLButtonElement>('[data-action="manage-views"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-action="view-list"]')?.click();
     return host;
   }
 
-  it('opens the panel, lists active and deleted Views, and closes again', async () => {
-    const { shell, onManageViews } = manageShell();
-    const host = openManage(
+  function rowMenu(host: HTMLElement, viewId: string): HTMLElement {
+    const row = host.querySelector<HTMLElement>(`li[data-view-id="${viewId}"]`);
+    row?.querySelector<HTMLButtonElement>('[data-action="view-more"]')?.click();
+    const menu = host.querySelector<HTMLElement>('.loom-context-menu');
+    if (menu === null) throw new Error('Row menu did not open.');
+    return menu;
+  }
+
+  function menuItem(menu: HTMLElement, action: string): HTMLButtonElement {
+    const item = menu.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
+    if (item === null) throw new Error(`Menu item ${action} missing.`);
+    return item;
+  }
+
+  it('opens the panel listing active Views and closes again', () => {
+    const { shell } = panelShell();
+    const host = openPanel(
       shell,
       shellState({
-        deletedViews: [
-          gridView('view_deleted', 'Old Board', { deletedAt: '2026-09-01T00:00:00Z' }),
+        views: [
+          gridView('view_grid'),
+          mapView('view_map'),
+          gridView('view_gone', 'Old', { deletedAt: '2026-09-01T00:00:00Z' }),
         ],
-        deletedViewsStatus: 'ready',
       }),
     );
 
-    await vi.waitFor(() => expect(onManageViews).toHaveBeenCalledTimes(1));
-    const panel = host.querySelector<HTMLElement>('.loom-view-manage');
+    const panel = host.querySelector<HTMLElement>('.loom-view-panel');
     expect(panel).not.toBeNull();
-    expect(panel?.querySelectorAll('.loom-view-manage-active li[data-view-id]')).toHaveLength(2);
-    const deleted = panel?.querySelector<HTMLElement>('.loom-view-manage-deleted');
-    expect(deleted?.textContent).toContain('Old Board');
-    expect(deleted?.querySelector('[data-action="restore"]')).not.toBeNull();
+    const rows = [...(panel?.querySelectorAll<HTMLElement>('li[data-view-id]') ?? [])];
+    expect(rows.map((row) => row.dataset.viewId)).toEqual(['view_grid', 'view_map']);
+    expect(panel?.querySelector('.loom-view-panel-divider')).not.toBeNull();
+    expect(panel?.querySelector('[data-action="create-view"]')?.textContent).toContain('New View');
 
-    panel?.querySelector<HTMLButtonElement>('[data-action="manage-close"]')?.click();
-    expect(host.querySelector('.loom-view-manage')).toBeNull();
+    host.querySelector<HTMLButtonElement>('[data-action="view-list"]')?.click();
+    expect(host.querySelector('.loom-view-panel')).toBeNull();
     host.remove();
   });
 
-  it('renames a View through the inline form and cancels without writes', async () => {
-    const { shell, onRenameView } = manageShell();
-    const host = openManage(shell, shellState());
-    await vi.waitFor(() => expect(host.querySelector('.loom-view-manage')).not.toBeNull());
+  it('marks the current View inline and switches on row click', () => {
+    const { shell, onViewChange } = panelShell();
+    const host = openPanel(shell, shellState());
 
-    const row = host.querySelector<HTMLElement>('li[data-view-id="view_grid"]');
-    row?.querySelector<HTMLButtonElement>('[data-action="rename"]')?.click();
-    const form = host.querySelector<HTMLFormElement>('form[data-manage-form="rename"]');
+    const current = host.querySelector<HTMLElement>(
+      'li[data-view-id="view_grid"] .loom-view-panel-item',
+    );
+    expect(current?.classList.contains('is-current')).toBe(true);
+    expect(current?.getAttribute('aria-current')).toBe('true');
+    const other = host.querySelector<HTMLElement>(
+      'li[data-view-id="view_map"] .loom-view-panel-item',
+    );
+    expect(other?.classList.contains('is-current')).toBe(false);
+
+    other?.click();
+    expect(onViewChange).toHaveBeenCalledWith('view_map');
+    expect(host.querySelector('.loom-view-panel')).toBeNull();
+    host.remove();
+  });
+
+  it('offers rename/copy/set-default/delete through the row more menu', () => {
+    const { shell } = panelShell();
+    const host = openPanel(shell, shellState());
+
+    const menu = rowMenu(host, 'view_grid');
+    const labels = [...menu.querySelectorAll('.loom-context-menu-item')].map(
+      (item) => item.textContent,
+    );
+    // The fixture View references a Field absent from `fields`, so it is broken.
+    expect(labels).toEqual(['Rename', 'Copy', 'Set as default', 'Repair', 'Delete']);
+    host.remove();
+  });
+
+  it('renames a View inline on Enter and cancels with Escape', async () => {
+    const { shell, onRenameView } = panelShell();
+    const host = openPanel(shell, shellState());
+
+    menuItem(rowMenu(host, 'view_grid'), 'rename').click();
+    const form = host.querySelector<HTMLFormElement>('form[data-panel-form="rename"]');
     const input = form?.querySelector<HTMLInputElement>('input[name="view-name"]');
     if (form === null || input === null || input === undefined) {
-      throw new Error('Rename form missing.');
+      throw new Error('Inline rename missing.');
     }
+    expect(input.value).toBe('Board');
     input.value = 'Renamed Board';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(onRenameView).toHaveBeenCalledWith('view_grid', 'Renamed Board'));
-    await vi.waitFor(() =>
-      expect(host.querySelector('form[data-manage-form="rename"]')).toBeNull(),
-    );
+    await vi.waitFor(() => expect(host.querySelector('form[data-panel-form="rename"]')).toBeNull());
 
-    const rowAgain = host.querySelector<HTMLElement>('li[data-view-id="view_map"]');
-    rowAgain?.querySelector<HTMLButtonElement>('[data-action="rename"]')?.click();
+    menuItem(rowMenu(host, 'view_map'), 'rename').click();
     host
-      .querySelector<HTMLFormElement>('form[data-manage-form="rename"]')
-      ?.querySelector<HTMLButtonElement>('[data-action="cancel"]')
-      ?.click();
+      .querySelector<HTMLInputElement>('form[data-panel-form="rename"] input[name="view-name"]')
+      ?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(host.querySelector('form[data-panel-form="rename"]')).toBeNull();
+    expect(host.querySelector('.loom-view-panel')).not.toBeNull();
     expect(onRenameView).toHaveBeenCalledTimes(1);
     host.remove();
   });
 
-  it('copies a View after confirming a new name', async () => {
-    const { shell, onCopyView } = manageShell();
-    const host = openManage(shell, shellState());
-    await vi.waitFor(() => expect(host.querySelector('.loom-view-manage')).not.toBeNull());
+  it('commits an inline rename on blur', async () => {
+    const { shell, onRenameView } = panelShell();
+    const host = openPanel(shell, shellState());
 
-    host
-      .querySelector<HTMLElement>('li[data-view-id="view_grid"]')
-      ?.querySelector<HTMLButtonElement>('[data-action="copy"]')
-      ?.click();
-    const form = host.querySelector<HTMLFormElement>('form[data-manage-form="copy"]');
+    menuItem(rowMenu(host, 'view_grid'), 'rename').click();
+    const input = host.querySelector<HTMLInputElement>(
+      'form[data-panel-form="rename"] input[name="view-name"]',
+    );
+    if (input === null) throw new Error('Inline rename missing.');
+    input.value = 'Board Again';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new FocusEvent('blur'));
+    await vi.waitFor(() => expect(onRenameView).toHaveBeenCalledWith('view_grid', 'Board Again'));
+    host.remove();
+  });
+
+  it('does not recommit when a state push detaches the focused input mid-flight', async () => {
+    let resolve: (outcome: ViewWriteOutcome) => void = () => {};
+    const onRenameView = vi.fn(() => new Promise<ViewWriteOutcome>((done) => (resolve = done)));
+    const { shell } = panelShell({ onRenameView });
+    const host = openPanel(shell, shellState());
+
+    menuItem(rowMenu(host, 'view_grid'), 'rename').click();
+    const input = host.querySelector<HTMLInputElement>(
+      'form[data-panel-form="rename"] input[name="view-name"]',
+    );
+    if (input === null) throw new Error('Inline rename missing.');
+    input.value = 'Renamed Board';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.closest('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(onRenameView).toHaveBeenCalledTimes(1));
+
+    // A viewWritePending push rerenders the shell and detaches the focused
+    // input; the resulting blur must not fire a second commit.
+    host.replaceChildren(shell.render(shellState({ viewWritePending: ['view_grid'] })));
+    input.dispatchEvent(new FocusEvent('blur'));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(onRenameView).toHaveBeenCalledTimes(1);
+
+    resolve({ status: 'saved', view: gridView('view_grid', 'Renamed Board') });
+    await vi.waitFor(() => expect(host.querySelector('form[data-panel-form="rename"]')).toBeNull());
+    host.remove();
+  });
+
+  it('keeps the input and shows an error when a rename fails', async () => {
+    const onRenameView = vi.fn(async () => ({
+      status: 'failed' as const,
+      kind: 'server' as const,
+      error: { message: 'nope' },
+    }));
+    const { shell } = panelShell({ onRenameView });
+    const host = openPanel(shell, shellState());
+
+    menuItem(rowMenu(host, 'view_grid'), 'rename').click();
+    const input = host.querySelector<HTMLInputElement>(
+      'form[data-panel-form="rename"] input[name="view-name"]',
+    );
+    if (input === null) throw new Error('Inline rename missing.');
+    input.value = 'Broken Name';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.closest('form')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await vi.waitFor(() => expect(onRenameView).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(
+        host.querySelector<HTMLElement>('form[data-panel-form="rename"] .loom-view-panel-error')
+          ?.textContent,
+      ).toContain('could not be saved'),
+    );
+    const retryInput = host.querySelector<HTMLInputElement>(
+      'form[data-panel-form="rename"] input[name="view-name"]',
+    );
+    expect(retryInput?.value).toBe('Broken Name');
+    host.remove();
+  });
+
+  it('copies a View with an auto-numbered prefilled name', async () => {
+    const { shell, onCopyView } = panelShell();
+    const host = openPanel(shell, shellState());
+
+    menuItem(rowMenu(host, 'view_grid'), 'copy').click();
+    const form = host.querySelector<HTMLFormElement>('form[data-panel-form="copy"]');
     const input = form?.querySelector<HTMLInputElement>('input[name="view-name"]');
     if (form === null || input === null || input === undefined) {
-      throw new Error('Copy form missing.');
+      throw new Error('Inline copy missing.');
     }
-    expect(input.value).toBe('Board');
+    expect(input.value).toBe('Board 2');
     input.value = 'Board copy';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(onCopyView).toHaveBeenCalledWith('view_grid', 'Board copy'));
     host.remove();
   });
 
-  it('asks for explicit confirmation naming the View before deleting', async () => {
-    const { shell, onDeleteView } = manageShell();
-    const host = openManage(shell, shellState());
-    await vi.waitFor(() => expect(host.querySelector('.loom-view-manage')).not.toBeNull());
+  it('runs set-default from the row menu', async () => {
+    const { shell, onSetDefaultView } = panelShell();
+    const host = openPanel(shell, shellState());
+    const menu = rowMenu(host, 'view_map');
+    expect(menuItem(menu, 'set-default').disabled).toBe(false);
+    menuItem(menu, 'set-default').click();
+    await vi.waitFor(() => expect(onSetDefaultView).toHaveBeenCalledWith('view_map'));
+    host.remove();
+  });
 
-    host
-      .querySelector<HTMLElement>('li[data-view-id="view_map"]')
-      ?.querySelector<HTMLButtonElement>('[data-action="delete"]')
-      ?.click();
-    const confirm = host.querySelector<HTMLElement>('.loom-view-manage-confirm');
+  it('asks for explicit confirmation naming the View before deleting', async () => {
+    const { shell, onDeleteView } = panelShell();
+    const host = openPanel(shell, shellState());
+
+    menuItem(rowMenu(host, 'view_map'), 'delete').click();
+    const confirm = host.querySelector<HTMLElement>('.loom-view-panel-confirm');
     expect(confirm?.textContent).toContain('Map');
     confirm?.querySelector<HTMLButtonElement>('[data-action="delete-cancel"]')?.click();
     expect(onDeleteView).not.toHaveBeenCalled();
 
+    menuItem(rowMenu(host, 'view_map'), 'delete').click();
     host
-      .querySelector<HTMLElement>('li[data-view-id="view_map"]')
-      ?.querySelector<HTMLButtonElement>('[data-action="delete"]')
-      ?.click();
-    host
-      .querySelector<HTMLElement>('.loom-view-manage-confirm')
+      .querySelector<HTMLElement>('.loom-view-panel-confirm')
       ?.querySelector<HTMLButtonElement>('[data-action="delete-confirm"]')
       ?.click();
     await vi.waitFor(() => expect(onDeleteView).toHaveBeenCalledWith('view_map'));
     host.remove();
   });
 
-  it('restores a deleted View through the recycle list', async () => {
-    const { shell, onRestoreView } = manageShell();
-    const deleted = { ...mapView('view_deleted', 'Old Map'), deletedAt: '2026-09-01T00:00:00Z' };
-    const host = openManage(
-      shell,
-      shellState({ deletedViews: [deleted], deletedViewsStatus: 'ready' }),
-    );
-    await vi.waitFor(() => expect(host.querySelector('.loom-view-manage')).not.toBeNull());
-
-    host
-      .querySelector<HTMLElement>('.loom-view-manage-deleted li[data-view-id="view_deleted"]')
-      ?.querySelector<HTMLButtonElement>('[data-action="restore"]')
-      ?.click();
-    await vi.waitFor(() => expect(onRestoreView).toHaveBeenCalledWith('view_deleted'));
-    host.remove();
-  });
-
-  it('disables other write entries for a View while a write is pending', async () => {
-    const { shell } = manageShell();
-    const host = openManage(shell, shellState({ viewWritePending: ['view_grid'] }));
-    await vi.waitFor(() => expect(host.querySelector('.loom-view-manage')).not.toBeNull());
+  it('disables the row and its menu while a write is pending', () => {
+    const { shell } = panelShell();
+    const host = openPanel(shell, shellState({ viewWritePending: ['view_grid'] }));
 
     const row = host.querySelector<HTMLElement>('li[data-view-id="view_grid"]');
-    for (const action of ['rename', 'copy', 'delete']) {
-      expect(row?.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)?.disabled).toBe(
-        true,
-      );
-    }
+    expect(row?.getAttribute('aria-busy')).toBe('true');
+    expect(row?.querySelector<HTMLButtonElement>('.loom-view-panel-item')?.disabled).toBe(true);
+    expect(row?.querySelector<HTMLButtonElement>('[data-action="view-more"]')?.disabled).toBe(true);
     const other = host.querySelector<HTMLElement>('li[data-view-id="view_map"]');
-    expect(other?.querySelector<HTMLButtonElement>('[data-action="rename"]')?.disabled).toBe(false);
+    expect(other?.querySelector<HTMLButtonElement>('.loom-view-panel-item')?.disabled).toBe(false);
     host.remove();
   });
 
   it('shows a conflict issue with adopt-latest and re-edit actions', async () => {
     const latest = gridView('view_grid', 'Elsewhere', { revision: 4 });
-    const { shell, onResolveViewIssue } = manageShell();
-    const host = openManage(
+    const { shell, onResolveViewIssue } = panelShell();
+    const host = openPanel(
       shell,
       shellState({
         viewWriteIssues: {
@@ -624,7 +718,6 @@ describe('TableShell View management', () => {
         },
       }),
     );
-    await vi.waitFor(() => expect(host.querySelector('.loom-view-manage')).not.toBeNull());
 
     const issue = host.querySelector<HTMLElement>('li[data-view-id="view_grid"] .loom-view-issue');
     expect(issue?.textContent).toContain('changed');
@@ -638,8 +731,8 @@ describe('TableShell View management', () => {
   });
 
   it('offers retry and dismiss for an unresolved write', async () => {
-    const { shell, onResolveViewIssue } = manageShell();
-    const host = openManage(
+    const { shell, onResolveViewIssue } = panelShell();
+    const host = openPanel(
       shell,
       shellState({
         viewWriteIssues: {
@@ -647,7 +740,6 @@ describe('TableShell View management', () => {
         },
       }),
     );
-    await vi.waitFor(() => expect(host.querySelector('.loom-view-manage')).not.toBeNull());
 
     const issue = host.querySelector<HTMLElement>('li[data-view-id="view_map"] .loom-view-issue');
     issue?.querySelector<HTMLButtonElement>('[data-action="issue-retry"]')?.click();
@@ -668,14 +760,14 @@ describe('TableShell View management', () => {
         sort: [{ fieldId: 'field_gone', direction: 'asc', nulls: 'last' }],
       },
     };
-    const { shell, onRepairView } = manageShell();
-    const host = openManage(shell, shellState({ views: [broken] }));
-    await vi.waitFor(() => expect(host.querySelector('.loom-view-manage')).not.toBeNull());
+    const { shell, onRepairView } = panelShell();
+    const host = openPanel(shell, shellState({ views: [broken] }));
 
     const row = host.querySelector<HTMLElement>('li[data-view-id="view_grid"]');
     expect(row?.querySelector('.loom-view-broken')).not.toBeNull();
-    row?.querySelector<HTMLButtonElement>('[data-action="repair"]')?.click();
-    const form = host.querySelector<HTMLFormElement>('form[data-manage-form="repair"]');
+    const menu = rowMenu(host, 'view_grid');
+    menuItem(menu, 'repair').click();
+    const form = host.querySelector<HTMLFormElement>('form[data-panel-form="repair"]');
     expect(form?.textContent).toContain('field_gone');
     const checkbox = form?.querySelector<HTMLInputElement>(
       'input[name="repair-remove"][value="field_gone"]',
@@ -687,6 +779,54 @@ describe('TableShell View management', () => {
     await vi.waitFor(() =>
       expect(onRepairView).toHaveBeenCalledWith('view_grid', { removeFieldIds: ['field_gone'] }),
     );
+    host.remove();
+  });
+
+  it('creates a default Grid View with the smallest free suffix and closes the panel', async () => {
+    const { shell, onCreateView } = panelShell();
+    const host = openPanel(shell, shellState());
+
+    host.querySelector<HTMLButtonElement>('[data-action="create-view"]')?.click();
+    await vi.waitFor(() =>
+      expect(onCreateView).toHaveBeenCalledWith({ type: 'grid', name: 'Grid View' }),
+    );
+    await vi.waitFor(() => expect(host.querySelector('.loom-view-panel')).toBeNull());
+    host.remove();
+  });
+
+  it('numbers the default View name past existing duplicates', async () => {
+    const { shell, onCreateView } = panelShell();
+    const host = openPanel(
+      shell,
+      shellState({
+        views: [gridView('view_grid', 'Grid View'), gridView('view_map', 'Grid View 2')],
+      }),
+    );
+
+    host.querySelector<HTMLButtonElement>('[data-action="create-view"]')?.click();
+    await vi.waitFor(() =>
+      expect(onCreateView).toHaveBeenCalledWith({ type: 'grid', name: 'Grid View 3' }),
+    );
+    host.remove();
+  });
+
+  it('keeps the panel open with an error when the default create fails', async () => {
+    const onCreateView = vi.fn(async (): Promise<ViewCreateOutcome> => ({
+      status: 'failed',
+      kind: 'server',
+      error: { message: 'nope' },
+    }));
+    const { shell } = panelShell({ onCreateView });
+    const host = openPanel(shell, shellState());
+
+    host.querySelector<HTMLButtonElement>('[data-action="create-view"]')?.click();
+    await vi.waitFor(() => expect(onCreateView).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(host.querySelector('.loom-view-panel-error')?.textContent).toContain(
+        'could not be created',
+      ),
+    );
+    expect(host.querySelector('.loom-view-panel')).not.toBeNull();
     host.remove();
   });
 });
@@ -710,44 +850,6 @@ describe('view list', () => {
     ]);
     expect(tabElements.every((tab) => !tab.hidden)).toBe(true);
     expect(host.querySelector('.loom-view-tab-overflow')).toBeNull();
-    host.remove();
-  });
-
-  it('opens the View list, marks the current View and switches on select', () => {
-    const { shell, onViewChange } = createShell({ onManageViews: vi.fn() });
-    const host = mount(shell, shellState());
-
-    const toggle = host.querySelector<HTMLButtonElement>('[data-action="view-list"]');
-    expect(toggle).not.toBeNull();
-    expect(toggle?.getAttribute('aria-haspopup')).toBe('menu');
-    toggle?.click();
-
-    const menu = host.querySelector('.loom-context-menu');
-    expect(menu).not.toBeNull();
-    const items = [...menu!.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
-    expect(items.map((item) => item.dataset.action)).toEqual([
-      'view:view_grid',
-      'view:view_map',
-      'manage-views',
-    ]);
-    expect(items[0]?.getAttribute('aria-current')).toBe('true');
-    items[1]?.click();
-    expect(onViewChange).toHaveBeenCalledWith('view_map');
-    expect(host.querySelector('.loom-context-menu')).toBeNull();
-    host.remove();
-  });
-
-  it('opens the manage panel from the View list entry', async () => {
-    const onManageViews = vi.fn(async () => undefined);
-    const { shell } = createShell({ onManageViews });
-    const host = mount(shell, shellState());
-
-    host.querySelector<HTMLButtonElement>('[data-action="view-list"]')?.click();
-    host
-      .querySelector<HTMLButtonElement>('[role="menuitem"][data-action="manage-views"]')
-      ?.click();
-    await vi.waitFor(() => expect(onManageViews).toHaveBeenCalledTimes(1));
-    expect(host.querySelector('.loom-view-manage')).not.toBeNull();
     host.remove();
   });
 });
@@ -804,13 +906,12 @@ describe('TableShell tab context menu', () => {
     host.remove();
   });
 
-  it('opens the manage panel rename form from the tab menu', async () => {
-    const onManageViews = vi.fn(async () => undefined);
+  it('opens the View panel inline rename from the tab menu', async () => {
     const onRenameView = vi.fn(async () => ({
       status: 'saved' as const,
       view: gridView('view_grid'),
     }));
-    const { shell } = createShell({ onManageViews, onRenameView });
+    const { shell } = createShell({ onRenameView });
     const host = mount(shell, shellState());
 
     rightClickTab(host);
@@ -818,7 +919,9 @@ describe('TableShell tab context menu', () => {
       (entry) => entry.textContent === 'Rename',
     );
     item?.click();
-    const form = host.querySelector<HTMLFormElement>('form[data-manage-form="rename"]');
+    const form = host.querySelector<HTMLFormElement>(
+      '.loom-view-panel form[data-panel-form="rename"]',
+    );
     expect(form).not.toBeNull();
     expect(form?.querySelector('input')?.value).toBe('Board');
     host.remove();
