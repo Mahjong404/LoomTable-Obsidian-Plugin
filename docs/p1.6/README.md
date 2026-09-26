@@ -66,3 +66,10 @@ P1.6 是 P1.5（功能交付）与 P2.0（新产品功能）之间的过渡稳�
   - ✅ 新增记录简化：删 split caret/菜单/相关 i18n 与 CSS；`+` 行与工具栏按钮直接展开行内草稿；`hasMore` 不再阻断；手动序（`manualSort:true && sort:[]`）草稿落在显式焦点行下且提交后 `moveRecord` 持久化，非手动序一律落已加载末尾；Esc 取消/blur 提交/失败保留草稿恢复焦点；Grid 就绪且焦点空闲时软聚焦首个可编辑 cell（不抢滚动锚点）。提交 `faf92fd`。
   - 新发现待决（审计文档第二节）：F-1 按钮触发菜单覆盖触发器（P3）；F-2 行内创建失败无可见错误提示（P2）；F-3 `Σ` 底部条与工具栏行数重复（P3 待产品决策）；F-4 状态面板模式图标无 roving tabindex（P3）；F-5 Enter 偶发未进入编辑（P3 低置信，未复现）。
   - 验证基线：`npx vitest run` 66 文件 939 测试全绿；`tsc --noEmit` 0 error；`eslint` 0 error；`prettier --check` 通过；`api:generate` 零 diff；`git diff --check` 干净；`npm run build` 成功。
+- 2026-09-26 视图管理 + 样式收敛轮（工作区 AGENTS.md Git 规则已按 agent 分域纠偏；Plugin `9bd3e6e..7eab5ec`、Server `4e08bf0..5f4827f` 已推送）：
+  - ✅ 视图管理统一进「全部视图」面板：删除 Add/Manage 独立按钮；shell 内绝对定位下拉列视图（低视觉重量、aria-current 当前项、`...` 行菜单：重命名/复制/设为默认/删除/修复），分隔线 + 底部唯一操作「新增视图」直接建默认表格视图（`表格视图`/`表格视图 2`…最小可用编号）并自动选中；行内重命名 Enter/blur 提交、Esc 取消、失败保留输入且 pending 防重入（修复 blur/submit 竞态渲染死循环）；已删视图不再出 UI；空态直建默认 View。CDP 实测面板/改名/复制预填/删除确认取消/默认创建/编号/真删除/窄屏。提交 `c1a5653`。
+  - ✅ 控件高度与间距收敛：`--loom-control-compact-height`(28px) 统一 tab/shell-action/toolbar/icon-only 控件；`.loom-nav-host` 加 margin-block-end 拉开 View/Toolbar 间距；Grid viewport 改 flex 列修复小数据假滚动条（实测 scrollHeight==clientHeight）。提交 `dd5ff68`。
+  - ✅ HIG 契约：Grid 正式用户名为「表格视图」；写入 Persistent Active Cell 契约（业务态独立于 DOM focus/编辑态，身份=Table+View+Record+Field）与视图面板/无回收站删除模型。提交见 docs 切片。
+  - 🔍 Grid 专项审计 `docs/local/grid-ux-audit-2026-09-26.md`（本轮只报告不修）：G-1/G-2 scroll handler 内 focus-restore 误伤（scrollTop 回写焦点行 + DOM focus 偷回 cell，P1 同根因）；G-3 render() 全量重建丢 scrollTop（P1，渲染架构）；G-4 滚到底「+」行被 sticky Σ 条完全遮挡（P1）；G-5 scroll 无 rAF 节流全量重建可见行（P2）；G-6 Esc/aria/单击编辑契约待确认（P3）。
+  - 决策记录：View 拖拽排序推迟 P2.0（合同无 position/order 端点，不做本地持久化绕行）；删除视图无回收站 UI、保留行内确认；新增视图类型不做。
+  - 验证基线：`npx vitest run` 66 文件 945 测试全绿；`tsc --noEmit` 0 error；`eslint` 0 error；`prettier --check` 通过；`api:generate` 零 diff；`git diff --check` 干净；`npm run build` 成功。

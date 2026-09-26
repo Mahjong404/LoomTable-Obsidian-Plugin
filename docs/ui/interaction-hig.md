@@ -8,7 +8,7 @@ P1.5 的功能范围和自动化验证方式由 [P1.5 实现要求](../p1.5/READ
 
 本文档适用于：
 
-- Grid/网格视图；
+- Grid/表格视图；
 - Map/地图视图；
 - Record Detail/记录详情；
 - Field Renderer/字段渲染器；
@@ -86,7 +86,7 @@ LoomTable 使用双模式交互：
 | 领域对象 | 正式中文 | 英文/内部标识 | 说明 |
 |---|---|---|---|
 | Table | 数据表 | Table | 记录和字段的容器 |
-| Grid View | 网格/网格视图 | Grid | 默认数据浏览和编辑 View |
+| Grid View | 表格/表格视图 | Grid | 默认数据浏览和编辑 View |
 | Map View | 地图/地图视图 | Map | Location 数据的地理展示 |
 | Dashboard View | 仪表盘 | Dashboard / `dashboard` | 由统计和分析组件组成的总览 View |
 | Record | 记录 | Record | 数据表中的一条数据 |
@@ -97,8 +97,8 @@ LoomTable 使用双模式交互：
 
 规则：
 
-- Table 在用户界面中使用“数据表”，避免与“网格”混淆；
-- 默认 View 使用“网格”，完整描述使用“网格视图”；
+- Table 在用户界面中使用“数据表”，避免与“表格视图”混淆；
+- 默认 View 使用“表格”，完整描述使用“表格视图”；
 - `Dashboard` 的中文使用“仪表盘”；
 - 不使用“看板”或 `Kanban View` 指代 Dashboard；
 - 不引入 `Tag` 字段或 Tag 领域对象；Select/MultiSelect 的 Chip 只是展示表现；
@@ -190,25 +190,37 @@ LoomTable 使用双模式交互：
 
 ### View 默认与条件创建
 
-- 新建数据表时默认只创建一个网格视图；
+- 新建数据表时默认只创建一个表格视图；
+- 「全部视图」面板中的“新增视图”直接创建一个默认表格视图，按 `表格视图`、`表格视图 2`、`表格视图 3`… 取最小可用编号命名，不再先弹配置表单；
 - Map、Calendar 等 View 在满足字段条件时可以显示“可创建/推荐创建”；
 - 只有用户确认后才创建真实 View；
 - 不得因字段新增而静默创建 Server View；
 - View 配置引用失效 Field 时进入 `configuration-required`，不得自动替换字段；
-- 已创建 View 的删除、恢复、重命名和配置修复使用统一 View 管理入口。
+- 已创建 View 的重命名、复制、设为默认、删除与配置修复统一收在「全部视图」面板中；
+- 删除 View 是破坏性操作，必须显式确认并点明 View 名称；不提供已删除 View 的恢复入口或回收站；配置修复（repair）与已删除恢复是两个概念，不得混用。
 
 ### View Tabs
 
 - View Tabs 只负责 View 导航，不承载 Record 编辑动作；
 - 顶部导航属于共享 Table/View Shell，由 View 宿主统一挂载；Grid、Map 与未来 View MUST 复用同一 Shell 实例，不在各自 Renderer 内重复渲染顶栏；
-- Shell 为单行结构：Table 上下文、View 列表入口、View 快捷 Tabs 与 View 管理动作位于同一行，不为 View Tabs 单独占用第二行；
+- Shell 为单行结构：Table 上下文、「全部视图」入口与 View 快捷 Tabs 位于同一行，不为 View Tabs 单独占用第二行；不再提供独立的“添加视图/管理视图”按钮；
 - View 快捷 Tabs 横向连续排列；空间不足时横向滚动，MUST NOT 用 `+N` 折叠隐藏 View；
-- 「全部视图」入口打开完整 View 列表，标明当前 View 并支持切换，同时保留 View 管理入口；
 - 当前 View 必须有明确选中状态；
-- 添加 View、管理 View 与同级动作使用同一层级的轻量按钮样式，普通动作不得比选中态 Tab 更抢视觉权重；
 - 移动端可以使用横向滚动或 Sheet；
 - View 名称可以修改，但导航、缓存和恢复必须使用稳定 View ID；
-- View 类型名称遵守领域术语，不使用 Table、网格和数据表混称。
+- View 类型名称遵守领域术语，不使用 Table、表格和数据表混称。
+
+### 全部视图面板
+
+- 「全部视图」打开一个面板（Shell 内 absolute 下拉），从上到下分两个区域，之间用细分隔线隔开：
+  1. 所有视图区：列出当前 Table 的全部活动 View，每行为 `View icon + 名称` 左对齐，行尾一个 `...` 更多菜单；
+  2. 操作功能区：当前只有“新增视图”，点击直接在列表末尾创建默认表格视图。
+- 当前 View 只用主色 icon/文字强调（`aria-current`），不使用明显背景块；整体保持低视觉重量；
+- 点击 View 行主体切换 View；`...` 菜单不触发切换；
+- 行内 `...` 菜单提供：重命名、复制、设为默认、删除；View 存在失效 Field 引用时额外提供“修复”；
+- 重命名与复制使用行内编辑（View 名称原地变为输入框）：Enter 提交、blur 提交、Esc 取消恢复原名；保存失败保留输入并显示错误，不静默丢弃；
+- 删除在行内展开确认区，明确写出 View 名称；确认后删除该 View（记录不受影响），不提供撤销/回收站；
+- 视图排序（拖拽调整顺序）需要 Server/OpenAPI 的 position 支持以跨设备一致，归入 P2.0；在此之前不提供拖拽柄，也不做本地顺序持久化。
 
 ### Toolbar
 
@@ -407,6 +419,24 @@ Grid Cell 至少区分：
 6. Readonly。
 
 Focus 必须有明确 Focus Ring，Selected 必须与 Focus 可区分，Editing 必须有清晰编辑边界，状态不能只靠颜色表达。
+
+以下状态是不同概念，不得混用同一字段或同一视觉：
+
+- Active/Selected Cell：Grid 维护的持久选中位置，与 DOM focus 无关；
+- DOM Focus：浏览器 `document.activeElement`，可落在 Cell、输入框、Toolbar 或其他控件上；
+- Editing：Cell 已挂载编辑器；
+- Dirty/Saving/Error：该 Cell 或 Record 的写入生命周期状态。
+
+### Persistent Active Cell
+
+Grid MUST 维护一个独立于 DOM 焦点的持久 Active Cell：
+
+- 打开已有数据的 Table View 时选中第一个可选择的数据 Cell，但不抢夺宿主 DOM 焦点；
+- 点击其他 Cell 切换 Active Cell；鼠标移出 Grid、或 DOM 焦点转移到 Toolbar/View 控件时，不得清除 Active Cell；
+- 仅当 Cell 身份失效（Record 删除、被过滤、Field 移除）时清除或重算选择；fallback 选择邻近 Cell，无邻近时选择第一个可用 Cell；
+- 新增记录以当前 Active Cell 所在 Record 作为插入锚点（手动排序 View 中插入到其后一行）；
+- 创建完成后 Active Cell 移动到合理的第一个可编辑 Cell；
+- Active Cell 的身份按 `View ID + Record ID + Field ID` 保存，不保存在 DOM class 或节点引用上。
 
 ### Pointer 与键盘
 
