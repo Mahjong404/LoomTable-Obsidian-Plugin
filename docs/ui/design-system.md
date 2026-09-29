@@ -164,7 +164,7 @@ createRecordDetail(record, context)
 - 浮层形态（Popover ↔ Sheet）走单一判定接缝、逐面板 opt-in，规则见 HIG。
 - Map View：所有容器支持触控缩放、拖动和 Marker 选择；Provider Attribution 固定在地图可见区域内，不得被工具栏、详情面板或窄屏布局遮挡，也不得只放进二级菜单。
 
-容器适配通过 `.loom-root` 上的具名 query container（`container-name: loom`）实现；工具栏标签折叠、上下文面包屑、导航与 query/status 面板规则使用 `@container loom` 按 pane 宽度生效。Grid 工具栏在容器宽度不足时把 Sort、Display、Undo、Redo 收容进 `⋯` 菜单（Create、Filter、Search、保存状态保留主行，被收容的激活项以徽标提示）；导航固定为两行——第一行 Workspace/Base/Table 上下文，第二行 View 页签与 Add/Manage，页签行内继续使用 `+N` 溢出。query/status 面板在窄容器内以宿主 pane 为边界转为底部 Sheet。
+容器适配通过 `.loom-root` 上的具名 query container（`container-name: loom`）实现；工具栏标签折叠、上下文面包屑、导航与 query/status 面板规则使用 `@container loom` 按 pane 宽度生效。Grid 工具栏在容器宽度不足时把 Sort、Display、Undo、Redo 收容进 `⋯` 菜单（Create、Filter、Search、保存状态保留主行，被收容的激活项以徽标提示）；导航为单行——`Workspace / Base / Table` 上下文面包屑、「全部视图」入口与 View 页签同行，页签横向滚动且不用 `+N` 折叠；窄容器下上下文面包屑折叠为 compact toggle。query/status 面板在窄容器内以宿主 pane 为边界转为底部 Sheet。
 
 ## Component Gallery
 

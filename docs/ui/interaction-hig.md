@@ -183,6 +183,7 @@ LoomTable 使用双模式交互：
 - 打开后焦点必须进入容器；
 - 关闭后焦点必须返回触发控件或其稳定替代位置；
 - `Esc` 必须关闭可取消的浮层；
+- 浮层嵌套时 `Esc` 只关闭最上层：如 View `...` 子菜单打开时第一次 `Esc` 关子菜单并把焦点还给 `...` 触发器，第二次 `Esc` 才关闭「全部视图」面板并把焦点还给面板触发器；外点关闭浮层不得抢走用户刚点击目标的焦点；
 - 有未提交草稿时，点击外部、系统返回或下拉关闭不得静默丢弃修改；
 - 浮层中的 Primary、Cancel 和 Danger 操作位置应稳定。
 
@@ -191,7 +192,9 @@ LoomTable 使用双模式交互：
 ### View 默认与条件创建
 
 - 新建数据表时默认只创建一个表格视图；
-- 「全部视图」面板中的“新增视图”直接创建一个默认表格视图，按 `表格视图`、`表格视图 2`、`表格视图 3`… 取最小可用编号命名，不再先弹配置表单；
+- 「全部视图」面板中的“新增视图”先在面板下半区就地展开类型选择（表格视图 / 地图视图），选中类型后才创建，不弹配置表单；
+- 表格视图按 `表格视图`、`表格视图 2`、`表格视图 3`… 取最小可用编号命名；地图视图按 `地图视图`、`地图视图 2`… 同理；
+- 地图视图必须引用一个 Location Field：恰好一个时自动使用，多个时在同一展开区选择，没有 Location Field 时该类型禁用并就地说明原因；不自动创建字段；
 - Map、Calendar 等 View 在满足字段条件时可以显示“可创建/推荐创建”；
 - 只有用户确认后才创建真实 View；
 - 不得因字段新增而静默创建 Server View；
@@ -204,6 +207,7 @@ LoomTable 使用双模式交互：
 - View Tabs 只负责 View 导航，不承载 Record 编辑动作；
 - 顶部导航属于共享 Table/View Shell，由 View 宿主统一挂载；Grid、Map 与未来 View MUST 复用同一 Shell 实例，不在各自 Renderer 内重复渲染顶栏；
 - Shell 为单行结构：Table 上下文、「全部视图」入口与 View 快捷 Tabs 位于同一行，不为 View Tabs 单独占用第二行；不再提供独立的“添加视图/管理视图”按钮；
+- Table 上下文以轻量 breadcrumb 呈现 `Workspace / Base / Table`：Workspace 与 Base 两级弱化并以 `/` 分隔，Table 正常权重可带小型 table icon；三层统一控件高度（desktop 约 28px）、透明无阴影、带清晰 caret；三层共用原生 select 并保留可访问名称；窄 Pane 折叠为一个 compact context toggle 展开相同选择器；
 - View 快捷 Tabs 横向连续排列；空间不足时横向滚动，MUST NOT 用 `+N` 折叠隐藏 View；
 - 当前 View 必须有明确选中状态；
 - 移动端可以使用横向滚动或 Sheet；
@@ -212,9 +216,10 @@ LoomTable 使用双模式交互：
 
 ### 全部视图面板
 
-- 「全部视图」打开一个面板（Shell 内 absolute 下拉），从上到下分两个区域，之间用细分隔线隔开：
+- 「全部视图」打开锚定在其触发按钮的轻量 Popover：默认位于触发器下方约 4px 并与触发器左对齐，靠近宿主 Pane 边缘时 flip/clamp，不覆盖触发器，不锚定到 Shell 右端；
+- 面板从上到下分两个区域，之间用细分隔线隔开：
   1. 所有视图区：列出当前 Table 的全部活动 View，每行为 `View icon + 名称` 左对齐，行尾一个 `...` 更多菜单；
-  2. 操作功能区：当前只有“新增视图”，点击直接在列表末尾创建默认表格视图。
+  2. 操作功能区：“新增视图”就地展开上述类型选择器（表格视图 / 地图视图）。
 - 当前 View 只用主色 icon/文字强调（`aria-current`），不使用明显背景块；整体保持低视觉重量；
 - 点击 View 行主体切换 View；`...` 菜单不触发切换；
 - 行内 `...` 菜单提供：重命名、复制、设为默认、删除；View 存在失效 Field 引用时额外提供“修复”；
@@ -230,7 +235,8 @@ Toolbar SHOULD 按以下顺序组织：
 - Search、Filter、Sort 等查询操作；
 - Add Record、Refresh、View 配置等动作；
 - 低频动作进入 More 菜单；
-- 当前激活的 Filter、Sort 和其他查询状态必须可见。
+- 当前激活的 Filter、Sort 和其他查询状态必须可见；
+- Toolbar 是基础总行数的唯一主位置：Σ 汇总行 MUST NOT 重复基础行数（loaded/total、filtered/total 都只出现在 Toolbar），仅在选择存在时显示真正新增的选择摘要（如“已选 N 行/格”），各列聚合值与 Σ 功能本身完整保留。
 
 ### Filter 与 Sort
 
@@ -278,7 +284,8 @@ View 右上角 MUST 提供 View 级聚合保存状态指示器：
 - 下一次修改立即恢复“有修改”；
 - 保存失败和冲突不得被成功保存状态覆盖；
 - 状态变化 SHOULD 使用 `aria-live="polite"`，不得依赖动画；
-- Cell/Record 局部状态与 View 级聚合状态必须互补。
+- Cell/Record 局部状态与 View 级聚合状态必须互补；
+- Status 面板的模式切换（Ops / History / Deleted）是标准 `tablist`：选中 Tab `tabIndex=0`，其余 `-1`；`←`/`→`/`↑`/`↓` 循环移动并即时激活，`Home`/`End` 到首末项；Tab 与面板通过 `aria-controls`/`aria-labelledby` 对应，面板为 `role="tabpanel"`；鼠标或键盘切换后 DOM 焦点 MUST 留在对应状态 Tab 上，不得被 Grid 的 Active Cell 焦点逻辑抢回（Active Cell 业务选中与 DOM focus 相互独立）；
 
 ### Loading
 
