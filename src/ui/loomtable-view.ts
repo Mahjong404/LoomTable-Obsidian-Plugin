@@ -201,7 +201,7 @@ export class LoomTableView extends ItemView {
       this.getTranslator(),
       {
         onRefresh: () => controller.refresh(),
-        onCreateDefaultView: () => this.#shell?.createDefaultView(),
+        onCreateDefaultView: () => this.#shell?.openViewPicker(),
         onSearch: (term) => controller.setSearch(term),
         onApplyFilter: (viewId, filter) => controller.applyViewFilter(viewId, filter),
         onQueryFieldValues: (fieldId, request) => controller.queryFieldValues(fieldId, request),
@@ -921,7 +921,7 @@ export class LoomTableView extends ItemView {
   }
 
   private openMapViewCreateForm(fieldId: string): void {
-    this.#shell?.openCreateForm({ type: 'map', locationFieldId: fieldId });
+    this.#shell?.createView({ type: 'map', locationFieldId: fieldId });
   }
 
   private disposeAll(): void {

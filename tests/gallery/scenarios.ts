@@ -374,7 +374,7 @@ export const galleryScenarios: readonly GalleryScenario[] = [
           emptyReason: 'view',
         }),
         {
-          onCreateDefaultView: () => shell.createDefaultView(),
+          onCreateDefaultView: () => shell.openViewPicker(),
         },
       );
     },
@@ -698,7 +698,7 @@ async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResu
 
   const renderer = new ReadonlyGridRenderer(gridHost, translate, {
     onRefresh: () => grid.refresh(),
-    onCreateDefaultView: () => shell.createDefaultView(),
+    onCreateDefaultView: () => shell.openViewPicker(),
     onLoadMore: () => grid.loadNextPage(),
     onRecordOpen: (record) => void openDetail(record),
     onCellEdit: (recordId, fieldId, value) =>

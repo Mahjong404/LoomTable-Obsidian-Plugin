@@ -497,6 +497,7 @@ export const simplifiedChineseMessages = {
   'sort.down': '下移',
   'view.configure': '请先在 LoomTable 设置中配置连接档案。',
   'view.create.defaultName': '表格视图',
+  'view.create.defaultMapName': '地图视图',
   'view.create.failed': '视图创建失败。请检查详情后重试。',
   'view.create.locationField': '位置字段',
   'view.create.name': '视图名称',

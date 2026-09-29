@@ -11,7 +11,7 @@ import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import { ensureButtonLabels, labelContainer } from './a11y';
 import { openContextMenu, type ContextMenuItem } from './context-menu';
-import { createUiIcon } from './icons';
+import { createUiIcon, type UiIconName } from './icons';
 import { findBrokenViewFieldIds, type ViewConfigRepairInput } from './view-config-repair';
 import type {
   PendingViewCreateIntent,
@@ -69,12 +69,6 @@ export interface TableShellCallbacks {
   ) => void | Promise<unknown>;
 }
 
-interface CreateDraft {
-  name: string;
-  type: 'grid' | 'map';
-  locationFieldId: string;
-}
-
 interface InlineEdit {
   readonly viewId: string;
   readonly mode: 'rename' | 'copy';
@@ -92,10 +86,9 @@ export class TableShell {
   #lastRoot: HTMLElement | null = null;
   #lastState: TableShellState | null = null;
   #restoreFocusKey: string | null = null;
-  #createOpen = false;
+  #createPickerOpen = false;
+  #createFieldPick = false;
   #createPending = false;
-  #createError: string | null = null;
-  #createDraft: CreateDraft = { name: '', type: 'grid', locationFieldId: '' };
   #viewListOpen = false;
   #panelTableId: string | null = null;
   #inlineEdit: InlineEdit | null = null;
@@ -104,7 +97,6 @@ export class TableShell {
   #repairRemovals = new Set<string>();
   #repairLocation = '';
   #panelFormError: string | null = null;
-  #createDefaultPending = false;
   #overlayDismiss: ((event: PointerEvent) => void) | null = null;
   #contextExpanded = false;
 
@@ -114,17 +106,29 @@ export class TableShell {
     this.panelId = `loom-view-panel-${++shellSequence}`;
   }
 
-  openCreateForm(preset?: { type?: 'grid' | 'map'; locationFieldId?: string }): void {
+  /**
+   * Issues a View create for a caller that already resolved the configuration
+   * (e.g. "open this Location Field in a new Map View"). The panel opens so a
+   * failure stays visible next to the entry point.
+   */
+  createView(preset: { type: 'grid' | 'map'; locationFieldId?: string }): void {
     if (this.#callbacks.onCreateView === undefined) return;
-    this.#createOpen = true;
-    this.#createError = null;
-    this.#createDraft = {
-      name: this.#createDraft.name,
-      type: preset?.type ?? 'grid',
-      locationFieldId: preset?.locationFieldId ?? '',
-    };
+    this.#viewListOpen = true;
+    this.#panelTableId = this.#lastState?.selectedTableId ?? null;
+    this.#createPickerOpen = true;
+    this.#createFieldPick = false;
+    this.#submitViewCreate(preset.type, preset.locationFieldId);
+  }
+
+  /** Opens the All Views popover with the type picker expanded. */
+  openViewPicker(): void {
+    if (this.#callbacks.onCreateView === undefined) return;
+    this.#viewListOpen = true;
+    this.#panelTableId = this.#lastState?.selectedTableId ?? null;
+    this.#createPickerOpen = true;
+    this.#createFieldPick = false;
+    this.#panelFormError = null;
     this.#rerender();
-    this.#lastRoot?.querySelector<HTMLElement>('[data-shell-focus="create-name"]')?.focus();
   }
 
   render(state: TableShellState): HTMLElement {
@@ -153,28 +157,29 @@ export class TableShell {
       this.#rerender();
     });
     context.append(contextToggle);
-    const upper = createElement('div', 'loom-shell-context-upper');
-    upper.append(
+    context.append(
       this.#renderSelect(
         'grid.workspace',
         state.workspaces,
         state.selectedWorkspaceId,
         (value) => void this.#callbacks.onWorkspaceChange(value),
+        { muted: true },
       ),
+      contextSeparator(),
       this.#renderSelect(
         'grid.base',
         state.bases,
         state.selectedBaseId,
         (value) => void this.#callbacks.onBaseChange(value),
+        { muted: true },
       ),
-    );
-    context.append(
-      upper,
+      contextSeparator(),
       this.#renderSelect(
         'grid.table',
         state.tables,
         state.selectedTableId,
         (value) => void this.#callbacks.onTableChange(value),
+        { icon: 'view-grid' },
       ),
     );
     const row = createElement('div', 'loom-shell-row');
@@ -182,9 +187,6 @@ export class TableShell {
     root.append(row);
     const intents = this.#renderIntents(state);
     if (intents !== null) root.append(intents);
-    if (this.#createOpen && this.#callbacks.onCreateView !== undefined) {
-      root.append(this.#renderCreateForm(state));
-    }
     if (this.#viewListOpen) {
       if (this.#panelTableId !== state.selectedTableId) {
         this.#panelTableId = state.selectedTableId;
@@ -197,9 +199,19 @@ export class TableShell {
     this.#syncOverlayDismissal(root);
     root.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
-      if (!this.#createOpen && !this.#viewListOpen) return;
+      if (this.#createFieldPick || this.#createPickerOpen) {
+        event.preventDefault();
+        if (this.#createFieldPick) {
+          this.#createFieldPick = false;
+        } else {
+          this.#createPickerOpen = false;
+        }
+        this.#rerender();
+        this.#lastRoot?.querySelector<HTMLElement>('[data-shell-focus="view-create"]')?.focus();
+        return;
+      }
+      if (!this.#viewListOpen) return;
       event.preventDefault();
-      this.#createOpen = false;
       this.#closeViewPanel();
       this.#rerender();
       this.#focusViewListToggle();
@@ -208,8 +220,7 @@ export class TableShell {
   }
 
   #syncOverlayDismissal(root: HTMLElement): void {
-    const open = this.#createOpen || this.#viewListOpen;
-    if (!open) {
+    if (!this.#viewListOpen) {
       if (this.#overlayDismiss !== null) {
         root.ownerDocument.removeEventListener('pointerdown', this.#overlayDismiss, true);
         this.#overlayDismiss = null;
@@ -221,11 +232,10 @@ export class TableShell {
       const el = event.target instanceof Element ? event.target : null;
       if (
         el !== null &&
-        el.closest('.loom-view-create-form, .loom-view-panel, .loom-view-list-toggle') !== null
+        el.closest('.loom-view-panel, .loom-view-list-toggle, .loom-context-menu') !== null
       ) {
         return;
       }
-      this.#createOpen = false;
       this.#closeViewPanel();
       this.#rerender();
     };
@@ -263,7 +273,8 @@ export class TableShell {
     this.#repairRemovals = new Set();
     this.#repairLocation = '';
     this.#panelFormError = null;
-    this.#createDefaultPending = false;
+    this.#createPickerOpen = false;
+    this.#createFieldPick = false;
   }
 
   #renderViewPanel(state: TableShellState): HTMLElement {
@@ -289,18 +300,22 @@ export class TableShell {
     if (this.#callbacks.onCreateView !== undefined) {
       const create = document.createElement('button');
       create.type = 'button';
-      create.className = 'loom-button loom-view-panel-create';
+      create.className = 'loom-view-panel-create';
       create.dataset.action = 'create-view';
       create.dataset.shellFocus = 'view-create';
       create.prepend(createUiIcon('view-add'));
-      const label = createElement('span', 'loom-button-label');
+      const label = createElement('span', 'loom-view-panel-create-label');
       label.textContent = this.#translate('view.list.create');
       create.append(label);
       create.setAttribute('aria-label', this.#translate('view.list.create'));
-      create.disabled = this.#createDefaultPending;
-      create.setAttribute('aria-busy', this.#createDefaultPending ? 'true' : 'false');
-      create.addEventListener('click', () => this.#createDefaultView());
+      create.setAttribute('aria-expanded', this.#createPickerOpen ? 'true' : 'false');
+      create.disabled = this.#createPending;
+      create.setAttribute('aria-busy', this.#createPending ? 'true' : 'false');
+      create.addEventListener('click', () => this.#toggleCreatePicker());
       actions.append(create);
+      if (this.#createPickerOpen) {
+        actions.append(this.#renderCreatePicker(state));
+      }
     }
     if (this.#panelFormError !== null) {
       const error = createTextElement('p', this.#panelFormError);
@@ -442,9 +457,11 @@ export class TableShell {
     const rect = anchor.getBoundingClientRect();
     openContextMenu({
       items,
-      x: rect.left,
+      x: rect.right,
       y: rect.bottom + 4,
+      align: 'end',
       host: host.closest<HTMLElement>('.loom-view-panel') ?? host,
+      trigger: anchor,
       label: view.name,
     });
   }
@@ -561,21 +578,57 @@ export class TableShell {
       });
   }
 
-  #createDefaultView(): void {
-    const state = this.#lastState;
-    const onCreateView = this.#callbacks.onCreateView;
-    if (state === null || onCreateView === undefined || this.#createDefaultPending) return;
-    const active = state.views.filter((view) => view.deletedAt === undefined);
-    const name = nextAvailableViewName(
-      this.#translate('view.create.defaultName'),
-      new Set(active.map((view) => view.name)),
-    );
-    this.#createDefaultPending = true;
+  #toggleCreatePicker(): void {
+    this.#createPickerOpen = !this.#createPickerOpen;
+    this.#createFieldPick = false;
     this.#panelFormError = null;
     this.#rerender();
-    void onCreateView({ type: 'grid', name })
+    if (this.#createPickerOpen) {
+      this.#lastRoot?.querySelector<HTMLElement>('[data-shell-focus="create-type:grid"]')?.focus();
+    }
+  }
+
+  #pickCreateType(type: 'grid' | 'map', locationFields: readonly Field[]): void {
+    if (type === 'grid') {
+      this.#submitViewCreate('grid');
+      return;
+    }
+    if (locationFields.length === 0) return;
+    if (locationFields.length === 1) {
+      this.#submitViewCreate('map', locationFields[0]?.id);
+      return;
+    }
+    this.#createFieldPick = true;
+    this.#rerender();
+    this.#lastRoot?.querySelector<HTMLElement>('[data-shell-focus="create-field"]')?.focus();
+  }
+
+  /**
+   * Selecting a type (or a Location Field for a Map View) is the create intent;
+   * the request is issued immediately with the smallest free default name.
+   * A failure keeps the picker open so the same choice can be retried; an
+   * unresolved outcome stays owned by the pending-intent strip, never retried
+   * blindly here.
+   */
+  #submitViewCreate(type: 'grid' | 'map', locationFieldId?: string): void {
+    const state = this.#lastState;
+    const onCreateView = this.#callbacks.onCreateView;
+    if (state === null || onCreateView === undefined || this.#createPending) return;
+    const active = state.views.filter((view) => view.deletedAt === undefined);
+    const name = nextAvailableViewName(
+      this.#translate(type === 'grid' ? 'view.create.defaultName' : 'view.create.defaultMapName'),
+      new Set(active.map((view) => view.name)),
+    );
+    this.#createPending = true;
+    this.#panelFormError = null;
+    this.#rerender();
+    void onCreateView({
+      type,
+      name,
+      ...(type === 'map' && locationFieldId !== undefined ? { locationFieldId } : {}),
+    })
       .then((outcome) => {
-        this.#createDefaultPending = false;
+        this.#createPending = false;
         if (outcome.status === 'failed') {
           this.#panelFormError = this.#translate('view.create.failed');
           this.#rerender();
@@ -585,14 +638,75 @@ export class TableShell {
         this.#rerender();
       })
       .catch(() => {
-        this.#createDefaultPending = false;
+        this.#createPending = false;
         this.#panelFormError = this.#translate('view.create.failed');
         this.#rerender();
       });
   }
 
-  createDefaultView(): void {
-    this.#createDefaultView();
+  #renderCreatePicker(state: TableShellState): HTMLElement {
+    const picker = createElement('div', 'loom-view-type-picker');
+    picker.setAttribute('role', 'group');
+    labelContainer(picker, this.#translate('view.list.create'));
+    const locationFields = state.fields.filter(
+      (field) => field.type === 'location' && field.deletedAt === undefined,
+    );
+    picker.append(
+      this.#renderTypeOption('grid', this.#translate('view.create.defaultName'), () =>
+        this.#pickCreateType('grid', locationFields),
+      ),
+      this.#renderTypeOption(
+        'map',
+        this.#translate('view.create.defaultMapName'),
+        () => this.#pickCreateType('map', locationFields),
+        locationFields.length === 0,
+      ),
+    );
+    if (locationFields.length === 0) {
+      const note = createElement('p', 'loom-view-type-note');
+      note.textContent = this.#translate('view.create.noLocationField');
+      picker.append(note);
+    }
+    if (this.#createFieldPick) {
+      const list = createElement('div', 'loom-view-field-list');
+      list.setAttribute('role', 'group');
+      labelContainer(list, this.#translate('view.create.locationField'));
+      for (const field of locationFields) {
+        const option = document.createElement('button');
+        option.type = 'button';
+        option.className = 'loom-view-field-option';
+        option.dataset.action = `create-map:${field.id}`;
+        option.dataset.shellFocus = 'create-field';
+        option.disabled = this.#createPending;
+        option.textContent = field.name;
+        option.addEventListener('click', () => this.#submitViewCreate('map', field.id));
+        list.append(option);
+      }
+      picker.append(list);
+    }
+    return picker;
+  }
+
+  #renderTypeOption(
+    type: 'grid' | 'map',
+    label: string,
+    action: () => void,
+    disabled = false,
+  ): HTMLButtonElement {
+    const option = document.createElement('button');
+    option.type = 'button';
+    option.className = 'loom-view-type-option';
+    option.dataset.action = `create-type:${type}`;
+    option.dataset.shellFocus = `create-type:${type}`;
+    option.disabled = disabled || this.#createPending;
+    option.setAttribute('aria-busy', this.#createPending ? 'true' : 'false');
+    option.append(createUiIcon(type === 'map' ? 'view-map' : 'view-grid'));
+    const text = createElement('span', 'loom-view-type-option-label');
+    text.textContent = label;
+    option.append(text);
+    option.setAttribute('aria-label', label);
+    option.addEventListener('click', action);
+    return option;
   }
 
   #renderDeleteConfirm(view: View): HTMLElement {
@@ -826,6 +940,7 @@ export class TableShell {
   }
 
   restoreFocus(): boolean {
+    this.#positionViewPanel();
     if (this.#restoreFocusKey === null || this.#lastRoot === null) return false;
     const key = this.#restoreFocusKey;
     this.#restoreFocusKey = null;
@@ -833,6 +948,46 @@ export class TableShell {
     if (target === null) return false;
     target.focus();
     return true;
+  }
+
+  /**
+   * Anchors the All Views popover to its trigger (bottom + 4px), clamped to the
+   * owning pane (.view-content) and flipped above the trigger when the space
+   * below is too small. Runs after every mount/rerender; rects are only
+   * measurable once the root is connected.
+   */
+  #positionViewPanel(): void {
+    const root = this.#lastRoot;
+    if (root === null || !root.isConnected || !this.#viewListOpen) return;
+    const panel = root.querySelector<HTMLElement>('.loom-view-panel');
+    const toggle = root.querySelector<HTMLElement>('.loom-view-list-toggle');
+    if (panel === null || toggle === null) return;
+    const shellRect = root.getBoundingClientRect();
+    const triggerRect = toggle.getBoundingClientRect();
+    const pane = root.closest('.view-content');
+    const bounds = pane?.getBoundingClientRect() ?? {
+      top: 0,
+      left: 0,
+      right: root.ownerDocument.documentElement.clientWidth,
+      bottom: root.ownerDocument.documentElement.clientHeight,
+    };
+    const margin = 4;
+    const minLeft = bounds.left - shellRect.left + margin;
+    const maxLeft = bounds.right - shellRect.left - panel.offsetWidth - margin;
+    const left = Math.min(
+      Math.max(triggerRect.left - shellRect.left, minLeft),
+      Math.max(maxLeft, minLeft),
+    );
+    const spaceBelow = bounds.bottom - margin - (triggerRect.bottom + margin);
+    const spaceAbove = triggerRect.top - margin - bounds.top - margin;
+    const flipped = panel.offsetHeight > spaceBelow && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(flipped ? spaceAbove : spaceBelow, 96);
+    const top = flipped
+      ? triggerRect.top - shellRect.top - Math.min(panel.offsetHeight, maxHeight) - margin
+      : triggerRect.bottom - shellRect.top + margin;
+    panel.style.insetInlineStart = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.maxHeight = `${maxHeight}px`;
   }
 
   #captureFocus(): void {
@@ -861,11 +1016,19 @@ export class TableShell {
     resources: readonly T[],
     selectedId: string | null,
     onChange: (value: string) => void,
+    options?: { readonly muted?: boolean; readonly icon?: UiIconName },
   ): HTMLElement {
     const label = createElement('label', 'loom-grid-select');
+    if (options?.muted === true) label.classList.add('loom-grid-select-muted');
     const labelText = createTextElement('span', this.#translate(labelKey));
     labelText.classList.add('loom-grid-select-label');
     label.append(labelText);
+    if (options?.icon !== undefined) {
+      const icon = createUiIcon(options.icon);
+      icon.classList.add('loom-grid-select-icon');
+      label.append(icon);
+    }
+    const field = createElement('span', 'loom-grid-select-field');
     const select = document.createElement('select');
     select.setAttribute('aria-label', this.#translate(labelKey));
     select.dataset.shellFocus = `select:${labelKey}`;
@@ -878,7 +1041,11 @@ export class TableShell {
     }
     select.disabled = resources.length === 0;
     select.addEventListener('change', () => onChange(select.value));
-    label.append(select);
+    const caret = createUiIcon('caret-down');
+    caret.classList.add('loom-grid-select-caret');
+    caret.setAttribute('aria-hidden', 'true');
+    field.append(select, caret);
+    label.append(field);
     return label;
   }
 
@@ -912,7 +1079,7 @@ export class TableShell {
       tab.addEventListener('click', () => void this.#callbacks.onViewChange(view.id));
       tab.addEventListener('contextmenu', (event) => {
         event.preventDefault();
-        this.#openTabContextMenu(view, event.clientX, event.clientY, tablist);
+        this.#openTabContextMenu(view, event.clientX, event.clientY, tablist, tab);
       });
       tablist.append(tab);
     }
@@ -946,7 +1113,13 @@ export class TableShell {
     return tablist;
   }
 
-  #openTabContextMenu(view: View, x: number, y: number, host: HTMLElement): void {
+  #openTabContextMenu(
+    view: View,
+    x: number,
+    y: number,
+    host: HTMLElement,
+    trigger: HTMLElement,
+  ): void {
     const items: ContextMenuItem[] = [
       {
         label: this.#translate('view.manage.rename'),
@@ -974,13 +1147,14 @@ export class TableShell {
         action: () => this.#openViewPanelFor(view, 'delete'),
       },
     ];
-    openContextMenu({ items, x, y, host, label: view.name });
+    openContextMenu({ items, x, y, host, trigger, label: view.name });
   }
 
   #openViewPanelFor(view: View, action: 'rename' | 'copy' | 'delete'): void {
     this.#viewListOpen = true;
     this.#panelTableId = view.tableId;
-    this.#createOpen = false;
+    this.#createPickerOpen = false;
+    this.#createFieldPick = false;
     this.#confirmDeleteId = action === 'delete' ? view.id : null;
     this.#repairViewId = null;
     this.#panelFormError = null;
@@ -1066,151 +1240,13 @@ export class TableShell {
     }
     return box;
   }
+}
 
-  #renderCreateForm(state: TableShellState): HTMLElement {
-    const form = document.createElement('form');
-    form.className = 'loom-view-create-form';
-    labelContainer(form, this.#translate('view.create.title'));
-
-    const nameLabel = createElement('label', 'loom-view-create-field');
-    nameLabel.append(document.createTextNode(this.#translate('view.create.name')));
-    const nameInput = document.createElement('input');
-    nameInput.name = 'view-name';
-    nameInput.type = 'text';
-    nameInput.required = true;
-    nameInput.value = this.#createDraft.name;
-    nameInput.dataset.shellFocus = 'create-name';
-    nameInput.addEventListener('input', () => {
-      this.#createDraft.name = nameInput.value;
-    });
-    nameLabel.append(nameInput);
-
-    const typeLabel = createElement('label', 'loom-view-create-field');
-    typeLabel.append(document.createTextNode(this.#translate('view.create.type')));
-    const typeSelect = document.createElement('select');
-    typeSelect.name = 'view-type';
-    typeSelect.dataset.shellFocus = 'create-type';
-    for (const type of ['grid', 'map'] as const) {
-      const option = document.createElement('option');
-      option.value = type;
-      option.textContent = this.#translate(type === 'grid' ? 'view.type.grid' : 'view.type.map');
-      option.selected = this.#createDraft.type === type;
-      typeSelect.append(option);
-    }
-    typeSelect.addEventListener('change', () => {
-      this.#createDraft.type = typeSelect.value === 'map' ? 'map' : 'grid';
-      this.#rerender();
-    });
-    typeLabel.append(typeSelect);
-    form.append(nameLabel, typeLabel);
-
-    const locationFields = state.fields.filter(
-      (field) => field.type === 'location' && field.deletedAt === undefined,
-    );
-    if (this.#createDraft.type === 'map') {
-      if (locationFields.length === 1 && this.#createDraft.locationFieldId === '') {
-        this.#createDraft.locationFieldId = locationFields[0]?.id ?? '';
-      }
-      const fieldLabel = createElement('label', 'loom-view-create-field');
-      fieldLabel.append(document.createTextNode(this.#translate('view.create.locationField')));
-      const fieldSelect = document.createElement('select');
-      fieldSelect.name = 'view-location-field';
-      fieldSelect.dataset.shellFocus = 'create-field';
-      for (const field of locationFields) {
-        const option = document.createElement('option');
-        option.value = field.id;
-        option.textContent = field.name;
-        option.selected = this.#createDraft.locationFieldId === field.id;
-        fieldSelect.append(option);
-      }
-      fieldSelect.addEventListener('change', () => {
-        this.#createDraft.locationFieldId = fieldSelect.value;
-      });
-      fieldLabel.append(fieldSelect);
-      form.append(fieldLabel);
-      if (locationFields.length === 0) {
-        form.append(createTextElement('p', this.#translate('view.create.noLocationField')));
-      }
-    }
-
-    if (this.#createError !== null) {
-      const error = createElement('p', 'loom-view-create-error');
-      error.setAttribute('role', 'alert');
-      error.textContent = this.#createError;
-      form.append(error);
-    }
-
-    const actions = createElement('div', 'loom-view-create-actions');
-    const submit = document.createElement('button');
-    submit.type = 'submit';
-    submit.className = 'loom-button';
-    submit.textContent = this.#translate('view.create.submit');
-    submit.disabled =
-      this.#createPending || (this.#createDraft.type === 'map' && locationFields.length === 0);
-    const cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.className = 'loom-button';
-    cancel.dataset.action = 'cancel';
-    cancel.dataset.shellFocus = 'create-cancel';
-    cancel.textContent = this.#translate('common.cancel');
-    cancel.addEventListener('click', () => {
-      this.#createOpen = false;
-      this.#createPending = false;
-      this.#createError = null;
-      this.#rerender();
-    });
-    actions.append(submit, cancel);
-    form.append(actions);
-
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      if (this.#createPending) return;
-      const onCreateView = this.#callbacks.onCreateView;
-      if (onCreateView === undefined) return;
-      const name = normalizeResourceName(nameInput.value);
-      if (!name.ok) {
-        this.#createError = this.#translate(
-          name.reason === 'empty'
-            ? 'view.create.nameRequired'
-            : name.reason === 'control-character'
-              ? 'view.create.nameControl'
-              : 'view.create.nameTooLong',
-        );
-        this.#rerender();
-        return;
-      }
-      const input: ViewCreateInput = {
-        type: this.#createDraft.type,
-        name: name.name,
-        ...(this.#createDraft.type === 'map'
-          ? { locationFieldId: this.#createDraft.locationFieldId }
-          : {}),
-      };
-      this.#createPending = true;
-      submit.disabled = true;
-      submit.setAttribute('aria-busy', 'true');
-      submit.textContent = this.#translate('view.create.pending');
-      void onCreateView(input)
-        .then((outcome) => {
-          this.#createPending = false;
-          if (outcome.status === 'failed') {
-            this.#createError = this.#translate('view.create.failed');
-            this.#rerender();
-            return;
-          }
-          this.#createOpen = false;
-          this.#createError = null;
-          this.#createDraft = { name: '', type: 'grid', locationFieldId: '' };
-          this.#rerender();
-        })
-        .catch(() => {
-          this.#createPending = false;
-          this.#createError = this.#translate('view.create.failed');
-          this.#rerender();
-        });
-    });
-    return form;
-  }
+function contextSeparator(): HTMLElement {
+  const separator = createElement('span', 'loom-shell-context-sep');
+  separator.textContent = '/';
+  separator.setAttribute('aria-hidden', 'true');
+  return separator;
 }
 
 function viewTypeLabel(view: View, translate: Translator): string {

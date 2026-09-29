@@ -1476,7 +1476,7 @@ describe('Map record delete', () => {
     });
 
     container.querySelector<HTMLButtonElement>('[data-action="detail-menu"]')?.click();
-    const remove = container.querySelector<HTMLButtonElement>('[data-action="detail-delete"]');
+    const remove = document.querySelector<HTMLButtonElement>('[data-action="detail-delete"]');
     expect(remove).not.toBeNull();
     remove?.click();
     await vi.waitFor(() =>
@@ -1509,7 +1509,7 @@ describe('Map record delete', () => {
       },
     });
     container.querySelector<HTMLButtonElement>('[data-action="detail-menu"]')?.click();
-    expect(container.querySelector('[data-action="detail-delete"]')).toBeNull();
+    expect(document.querySelector('[data-action="detail-delete"]')).toBeNull();
     view.destroy();
     container.remove();
   });

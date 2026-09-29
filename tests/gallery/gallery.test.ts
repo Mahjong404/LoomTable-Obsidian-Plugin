@@ -169,7 +169,7 @@ describe('Grid states', () => {
     host
       .querySelector<HTMLElement>('.loom-grid-index-cell')
       ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
-    host
+    document
       .querySelector<HTMLButtonElement>('.loom-context-menu-item[data-variant="danger"]')
       ?.click();
     await vi.waitFor(() => {
@@ -227,7 +227,7 @@ describe('View shell', () => {
       .querySelector<HTMLButtonElement>('li[data-view-id="view_broken"] [data-action="view-more"]')
       ?.click();
     await vi.waitFor(() => {
-      expect(host.querySelector('.loom-context-menu [data-action="repair"]')).not.toBeNull();
+      expect(document.querySelector('.loom-context-menu [data-action="repair"]')).not.toBeNull();
     });
   });
 

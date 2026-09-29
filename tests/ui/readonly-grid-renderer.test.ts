@@ -2463,7 +2463,7 @@ describe('Grid record lifecycle', () => {
       .querySelector<HTMLElement>('.loom-grid-index-cell')
       ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
     const danger = [
-      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+      ...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
     ].find((item) => item.dataset.variant === 'danger');
     expect(danger?.textContent).toContain('Delete Record');
     danger?.click();
@@ -2491,7 +2491,7 @@ describe('Grid record lifecycle', () => {
       .querySelector<HTMLElement>('.loom-grid-index-cell')
       ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
     const insert = [
-      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+      ...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
     ].find((item) => item.textContent?.includes('Insert row below'));
     expect(insert).not.toBeUndefined();
     insert?.click();
@@ -2503,7 +2503,7 @@ describe('Grid record lifecycle', () => {
       .querySelector<HTMLElement>('.loom-grid-index-cell')
       ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
     const sortedLabels = [
-      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+      ...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
     ].map((item) => item.textContent ?? '');
     expect(sortedLabels.some((label) => label.includes('Insert row below'))).toBe(false);
     container.remove();
@@ -2520,7 +2520,7 @@ describe('Grid record lifecycle', () => {
       .querySelector<HTMLElement>('.loom-grid-index-cell')
       ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
     const duplicate = [
-      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+      ...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
     ].find((item) => item.textContent?.includes('Duplicate Record'));
     expect(duplicate).not.toBeUndefined();
     duplicate?.click();
@@ -2542,7 +2542,7 @@ describe('Grid record lifecycle', () => {
     container
       .querySelector<HTMLElement>('.loom-grid-index-cell')
       ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
-    container
+    document
       .querySelector<HTMLButtonElement>('.loom-context-menu-item[data-variant="danger"]')
       ?.click();
     expect(container.querySelector('.loom-dangerous-confirmation')).toBeNull();
@@ -2564,7 +2564,7 @@ describe('Grid record lifecycle', () => {
     container
       .querySelector<HTMLElement>('.loom-grid-index-cell')
       ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
-    expect(container.querySelector('.loom-context-menu-item[data-variant="danger"]')).toBeNull();
+    expect(document.querySelector('.loom-context-menu-item[data-variant="danger"]')).toBeNull();
 
     const withDelete = new ReadonlyGridRenderer(
       container,
@@ -2575,7 +2575,7 @@ describe('Grid record lifecycle', () => {
     container
       .querySelector<HTMLElement>('.loom-grid-index-cell')
       ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
-    const danger = container.querySelector<HTMLButtonElement>(
+    const danger = document.querySelector<HTMLButtonElement>(
       '.loom-context-menu-item[data-variant="danger"]',
     );
     expect(danger?.disabled).toBe(true);
@@ -3008,7 +3008,7 @@ describe('Grid record lifecycle', () => {
     );
     cell?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 40, clientY: 50 }));
 
-    const menu = container.querySelector<HTMLElement>('.loom-context-menu');
+    const menu = document.querySelector<HTMLElement>('.loom-context-menu');
     expect(menu?.getAttribute('role')).toBe('menu');
     const items = [...(menu?.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item') ?? [])];
     expect(items.map((item) => item.textContent)).toEqual([
@@ -3022,7 +3022,7 @@ describe('Grid record lifecycle', () => {
     expect(callbacks.onRecordOpen).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'record_01' }),
     );
-    expect(container.querySelector('.loom-context-menu')).toBeNull();
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
     container.remove();
   });
 
@@ -3038,16 +3038,16 @@ describe('Grid record lifecycle', () => {
     const cell = container.querySelector<HTMLElement>('.loom-grid-cell');
 
     cell?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
-    expect(container.querySelector('.loom-context-menu')).not.toBeNull();
+    expect(document.querySelector('.loom-context-menu')).not.toBeNull();
     document.dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
     );
-    expect(container.querySelector('.loom-context-menu')).toBeNull();
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
 
     cell?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
-    expect(container.querySelector('.loom-context-menu')).not.toBeNull();
+    expect(document.querySelector('.loom-context-menu')).not.toBeNull();
     document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
-    expect(container.querySelector('.loom-context-menu')).toBeNull();
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
     container.remove();
   });
 
@@ -3067,7 +3067,7 @@ describe('Grid record lifecycle', () => {
     );
     cell?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
     const danger = [
-      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+      ...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
     ].find((item) => item.dataset.variant === 'danger');
     expect(danger?.textContent).toBe('Delete Record');
     danger?.click();
@@ -3384,7 +3384,7 @@ describe('Grid record lifecycle', () => {
       .querySelector<HTMLElement>('.loom-grid-cell[data-record-id="record_01"]')
       ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, clientX: 5, clientY: 5 }));
     const clearItem = [
-      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+      ...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
     ].find((item) => item.textContent === 'Clear cell');
     expect(clearItem?.disabled).toBe(false);
     clearItem?.click();
@@ -3634,9 +3634,9 @@ describe('column menu and field editor', () => {
       new MouseEvent('contextmenu', { bubbles: true, clientX: 8, clientY: 8 }),
     );
 
-    const labels = [
-      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
-    ].map((item) => item.textContent);
+    const labels = [...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].map(
+      (item) => item.textContent,
+    );
     for (const expected of [
       'Edit field',
       'Insert field left',
@@ -3664,7 +3664,7 @@ describe('column menu and field editor', () => {
     container
       .querySelector<HTMLElement>('.loom-grid-header-cell:not(.loom-grid-index-header)')
       ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
-    const danger = container.querySelector<HTMLButtonElement>(
+    const danger = document.querySelector<HTMLButtonElement>(
       '.loom-context-menu-item[data-variant="danger"]',
     );
     expect(danger?.disabled).toBe(true);
@@ -3687,7 +3687,7 @@ describe('column menu and field editor', () => {
       '.loom-grid-header-cell:not(.loom-grid-index-header):not(.loom-grid-add-field)',
     );
     headers[1]?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
-    container
+    document
       .querySelector<HTMLButtonElement>('.loom-context-menu-item[data-variant="danger"]')
       ?.click();
     await vi.waitFor(() => expect(onFieldDelete).toHaveBeenCalled());
@@ -3987,7 +3987,7 @@ describe('Toolbar overflow', () => {
     expect(toolbar.querySelector<HTMLElement>('[data-action="search-expand"]')?.hidden).toBe(false);
 
     overflow?.click();
-    const menu = container.querySelector('.loom-context-menu');
+    const menu = document.querySelector('.loom-context-menu');
     expect(menu).not.toBeNull();
     const items = [...(menu?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
     expect(items.map((item) => item.textContent)).toEqual(['Sort', 'Display', 'Undo', 'Redo']);
@@ -4277,7 +4277,7 @@ describe('refresh indicator and anchored panels', () => {
     );
     expect(menuButton).not.toBeNull();
     menuButton?.click();
-    const items = [...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')];
+    const items = [...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')];
     const labels = items.map((item) => item.textContent ?? '');
     expect(labels.some((label) => label.includes('Duplicate field'))).toBe(true);
     expect(labels.some((label) => label.includes('Filter by this field'))).toBe(true);
@@ -4332,7 +4332,7 @@ describe('refresh indicator and anchored panels', () => {
     expect(menuButtons).toHaveLength(2);
     // The text column menu must not offer Number format.
     menuButtons[0]?.click();
-    let labels = [...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].map(
+    let labels = [...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].map(
       (item) => item.textContent ?? '',
     );
     expect(labels.some((label) => label.includes('Number format'))).toBe(false);
@@ -4340,7 +4340,7 @@ describe('refresh indicator and anchored panels', () => {
 
     menuButtons[1]?.click();
     const formatItem = [
-      ...container.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
+      ...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item'),
     ].find((item) => item.textContent?.includes('Number format'));
     expect(formatItem).not.toBeUndefined();
     formatItem?.click();
@@ -4547,7 +4547,7 @@ describe('Grid aggregate row', () => {
     container
       .querySelector<HTMLElement>('.loom-grid-aggregate-cell[data-field-id="field_count"]')
       ?.click();
-    const menu = container.querySelector<HTMLElement>('.loom-context-menu');
+    const menu = document.querySelector<HTMLElement>('.loom-context-menu');
     expect(menu).not.toBeNull();
     for (const fn of ['count', 'sum', 'avg', 'min', 'max']) {
       expect(menu?.querySelector(`[data-action="aggregate-${fn}"]`)).not.toBeNull();
@@ -4558,7 +4558,7 @@ describe('Grid aggregate row', () => {
     container
       .querySelector<HTMLElement>('.loom-grid-aggregate-cell[data-field-id="field_name"]')
       ?.click();
-    const textMenu = container.querySelector<HTMLElement>('.loom-context-menu');
+    const textMenu = document.querySelector<HTMLElement>('.loom-context-menu');
     expect(textMenu?.querySelector('[data-action="aggregate-count"]')).not.toBeNull();
     expect(textMenu?.querySelector('[data-action="aggregate-sum"]')).toBeNull();
     container.remove();
@@ -4578,7 +4578,7 @@ describe('Grid aggregate row', () => {
     container
       .querySelector<HTMLElement>('.loom-grid-aggregate-cell[data-field-id="field_count"]')
       ?.click();
-    const none = container.querySelector<HTMLButtonElement>(
+    const none = document.querySelector<HTMLButtonElement>(
       '.loom-context-menu [data-action="aggregate-none"]',
     );
     expect(none?.disabled).toBe(false);
@@ -4606,7 +4606,7 @@ describe('Grid aggregate row', () => {
     expect(cell?.textContent).toBe('Sum load failed');
     cell?.click();
     expect(
-      container.querySelector<HTMLElement>('[data-action="aggregate-retry"]')?.textContent,
+      document.querySelector<HTMLElement>('[data-action="aggregate-retry"]')?.textContent,
     ).toBe('Retry save');
   });
 });

@@ -1184,7 +1184,7 @@ describe('Record Detail delete', () => {
     container.append(detail);
 
     detail.querySelector<HTMLButtonElement>('[data-action="detail-menu"]')?.click();
-    detail.querySelector<HTMLButtonElement>('[data-action="detail-delete"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-action="detail-delete"]')?.click();
     await vi.waitFor(() =>
       expect(onDeleteRecord).toHaveBeenCalledWith(
         'record_01',
@@ -1210,7 +1210,7 @@ describe('Record Detail delete', () => {
     container.append(detail);
 
     detail.querySelector<HTMLButtonElement>('[data-action="detail-menu"]')?.click();
-    detail.querySelector<HTMLButtonElement>('[data-action="detail-delete"]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-action="detail-delete"]')?.click();
     await vi.waitFor(() => expect(onDeleteRecord).toHaveBeenCalled());
     await Promise.resolve();
     await Promise.resolve();
@@ -1224,8 +1224,8 @@ describe('Record Detail delete', () => {
       translate: createTranslator('en'),
     });
     detail.querySelector<HTMLButtonElement>('[data-action="detail-menu"]')?.click();
-    expect(detail.querySelector('[data-action="detail-copy-id"]')).not.toBeNull();
-    expect(detail.querySelector('[data-action="detail-delete"]')).toBeNull();
+    expect(document.querySelector('[data-action="detail-copy-id"]')).not.toBeNull();
+    expect(document.querySelector('[data-action="detail-delete"]')).toBeNull();
   });
 });
 

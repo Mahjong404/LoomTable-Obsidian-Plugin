@@ -525,6 +525,7 @@ export const englishMessages = {
   'sort.down': 'Move down',
   'view.configure': 'Configure a connection profile in LoomTable settings to get started.',
   'view.create.defaultName': 'Grid View',
+  'view.create.defaultMapName': 'Map View',
   'view.create.failed': 'The View could not be created. Check the details and try again.',
   'view.create.locationField': 'Location field',
   'view.create.name': 'View name',

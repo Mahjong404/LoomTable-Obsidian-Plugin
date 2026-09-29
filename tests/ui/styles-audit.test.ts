@@ -105,11 +105,11 @@ describe('LoomTable CSS contract', () => {
     expect(styles).toMatch(/\.loom-grid-cell \.loom-grid-editor \{\s*border-radius: 0;/);
   });
 
-  it('merges upper context selects into one crumb group', () => {
-    expect(styles).toContain('.loom-shell-context-upper');
-    expect(styles).toContain(
-      '.loom-shell-context-upper .loom-grid-select + .loom-grid-select::before',
-    );
+  it('renders the context selects as a flat breadcrumb with visible carets', () => {
+    expect(styles).toContain('.loom-shell-context-sep');
+    expect(styles).toContain('.loom-grid-select-muted');
+    expect(styles).toContain('.loom-grid-select-caret');
     expect(styles).toContain('.loom-grid-select-label');
+    expect(styles).toContain('height: var(--loom-control-compact-height)');
   });
 });

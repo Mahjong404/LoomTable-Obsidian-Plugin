@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Field, View, ViewBase } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
@@ -111,14 +111,23 @@ function createShell(callbacks: Record<string, unknown> = {}) {
 
 function mount(shell: TableShell, state: TableShellState): HTMLElement {
   const host = document.createElement('div');
+  host.className = 'view-content';
   document.body.append(host);
   host.append(shell.render(state));
+  shell.restoreFocus();
   return host;
 }
 
 function tabs(host: HTMLElement): HTMLElement[] {
   return [...host.querySelectorAll<HTMLElement>('[role="tab"]')];
 }
+
+// Context menus mount on document.body; remove strays so they cannot leak
+// into the next test's document-level queries.
+afterEach(() => {
+  document.querySelectorAll('.loom-context-menu').forEach((menu) => menu.remove());
+  vi.restoreAllMocks();
+});
 
 describe('TableShell tabs', () => {
   it('renders context selects and View tabs in server order with stable ids', () => {
@@ -182,21 +191,25 @@ describe('TableShell tabs', () => {
     host.remove();
   });
 
-  it('merges Workspace and Base into one crumb group ahead of the Table select', () => {
+  it('renders Workspace/Base/Table as one breadcrumb with separators and carets', () => {
     const { shell } = createShell();
     const host = mount(shell, shellState());
 
-    const upper = host.querySelector<HTMLElement>('.loom-shell-context-upper');
-    expect(upper).not.toBeNull();
-    const upperSelects = [...(upper?.querySelectorAll('select') ?? [])];
-    expect(upperSelects.map((select) => select.getAttribute('aria-label'))).toEqual([
-      'Workspace',
-      'Base',
-    ]);
-    const tableSelect = host.querySelector<HTMLSelectElement>(
-      '.loom-shell-context > .loom-grid-select select',
-    );
-    expect(tableSelect?.getAttribute('aria-label')).toBe('Table');
+    const context = host.querySelector<HTMLElement>('.loom-shell-context');
+    expect(context).not.toBeNull();
+    const levels = [...(context?.querySelectorAll(':scope > .loom-grid-select') ?? [])];
+    expect(
+      levels.map((level) => level.querySelector('select')?.getAttribute('aria-label')),
+    ).toEqual(['Workspace', 'Base', 'Table']);
+    // Upper levels are muted; the Table level keeps normal weight + table icon.
+    expect(levels[0]?.classList.contains('loom-grid-select-muted')).toBe(true);
+    expect(levels[1]?.classList.contains('loom-grid-select-muted')).toBe(true);
+    expect(levels[2]?.classList.contains('loom-grid-select-muted')).toBe(false);
+    expect(levels[2]?.querySelector('.loom-grid-select-icon')).not.toBeNull();
+    const separators = context?.querySelectorAll('.loom-shell-context-sep');
+    expect(separators).toHaveLength(2);
+    expect([...(separators ?? [])].map((sep) => sep.textContent)).toEqual(['/', '/']);
+    expect(context?.querySelectorAll('.loom-grid-select-caret')).toHaveLength(3);
     expect(host.querySelectorAll('.loom-grid-select-label')).toHaveLength(3);
     host.remove();
   });
@@ -248,144 +261,169 @@ describe('TableShell tabs', () => {
   });
 });
 
-describe('TableShell create form', () => {
-  it('creates a Grid View through the explicit form', async () => {
+describe('TableShell view create picker', () => {
+  function openPicker(shell: TableShell, state: TableShellState): HTMLElement {
+    const host = mount(shell, state);
+    host.querySelector<HTMLButtonElement>('[data-action="view-list"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-action="create-view"]')?.click();
+    return host;
+  }
+
+  it('expands the type picker without issuing a write', () => {
     const { shell, onCreateView } = createShell();
     const host = mount(shell, shellState());
-    shell.openCreateForm();
-    host.replaceChildren(shell.render(shellState()));
+    host.querySelector<HTMLButtonElement>('[data-action="view-list"]')?.click();
 
-    const form = host.querySelector<HTMLFormElement>('.loom-view-create-form');
-    const name = form?.querySelector<HTMLInputElement>('input[name="view-name"]');
-    const type = form?.querySelector<HTMLSelectElement>('select[name="view-type"]');
-    expect(form).not.toBeNull();
-    expect(type?.querySelectorAll('option')).toHaveLength(2);
-    if (
-      form === null ||
-      name === null ||
-      name === undefined ||
-      type === null ||
-      type === undefined
-    ) {
-      throw new Error('Create form is missing fields.');
-    }
-    name.value = 'New Board';
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(onCreateView).toHaveBeenCalledTimes(1));
-    expect(onCreateView).toHaveBeenCalledWith({ type: 'grid', name: 'New Board' });
-    await vi.waitFor(() => expect(host.querySelector('.loom-view-create-form')).toBeNull());
+    const create = host.querySelector<HTMLButtonElement>('[data-action="create-view"]');
+    expect(create?.getAttribute('aria-expanded')).toBe('false');
+    create?.click();
+
+    const picker = host.querySelector('.loom-view-type-picker');
+    expect(picker).not.toBeNull();
+    expect(
+      picker?.querySelector<HTMLButtonElement>('[data-action="create-type:grid"]')?.textContent,
+    ).toContain('Grid View');
+    expect(
+      picker?.querySelector<HTMLButtonElement>('[data-action="create-type:map"]')?.textContent,
+    ).toContain('Map View');
+    expect(onCreateView).not.toHaveBeenCalled();
+
+    create?.click();
+    expect(host.querySelector('.loom-view-type-picker')).toBeNull();
+    expect(onCreateView).not.toHaveBeenCalled();
     host.remove();
   });
 
-  it('requires an active Location Field for a Map View and explains otherwise', async () => {
+  it('creates a Grid View immediately when the type is picked', async () => {
+    const { shell, onCreateView } = createShell();
+    const host = openPicker(shell, shellState());
+
+    host.querySelector<HTMLButtonElement>('[data-action="create-type:grid"]')?.click();
+    await vi.waitFor(() =>
+      expect(onCreateView).toHaveBeenCalledWith({ type: 'grid', name: 'Grid View' }),
+    );
+    await vi.waitFor(() => expect(host.querySelector('.loom-view-panel')).toBeNull());
+    host.remove();
+  });
+
+  it('auto-uses the only Location Field for a Map View', async () => {
     const onCreateView = vi.fn(async (): Promise<ViewCreateOutcome> => ({
       status: 'created',
       view: mapView('view_new'),
     }));
     const { shell } = createShell({ onCreateView });
-    const host = mount(shell, shellState({ fields: [] }));
-    shell.openCreateForm();
-    host.replaceChildren(shell.render(shellState({ fields: [] })));
+    const host = openPicker(shell, shellState());
 
-    const type = host.querySelector<HTMLSelectElement>('select[name="view-type"]');
-    const name = host.querySelector<HTMLInputElement>('input[name="view-name"]');
-    if (type === null || name === null) throw new Error('Form missing.');
-    name.value = 'Map';
-    type.value = 'map';
-    type.dispatchEvent(new Event('change', { bubbles: true }));
-
-    const submit = host.querySelector<HTMLButtonElement>(
-      '.loom-view-create-form button[type="submit"]',
-    );
-    expect(host.textContent).toContain('Location Field');
-    expect(submit?.disabled).toBe(true);
-    host.remove();
-
-    const withField = createShell({ onCreateView });
-    const second = mount(
-      withField.shell,
-      shellState({
-        fields: [
-          LOCATION_FIELD,
-          { ...LOCATION_FIELD, id: 'field_deleted', deletedAt: '2026-09-01T00:00:00Z' },
-        ],
+    host.querySelector<HTMLButtonElement>('[data-action="create-type:map"]')?.click();
+    await vi.waitFor(() =>
+      expect(onCreateView).toHaveBeenCalledWith({
+        type: 'map',
+        name: 'Map View',
+        locationFieldId: 'field_location',
       }),
     );
-    withField.shell.openCreateForm();
-    second.replaceChildren(
-      withField.shell.render(
-        shellState({
-          fields: [
-            LOCATION_FIELD,
-            { ...LOCATION_FIELD, id: 'field_deleted', deletedAt: '2026-09-01T00:00:00Z' },
-          ],
-        }),
-      ),
-    );
-    const form = second.querySelector<HTMLFormElement>('.loom-view-create-form');
-    const secondName = second.querySelector<HTMLInputElement>('input[name="view-name"]');
-    const secondType = second.querySelector<HTMLSelectElement>('select[name="view-type"]');
-    if (form === null || secondName === null || secondType === null) {
-      throw new Error('Form missing.');
-    }
-    secondName.value = 'Map';
-    secondType.value = 'map';
-    secondType.dispatchEvent(new Event('change', { bubbles: true }));
-    const locationSelect = second.querySelector<HTMLSelectElement>(
-      'select[name="view-location-field"]',
-    );
-    expect(locationSelect?.querySelectorAll('option')).toHaveLength(1);
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(onCreateView).toHaveBeenCalledTimes(1));
-    expect(onCreateView).toHaveBeenCalledWith({
-      type: 'map',
-      name: 'Map',
-      locationFieldId: 'field_location',
-    });
-    second.remove();
+    host.remove();
   });
 
-  it('validates the name and reports a failed create without closing the form', async () => {
+  it('lists Location Fields inline when a Map View has several candidates', async () => {
+    const onCreateView = vi.fn(async (): Promise<ViewCreateOutcome> => ({
+      status: 'created',
+      view: mapView('view_new'),
+    }));
+    const { shell } = createShell({ onCreateView });
+    const fields = [
+      LOCATION_FIELD,
+      { ...LOCATION_FIELD, id: 'field_geo', name: 'Geo' },
+      { ...LOCATION_FIELD, id: 'field_deleted', deletedAt: '2026-09-01T00:00:00Z' },
+    ];
+    const host = openPicker(shell, shellState({ fields }));
+
+    host.querySelector<HTMLButtonElement>('[data-action="create-type:map"]')?.click();
+    expect(onCreateView).not.toHaveBeenCalled();
+    const options = [...host.querySelectorAll<HTMLButtonElement>('.loom-view-field-option')];
+    expect(options.map((option) => option.textContent)).toEqual(['Location', 'Geo']);
+
+    options[1]?.click();
+    await vi.waitFor(() =>
+      expect(onCreateView).toHaveBeenCalledWith({
+        type: 'map',
+        name: 'Map View',
+        locationFieldId: 'field_geo',
+      }),
+    );
+    host.remove();
+  });
+
+  it('disables Map View and explains when no Location Field exists', async () => {
+    const { shell, onCreateView } = createShell();
+    const host = openPicker(shell, shellState({ fields: [] }));
+
+    const map = host.querySelector<HTMLButtonElement>('[data-action="create-type:map"]');
+    expect(map?.disabled).toBe(true);
+    expect(host.querySelector('.loom-view-type-note')?.textContent).toContain('Location Field');
+    map?.click();
+    expect(onCreateView).not.toHaveBeenCalled();
+    host.remove();
+  });
+
+  it('keeps the picker open with an inline error when the create fails', async () => {
     const onCreateView = vi.fn(async (): Promise<ViewCreateOutcome> => ({
       status: 'failed',
       kind: 'server',
-      error: { message: 'The Server rejected the View.' },
+      error: { message: 'nope' },
     }));
     const { shell } = createShell({ onCreateView });
-    const host = mount(shell, shellState());
-    shell.openCreateForm();
-    host.replaceChildren(shell.render(shellState()));
+    const host = openPicker(shell, shellState());
 
-    const form = host.querySelector<HTMLFormElement>('.loom-view-create-form');
-    const name = host.querySelector<HTMLInputElement>('input[name="view-name"]');
-    if (form === null || name === null) throw new Error('Form missing.');
-
-    name.value = '   ';
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await Promise.resolve();
-    expect(onCreateView).not.toHaveBeenCalled();
-    expect(host.querySelector('.loom-view-create-error')?.textContent).toContain('name');
-
-    name.value = 'Board';
-    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(onCreateView).toHaveBeenCalledTimes(1));
+    host.querySelector<HTMLButtonElement>('[data-action="create-type:grid"]')?.click();
     await vi.waitFor(() =>
-      expect(host.querySelector('.loom-view-create-error')?.textContent).toContain(
+      expect(host.querySelector('.loom-view-panel-error')?.textContent).toContain(
         'could not be created',
       ),
     );
-    expect(host.querySelector('.loom-view-create-form')).not.toBeNull();
+    expect(host.querySelector('.loom-view-type-picker')).not.toBeNull();
     host.remove();
   });
 
-  it('closes without any write when cancelled', async () => {
-    const { shell, onCreateView } = createShell();
+  it('collapses the field list, then the picker, then the panel on Escape', () => {
+    const { shell } = createShell();
+    const fields = [LOCATION_FIELD, { ...LOCATION_FIELD, id: 'field_geo', name: 'Geo' }];
+    const host = openPicker(shell, shellState({ fields }));
+    const root = host.querySelector<HTMLElement>('.loom-table-shell');
+    if (root === null) throw new Error('Shell missing.');
+    const esc = (): void => {
+      root.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    };
+
+    host.querySelector<HTMLButtonElement>('[data-action="create-type:map"]')?.click();
+    expect(host.querySelector('.loom-view-field-list')).not.toBeNull();
+    esc();
+    expect(host.querySelector('.loom-view-field-list')).toBeNull();
+    expect(host.querySelector('.loom-view-type-picker')).not.toBeNull();
+    esc();
+    expect(host.querySelector('.loom-view-type-picker')).toBeNull();
+    expect(host.querySelector('.loom-view-panel')).not.toBeNull();
+    esc();
+    expect(host.querySelector('.loom-view-panel')).toBeNull();
+    host.remove();
+  });
+
+  it('issues a Map View create immediately for a preset Location Field', async () => {
+    const onCreateView = vi.fn(async (): Promise<ViewCreateOutcome> => ({
+      status: 'created',
+      view: mapView('view_new'),
+    }));
+    const { shell } = createShell({ onCreateView });
     const host = mount(shell, shellState());
-    shell.openCreateForm();
-    host.replaceChildren(shell.render(shellState()));
-    host.querySelector<HTMLButtonElement>('.loom-view-create-form [data-action="cancel"]')?.click();
-    await vi.waitFor(() => expect(host.querySelector('.loom-view-create-form')).toBeNull());
-    expect(onCreateView).not.toHaveBeenCalled();
+
+    shell.createView({ type: 'map', locationFieldId: 'field_location' });
+    await vi.waitFor(() =>
+      expect(onCreateView).toHaveBeenCalledWith({
+        type: 'map',
+        name: 'Map View',
+        locationFieldId: 'field_location',
+      }),
+    );
     host.remove();
   });
 });
@@ -476,7 +514,7 @@ describe('TableShell View panel', () => {
   function rowMenu(host: HTMLElement, viewId: string): HTMLElement {
     const row = host.querySelector<HTMLElement>(`li[data-view-id="${viewId}"]`);
     row?.querySelector<HTMLButtonElement>('[data-action="view-more"]')?.click();
-    const menu = host.querySelector<HTMLElement>('.loom-context-menu');
+    const menu = document.querySelector<HTMLElement>('.loom-context-menu');
     if (menu === null) throw new Error('Row menu did not open.');
     return menu;
   }
@@ -787,6 +825,7 @@ describe('TableShell View panel', () => {
     const host = openPanel(shell, shellState());
 
     host.querySelector<HTMLButtonElement>('[data-action="create-view"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-action="create-type:grid"]')?.click();
     await vi.waitFor(() =>
       expect(onCreateView).toHaveBeenCalledWith({ type: 'grid', name: 'Grid View' }),
     );
@@ -804,6 +843,7 @@ describe('TableShell View panel', () => {
     );
 
     host.querySelector<HTMLButtonElement>('[data-action="create-view"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-action="create-type:grid"]')?.click();
     await vi.waitFor(() =>
       expect(onCreateView).toHaveBeenCalledWith({ type: 'grid', name: 'Grid View 3' }),
     );
@@ -820,6 +860,7 @@ describe('TableShell View panel', () => {
     const host = openPanel(shell, shellState());
 
     host.querySelector<HTMLButtonElement>('[data-action="create-view"]')?.click();
+    host.querySelector<HTMLButtonElement>('[data-action="create-type:grid"]')?.click();
     await vi.waitFor(() => expect(onCreateView).toHaveBeenCalledTimes(1));
     await vi.waitFor(() =>
       expect(host.querySelector('.loom-view-panel-error')?.textContent).toContain(
@@ -827,6 +868,42 @@ describe('TableShell View panel', () => {
       ),
     );
     expect(host.querySelector('.loom-view-panel')).not.toBeNull();
+    host.remove();
+  });
+
+  it('anchors the panel under the toggle and clamps it to the pane', () => {
+    const { shell } = panelShell();
+    const host = openPanel(shell, shellState());
+    const panel = host.querySelector<HTMLElement>('.loom-view-panel');
+    if (panel === null) throw new Error('Panel missing.');
+    // jsdom reports zero rects: the popover still lands at the pane inset.
+    expect(panel.style.insetInlineStart).toBe('4px');
+    expect(panel.style.top).toBe('4px');
+    expect(panel.style.maxHeight).toBe('96px');
+    host.remove();
+  });
+
+  it('flips above the trigger when the pane has no room below', () => {
+    const { shell } = panelShell();
+    const host = openPanel(shell, shellState());
+    const toggle = host.querySelector<HTMLElement>('[data-action="view-list"]');
+    const pane = host;
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(120);
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(160);
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      const base = { width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) };
+      if (this === pane) return { ...base, top: 0, left: 0, right: 600, bottom: 240 };
+      if (this === toggle) return { ...base, top: 200, bottom: 224, left: 100, right: 200 };
+      return { ...base, top: 0, left: 0, right: 600, bottom: 60 };
+    });
+    shell.restoreFocus();
+    const panel = host.querySelector<HTMLElement>('.loom-view-panel');
+    // Flipped above: 200 - min(120, 192) - 4 = 76; height capped to 192.
+    expect(panel?.style.top).toBe('76px');
+    expect(panel?.style.maxHeight).toBe('192px');
+    vi.restoreAllMocks();
     host.remove();
   });
 });
@@ -865,7 +942,7 @@ describe('TableShell tab context menu', () => {
     const host = mount(shell, shellState());
 
     rightClickTab(host);
-    const menu = host.querySelector<HTMLElement>('.loom-context-menu');
+    const menu = document.querySelector<HTMLElement>('.loom-context-menu');
     expect(menu).not.toBeNull();
     const labels = [...(menu?.querySelectorAll('.loom-context-menu-item') ?? [])].map(
       (item) => item.textContent,
@@ -883,7 +960,7 @@ describe('TableShell tab context menu', () => {
     const host = mount(shell, shellState());
 
     rightClickTab(host, 1);
-    const item = [...host.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].find(
+    const item = [...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].find(
       (entry) => entry.textContent === 'Set as default',
     );
     item?.click();
@@ -899,7 +976,7 @@ describe('TableShell tab context menu', () => {
     );
 
     rightClickTab(host);
-    const item = [...host.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].find(
+    const item = [...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].find(
       (entry) => entry.textContent === 'Set as default',
     );
     expect(item?.disabled).toBe(true);
@@ -915,7 +992,7 @@ describe('TableShell tab context menu', () => {
     const host = mount(shell, shellState());
 
     rightClickTab(host);
-    const item = [...host.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].find(
+    const item = [...document.querySelectorAll<HTMLButtonElement>('.loom-context-menu-item')].find(
       (entry) => entry.textContent === 'Rename',
     );
     item?.click();

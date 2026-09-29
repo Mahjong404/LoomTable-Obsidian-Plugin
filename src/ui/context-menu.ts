@@ -17,17 +17,29 @@ export interface ContextMenuOptions {
   readonly items: readonly ContextMenuEntry[];
   readonly x: number;
   readonly y: number;
+  /** 'end' treats x as the menu's trailing edge (right-aligned triggers). */
+  readonly align?: 'start' | 'end';
+  /**
+   * Element used to find the owning pane (.view-content) for boundary clamping
+   * and to close the menu when its content scrolls.
+   */
   readonly host: HTMLElement;
+  /** Invoking control; the menu flips above it when needed and Escape restores focus. */
+  readonly trigger?: HTMLElement;
   readonly label: string;
 }
 
+const MENU_MARGIN = 4;
+
 /**
- * Opens a small right-click menu positioned at pointer coordinates inside a
- * positioned host. Closes on item activation, Escape, outside pointerdown, or
- * host scroll. Rendered with DOM so it inherits the plugin token theme.
+ * Opens a small menu positioned at pointer coordinates. Mounted on
+ * document.body with position:fixed so pane overflow cannot clip it; the
+ * visible boundary is the owning .view-content rect (viewport fallback).
+ * Closes on item activation, Escape, outside pointerdown, or host scroll.
  */
 export function openContextMenu(options: ContextMenuOptions): () => void {
-  const menu = document.createElement('div');
+  const ownerDocument = options.host.ownerDocument;
+  const menu = ownerDocument.createElement('div');
   menu.className = 'loom-context-menu';
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', options.label);
@@ -35,13 +47,13 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
   const buttons: HTMLButtonElement[] = [];
   for (const entry of options.items) {
     if (entry === 'separator') {
-      const divider = document.createElement('div');
+      const divider = ownerDocument.createElement('div');
       divider.className = 'loom-context-menu-separator';
       divider.setAttribute('aria-hidden', 'true');
       menu.append(divider);
       continue;
     }
-    const item = document.createElement('button');
+    const item = ownerDocument.createElement('button');
     item.type = 'button';
     item.className = 'loom-context-menu-item clickable-icon';
     item.setAttribute('role', 'menuitem');
@@ -49,7 +61,7 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     if (entry.dataAction !== undefined) item.dataset.action = entry.dataAction;
     item.disabled = entry.disabled === true;
     if (entry.icon !== undefined) item.append(createUiIcon(entry.icon));
-    item.append(createTextSpan(entry.label));
+    item.append(createTextSpan(ownerDocument, entry.label));
     if (entry.current === true) {
       item.setAttribute('aria-current', 'true');
       const check = createUiIcon('menu-check');
@@ -65,11 +77,19 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     menu.append(item);
   }
 
+  const restoreFocus = (): void => {
+    const trigger = options.trigger;
+    if (trigger !== undefined && trigger.isConnected) trigger.focus();
+  };
+  const observer = new MutationObserver(() => {
+    if (!options.host.isConnected) close();
+  });
   const close = (): void => {
+    observer.disconnect();
     menu.remove();
-    options.host.removeEventListener('scroll', onScroll);
-    document.removeEventListener('pointerdown', onPointerDown, true);
-    document.removeEventListener('keydown', onKeyDown, true);
+    options.host.removeEventListener('scroll', onScroll, true);
+    ownerDocument.removeEventListener('pointerdown', onPointerDown, true);
+    ownerDocument.removeEventListener('keydown', onKeyDown, true);
   };
   const onScroll = (): void => close();
   const onPointerDown = (event: PointerEvent): void => {
@@ -79,38 +99,63 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     if (event.key === 'Escape') {
       event.preventDefault();
       close();
+      restoreFocus();
       return;
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
     event.preventDefault();
     const enabled = buttons.filter((button) => !button.disabled);
-    const current = enabled.indexOf(document.activeElement as HTMLButtonElement);
+    const current = enabled.indexOf(ownerDocument.activeElement as HTMLButtonElement);
     const step = event.key === 'ArrowDown' ? 1 : -1;
     const next = enabled[(current + step + enabled.length) % enabled.length];
     next?.focus();
   };
 
-  const hostRect = options.host.getBoundingClientRect();
+  const pane = options.host.closest('.view-content');
+  const bounds = pane?.getBoundingClientRect() ?? {
+    top: 0,
+    left: 0,
+    right: ownerDocument.documentElement.clientWidth,
+    bottom: ownerDocument.documentElement.clientHeight,
+  };
   menu.classList.add('loom-context-menu--measuring');
-  options.host.append(menu);
+  ownerDocument.body.append(menu);
   const menuRect = menu.getBoundingClientRect();
-  const offsetX = options.x - hostRect.left + options.host.scrollLeft;
-  const offsetY = options.y - hostRect.top + options.host.scrollTop;
-  const clampedX = Math.max(0, Math.min(offsetX, options.host.scrollWidth - menuRect.width - 4));
-  const clampedY = Math.max(0, Math.min(offsetY, options.host.scrollHeight - menuRect.height - 4));
-  menu.style.left = `${clampedX}px`;
-  menu.style.top = `${clampedY}px`;
+
+  const maxHeight = Math.max(bounds.bottom - bounds.top - MENU_MARGIN * 2, 0);
+  menu.style.maxHeight = `${maxHeight}px`;
+
+  const maxX = bounds.right - MENU_MARGIN - menuRect.width;
+  const rawX = options.align === 'end' ? options.x - menuRect.width : options.x;
+  const x = Math.min(
+    Math.max(rawX, bounds.left + MENU_MARGIN),
+    Math.max(maxX, bounds.left + MENU_MARGIN),
+  );
+
+  let y = options.y;
+  if (y + menuRect.height > bounds.bottom - MENU_MARGIN) {
+    const anchorTop = options.trigger?.getBoundingClientRect().top ?? options.y;
+    const flipped = anchorTop - MENU_MARGIN - menuRect.height;
+    y =
+      flipped >= bounds.top + MENU_MARGIN
+        ? flipped
+        : Math.max(bounds.top + MENU_MARGIN, bounds.bottom - MENU_MARGIN - menuRect.height);
+  }
+
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
   menu.classList.remove('loom-context-menu--measuring');
 
-  options.host.addEventListener('scroll', onScroll);
-  document.addEventListener('pointerdown', onPointerDown, true);
-  document.addEventListener('keydown', onKeyDown, true);
+  options.host.addEventListener('scroll', onScroll, true);
+  observer.observe(ownerDocument.documentElement, { childList: true, subtree: true });
+  ownerDocument.addEventListener('pointerdown', onPointerDown, true);
+  ownerDocument.addEventListener('keydown', onKeyDown, true);
   buttons.find((button) => !button.disabled)?.focus();
   return close;
 }
 
-function createTextSpan(text: string): HTMLSpanElement {
-  const span = document.createElement('span');
+function createTextSpan(ownerDocument: Document, text: string): HTMLSpanElement {
+  const span = ownerDocument.createElement('span');
   span.className = 'loom-context-menu-label';
   span.textContent = text;
   return span;

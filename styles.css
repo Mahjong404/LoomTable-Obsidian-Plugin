@@ -508,29 +508,69 @@
   min-width: 0;
 }
 
-.loom-shell-context-upper {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+/* Context levels render as a switchable breadcrumb: muted upper levels, a
+   '/' separator, and the current Table at normal weight with a table icon. */
+.loom-shell-context-sep {
+  flex: 0 0 auto;
+  color: var(--loom-text-faint);
+  user-select: none;
+}
+
+.loom-shell-context .loom-grid-select {
   min-width: 0;
-  border: 1px solid var(--loom-grid-line);
-  border-radius: var(--loom-radius-md);
-  background: var(--loom-bg-primary);
+  min-height: var(--loom-control-compact-height);
+}
+
+.loom-shell-context .loom-grid-select-field {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.loom-shell-context .loom-grid-select select {
+  box-sizing: border-box;
+  height: var(--loom-control-compact-height);
+  min-height: var(--loom-control-compact-height);
+  max-width: 10rem;
+  padding-block: 0;
   padding-inline: var(--loom-space-2);
-}
-
-.loom-shell-context-upper .loom-grid-select + .loom-grid-select::before {
-  content: '/';
-  color: var(--loom-text-muted);
-  margin-inline: var(--loom-space-1);
-}
-
-.loom-shell-context-upper .loom-grid-select select {
-  border: none;
+  padding-inline-end: 1.375rem;
+  border: 1px solid transparent;
+  border-radius: var(--loom-radius-md);
   background: transparent;
   box-shadow: none;
-  padding-inline: 0;
-  max-width: 10rem;
+  color: var(--loom-text-normal);
+  font-size: var(--loom-font-ui-smaller);
+}
+
+.loom-shell-context .loom-grid-select-muted select {
+  color: var(--loom-text-muted);
+}
+
+.loom-shell-context .loom-grid-select select:hover:not(:disabled) {
+  background: var(--loom-bg-hover);
+}
+
+.loom-shell-context .loom-grid-select select:focus-visible {
+  outline: 2px solid var(--loom-focus);
+  outline-offset: -2px;
+  background: var(--loom-bg-hover);
+}
+
+.loom-grid-select-icon {
+  margin-inline-end: 0;
+  color: var(--loom-text-muted);
+}
+
+.loom-grid-select-caret {
+  position: absolute;
+  inset-inline-end: 0.375rem;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin: 0;
+  color: var(--loom-text-muted);
+  pointer-events: none;
 }
 
 .loom-grid-select-label {
@@ -616,62 +656,20 @@
   font-size: var(--loom-font-ui-smaller);
 }
 
-.loom-view-create-form {
-  position: absolute;
-  top: calc(100% + var(--loom-space-1));
-  inset-inline-end: 0;
-  z-index: 50;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  gap: var(--loom-space-2);
-  width: max-content;
-  max-width: min(40rem, 92vw);
-  max-height: 70vh;
-  padding: var(--loom-space-2);
-  overflow: auto;
-  border: 1px solid var(--loom-border);
-  border-radius: var(--loom-radius-md);
-  background: var(--loom-bg-primary);
-  box-shadow: var(--loom-panel-shadow);
-}
-
-.loom-view-create-field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--loom-space-1);
-  color: var(--loom-text-muted);
-  font-size: var(--loom-font-ui-smaller);
-  min-width: 8rem;
-}
-
-.loom-view-create-error {
-  flex: 1 1 100%;
-  margin: 0;
-  color: var(--loom-text-error);
-  font-size: var(--loom-font-ui-smaller);
-}
-
-.loom-view-create-form > p {
-  flex: 1 1 100%;
-  margin: 0;
-  color: var(--loom-text-muted);
-  font-size: var(--loom-font-ui-smaller);
-}
-
 .loom-view-create-actions {
   display: flex;
   gap: var(--loom-space-2);
 }
 
+/* Lightweight popover anchored to the "All Views" trigger via JS (left/top). */
 .loom-view-panel {
   position: absolute;
-  top: calc(100% + var(--loom-space-1));
-  inset-inline-end: 0;
+  top: 0;
+  inset-inline-start: 0;
   z-index: 50;
   display: flex;
   flex-direction: column;
-  min-width: min(16rem, 92vw);
+  width: 15rem;
   max-width: min(24rem, 92vw);
   max-height: 70vh;
   padding: var(--loom-space-1);
@@ -679,7 +677,7 @@
   border: 1px solid var(--loom-border);
   border-radius: var(--loom-radius-md);
   background: var(--loom-bg-primary);
-  box-shadow: var(--loom-panel-shadow);
+  box-shadow: var(--loom-map-control-shadow, var(--shadow-s));
 }
 
 .loom-view-panel-list {
@@ -703,29 +701,42 @@
   opacity: 0.7;
 }
 
-.loom-view-panel-item {
+/* The .loom-table-shell prefix keeps these menu rows above the host
+   chrome rule for unclassed buttons (background/height/justify). */
+.loom-table-shell .loom-view-panel-item {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--loom-space-2);
   flex: 1 1 auto;
   min-width: 0;
+  height: auto;
   min-height: var(--loom-control-compact-height);
+  margin: 0;
   padding: var(--loom-space-1) var(--loom-space-2);
   border: none;
   border-radius: var(--loom-radius-sm);
   background: transparent;
+  box-shadow: none;
   color: var(--loom-text-normal);
   font: inherit;
   text-align: start;
   cursor: pointer;
 }
 
-.loom-view-panel-item:hover:not(:disabled),
-.loom-view-panel-item:focus-visible {
+.loom-table-shell .loom-view-panel-item:hover:not(:disabled),
+.loom-table-shell .loom-view-panel-item:focus-visible {
   background: var(--loom-bg-hover);
 }
 
-.loom-view-panel-item.is-current {
+.loom-view-panel-item .loom-ui-icon,
+.loom-view-panel-create .loom-ui-icon,
+.loom-view-type-option .loom-ui-icon {
+  margin-inline-end: 0;
+}
+
+.loom-table-shell .loom-view-panel-item.is-current {
+  background: transparent;
   color: var(--loom-accent);
 }
 
@@ -737,9 +748,15 @@
   white-space: nowrap;
 }
 
-.loom-view-panel-more {
+.loom-table-shell .loom-view-panel-more {
   flex: 0 0 auto;
+  width: var(--loom-control-compact-height);
+  height: auto;
   min-height: var(--loom-control-compact-height);
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .loom-view-panel-divider {
@@ -755,12 +772,16 @@
   gap: var(--loom-space-2);
 }
 
-.loom-view-panel-create {
+.loom-table-shell .loom-view-panel-create {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-start;
   gap: var(--loom-space-2);
   flex: 1 1 auto;
+  width: 100%;
+  height: auto;
   min-height: var(--loom-control-compact-height);
+  margin: 0;
   padding: var(--loom-space-1) var(--loom-space-2);
   border: none;
   border-radius: var(--loom-radius-sm);
@@ -769,11 +790,67 @@
   color: var(--loom-text-normal);
   font: inherit;
   text-align: start;
+  cursor: pointer;
 }
 
-.loom-view-panel-create:hover:not(:disabled),
-.loom-view-panel-create:focus-visible {
+.loom-table-shell .loom-view-panel-create:hover:not(:disabled),
+.loom-table-shell .loom-view-panel-create:focus-visible {
   background: var(--loom-bg-hover);
+}
+
+.loom-view-type-picker {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-block-start: var(--loom-space-1);
+  border-block-start: 1px solid var(--loom-grid-line);
+}
+
+.loom-table-shell .loom-view-type-option,
+.loom-table-shell .loom-view-field-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--loom-space-2);
+  width: 100%;
+  height: auto;
+  min-height: var(--loom-control-compact-height);
+  margin: 0;
+  padding: var(--loom-space-1) var(--loom-space-2);
+  border: none;
+  border-radius: var(--loom-radius-sm);
+  background: transparent;
+  box-shadow: none;
+  color: var(--loom-text-normal);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.loom-table-shell .loom-view-type-option:hover:not(:disabled),
+.loom-table-shell .loom-view-type-option:focus-visible,
+.loom-table-shell .loom-view-field-option:hover:not(:disabled),
+.loom-table-shell .loom-view-field-option:focus-visible {
+  background: var(--loom-bg-hover);
+}
+
+.loom-view-field-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.loom-table-shell .loom-view-field-option {
+  padding-inline-start: calc(var(--loom-space-2) + 0.875rem + var(--loom-space-2));
+  color: var(--loom-text-muted);
+}
+
+.loom-view-type-note {
+  margin: 0;
+  padding: var(--loom-space-1) var(--loom-space-2);
+  color: var(--loom-text-muted);
+  font-size: var(--loom-font-ui-smaller);
 }
 
 .loom-view-inline-edit {
@@ -2640,6 +2717,10 @@
     max-width: none;
   }
 
+  .loom-grid-select-field {
+    width: 100%;
+  }
+
   .loom-detail-host,
   .loom-map-details:not(:empty) {
     width: 100%;
@@ -2664,18 +2745,6 @@
 
   .loom-view-tab {
     flex: 0 0 auto;
-  }
-
-  .loom-view-create-form {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .loom-view-create-field,
-  .loom-view-create-field input,
-  .loom-view-create-field select {
-    width: 100%;
-    max-width: none;
   }
 
   .loom-view-create-actions .loom-button {
@@ -2796,10 +2865,11 @@
 }
 
 .loom-context-menu {
-  position: absolute;
-  z-index: 40;
+  position: fixed;
+  z-index: 60;
   min-width: 10rem;
   padding: var(--loom-space-1);
+  overflow-y: auto;
   border: 1px solid var(--loom-grid-line-strong);
   border-radius: var(--loom-radius-md);
   background: var(--loom-bg-primary);
@@ -3605,9 +3675,29 @@
     max-width: 100%;
   }
 
-  .loom-shell-context:not(.loom-shell-context-open) .loom-shell-context-upper,
-  .loom-shell-context:not(.loom-shell-context-open) > .loom-grid-select {
+  .loom-shell-context:not(.loom-shell-context-open) .loom-grid-select,
+  .loom-shell-context:not(.loom-shell-context-open) .loom-shell-context-sep {
     display: none;
+  }
+
+  .loom-shell-context-open {
+    flex-wrap: wrap;
+  }
+
+  .loom-shell-context-open .loom-shell-context-sep {
+    display: none;
+  }
+
+  .loom-shell-context-open .loom-grid-select {
+    align-items: flex-start;
+    flex: 1 1 100%;
+    flex-direction: column;
+  }
+
+  .loom-shell-context-open .loom-grid-select-field,
+  .loom-shell-context-open .loom-grid-select select {
+    width: 100%;
+    max-width: none;
   }
 
   .loom-shell-context-open .loom-grid-select-label {
