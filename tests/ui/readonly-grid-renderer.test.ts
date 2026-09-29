@@ -3721,8 +3721,11 @@ describe('search highlight and footer', () => {
     });
     renderer.render(createState(3));
 
+    // D-3: the Toolbar is the single canonical row count; the Σ filler stays
+    // empty until a multi-selection contributes a real selection summary.
     const count = container.querySelector<HTMLElement>('.loom-grid-aggregate-count');
-    expect(count?.textContent).toContain('3');
+    expect(count?.textContent).toBe('');
+    expect(container.querySelector('.loom-grid-count')?.textContent).toContain('3');
     expect(container.querySelector('.loom-grid-footer')).toBeNull();
     container.remove();
   });
@@ -5514,6 +5517,173 @@ describe('Grid draft create typed error state (P1.6 Slice C)', () => {
     });
     expect(container.querySelector('.loom-grid-draft-row')).toBeNull();
     expect(container.querySelector('.loom-grid-draft-error')).toBeNull();
+    container.remove();
+  });
+});
+
+describe('Status panel tabs', () => {
+  const openPanel = (container: HTMLElement): void => {
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-status"]')?.click();
+  };
+  const statusTabs = (container: HTMLElement): HTMLButtonElement[] => [
+    ...container.querySelectorAll<HTMLButtonElement>('.loom-status-mode'),
+  ];
+
+  it('uses roving tabindex so only the selected status tab joins the Tab order', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(1));
+    openPanel(container);
+
+    const tabs = statusTabs(container);
+    expect(tabs).toHaveLength(3);
+    expect(tabs.map((tab) => tab.getAttribute('role'))).toEqual(['tab', 'tab', 'tab']);
+    expect(
+      tabs.map((tab) => ({
+        mode: tab.dataset.mode,
+        selected: tab.getAttribute('aria-selected'),
+        tabIndex: tab.tabIndex,
+      })),
+    ).toEqual([
+      { mode: 'ops', selected: 'true', tabIndex: 0 },
+      { mode: 'history', selected: 'false', tabIndex: -1 },
+      { mode: 'deleted', selected: 'false', tabIndex: -1 },
+    ]);
+
+    tabs[1]?.focus();
+    tabs[1]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    const after = statusTabs(container);
+    expect(after[2]?.getAttribute('aria-selected')).toBe('true');
+    expect(after[2]?.tabIndex).toBe(0);
+    expect(after[0]?.tabIndex).toBe(-1);
+    expect(after[1]?.tabIndex).toBe(-1);
+    // F-4: DOM focus stays on the selected status tab — never back on a cell.
+    expect(document.activeElement).toBe(after[2]);
+    expect(document.activeElement?.classList.contains('loom-grid-cell')).toBe(false);
+    container.remove();
+  });
+
+  it('moves selection with arrows and keeps focus on the activated tab', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(1));
+    openPanel(container);
+
+    const move = (key: string): void => {
+      const active = document.activeElement;
+      active?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    };
+    statusTabs(container)[0]?.focus();
+    move('ArrowRight');
+    expect((document.activeElement as HTMLElement | null)?.dataset.mode).toBe('history');
+    move('ArrowRight');
+    expect((document.activeElement as HTMLElement | null)?.dataset.mode).toBe('deleted');
+    move('ArrowRight');
+    expect((document.activeElement as HTMLElement | null)?.dataset.mode).toBe('ops');
+    move('ArrowLeft');
+    expect((document.activeElement as HTMLElement | null)?.dataset.mode).toBe('deleted');
+    move('Home');
+    expect((document.activeElement as HTMLElement | null)?.dataset.mode).toBe('ops');
+    container.remove();
+  });
+
+  it('keeps DOM focus on the status tab after a mouse switch', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(1));
+    openPanel(container);
+
+    container.querySelector<HTMLButtonElement>('.loom-status-mode[data-mode="history"]')?.click();
+    const active = document.activeElement;
+    expect(active?.classList.contains('loom-status-mode')).toBe(true);
+    expect((active as HTMLElement | null)?.dataset.mode).toBe('history');
+    container.remove();
+  });
+
+  it('links tabs to their tabpanel through aria-controls and aria-labelledby', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(1));
+    openPanel(container);
+
+    const selected = container.querySelector<HTMLButtonElement>(
+      '.loom-status-mode[aria-selected="true"]',
+    );
+    const panel = container.querySelector<HTMLElement>('.loom-status-panel-body');
+    expect(panel?.getAttribute('role')).toBe('tabpanel');
+    expect(selected?.getAttribute('aria-controls')).toBe(panel?.id);
+    expect(panel?.getAttribute('aria-labelledby')).toBe(selected?.id);
+    container.remove();
+  });
+});
+
+describe('F-5 edit-entry diagnostics', () => {
+  afterEach(() => {
+    delete (globalThis as { __loomTableEditTrace?: string[] }).__loomTableEditTrace;
+  });
+
+  it('records enter-cell and begin-open when Enter starts an edit', () => {
+    (globalThis as { __loomTableEditTrace?: string[] }).__loomTableEditTrace = [];
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(1));
+
+    const cell = container.querySelector<HTMLElement>('.loom-grid-editable');
+    cell?.focus();
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    expect(container.querySelector('.loom-grid-editor')).not.toBeNull();
+    const trace = (globalThis as { __loomTableEditTrace?: string[] }).__loomTableEditTrace ?? [];
+    expect(trace.some((entry) => entry.includes('enter-cell'))).toBe(true);
+    expect(trace.some((entry) => entry.includes('begin-open'))).toBe(true);
+    container.remove();
+  });
+
+  it('flags Enter falling through to Record-open while a save is in flight', () => {
+    (globalThis as { __loomTableEditTrace?: string[] }).__loomTableEditTrace = [];
+    const container = document.createElement('div');
+    document.body.append(container);
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(1, { editStatuses: { record_01: 'queued' } }));
+
+    const cell = container.querySelector<HTMLElement>('.loom-grid-cell');
+    cell?.focus();
+    cell?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+    // The F-5 surface: a queued save makes Enter open the Record instead of
+    // editing — the trace records the non-editable path for diagnosis.
+    expect(container.querySelector('.loom-grid-editor')).toBeNull();
+    expect(callbacks.onRecordOpen).toHaveBeenCalled();
+    const trace = (globalThis as { __loomTableEditTrace?: string[] }).__loomTableEditTrace ?? [];
+    expect(
+      trace.some((entry) => entry.includes('enter-cell') && entry.includes('editable=false')),
+    ).toBe(true);
     container.remove();
   });
 });

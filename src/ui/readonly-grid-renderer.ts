@@ -190,6 +190,22 @@ const SERVER_HISTORY_FILTERS: readonly ('all' | ChangeKind)[] = [
 
 const DRAFT_RECORD_ID = 'loom:draft-create';
 
+// Unique id base for status tab/tabpanel linkage (aria-controls/labelledby)
+// so multiple renderer instances in one document never collide.
+let statusPanelSeq = 0;
+
+/**
+ * F-5 diagnostics — opt-in ring buffer. Set `window.__loomTableEditTrace = []`
+ * in DevTools to record Enter/edit-entry lifecycle events; undefined means
+ * the instrumentation is fully off with zero production cost.
+ */
+function traceEditEntry(event: string, detail = ''): void {
+  const buffer = (globalThis as { __loomTableEditTrace?: unknown }).__loomTableEditTrace;
+  if (!Array.isArray(buffer)) return;
+  buffer.push(`${new Date().toISOString()} ${event}${detail === '' ? '' : ` ${detail}`}`);
+  if (buffer.length > 200) buffer.splice(0, buffer.length - 200);
+}
+
 function formatChangeTime(at: string): string {
   const date = new Date(at);
   if (Number.isNaN(date.getTime())) return '';
@@ -618,6 +634,10 @@ export class ReadonlyGridRenderer {
     } else if (this.#restorePendingCreateFocus()) {
       return;
     } else if (this.#restoreFailedEditDraft(state)) {
+      return;
+    } else if (this.#restoreStatusTabFocus(preActive)) {
+      // A status-mode tab destroyed by this render keeps DOM focus on its
+      // replacement — the Grid must not pull focus back to the Active Cell.
       return;
     } else if (blurredByMove && preActive !== null && !this.#suppressActiveFocusOnce) {
       // Reparenting the stable wrapper into the new shell can blur a focused
@@ -1350,24 +1370,54 @@ export class ReadonlyGridRenderer {
       ['history', 'record.history.title', 'tool-history'],
       ['deleted', 'record.recycle.title', 'tool-trash'],
     ] as const;
+    const panelId = `loom-status-panel-${statusPanelSeq++}`;
+    const tabId = (mode: string): string => `${panelId}-tab-${mode}`;
+    const selectMode = (mode: (typeof modeDefs)[number][0]): void => {
+      this.#statusPanelMode = mode;
+      if (mode === 'history' && this.#lastState?.serverHistoryStatus === 'idle') {
+        void this.#callbacks.onLoadServerHistory?.();
+      }
+      this.#rerenderSelf();
+      // The tab was rebuilt by the re-render; keep DOM focus on the newly
+      // selected tab instead of letting the restore chain land on the Grid.
+      this.#container.querySelector<HTMLElement>(`.loom-status-mode[data-mode="${mode}"]`)?.focus();
+    };
     for (const [mode, key, icon] of modeDefs) {
       const button = createElement('button', 'loom-status-mode loom-action-icon clickable-icon');
       button.type = 'button';
       button.setAttribute('role', 'tab');
+      button.id = tabId(mode);
       button.setAttribute('aria-selected', this.#statusPanelMode === mode ? 'true' : 'false');
+      button.setAttribute('aria-controls', `${panelId}-panel`);
+      // Roving tabindex: only the selected status tab joins the Tab order.
+      button.tabIndex = this.#statusPanelMode === mode ? 0 : -1;
       button.dataset.mode = mode;
       const label = this.#translate(key);
       button.setAttribute('aria-label', label);
       button.append(createUiIcon(icon));
-      button.addEventListener('click', () => {
-        this.#statusPanelMode = mode;
-        if (mode === 'history' && this.#lastState?.serverHistoryStatus === 'idle') {
-          void this.#callbacks.onLoadServerHistory?.();
-        }
-        this.#rerenderSelf();
-      });
+      button.addEventListener('click', () => selectMode(mode));
       modes.append(button);
     }
+    modes.addEventListener('keydown', (event) => {
+      const order = modeDefs.map(([mode]) => mode);
+      const index = order.indexOf(this.#statusPanelMode);
+      let next = -1;
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+        next = (index - 1 + order.length) % order.length;
+      } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+        next = (index + 1) % order.length;
+      } else if (event.key === 'Home') {
+        next = 0;
+      } else if (event.key === 'End') {
+        next = order.length - 1;
+      } else {
+        return;
+      }
+      event.preventDefault();
+      const mode = order[next];
+      if (mode === undefined) return;
+      selectMode(mode);
+    });
     const actions = createElement('div', 'loom-status-panel-actions');
     actions.append(modes);
     if (this.#callbacks.onRefresh !== undefined) {
@@ -1384,12 +1434,18 @@ export class ReadonlyGridRenderer {
     }
     header.append(actions);
     host.append(header);
+    const panelBody = createElement('div', 'loom-status-panel-body');
+    panelBody.setAttribute('role', 'tabpanel');
+    panelBody.id = `${panelId}-panel`;
+    panelBody.setAttribute('aria-labelledby', tabId(this.#statusPanelMode));
     if (this.#statusPanelMode === 'deleted') {
-      host.append(this.#renderDeletedSection(state));
+      panelBody.append(this.#renderDeletedSection(state));
+      host.append(panelBody);
       return host;
     }
     if (this.#statusPanelMode === 'history') {
-      host.append(this.#renderHistorySection(state));
+      panelBody.append(this.#renderHistorySection(state));
+      host.append(panelBody);
       return host;
     }
 
@@ -1415,7 +1471,7 @@ export class ReadonlyGridRenderer {
       });
       filters.append(chip);
     }
-    host.append(filters);
+    panelBody.append(filters);
 
     const entries = state.historyEntries
       .map((entry, index) => ({ entry, index }))
@@ -1423,7 +1479,7 @@ export class ReadonlyGridRenderer {
     if (entries.length === 0) {
       const empty = createTextElement('p', this.#translate('record.changes.empty'));
       empty.className = 'loom-change-empty';
-      host.append(empty);
+      panelBody.append(empty);
     } else {
       const list = createElement('ul', 'loom-change-list');
       for (const { entry, index } of entries) {
@@ -1476,8 +1532,9 @@ export class ReadonlyGridRenderer {
         }
         list.append(item);
       }
-      host.append(list);
+      panelBody.append(list);
     }
+    host.append(panelBody);
     return host;
   }
 
@@ -2192,8 +2249,9 @@ export class ReadonlyGridRenderer {
     for (const field of fields) {
       row.append(this.#renderAggregateCell(state, field));
     }
+    // D-3: the Toolbar owns the base row count; this filler only carries a
+    // live selection summary written by #applySelection.
     const filler = createElement('div', 'loom-grid-aggregate-cell loom-grid-aggregate-count');
-    filler.textContent = this.#rowsCountText(state);
     row.append(filler);
     return row;
   }
@@ -2765,6 +2823,10 @@ export class ReadonlyGridRenderer {
         }
         if (event.key === 'Enter') {
           event.preventDefault();
+          traceEditEntry(
+            'enter-cell',
+            `record=${record.id} field=${field.id} editable=${isEditableField(field) && canEdit}`,
+          );
           if (isEditableField(field) && canEdit) {
             this.#beginCellEdit(cell, record, field, rowIndex, fieldIndex);
           } else {
@@ -3727,9 +3789,17 @@ export class ReadonlyGridRenderer {
       this.#virtualGrid?.state.editStatuses[record.id] === 'queued' ||
       this.#virtualGrid?.state.editStatuses[record.id] === 'saving'
     ) {
+      traceEditEntry(
+        'begin-skip',
+        `record=${record.id} field=${field.id} status=${this.#virtualGrid?.state.status ?? 'none'} edit=${this.#virtualGrid?.state.editStatuses[record.id] ?? 'clean'}`,
+      );
       return;
     }
-    if (cell.querySelector('input, textarea, select') !== null) return;
+    if (cell.querySelector('input, textarea, select') !== null) {
+      traceEditEntry('begin-skip', `record=${record.id} field=${field.id} editor-present`);
+      return;
+    }
+    traceEditEntry('begin-open', `record=${record.id} field=${field.id}`);
 
     this.#dismissedEditDraftKey = null;
     if (record.id !== DRAFT_RECORD_ID) {
@@ -4678,14 +4748,16 @@ export class ReadonlyGridRenderer {
       });
     const aggregateCount = this.#container.querySelector<HTMLElement>('.loom-grid-aggregate-count');
     if (aggregateCount !== null) {
-      const base = this.#rowsCountText(grid.state);
       const rowCount = rows?.size ?? 0;
       aggregateCount.textContent =
         rowCount > 1
-          ? `${base} · ${this.#translate('grid.selectedRows').replace('{count}', String(rowCount))}`
+          ? this.#translate('grid.selectedRows').replace('{count}', String(rowCount))
           : rect !== null && (rect.bottom - rect.top + 1) * (rect.right - rect.left + 1) > 1
-            ? `${base} · ${this.#translate('grid.selectedCount').replace('{count}', String((rect.bottom - rect.top + 1) * (rect.right - rect.left + 1)))}`
-            : base;
+            ? this.#translate('grid.selectedCount').replace(
+                '{count}',
+                String((rect.bottom - rect.top + 1) * (rect.right - rect.left + 1)),
+              )
+            : '';
     }
   }
 
@@ -4953,6 +5025,23 @@ export class ReadonlyGridRenderer {
       if (pending) element.setAttribute('aria-busy', 'true');
       else element.removeAttribute('aria-busy');
     }
+  }
+
+  /**
+   * Status-mode tabs are rebuilt by every render; when the focused node was
+   * one of them, hand focus to its same-mode successor. Returns false when
+   * the pre-render focus was not a status tab or the panel is gone.
+   */
+  #restoreStatusTabFocus(preActive: HTMLElement | null): boolean {
+    if (preActive === null || !preActive.classList.contains('loom-status-mode')) return false;
+    const mode = preActive.dataset.mode;
+    if (mode === undefined) return false;
+    const next = this.#container.querySelector<HTMLElement>(
+      `.loom-status-mode[data-mode="${mode}"]`,
+    );
+    if (next === null) return false;
+    next.focus();
+    return true;
   }
 
   #restoreFocusedAction(): void {
