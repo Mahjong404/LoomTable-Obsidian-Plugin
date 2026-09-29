@@ -22,6 +22,7 @@ export type LoomTableClientErrorKind =
   | 'invalid-response'
   | 'network'
   | 'not-found'
+  | 'offline'
   | 'server'
   | 'timeout'
   | 'validation';
@@ -35,6 +36,12 @@ export interface LoomTableClientErrorDetails {
   readonly requestId?: string;
   /** A bounded server hint for the durable mutation scheduler. */
   readonly retryAfterMs?: number;
+  /**
+   * The durable-queue operation this error belongs to, when the failure came
+   * from an enqueued mutation — lets UI surfaces correlate a rejected commit
+   * with the queue operation that is also tracking it.
+   */
+  readonly clientMutationId?: string;
   readonly apiDetails?: LoomTableApiErrorDetails;
 }
 

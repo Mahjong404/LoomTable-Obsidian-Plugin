@@ -2660,7 +2660,7 @@ describe('Record create', () => {
       { mutationQueue: new QueuedDurableQueue(), isOffline: () => true },
     );
     await offline.load();
-    await expect(offline.createRecord({})).rejects.toMatchObject({ kind: 'validation' });
+    await expect(offline.createRecord({})).rejects.toMatchObject({ kind: 'offline' });
     offline.dispose();
 
     const noQueue = new GridViewController(

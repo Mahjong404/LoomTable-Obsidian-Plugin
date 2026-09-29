@@ -26,6 +26,7 @@ const ERROR_KINDS: readonly LoomTableClientErrorKind[] = [
   'invalid-response',
   'network',
   'not-found',
+  'offline',
   'server',
   'timeout',
   'validation',

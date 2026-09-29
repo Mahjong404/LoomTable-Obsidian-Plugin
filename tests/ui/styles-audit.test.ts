@@ -37,8 +37,10 @@ describe('LoomTable CSS contract', () => {
 
   it('defines reduced-motion and narrow-layout contracts for every existing surface', () => {
     expect(styles).toContain('@media (prefers-reduced-motion: reduce)');
-    expect(styles).toContain('animation-duration: 0.01ms');
-    expect(styles).toContain('transition-duration: 0.01ms');
+    // 0s (not 0.01ms): a sub-frame duration leaves a permanently-running
+    // CSSTransition in Chromium that freezes the element's computed value.
+    expect(styles).toContain('animation-duration: 0s');
+    expect(styles).toContain('transition-duration: 0s');
     expect(styles).not.toMatch(/transition\s*:\s*all\b/);
     expect(styles).toContain('@media (max-width: 40rem)');
     expect(styles).toContain('.loom-grid-select select');

@@ -151,7 +151,7 @@ export class MutationQueueScheduler {
       });
     }
     if (!this.#online) {
-      throw new LoomTableClientError('validation', {
+      throw new LoomTableClientError('offline', {
         message: 'Record editing is unavailable while offline.',
       });
     }
@@ -316,12 +316,11 @@ export class MutationQueueScheduler {
       ...state,
       entries: state.entries.filter((entry) => entry.recordId !== recordId),
     }));
-    const discarded = new MutationQueueDiscardedError();
     for (const entry of removed) {
       const waiter = this.#waiters.get(entry.clientMutationId);
       if (waiter === undefined) continue;
       this.#waiters.delete(entry.clientMutationId);
-      waiter.reject(discarded);
+      waiter.reject(new MutationQueueDiscardedError(entry.clientMutationId));
     }
   }
 
@@ -334,12 +333,11 @@ export class MutationQueueScheduler {
       ...state,
       entries: state.entries.filter((entry) => entry.clientMutationId !== clientMutationId),
     }));
-    const discarded = new MutationQueueDiscardedError();
     for (const entry of removed) {
       const waiter = this.#waiters.get(entry.clientMutationId);
       if (waiter === undefined) continue;
       this.#waiters.delete(entry.clientMutationId);
-      waiter.reject(discarded);
+      waiter.reject(new MutationQueueDiscardedError(entry.clientMutationId));
     }
   }
 
@@ -747,8 +745,8 @@ export class MutationQueueScheduler {
   }
 }
 
-class MutationQueueDiscardedError extends Error {
-  constructor() {
+export class MutationQueueDiscardedError extends Error {
+  constructor(readonly clientMutationId?: string) {
     super('The pending Record edits were discarded.');
     this.name = 'MutationQueueDiscardedError';
   }
@@ -831,6 +829,7 @@ function clientErrorForEntry(entry: PersistedMutationQueueEntry): LoomTableClien
     kind,
     {
       message: persisted?.message ?? safeErrorMessage(kind),
+      clientMutationId: entry.clientMutationId,
       ...(persisted?.code === undefined ? {} : { code: persisted.code }),
       ...(persisted?.httpStatus === undefined ? {} : { httpStatus: persisted.httpStatus }),
       ...(persisted?.requestId === undefined ? {} : { requestId: persisted.requestId }),
@@ -1005,6 +1004,8 @@ function safeErrorMessage(kind: LoomTableClientErrorKind): string {
       return 'The Server could not be reached.';
     case 'not-found':
       return 'The Record or Table was not found.';
+    case 'offline':
+      return 'The mutation queue is offline.';
     case 'server':
       return 'The Server returned a mutation error.';
     case 'timeout':

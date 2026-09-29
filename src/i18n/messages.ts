@@ -135,6 +135,14 @@ export const englishMessages = {
   'grid.error.server': 'The Server returned an error while loading this Grid.',
   'grid.editConflict': 'This Record changed on the Server.',
   'grid.editError': 'The Cell could not be saved.',
+  'grid.draftError.offline':
+    'You are offline — this new Record was not sent. Reconnect, then retry.',
+  'grid.draftError.auth': 'Authentication is required before this Record can be created.',
+  'grid.draftError.validation': 'The Server rejected these values — edit the draft to fix them.',
+  'grid.draftError.request':
+    'The create request failed — check Operations below before trying again.',
+  'grid.draftError.unknown':
+    'The result of this create is unknown — check Operations below so the Record is not created twice.',
   'grid.idempotencyTerminal':
     'This save was blocked because the mutation ID is already associated with a different request. No retry was attempted.',
   'grid.loadMore': 'Load more',

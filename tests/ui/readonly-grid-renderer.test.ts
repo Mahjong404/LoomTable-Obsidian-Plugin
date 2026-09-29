@@ -9,6 +9,7 @@ import type {
   SortSpec,
   View,
 } from '../../src/client/loomtable-client';
+import { LoomTableClientError } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
 import { ReadonlyGridRenderer, getVirtualRowRange } from '../../src/ui/readonly-grid-renderer';
 import type { GridDisplayPatch } from '../../src/ui/grid-display';
@@ -5180,6 +5181,339 @@ describe('Grid stable viewport contract (P1.6 Slice B)', () => {
     viewport.dispatchEvent(new Event('scroll'));
     await flushScroll();
     expect(footer.scrollLeft).toBe(42);
+    container.remove();
+  });
+});
+
+describe('Grid draft create typed error state (P1.6 Slice C)', () => {
+  function draftEditor(container: HTMLElement, fieldIndex = 0): HTMLInputElement {
+    const editor = container.querySelector<HTMLInputElement>(
+      `.loom-grid-draft-row .loom-grid-cell[data-field-index="${fieldIndex}"] .loom-grid-editor`,
+    );
+    if (editor === null) throw new Error(`draft editor missing for field ${fieldIndex}`);
+    return editor;
+  }
+
+  function commitDraft(container: HTMLElement, value: string, fieldIndex = 0): void {
+    const editor = draftEditor(container, fieldIndex);
+    editor.value = value;
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  }
+
+  function draftCellText(container: HTMLElement, fieldIndex: number): string {
+    return (
+      container.querySelector<HTMLElement>(
+        `.loom-grid-draft-row .loom-grid-cell[data-field-index="${fieldIndex}"]`,
+      )?.textContent ?? ''
+    );
+  }
+
+  it('shows a typed offline alert on the draft row and keeps the entered values', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const pending = deferred<LoomTableRecord>();
+    const onCreateRecord = vi.fn(() => pending.promise);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createState(1));
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    commitDraft(container, 'Drafted');
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalledWith({ field_name: 'Drafted' }));
+
+    pending.reject(new LoomTableClientError('offline', { message: 'no route' }));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-grid-draft-error')).not.toBeNull(),
+    );
+
+    const strip = container.querySelector<HTMLElement>('.loom-grid-draft-error');
+    expect(strip?.getAttribute('role')).toBe('alert');
+    expect(strip?.textContent).toContain('offline');
+    // A preflight failure is safe to retry inline.
+    expect(strip?.querySelector('.loom-grid-draft-error-retry')).not.toBeNull();
+    expect(strip?.querySelector('.loom-grid-draft-error-cancel')).not.toBeNull();
+    // The draft and its raw input survive — the editor reopens on the last
+    // edited field so the user can keep typing.
+    expect(draftEditor(container).value).toBe('Drafted');
+    // The error slot is a real grid slot, reserved inside the canvas.
+    expect(container.querySelector<HTMLElement>('.loom-grid-canvas')?.style.height).toBe(
+      `${3 * 36}px`,
+    );
+    // A failed create must not coexist with a bare "saved" chip.
+    expect(container.querySelector<HTMLElement>('.loom-save-status')?.dataset.status).toBe('error');
+    container.remove();
+  });
+
+  it('clears a validation draft error once the user edits a value', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const pending = deferred<LoomTableRecord>();
+    const onCreateRecord = vi.fn(() => pending.promise);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createTwoFieldState());
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    // First field: finish with Enter — focus moves to the second field.
+    commitDraft(container, 'Bad', 0);
+    // Second field is the last editable one — Enter commits the draft.
+    commitDraft(container, 'Bad2', 1);
+    await vi.waitFor(() =>
+      expect(onCreateRecord).toHaveBeenCalledWith({
+        field_name: 'Bad',
+        field_second: 'Bad2',
+      }),
+    );
+
+    pending.reject(new LoomTableClientError('validation', { message: 'rejected' }));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-grid-draft-error')).not.toBeNull(),
+    );
+    // Validation is fixed by editing, not by blind retry — no retry button.
+    expect(container.querySelector('.loom-grid-draft-error-retry')).toBeNull();
+
+    // Re-open the first draft cell and fix its value without committing.
+    container
+      .querySelector<HTMLElement>('.loom-grid-draft-row .loom-grid-cell[data-field-index="0"]')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    commitDraft(container, 'Fixed', 0);
+    await vi.waitFor(() => expect(container.querySelector('.loom-grid-draft-error')).toBeNull());
+    expect(container.querySelector('.loom-grid-draft-row')).not.toBeNull();
+    expect(onCreateRecord).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
+  it('labels a request failure and offers no blind retry', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const pending = deferred<LoomTableRecord>();
+    const onCreateRecord = vi.fn(() => pending.promise);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createState(1));
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    commitDraft(container, 'Drafted');
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalled());
+
+    pending.reject(new LoomTableClientError('network', { message: 'socket closed' }));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-grid-draft-error')).not.toBeNull(),
+    );
+    const strip = container.querySelector<HTMLElement>('.loom-grid-draft-error');
+    expect(strip?.textContent).toContain('create request failed');
+    // Reached the Server — a blind retry could duplicate the Record.
+    expect(strip?.querySelector('.loom-grid-draft-error-retry')).toBeNull();
+    container.remove();
+  });
+
+  it('labels an unknown outcome and offers no retry affordance', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const pending = deferred<LoomTableRecord>();
+    const onCreateRecord = vi.fn(() => pending.promise);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createState(1));
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    commitDraft(container, 'Drafted');
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalled());
+
+    pending.reject(new Error('something odd'));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-grid-draft-error')).not.toBeNull(),
+    );
+    const strip = container.querySelector<HTMLElement>('.loom-grid-draft-error');
+    expect(strip?.textContent).toContain('result of this create is unknown');
+    expect(strip?.querySelector('.loom-grid-draft-error-retry')).toBeNull();
+    container.remove();
+  });
+
+  it('retries a safe offline failure inline and clears draft + error on success', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const record: LoomTableRecord = {
+      id: 'record_new',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_name: 'Drafted' },
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    const pending = deferred<LoomTableRecord>();
+    const onCreateRecord = vi
+      .fn<() => Promise<LoomTableRecord>>()
+      .mockImplementationOnce(() => pending.promise)
+      .mockResolvedValue(record);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    const state = createState(1);
+    renderer.render(state);
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    commitDraft(container, 'Drafted');
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalledTimes(1));
+
+    pending.reject(new LoomTableClientError('offline', { message: 'no route' }));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-grid-draft-error-retry')).not.toBeNull(),
+    );
+
+    container
+      .querySelector<HTMLElement>('.loom-grid-draft-error-retry')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(container.querySelector('.loom-grid-draft-row')).toBeNull());
+    expect(container.querySelector('.loom-grid-draft-error')).toBeNull();
+
+    // The created record landing lands focus on its cell per Slice A rules.
+    renderer.render({ ...state, records: [record], changeCursor: 'change_02' });
+    expect(document.activeElement).toBe(
+      container.querySelector(
+        '.loom-grid-cell[data-record-id="record_new"][data-field-id="field_name"]',
+      ),
+    );
+    container.remove();
+  });
+
+  it('discards a failed draft via the strip cancel without resubmitting', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const pending = deferred<LoomTableRecord>();
+    const onCreateRecord = vi.fn(() => pending.promise);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    renderer.render(createState(1));
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    commitDraft(container, 'Drafted');
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalledTimes(1));
+
+    pending.reject(new LoomTableClientError('offline', { message: 'no route' }));
+    await vi.waitFor(() =>
+      expect(container.querySelector('.loom-grid-draft-error')).not.toBeNull(),
+    );
+    container
+      .querySelector<HTMLElement>('.loom-grid-draft-error-cancel')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(container.querySelector('.loom-grid-draft-row')).toBeNull();
+    expect(container.querySelector('.loom-grid-draft-error')).toBeNull();
+    expect(onCreateRecord).toHaveBeenCalledTimes(1);
+    container.remove();
+  });
+
+  it('parks a late failure in the originating View session instead of the current Grid', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const pending = deferred<LoomTableRecord>();
+    const onCreateRecord = vi.fn(() => pending.promise);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    const base = createState(1);
+    const view1 = base.views[0];
+    if (view1?.type !== 'grid') throw new Error('View fixture is missing.');
+    const view2 = { ...view1, id: 'view_02', name: 'Grid 2' };
+    renderer.render(base);
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    commitDraft(container, 'Drafted');
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalledTimes(1));
+
+    // The user switches to another View while the create is in flight.
+    renderer.render({ ...base, views: [view1, view2], selectedViewId: 'view_02' });
+    pending.reject(new LoomTableClientError('offline', { message: 'no route' }));
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // The unrelated View must never show the failed draft or its error.
+    expect(container.querySelector('.loom-grid-draft-row')).toBeNull();
+    expect(container.querySelector('.loom-grid-draft-error')).toBeNull();
+
+    // Returning to the originating View restores draft, values and error.
+    renderer.render({ ...base, views: [view1, view2], selectedViewId: 'view_01' });
+    const strip = container.querySelector<HTMLElement>('.loom-grid-draft-error');
+    expect(strip).not.toBeNull();
+    expect(strip?.textContent).toContain('offline');
+    // A session-restored draft shows its values as display cells; the user
+    // clicks a cell to resume editing.
+    expect(draftCellText(container, 0)).toContain('Drafted');
+    container.remove();
+  });
+
+  it('drops a parked draft whose queue op already produced a Record', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const pending = deferred<LoomTableRecord>();
+    const onCreateRecord = vi.fn(() => pending.promise);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onCreateRecord,
+    });
+    const base = createState(1);
+    const view1 = base.views[0];
+    if (view1?.type !== 'grid') throw new Error('View fixture is missing.');
+    const view2 = { ...view1, id: 'view_02', name: 'Grid 2' };
+    renderer.render(base);
+    container
+      .querySelector<HTMLElement>('.loom-grid-add-row')
+      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    commitDraft(container, 'Drafted');
+    await vi.waitFor(() => expect(onCreateRecord).toHaveBeenCalledTimes(1));
+    renderer.render({ ...base, views: [view1, view2], selectedViewId: 'view_02' });
+
+    // The queued op rejected terminally — the draft parks in the session of
+    // the View it was drafted under, correlated by clientMutationId.
+    pending.reject(
+      new LoomTableClientError('server', { message: 'boom', clientMutationId: 'op_1' }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // Before the user returns, a queue retry applied the op — the parked
+    // draft is obsolete and must not resurrect next to the new Record.
+    const record: LoomTableRecord = {
+      id: 'record_new',
+      tableId: 'table_01',
+      revision: 1,
+      values: { field_name: 'Drafted' },
+      createdAt: '2026-08-15T00:00:00Z',
+      updatedAt: '2026-08-15T00:00:00Z',
+    };
+    renderer.render({
+      ...base,
+      views: [view1, view2],
+      selectedViewId: 'view_01',
+      records: [record],
+      recordCreateOps: [
+        { operationId: 'op_1', tableId: 'table_01', state: 'idle', createdRecord: record },
+      ],
+    });
+    expect(container.querySelector('.loom-grid-draft-row')).toBeNull();
+    expect(container.querySelector('.loom-grid-draft-error')).toBeNull();
     container.remove();
   });
 });

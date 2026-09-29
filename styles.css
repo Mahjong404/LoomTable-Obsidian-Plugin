@@ -3397,6 +3397,34 @@
   color: var(--loom-text-muted);
 }
 
+/* Inline create failure — pinned directly under the draft row (F-2) */
+
+.loom-grid-draft-error {
+  position: absolute;
+  inset-inline: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--loom-space-2);
+  padding-inline: calc(56px + var(--loom-space-2)) var(--loom-space-2);
+  border-bottom: 1px solid var(--loom-grid-line);
+  background: var(--loom-bg-primary);
+  color: var(--loom-text-error);
+  font-size: var(--loom-font-ui-smaller);
+  overflow: hidden;
+}
+
+.loom-grid-draft-error-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loom-grid-draft-error .loom-button {
+  flex: 0 0 auto;
+}
+
 /* Search highlight + grid footer bar */
 
 .loom-search-hit {

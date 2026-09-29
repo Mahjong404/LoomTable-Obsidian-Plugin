@@ -773,7 +773,7 @@ export class GridViewController {
       });
     }
     if (this.#isOffline()) {
-      throw new LoomTableClientError('validation', {
+      throw new LoomTableClientError('offline', {
         message: 'Record creation is unavailable while offline.',
       });
     }

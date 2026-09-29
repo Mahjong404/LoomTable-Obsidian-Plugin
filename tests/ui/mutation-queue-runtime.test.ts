@@ -63,7 +63,7 @@ describe('MutationQueueRuntime', () => {
     const scheduler = await requireScheduler(runtime);
 
     await expect(scheduler.enqueue('table_01', request())).rejects.toMatchObject({
-      kind: 'validation',
+      kind: 'offline',
     });
     await runtime.setOnline(true);
     await expect(scheduler.enqueue('table_01', request())).rejects.toMatchObject({

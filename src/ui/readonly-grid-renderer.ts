@@ -1,21 +1,23 @@
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
-import type {
-  AggregateFn,
-  ChangeKind,
-  ConversionPreview,
-  ConvertFieldRequest,
-  DistinctValuesPage,
-  Field,
-  FilterNode,
-  JsonValue,
-  LoomTableRecord,
-  MutationValue,
-  SelectOptionColor,
-  SortSpec,
-  View,
+import {
+  LoomTableClientError,
+  type AggregateFn,
+  type ChangeKind,
+  type ConversionPreview,
+  type ConvertFieldRequest,
+  type DistinctValuesPage,
+  type Field,
+  type FilterNode,
+  type JsonValue,
+  type LoomTableRecord,
+  type MutationValue,
+  type SelectOptionColor,
+  type SortSpec,
+  type View,
 } from '../client/loomtable-client';
 import type { GridConflict, GridState, GridStatus } from './grid-view-controller';
+import { MutationQueueDiscardedError } from './mutation-queue-scheduler';
 import type { UndoEntryMeta } from './undo-history';
 import { ensureButtonLabels, labelContainer } from './a11y';
 import { openContextMenu, type ContextMenuEntry, type ContextMenuItem } from './context-menu';
@@ -228,6 +230,8 @@ interface VirtualGridRefs {
   lastRange: VirtualRowRange | null;
   /** Draft insertion index used for the last paint (`null` = no draft slot). */
   lastDraftIndex: number | null;
+  /** Whether the last paint reserved a draft error strip below the draft row. */
+  lastDraftError: boolean | null;
   /** Aggregate footer — a wrapper sibling below the viewport (G-4). */
   footer: HTMLElement | null;
   loadMore: HTMLButtonElement | null;
@@ -276,6 +280,31 @@ type StoredGridSelection =
   | { readonly kind: 'column'; readonly fieldId: string };
 
 /**
+ * Typed failure of an inline Record create — the draft-local error channel
+ * (F-2). `offline`/`auth` are always preflight rejections, so an inline retry
+ * is safe; `request`/`unknown` may already have an enqueued operation, so a
+ * blind re-create could duplicate the Record — those point at the Ops
+ * surface for the existing intent/readback or idempotent op retry instead.
+ */
+export type DraftCreateErrorKind = 'offline' | 'auth' | 'validation' | 'request' | 'unknown';
+
+export interface DraftCreateError {
+  readonly kind: DraftCreateErrorKind;
+  readonly message: string;
+  /** The queue operation that owns this failure, when it got that far. */
+  readonly clientMutationId?: string;
+}
+
+/** An unsubmitted or failed inline-create draft parked in a View session. */
+export interface StashedDraftCreate {
+  readonly draftId: number;
+  readonly values: Record<string, MutationValue>;
+  readonly anchor: { readonly index: number; readonly afterRecordId: string | null } | null;
+  readonly lastFieldId: string | null;
+  readonly error: DraftCreateError | null;
+}
+
+/**
  * Per-View working session, held in memory by the LoomTableView and restored
  * when the user comes back to the View (Grid ↔ Map ↔ Grid, View A ↔ B).
  * Only stable state is kept — no live editors, menus or pointer state.
@@ -293,6 +322,8 @@ export interface GridSessionSnapshot {
     readonly left: number;
   };
   readonly statusPanelMode: 'ops' | 'history' | 'deleted';
+  /** A create draft bound to this View — never leaks into another context. */
+  draft: StashedDraftCreate | null;
 }
 
 export class ReadonlyGridRenderer {
@@ -343,11 +374,25 @@ export class ReadonlyGridRenderer {
   #draftAnchor: { index: number; afterRecordId: string | null } | null = null;
   #toolbarObserver: ResizeObserver | null = null;
   #draftLastFieldId: string | null = null;
+  #draftError: DraftCreateError | null = null;
+  /** Identity token so a late result binds to the draft it was committed from. */
+  #draftSequence = 0;
+  #draftToken = 0;
   #pendingCreateFocus: {
     recordId: string | null;
     fieldId: string;
     failed: boolean;
     cursor: string | null;
+    /** The Table/View + draft identity this create was committed under. */
+    tableId: string | null;
+    viewId: string | null;
+    draftId: number;
+    /**
+     * 'armed' — live commit; 'switched' — user left the context, a late
+     * failure is stashed into that View's session instead of the current DOM;
+     * 'cancelled' — the draft was dropped, any late result is ignored.
+     */
+    outcome: 'armed' | 'switched' | 'cancelled';
   } | null = null;
   #filterSeedFieldId: string | null = null;
   #statusPanelMode: 'ops' | 'history' | 'deleted' = 'ops';
@@ -410,6 +455,7 @@ export class ReadonlyGridRenderer {
       this.#sortPanel = null;
       this.#displayPanel = null;
       this.#rowHeightAnchor = null;
+      if (this.#pendingCreateFocus !== null) this.#pendingCreateFocus.outcome = 'switched';
       this.#pendingCreateFocus = null;
       this.#dismissOverlay();
       this.#restoreSession(state);
@@ -573,7 +619,7 @@ export class ReadonlyGridRenderer {
       return;
     } else if (this.#restoreFailedEditDraft(state)) {
       return;
-    } else if (blurredByMove && preActive !== null) {
+    } else if (blurredByMove && preActive !== null && !this.#suppressActiveFocusOnce) {
       // Reparenting the stable wrapper into the new shell can blur a focused
       // descendant (jsdom always does; some browser paths do too). The node
       // still lives inside the new tree, so the blur was caused by this
@@ -690,7 +736,14 @@ export class ReadonlyGridRenderer {
     statusToggle.type = 'button';
     statusToggle.dataset.action = 'toggle-status';
     statusToggle.setAttribute('aria-expanded', this.#openPanel === 'status' ? 'true' : 'false');
-    renderSaveStatus(statusToggle, state.saveStatus, this.#translate);
+    // An unresolved draft-create failure must never coexist with a bare
+    // "saved" — the toggle reports error until the draft is retried or
+    // cancelled (F-2).
+    renderSaveStatus(
+      statusToggle,
+      this.#draftError === null ? state.saveStatus : 'error',
+      this.#translate,
+    );
     statusToggle.addEventListener('click', () => {
       const opening = this.#openPanel !== 'status';
       if (opening) this.#dismissOverlay();
@@ -1285,10 +1338,10 @@ export class ReadonlyGridRenderer {
     const header = createElement('div', 'loom-status-panel-header');
     const statusText = createTextElement(
       'span',
-      describeSaveStatus(state.saveStatus, this.#translate),
+      describeSaveStatus(this.#draftError === null ? state.saveStatus : 'error', this.#translate),
     );
     statusText.className = 'loom-status-panel-status';
-    statusText.dataset.status = state.saveStatus;
+    statusText.dataset.status = this.#draftError === null ? state.saveStatus : 'error';
     header.append(statusText);
     const modes = createElement('div', 'loom-status-panel-modes');
     modes.setAttribute('role', 'tablist');
@@ -1891,7 +1944,8 @@ export class ReadonlyGridRenderer {
     // (while open) or the bottom `+` affordance lives inside the scrollable
     // height, so it can never be covered by the aggregate footer (G-4).
     const draftSlot = this.#draftCreateValues !== null || canCreate ? 1 : 0;
-    canvas.style.height = `${(state.records.length + draftSlot) * rowHeight}px`;
+    const errorSlot = this.#draftCreateValues !== null && this.#draftError !== null ? 1 : 0;
+    canvas.style.height = `${(state.records.length + draftSlot + errorSlot) * rowHeight}px`;
     canvas.style.backgroundImage = gridFillerBackground(columns, fields, rowHeight);
     const rowLayer = createElement('div', 'loom-grid-row-layer');
     canvas.append(rowLayer);
@@ -1912,6 +1966,7 @@ export class ReadonlyGridRenderer {
       renderedState: null,
       lastRange: null,
       lastDraftIndex: null,
+      lastDraftError: null,
       footer: null,
       loadMore: null,
     };
@@ -1942,14 +1997,44 @@ export class ReadonlyGridRenderer {
    * else the bottom `+` affordance — without touching the row layer.
    */
   #syncCanvasTail(grid: VirtualGridRefs, state: GridState, canCreate: boolean): void {
+    // A failed draft whose queue op later produced a Record — e.g. retried
+    // from the ops surface — is obsolete: never keep a retryable draft alive
+    // next to the Record it would duplicate.
+    const draftMutationId = this.#draftError?.clientMutationId;
+    if (
+      this.#draftCreateValues !== null &&
+      draftMutationId !== undefined &&
+      state.recordCreateOps.some(
+        (op) => op.operationId === draftMutationId && op.createdRecord !== undefined,
+      )
+    ) {
+      this.#draftCreateValues = null;
+      this.#draftAnchor = null;
+      this.#draftLastFieldId = null;
+      this.#draftError = null;
+      this.#draftRowEl = null;
+    }
     grid.canvas.style.height = `${
-      (state.records.length + (this.#draftCreateValues !== null || canCreate ? 1 : 0)) *
+      (state.records.length +
+        (this.#draftCreateValues !== null || canCreate ? 1 : 0) +
+        (this.#draftCreateValues !== null && this.#draftError !== null ? 1 : 0)) *
       grid.rowHeight
     }px`;
     const existingAdd = grid.canvas.querySelector<HTMLElement>('.loom-grid-add-row');
     if (this.#draftCreateValues !== null) {
       existingAdd?.remove();
-      if (this.#draftRowEl === null || this.#draftRowEl.parentElement !== grid.canvas) {
+      // Rebuild the draft row when its error strip appears or clears — the
+      // row element otherwise survives renders untouched.
+      const errorMismatch =
+        this.#draftRowEl !== null &&
+        (this.#draftRowEl.querySelector('.loom-grid-draft-error') !== null) !==
+          (this.#draftError !== null);
+      if (
+        this.#draftRowEl === null ||
+        this.#draftRowEl.parentElement !== grid.canvas ||
+        errorMismatch
+      ) {
+        this.#draftRowEl?.remove();
         const draftRow = this.#renderDraftRow(state, grid.fields, grid.rowHeight);
         grid.canvas.append(draftRow);
         this.#draftRowEl = draftRow;
@@ -2325,8 +2410,11 @@ export class ReadonlyGridRenderer {
       grid.rowHeight,
     );
     // Rows at or below the draft insertion slot slide down one row so the
-    // draft visually opens a gap at the focused position.
+    // draft visually opens a gap at the focused position; a draft error strip
+    // occupies one more slot directly under the row.
     const draftIndex = this.#draftCreateValues !== null ? (this.#draftAnchor?.index ?? null) : null;
+    const draftError = this.#draftError !== null;
+    const draftShift = this.#draftCreateValues !== null && draftError ? 2 : 1;
     // No-op fast path: scrolling inside the same window with unchanged data
     // must not churn DOM (G-5) — and a redundant render() leaves rows alone.
     if (
@@ -2334,15 +2422,17 @@ export class ReadonlyGridRenderer {
       grid.lastRange.start === range.start &&
       grid.lastRange.end === range.end &&
       grid.renderedState === grid.state &&
-      grid.lastDraftIndex === draftIndex
+      grid.lastDraftIndex === draftIndex &&
+      grid.lastDraftError === (draftError && this.#draftCreateValues !== null)
     ) {
       return;
     }
     grid.lastRange = range;
     grid.renderedState = grid.state;
     grid.lastDraftIndex = draftIndex;
+    grid.lastDraftError = draftError && this.#draftCreateValues !== null;
     const shiftedTop = (rowIndex: number): string =>
-      `${(rowIndex + (draftIndex !== null && rowIndex >= draftIndex ? 1 : 0)) * grid.rowHeight}px`;
+      `${(rowIndex + (draftIndex !== null && rowIndex >= draftIndex ? draftShift : 0)) * grid.rowHeight}px`;
 
     const existing = new Map<
       string,
@@ -2816,6 +2906,51 @@ export class ReadonlyGridRenderer {
       row.append(cell);
     }
 
+    // A typed create failure renders as an inline alert directly under the
+    // draft row — inside it so a click on its buttons does not read as
+    // "leaving the draft" to the focusout commit below.
+    const draftError = this.#draftError;
+    if (draftError !== null) {
+      const strip = createElement('div', 'loom-grid-draft-error');
+      strip.setAttribute('role', 'alert');
+      strip.style.top = `${rowHeight}px`;
+      strip.style.height = `${rowHeight}px`;
+      const message = createTextElement('span', draftError.message);
+      message.className = 'loom-grid-draft-error-text';
+      message.title = draftError.message;
+      strip.append(message);
+      if (draftError.kind === 'offline' || draftError.kind === 'auth') {
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.className = 'loom-button loom-grid-draft-error-retry';
+        retry.textContent = this.#translate('grid.retry');
+        retry.addEventListener('click', (event) => {
+          event.stopPropagation();
+          this.#commitDraftCreate();
+        });
+        strip.append(retry);
+      }
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'loom-button loom-grid-draft-error-cancel';
+      cancel.textContent = this.#translate('common.cancel');
+      cancel.addEventListener('click', (event) => {
+        event.stopPropagation();
+        this.#cancelDraftCreate();
+      });
+      strip.append(cancel);
+      strip.addEventListener('keydown', (event) => {
+        // Strip keys must not reach the row handler — Enter there would open
+        // the (nonexistent) draft Record; Escape cancels the draft.
+        event.stopPropagation();
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          this.#cancelDraftCreate();
+        }
+      });
+      row.append(strip);
+    }
+
     // Leaving the draft row commits whatever was typed (or quietly discards an
     // empty draft), matching how other grid tools commit a trailing "+" row.
     row.addEventListener('focusout', () => {
@@ -2860,8 +2995,13 @@ export class ReadonlyGridRenderer {
     if ((state.status !== 'ready' && state.status !== 'empty') || state.selectedTableId === null) {
       return;
     }
+    // A still-in-flight commit keeps its result: mark it 'switched' so a late
+    // failure parks in the session instead of clobbering this new draft.
+    if (this.#pendingCreateFocus !== null) this.#pendingCreateFocus.outcome = 'switched';
     this.#pendingCreateFocus = null;
     this.#draftLastFieldId = null;
+    this.#draftError = null;
+    if (this.#draftCreateValues === null) this.#draftToken = ++this.#draftSequence;
     this.#draftCreateValues ??= {};
     const anchor = this.#resolveDraftAnchor(state);
     this.#draftAnchor = anchor;
@@ -2884,6 +3024,8 @@ export class ReadonlyGridRenderer {
     this.#draftRowEl = null;
     this.#draftLastFieldId = null;
     this.#draftAnchor = null;
+    this.#draftError = null;
+    if (this.#pendingCreateFocus !== null) this.#pendingCreateFocus.outcome = 'cancelled';
     this.#pendingCreateFocus = null;
     this.render(this.#virtualGrid?.state ?? this.#emptyState());
   }
@@ -2891,6 +3033,7 @@ export class ReadonlyGridRenderer {
   #commitDraftCreate(): void {
     const values = this.#draftCreateValues;
     if (values === null) return;
+    const draftId = this.#draftToken;
     const lastFieldId =
       this.#draftLastFieldId ??
       this.#virtualGrid?.fields.find((field) => isEditableField(field))?.id ??
@@ -2898,6 +3041,7 @@ export class ReadonlyGridRenderer {
     this.#draftCreateValues = null;
     this.#draftRowEl = null;
     this.#draftLastFieldId = null;
+    this.#draftError = null;
     const anchor = this.#draftAnchor;
     this.#draftAnchor = null;
     // The draft row is gone; land focus on the neutral viewport this render —
@@ -2910,19 +3054,27 @@ export class ReadonlyGridRenderer {
     );
     const onCreateRecord = this.#callbacks.onCreateRecord;
     if (!hasValue || onCreateRecord === undefined || lastFieldId === null) return;
+    const committedTableId = this.#lastState?.selectedTableId ?? null;
+    const committedViewId = this.#lastState?.selectedViewId ?? null;
     const pending = {
       recordId: null as string | null,
       fieldId: lastFieldId,
       failed: false,
       cursor: this.#lastState?.changeCursor ?? null,
+      tableId: committedTableId,
+      viewId: committedViewId,
+      draftId,
+      outcome: 'armed' as 'armed' | 'switched' | 'cancelled',
     };
     this.#pendingCreateFocus = pending;
     void Promise.resolve(onCreateRecord({ ...values })).then(
       async (record) => {
-        if (this.#pendingCreateFocus !== pending) return;
+        if (pending.outcome === 'cancelled') return;
         pending.recordId = record.id;
         // Persist the drafted position in manual-order views; a failed move
-        // leaves the Record at the order's end where undo still applies.
+        // leaves the Record at the order's end where undo still applies. The
+        // anchor belongs to the commit context — still the right placement
+        // for the created Record even when the user navigated meanwhile.
         const onMoveRecord = this.#callbacks.onMoveRecord;
         if (
           anchor !== null &&
@@ -2940,16 +3092,65 @@ export class ReadonlyGridRenderer {
         // render retry if the row is not in the DOM yet.
         this.#restorePendingCreateFocus();
       },
-      () => {
-        if (this.#pendingCreateFocus !== pending) return;
+      (error: unknown) => {
+        if (pending.outcome === 'cancelled') return;
         pending.failed = true;
-        // Keep the typed draft so a failed create can be retried instead of
-        // silently losing what the user entered.
-        this.#draftCreateValues = values;
-        this.#draftAnchor = anchor;
-        this.render(this.#virtualGrid?.state ?? this.#emptyState());
+        // An explicit discard is the user's own ack — do not resurrect the
+        // draft with an error for a failure they already handled.
+        if (error instanceof MutationQueueDiscardedError) return;
+        const draftError = classifyDraftCreateError(error, this.#translate);
+        // Context identity is decided live — disarm/clear sites that null
+        // `#pendingCreateFocus` while the promise is in flight must not make
+        // a late failure look "armed" in a View it was not drafted under.
+        const sameContext =
+          pending.tableId === (this.#lastState?.selectedTableId ?? null) &&
+          pending.viewId === (this.#lastState?.selectedViewId ?? null);
+        // A different live draft owns the row now — park this result in the
+        // session rather than overwrite the user's current input.
+        const draftIsCurrent =
+          this.#draftCreateValues === null || this.#draftToken === pending.draftId;
+        if (sameContext && draftIsCurrent) {
+          // Keep the typed draft so a failed create can be retried instead of
+          // silently losing what the user entered — with the error visible.
+          this.#draftCreateValues = values;
+          this.#draftAnchor = anchor;
+          this.#draftLastFieldId = lastFieldId;
+          this.#draftError = draftError;
+          this.render(this.#virtualGrid?.state ?? this.#emptyState());
+          return;
+        }
+        // The user left this View while the create was in flight: park the
+        // draft and its error in that View's session instead of letting it
+        // surface in an unrelated Grid (F-2 context isolation).
+        this.#stashDraftInSession(pending, values, anchor, lastFieldId, draftError);
       },
     );
+  }
+
+  /**
+   * Park a failed create draft into its owning View's session so returning
+   * to it restores values, anchor and the typed error — while the current
+   * View never displays another context's draft (F-2).
+   */
+  #stashDraftInSession(
+    pending: { viewId: string | null; tableId: string | null; draftId: number },
+    values: Record<string, MutationValue>,
+    anchor: { index: number; afterRecordId: string | null } | null,
+    lastFieldId: string | null,
+    error: DraftCreateError,
+  ): void {
+    if (pending.viewId === null) return;
+    // A deleted View has no session to come back to — discard safely.
+    if (!this.#lastState?.views.some((view) => view.id === pending.viewId)) return;
+    const session = this.#sessions.get(pending.viewId);
+    if (session === undefined || session.tableId !== pending.tableId) return;
+    session.draft = {
+      draftId: pending.draftId,
+      values,
+      anchor,
+      lastFieldId,
+      error,
+    };
   }
 
   /**
@@ -2961,6 +3162,16 @@ export class ReadonlyGridRenderer {
   #restorePendingCreateFocus(): boolean {
     const pending = this.#pendingCreateFocus;
     if (pending === null) return false;
+    if (
+      pending.outcome !== 'armed' ||
+      pending.tableId !== (this.#lastState?.selectedTableId ?? null) ||
+      pending.viewId !== (this.#lastState?.selectedViewId ?? null)
+    ) {
+      // The commit's context is gone — a late result never lands focus in a
+      // View the Record was not drafted under.
+      this.#pendingCreateFocus = null;
+      return false;
+    }
     if (this.#pendingFocusUserMoved()) {
       this.#pendingCreateFocus = null;
       return false;
@@ -3052,6 +3263,9 @@ export class ReadonlyGridRenderer {
     if (values === null) return;
     values[fieldId] = value;
     this.#draftLastFieldId = fieldId;
+    // Editing a draft value acknowledges a validation rejection — the user is
+    // already fixing it, so the banner clears (F-2).
+    if (this.#draftError?.kind === 'validation') this.#draftError = null;
     const grid = this.#virtualGrid;
     const state = grid?.state ?? this.#emptyState();
     const next =
@@ -3559,12 +3773,19 @@ export class ReadonlyGridRenderer {
             : editor.value;
       const normalized = normalizeCellValue(field, value);
       if (record.id === DRAFT_RECORD_ID) {
-        this.#finishDraftCell(
-          field.id,
-          normalized.ok ? normalized.value : value,
-          fieldIndex,
-          advance ? moveOffset || 1 : null,
-        );
+        const written = normalized.ok ? normalized.value : value;
+        // Draft editors get the same teardown as data cells: a finished
+        // editor must not linger as a dead input that swallows keystrokes —
+        // restore the display so the cell stays re-editable later (F-2).
+        this.#fillCellDisplay(cell, record, field, written);
+        cell.tabIndex = 0;
+        // Detaching the focused editor can leave focus on the dead node,
+        // which reads as "user moved away" to the pending-create handoff —
+        // park it on the draft cell until the follow-up navigation/commit.
+        if (cell.ownerDocument.activeElement === editor) {
+          cell.focus({ preventScroll: true });
+        }
+        this.#finishDraftCell(field.id, written, fieldIndex, advance ? moveOffset || 1 : null);
         return;
       }
       // Restore the display content and drop the editor immediately on every
@@ -4004,7 +4225,24 @@ export class ReadonlyGridRenderer {
       rowAnchorRecordId: this.#rowAnchorRecordId,
       scroll,
       statusPanelMode: this.#statusPanelMode,
+      draft:
+        this.#draftCreateValues === null
+          ? null
+          : {
+              draftId: this.#draftToken,
+              values: this.#draftCreateValues,
+              anchor: this.#draftAnchor,
+              lastFieldId: this.#draftLastFieldId,
+              error: this.#draftError,
+            },
     });
+    // The live draft now belongs to the stored session — the incoming View
+    // must never render another context's draft row (F-2).
+    this.#draftCreateValues = null;
+    this.#draftRowEl = null;
+    this.#draftAnchor = null;
+    this.#draftLastFieldId = null;
+    this.#draftError = null;
   }
 
   /** Load a stashed session for the incoming View; reconcile applies the
@@ -4014,6 +4252,12 @@ export class ReadonlyGridRenderer {
       state.selectedViewId === null ? undefined : this.#sessions.get(state.selectedViewId);
     const session =
       stored !== undefined && stored.tableId === state.selectedTableId ? stored : undefined;
+    // Sessions for Views that no longer exist can never be selected again —
+    // drop them (and any parked draft) outright.
+    for (const [viewId, storedSession] of this.#sessions) {
+      if (storedSession.tableId !== state.selectedTableId) continue;
+      if (!state.views.some((view) => view.id === viewId)) this.#sessions.delete(viewId);
+    }
     this.#activeCell = session?.activeCell ?? null;
     this.#activeCellHint = null;
     this.#selectionAnchor = session?.activeCell ?? null;
@@ -4031,6 +4275,30 @@ export class ReadonlyGridRenderer {
     this.#statusPanelMode = session?.statusPanelMode ?? 'ops';
     this.#pendingScrollAnchor = session?.scroll ?? null;
     this.#focusedHeaderFieldId = null;
+    const stash = session?.draft ?? null;
+    if (session !== undefined) session.draft = null;
+    if (stash !== null) {
+      // Coordinate the parked draft with the queue: a stash whose op produced
+      // a Record — or left the ops surface entirely (discard is the user's own
+      // ack) — is obsolete; resurrecting it would invite a duplicate create.
+      const op =
+        stash.error?.clientMutationId === undefined
+          ? undefined
+          : state.recordCreateOps.find(
+              (candidate) => candidate.operationId === stash.error?.clientMutationId,
+            );
+      const settled =
+        stash.error?.clientMutationId !== undefined &&
+        (op === undefined || op.createdRecord !== undefined);
+      if (!settled) {
+        this.#draftCreateValues = stash.values;
+        this.#draftAnchor = stash.anchor === null ? null : { ...stash.anchor };
+        this.#draftLastFieldId = stash.lastFieldId;
+        this.#draftError = stash.error;
+        this.#draftToken = stash.draftId;
+        this.#draftRowEl = null;
+      }
+    }
   }
 
   /** Session scroll restore is one of the few legitimate scrollTop writers —
@@ -4696,6 +4964,56 @@ export class ReadonlyGridRenderer {
       }
     }
   }
+}
+
+const DRAFT_ERROR_KEYS: Record<DraftCreateErrorKind, MessageKey> = {
+  offline: 'grid.draftError.offline',
+  auth: 'grid.draftError.auth',
+  validation: 'grid.draftError.validation',
+  request: 'grid.draftError.request',
+  unknown: 'grid.draftError.unknown',
+};
+
+/**
+ * Map a create-commit rejection onto the draft error buckets (F-2). Safe
+ * retries are limited to preflight failures (offline/auth): anything that
+ * could have reached the Server keeps its outcome in the Ops surface, where
+ * the durable queue owns retry/discard — a blind re-create could duplicate
+ * the Record.
+ */
+function classifyDraftCreateError(error: unknown, translate: Translator): DraftCreateError {
+  let kind: DraftCreateErrorKind = 'unknown';
+  let clientMutationId: string | undefined;
+  if (error instanceof LoomTableClientError) {
+    clientMutationId = error.details.clientMutationId;
+    const status = error.details.httpStatus;
+    const code = error.details.code;
+    if (error.kind === 'offline') kind = 'offline';
+    else if (
+      error.kind === 'authentication' ||
+      error.kind === 'forbidden' ||
+      status === 401 ||
+      status === 403
+    ) {
+      kind = 'auth';
+    } else if (
+      error.kind === 'invalid-response' ||
+      error.kind === 'conflict' ||
+      error.kind === 'cursor-expired' ||
+      code === 'IDEMPOTENCY_KEY_REUSED'
+    ) {
+      kind = 'unknown';
+    } else if (error.kind === 'validation' || status === 400 || status === 422) {
+      kind = 'validation';
+    } else {
+      kind = 'request';
+    }
+  }
+  return {
+    kind,
+    message: translate(DRAFT_ERROR_KEYS[kind]),
+    ...(clientMutationId === undefined ? {} : { clientMutationId }),
+  };
 }
 
 export function getVirtualRowRange(
