@@ -2,6 +2,14 @@
   position: relative;
   container-type: inline-size;
   container-name: loom;
+  padding: var(--loom-space-4);
+}
+
+/* Overlays mounted on document.body (context menus) cannot inherit the Loom
+   token mapping from .loom-root; .loom-portal re-scopes the same tokens so
+   the overlay stays inside the Loom theme without a second token system. */
+.loom-root,
+.loom-portal {
   --loom-bg-primary: var(--background-primary, #ffffff);
   --loom-bg-secondary: var(--background-secondary, #f7f7f7);
   --loom-bg-secondary-alt: var(--background-secondary-alt, #f0f0f0);
@@ -56,7 +64,6 @@
   --loom-map-control-shadow: var(--shadow-s, 0 1px 5px var(--loom-border));
   --loom-panel-shadow: var(--shadow-l, -8px 0 24px var(--loom-border));
   --loom-map-attribution-bg: var(--loom-bg-primary);
-  padding: var(--loom-space-4);
 }
 
 .loom-status {
@@ -396,6 +403,18 @@
   background: var(--loom-bg-error);
 }
 
+.loom-button-primary {
+  border-color: var(--loom-accent);
+  background: var(--loom-accent);
+  color: var(--loom-on-accent);
+  font-weight: var(--loom-font-semibold);
+}
+
+.loom-button-primary:hover:not(:disabled),
+.loom-button-primary:focus-visible {
+  background: var(--loom-accent-hover);
+}
+
 .loom-grid-toolbar .loom-button,
 .loom-map-toolbar .loom-button {
   min-height: var(--loom-control-compact-height);
@@ -423,17 +442,13 @@
   color: var(--loom-text-normal);
 }
 
-.loom-table-shell .loom-shell-action[aria-expanded='true'] {
-  background: var(--loom-accent-soft);
-  color: var(--loom-accent);
-}
-
-.loom-grid-toolbar .loom-button[aria-pressed='true'],
+/* An expanded control is open, not "active": it takes the neutral open
+   background; real active conditions use their own observable state. */
+.loom-table-shell .loom-shell-action[aria-expanded='true'],
 .loom-grid-toolbar .loom-button[aria-expanded='true'],
-.loom-map-toolbar .loom-button[aria-pressed='true'],
 .loom-map-toolbar .loom-button[aria-expanded='true'] {
-  background: var(--loom-accent-soft);
-  color: var(--loom-accent);
+  background: var(--loom-bg-hover);
+  color: var(--loom-text-normal);
 }
 
 .loom-grid-toolbar .loom-button.loom-grid-record-create,
@@ -980,9 +995,9 @@
   flex-basis: 100%;
 }
 
-.loom-grid-query-toggle[aria-pressed='true'] {
-  background: var(--loom-control-hover);
+.loom-grid-toolbar .loom-grid-query-toggle[data-active='true'] {
   border-color: var(--loom-text-accent);
+  color: var(--loom-text-accent);
 }
 
 .loom-grid-query-count {
@@ -3169,10 +3184,20 @@
   color: var(--loom-text-normal);
 }
 
+.loom-field-editor-error {
+  margin: 0;
+  color: var(--loom-text-error);
+  font-size: var(--loom-font-ui-smaller);
+}
+
 .loom-field-editor-submit {
   min-height: var(--loom-control-min-height);
   border-radius: var(--loom-radius-md);
-  font-size: var(--loom-font-ui-small);
+  font-size: var(--loom-font-ui-smaller);
+}
+
+.loom-field-editor-submit[aria-busy='true'] {
+  cursor: progress;
 }
 
 /* Add-field header cell */

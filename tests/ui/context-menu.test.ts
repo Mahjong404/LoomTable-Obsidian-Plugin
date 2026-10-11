@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { openContextMenu, type ContextMenuEntry } from '../../src/ui/context-menu';
+import {
+  closeActiveContextMenu,
+  openContextMenu,
+  type ContextMenuEntry,
+} from '../../src/ui/context-menu';
 
 interface RectLike {
   top?: number;
@@ -71,6 +75,84 @@ describe('openContextMenu', () => {
     expect(menu?.parentElement).toBe(document.body);
     expect(menu?.style.left).toBe('10px');
     expect(menu?.style.top).toBe('20px');
+  });
+
+  it('carries the portal token scope so body-mounted menus keep Loom tokens', () => {
+    const { host } = fixture();
+    openContextMenu({ items: ITEMS, x: 10, y: 20, host, label: 'menu' });
+    const menu = document.querySelector<HTMLElement>('.loom-context-menu');
+    expect(menu?.classList.contains('loom-portal')).toBe(true);
+  });
+
+  it('closes the previously open menu when a new one opens', () => {
+    const { host } = fixture();
+    openContextMenu({ items: ITEMS, x: 10, y: 20, host, label: 'first' });
+    const first = document.querySelector<HTMLElement>('.loom-context-menu');
+    expect(first?.getAttribute('aria-label')).toBe('first');
+
+    openContextMenu({ items: ITEMS, x: 30, y: 40, host, label: 'second' });
+    const menus = [...document.querySelectorAll<HTMLElement>('.loom-context-menu')];
+    expect(menus).toHaveLength(1);
+    expect(menus[0]?.getAttribute('aria-label')).toBe('second');
+    expect(first?.isConnected).toBe(false);
+  });
+
+  it('closes the open menu through closeActiveContextMenu', () => {
+    const { host } = fixture();
+    openContextMenu({ items: ITEMS, x: 10, y: 20, host, label: 'menu' });
+    expect(document.querySelector('.loom-context-menu')).not.toBeNull();
+    closeActiveContextMenu();
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
+  });
+
+  it('marks a menu trigger expanded while open and restores it on close', () => {
+    const { host, trigger } = fixture();
+    trigger.setAttribute('aria-haspopup', 'menu');
+    const close = openContextMenu({ items: ITEMS, x: 10, y: 20, host, trigger, label: 'menu' });
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+    close();
+    expect(trigger.getAttribute('aria-expanded')).toBeNull();
+  });
+
+  it('does not close on pointerdown inside the menu-trigger control', () => {
+    const { host, trigger } = fixture();
+    trigger.setAttribute('aria-haspopup', 'menu');
+    openContextMenu({ items: ITEMS, x: 10, y: 20, host, trigger, label: 'menu' });
+    trigger.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(document.querySelector('.loom-context-menu')).not.toBeNull();
+  });
+
+  it('closes on true focus departure without stealing the new focus target', () => {
+    const { host, trigger } = fixture();
+    trigger.setAttribute('aria-haspopup', 'menu');
+    const elsewhere = document.createElement('button');
+    host.append(elsewhere);
+    openContextMenu({ items: ITEMS, x: 10, y: 20, host, trigger, label: 'menu' });
+    const menu = document.querySelector<HTMLElement>('.loom-context-menu');
+    const first = menu?.querySelector<HTMLElement>('.loom-context-menu-item');
+    expect(document.activeElement).toBe(first);
+
+    elsewhere.focus();
+    first?.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: elsewhere }));
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
+    expect(document.activeElement).toBe(elsewhere);
+  });
+
+  it('returns focus to the trigger after an item runs', () => {
+    const { host, trigger } = fixture();
+    const action = vi.fn();
+    openContextMenu({ items: [{ label: 'One', action }], x: 10, y: 20, host, trigger, label: 'm' });
+    document.querySelector<HTMLButtonElement>('.loom-context-menu-item')?.click();
+    expect(action).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it('keeps close() idempotent after explicit dismissal', () => {
+    const { host, trigger } = fixture();
+    const close = openContextMenu({ items: ITEMS, x: 10, y: 20, host, trigger, label: 'menu' });
+    close();
+    expect(() => close()).not.toThrow();
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
   });
 
   it('clamps to the pane bounds instead of the host size', () => {

@@ -32,15 +32,29 @@ export interface ContextMenuOptions {
 const MENU_MARGIN = 4;
 
 /**
+ * Exactly one context menu may be open at a time — it is the explicit owner
+ * of the menu overlay lifecycle. Opening a menu closes the previous one so
+ * callers never stack floating menus from different triggers or contexts.
+ */
+let activeMenu: { readonly menu: HTMLElement; readonly close: () => void } | null = null;
+
+/** Closes the currently open context menu, if any. */
+export function closeActiveContextMenu(): void {
+  activeMenu?.close();
+}
+
+/**
  * Opens a small menu positioned at pointer coordinates. Mounted on
  * document.body with position:fixed so pane overflow cannot clip it; the
- * visible boundary is the owning .view-content rect (viewport fallback).
- * Closes on item activation, Escape, outside pointerdown, or host scroll.
+ * `loom-portal` class re-scopes the Loom tokens that body-mounting cannot
+ * inherit from `.loom-root`. The visible boundary is the owning
+ * .view-content rect (viewport fallback). Closes on item activation, Escape,
+ * outside pointerdown, true focus departure, or host scroll.
  */
 export function openContextMenu(options: ContextMenuOptions): () => void {
   const ownerDocument = options.host.ownerDocument;
   const menu = ownerDocument.createElement('div');
-  menu.className = 'loom-context-menu';
+  menu.className = 'loom-context-menu loom-portal';
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', options.label);
 
@@ -71,29 +85,48 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     item.setAttribute('aria-label', entry.label);
     item.addEventListener('click', () => {
       close();
+      restoreFocus();
       entry.action();
     });
     buttons.push(item);
     menu.append(item);
   }
 
+  const trigger = options.trigger;
+  // A menu-trigger control (aria-haspopup) counts as inside the owned overlay
+  // so a second press toggles via the caller instead of dismiss-then-reopen;
+  // it also exposes aria-expanded while the menu is open.
+  const triggerControl = trigger?.hasAttribute('aria-haspopup') === true ? trigger : null;
+  const triggerExpanded = triggerControl?.getAttribute('aria-expanded') ?? null;
+
   const restoreFocus = (): void => {
-    const trigger = options.trigger;
     if (trigger !== undefined && trigger.isConnected) trigger.focus();
   };
   const observer = new MutationObserver(() => {
     if (!options.host.isConnected) close();
   });
+  let closed = false;
   const close = (): void => {
+    if (closed) return;
+    closed = true;
+    if (activeMenu?.menu === menu) activeMenu = null;
     observer.disconnect();
     menu.remove();
     options.host.removeEventListener('scroll', onScroll, true);
     ownerDocument.removeEventListener('pointerdown', onPointerDown, true);
     ownerDocument.removeEventListener('keydown', onKeyDown, true);
+    if (triggerControl !== null) {
+      if (triggerExpanded === null) triggerControl.removeAttribute('aria-expanded');
+      else triggerControl.setAttribute('aria-expanded', triggerExpanded);
+    }
   };
+  const record = { menu, close };
   const onScroll = (): void => close();
   const onPointerDown = (event: PointerEvent): void => {
-    if (!menu.contains(event.target as Node)) close();
+    const path = event.composedPath();
+    const inside =
+      path.includes(menu) || (triggerControl !== null && path.includes(triggerControl));
+    if (!inside) close();
   };
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') {
@@ -110,6 +143,12 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     const next = enabled[(current + step + enabled.length) % enabled.length];
     next?.focus();
   };
+  // A true focus departure (Tab, or a click landing outside) dismisses the
+  // menu without moving focus back — the user's new target is respected.
+  menu.addEventListener('focusout', (event) => {
+    const next = event.relatedTarget;
+    if (!(next instanceof Node && menu.contains(next))) close();
+  });
 
   const pane = options.host.closest('.view-content');
   const bounds = pane?.getBoundingClientRect() ?? {
@@ -146,6 +185,9 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
   menu.style.top = `${y}px`;
   menu.classList.remove('loom-context-menu--measuring');
 
+  activeMenu?.close();
+  activeMenu = record;
+  triggerControl?.setAttribute('aria-expanded', 'true');
   options.host.addEventListener('scroll', onScroll, true);
   observer.observe(ownerDocument.documentElement, { childList: true, subtree: true });
   ownerDocument.addEventListener('pointerdown', onPointerDown, true);

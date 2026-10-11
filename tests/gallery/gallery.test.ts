@@ -140,6 +140,24 @@ describe('Grid states', () => {
     expect(deleteButton === null || deleteButton.disabled).toBe(true);
   });
 
+  it('keeps the field editor draft after a failed field save', async () => {
+    const host = await mount('grid-offline');
+    host.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+    const name = host.querySelector<HTMLInputElement>('.loom-field-editor-name');
+    expect(name).not.toBeNull();
+    name!.value = 'Drafted field';
+    host.querySelector<HTMLButtonElement>('.loom-field-editor-submit')?.click();
+    await vi.waitFor(() => {
+      expect(host.querySelector('.loom-field-editor [role="alert"]')?.textContent ?? '').not.toBe(
+        '',
+      );
+    });
+    expect(host.querySelector('.loom-field-editor')).not.toBeNull();
+    expect(host.querySelector<HTMLInputElement>('.loom-field-editor-name')?.value).toBe(
+      'Drafted field',
+    );
+  });
+
   it('shows empty-result actions for a filter/search miss', async () => {
     const host = await mount('grid-empty');
     expect(

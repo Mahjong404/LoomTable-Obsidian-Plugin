@@ -3693,6 +3693,97 @@ describe('column menu and field editor', () => {
     await vi.waitFor(() => expect(onFieldDelete).toHaveBeenCalled());
     container.remove();
   });
+
+  it('keeps the field editor open with the draft when the save outcome fails', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const onFieldSave = vi.fn(async () => ({
+      status: 'failed',
+      kind: 'network',
+      error: { message: 'Field management is unavailable while offline.' },
+    }));
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave,
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+    const name = container.querySelector<HTMLInputElement>('.loom-field-editor-name');
+    name!.value = 'Notes';
+    container.querySelector<HTMLButtonElement>('.loom-field-editor-submit')?.click();
+
+    await vi.waitFor(() => {
+      expect(container.querySelector('.loom-field-editor [role="alert"]')?.textContent).toBe(
+        'Field management is unavailable while offline.',
+      );
+    });
+    expect(container.querySelector('.loom-field-editor')).not.toBeNull();
+    expect(container.querySelector<HTMLInputElement>('.loom-field-editor-name')?.value).toBe(
+      'Notes',
+    );
+    container.remove();
+  });
+
+  it('closes the field editor only after the save outcome resolves written', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const outcome = deferred<{ status: string }>();
+    const onFieldSave = vi.fn(() => outcome.promise);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onFieldSave,
+    });
+    renderer.render(createState(1));
+
+    container.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+    const name = container.querySelector<HTMLInputElement>('.loom-field-editor-name');
+    name!.value = 'Notes';
+    container.querySelector<HTMLButtonElement>('.loom-field-editor-submit')?.click();
+
+    // The dialog must stay open while the write is in flight.
+    expect(container.querySelector('.loom-field-editor')).not.toBeNull();
+    outcome.resolve({ status: 'written' });
+    await vi.waitFor(() => {
+      expect(container.querySelector('.loom-field-editor')).toBeNull();
+    });
+    container.remove();
+  });
+
+  it('exposes panel-open through aria-expanded and active conditions through data-active', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplySort: vi.fn(async () => ({ status: 'saved' }) as never),
+    });
+    const state = createState(1);
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('View fixture is missing.');
+    renderer.render({
+      ...state,
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            sort: [{ fieldId: 'field_name', direction: 'asc', nulls: 'last' }],
+          },
+        },
+      ],
+    });
+
+    const toggle = container.querySelector<HTMLElement>('[data-action="toggle-sort"]');
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle?.hasAttribute('aria-pressed')).toBe(false);
+    expect(toggle?.dataset.active).toBe('true');
+
+    toggle?.click();
+    const reopened = container.querySelector<HTMLElement>('[data-action="toggle-sort"]');
+    expect(reopened?.getAttribute('aria-expanded')).toBe('true');
+    expect(reopened?.dataset.active).toBe('true');
+    container.remove();
+  });
 });
 
 describe('search highlight and footer', () => {
@@ -4048,6 +4139,51 @@ describe('Toolbar overflow', () => {
     const overflow = toolbar.querySelector<HTMLElement>('.loom-toolbar-overflow');
     expect(overflow?.hidden).toBe(false);
     expect(overflow?.querySelector('.loom-grid-query-count')?.textContent).toBe('1');
+    container.remove();
+  });
+
+  it('marks the ⋯ trigger expanded while its menu is open and toggles it closed', () => {
+    const roCallbacks = stubResizeObserver();
+    const container = document.createElement('div');
+    document.body.append(container);
+    const { renderer } = overflowRenderer(container);
+    renderer.render(createState(1));
+
+    const toolbar = container.querySelector<HTMLElement>('.loom-grid-toolbar');
+    if (toolbar === null) throw new Error('toolbar missing');
+    Object.defineProperty(toolbar, 'clientWidth', { value: 220, configurable: true });
+    Object.defineProperty(toolbar, 'scrollWidth', { value: 560, configurable: true });
+    for (const callback of roCallbacks) callback([], {} as ResizeObserver);
+
+    const overflow = toolbar.querySelector<HTMLElement>('.loom-toolbar-overflow');
+    overflow?.click();
+    expect(document.querySelector('.loom-context-menu')).not.toBeNull();
+    expect(overflow?.getAttribute('aria-expanded')).toBe('true');
+
+    overflow?.click();
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
+    expect(overflow?.getAttribute('aria-expanded')).not.toBe('true');
+    container.remove();
+  });
+
+  it('returns the overflow menu Escape to the ⋯ trigger', () => {
+    const roCallbacks = stubResizeObserver();
+    const container = document.createElement('div');
+    document.body.append(container);
+    const { renderer } = overflowRenderer(container);
+    renderer.render(createState(1));
+
+    const toolbar = container.querySelector<HTMLElement>('.loom-grid-toolbar');
+    if (toolbar === null) throw new Error('toolbar missing');
+    Object.defineProperty(toolbar, 'clientWidth', { value: 220, configurable: true });
+    Object.defineProperty(toolbar, 'scrollWidth', { value: 560, configurable: true });
+    for (const callback of roCallbacks) callback([], {} as ResizeObserver);
+
+    const overflow = toolbar.querySelector<HTMLElement>('.loom-toolbar-overflow');
+    overflow?.click();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
+    expect(document.activeElement).toBe(overflow);
     container.remove();
   });
 });

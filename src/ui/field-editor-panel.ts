@@ -290,27 +290,56 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     return editor;
   };
 
+  const errorEl = document.createElement('p');
+  errorEl.className = 'loom-field-editor-error';
+  errorEl.setAttribute('role', 'alert');
+  errorEl.hidden = true;
+  panel.append(errorEl);
+
   const submit = document.createElement('button');
   submit.type = 'button';
   submit.className = 'loom-field-editor-submit loom-button-primary';
   submit.textContent = t(options.mode === 'create' ? 'field.submit.create' : 'field.submit.save');
 
+  const showError = (message: string): void => {
+    errorEl.textContent = message;
+    errorEl.hidden = false;
+  };
+  const clearError = (): void => {
+    errorEl.textContent = '';
+    errorEl.hidden = true;
+  };
+  nameInput.addEventListener('input', () => {
+    nameInput.removeAttribute('aria-invalid');
+    clearError();
+  });
+
   let closed = false;
-  const close = (): void => {
+  const restoreFocus = (): void => {
+    const connectedTrigger =
+      options.trigger !== undefined && options.trigger.isConnected ? options.trigger : null;
+    (connectedTrigger ?? options.restoreFocusTarget?.() ?? null)?.focus();
+  };
+  // Explicit closes (Escape, a successful submit) return focus to the
+  // invoking trigger; external dismissal — outside pointerdown, scroll or the
+  // owner's handle — never steals the user's new focus target.
+  const close = (returnFocus = false): void => {
     if (closed) return;
     closed = true;
     panel.remove();
     options.host.removeEventListener('scroll', onScroll);
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('keydown', onKeyDown, true);
-    const connectedTrigger =
-      options.trigger !== undefined && options.trigger.isConnected ? options.trigger : null;
-    (connectedTrigger ?? options.restoreFocusTarget?.() ?? null)?.focus();
+    if (returnFocus) restoreFocus();
   };
 
+  let submitting = false;
   const doSubmit = async (): Promise<void> => {
+    if (submitting) return;
     const name = nameInput.value.trim();
     if (name === '') {
+      nameInput.setAttribute('aria-invalid', 'true');
+      showError(t('field.name.required'));
       nameInput.focus();
       return;
     }
@@ -331,8 +360,26 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
         : {}),
       ...(type === 'attachment' ? { maxCount } : {}),
     };
-    close();
-    await options.onSubmit(input);
+    // The dialog owns the draft until the write resolves: it stays open and
+    // inert to re-entry while in flight, and a rejected outcome keeps the
+    // draft with the failure surfaced instead of silently closing.
+    submitting = true;
+    clearError();
+    panel.dataset.submitting = 'true';
+    submit.setAttribute('aria-busy', 'true');
+    try {
+      await options.onSubmit(input);
+    } catch (error) {
+      submitting = false;
+      delete panel.dataset.submitting;
+      submit.removeAttribute('aria-busy');
+      if (closed) return;
+      showError(
+        error instanceof Error && error.message !== '' ? error.message : t('field.submit.failed'),
+      );
+      return;
+    }
+    close(true);
   };
 
   submit.addEventListener('click', () => void doSubmit());
@@ -345,7 +392,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') {
       event.preventDefault();
-      close();
+      close(true);
       return;
     }
     if (event.key === 'Tab') {

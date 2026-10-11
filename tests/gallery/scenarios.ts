@@ -253,7 +253,7 @@ export const galleryScenarios: readonly GalleryScenario[] = [
   {
     id: 'grid-offline',
     section: 'Grid',
-    title: 'Offline banner with queued edits',
+    title: 'Offline banner with queued edits — field save fails and keeps its draft',
     mount(host) {
       return mountStaticGrid(
         host,
@@ -262,6 +262,13 @@ export const galleryScenarios: readonly GalleryScenario[] = [
           editStatuses: { record_01: 'queued' },
           saveStatus: 'error',
         }),
+        {
+          onFieldSave: async () => ({
+            status: 'failed',
+            kind: 'network',
+            error: { message: 'Field management is unavailable while offline.' },
+          }),
+        },
       );
     },
   },

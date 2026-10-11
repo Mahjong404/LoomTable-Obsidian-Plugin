@@ -30,7 +30,7 @@ import {
 } from './attachment-upload';
 
 import { ensureButtonLabels, labelContainer } from './a11y';
-import { openContextMenu, type ContextMenuEntry } from './context-menu';
+import { closeActiveContextMenu, openContextMenu, type ContextMenuEntry } from './context-menu';
 import { createFieldTypeIcon } from './field-type-icon';
 import { createUiIcon } from './icons';
 const MAX_RENDERABLE_LATITUDE = 85.0511287798066;
@@ -266,6 +266,12 @@ export function createRecordDetail(
   menuButton.setAttribute('aria-label', options.translate('record.menu.action'));
   menuButton.setAttribute('aria-haspopup', 'menu');
   menuButton.addEventListener('click', () => {
+    // The trigger is inside the owned overlay: a second press toggles the
+    // open menu off instead of dismissing it and immediately reopening.
+    if (menuButton.getAttribute('aria-expanded') === 'true') {
+      closeActiveContextMenu();
+      return;
+    }
     const rect = menuButton.getBoundingClientRect();
     const items: ContextMenuEntry[] = [
       {
@@ -316,6 +322,7 @@ export function createRecordDetail(
       x: rect.left,
       y: rect.bottom + 4,
       host: root,
+      trigger: menuButton,
       label: options.translate('record.menu.action'),
     });
   });

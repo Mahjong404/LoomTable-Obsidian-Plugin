@@ -10,7 +10,7 @@ import {
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import { ensureButtonLabels, labelContainer } from './a11y';
-import { openContextMenu, type ContextMenuItem } from './context-menu';
+import { closeActiveContextMenu, openContextMenu, type ContextMenuItem } from './context-menu';
 import { createUiIcon, type UiIconName } from './icons';
 import { findBrokenViewFieldIds, type ViewConfigRepairInput } from './view-config-repair';
 import type {
@@ -380,6 +380,12 @@ export class TableShell {
       more.disabled = pending;
       more.addEventListener('click', (event) => {
         event.stopPropagation();
+        // The trigger is inside the owned overlay: a second press toggles the
+        // open menu off instead of dismissing it and immediately reopening.
+        if (more.getAttribute('aria-expanded') === 'true') {
+          closeActiveContextMenu();
+          return;
+        }
         this.#openRowMenu(view, more, row, broken);
       });
       row.append(more);

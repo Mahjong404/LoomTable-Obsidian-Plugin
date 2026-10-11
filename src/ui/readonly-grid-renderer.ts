@@ -20,7 +20,12 @@ import type { GridConflict, GridState, GridStatus } from './grid-view-controller
 import { MutationQueueDiscardedError } from './mutation-queue-scheduler';
 import type { UndoEntryMeta } from './undo-history';
 import { ensureButtonLabels, labelContainer } from './a11y';
-import { openContextMenu, type ContextMenuEntry, type ContextMenuItem } from './context-menu';
+import {
+  closeActiveContextMenu,
+  openContextMenu,
+  type ContextMenuEntry,
+  type ContextMenuItem,
+} from './context-menu';
 import { createFieldTypeIcon } from './field-type-icon';
 import { createUiIcon, type UiIconName } from './icons';
 import { jsonEqual } from './json-equal';
@@ -792,6 +797,12 @@ export class ReadonlyGridRenderer {
     overflowButton.setAttribute('aria-haspopup', 'menu');
     overflowButton.append(createUiIcon('menu-ellipsis'));
     overflowButton.addEventListener('click', () => {
+      // The trigger is inside the owned overlay: a second press toggles the
+      // open menu off instead of dismissing it and immediately reopening.
+      if (overflowButton.getAttribute('aria-expanded') === 'true') {
+        closeActiveContextMenu();
+        return;
+      }
       this.#openToolbarOverflowMenu(toolbar, overflowButton);
     });
     end.prepend(overflowButton);
@@ -855,9 +866,11 @@ export class ReadonlyGridRenderer {
     const rect = anchor.getBoundingClientRect();
     openContextMenu({
       label: this.#translate('grid.toolbar.more'),
-      x: rect.left,
+      x: rect.right,
       y: rect.bottom + 4,
+      align: 'end',
       host: this.#container,
+      trigger: anchor,
       items: hiddenItems.map((item) => {
         const icon = icons[item.dataset.overflow ?? ''];
         return {
@@ -1048,7 +1061,10 @@ export class ReadonlyGridRenderer {
       button.dataset.overflow = panel;
       button.dataset.overflowLabel = label;
     }
-    button.setAttribute('aria-pressed', this.#openPanel === panel ? 'true' : 'false');
+    // The button expands an inline panel — aria-pressed would misreport a
+    // persisted toggle state; the active condition is a separate observable.
+    button.setAttribute('aria-expanded', this.#openPanel === panel ? 'true' : 'false');
+    button.dataset.active = activeCount > 0 ? 'true' : 'false';
     if (icon !== undefined) button.append(createUiIcon(icon));
     const labelSpan = createTextElement('span', label);
     button.append(labelSpan);
@@ -1202,6 +1218,19 @@ export class ReadonlyGridRenderer {
     this.#overlayClose?.();
     this.#overlayClose = null;
     this.#overlayEl = null;
+    // Menus are body-mounted and can't ride the tracked overlay element, so
+    // the shared registry dismisses them on the same context changes.
+    closeActiveContextMenu();
+  }
+
+  /** Surfaces a fire-and-forget Field write failure instead of dropping it. */
+  #reportFieldWriteOutcome(outcome: unknown): void {
+    const message = fieldWriteFailureMessage(outcome);
+    if (message === null) return;
+    this.showToast({
+      kind: 'error',
+      text: message !== '' ? message : this.#translate('field.submit.failed'),
+    });
   }
 
   /**
@@ -3500,22 +3529,24 @@ export class ReadonlyGridRenderer {
           icon: 'menu-copy',
           disabled: isPrimary,
           action: () => {
-            void this.#callbacks.onFieldSave?.(
-              {
-                name: `${field.name} copy`,
-                type: field.type,
-                ...(field.type === 'select' || field.type === 'multiSelect'
-                  ? {
-                      options: field.config.options.map((option) => ({
-                        name: option.name,
-                        color: option.color as SelectOptionColor,
-                      })),
-                    }
-                  : {}),
-                ...(field.type === 'attachment' ? { maxCount: field.config.maxCount } : {}),
-              },
-              { mode: 'create', anchorFieldId: field.id, side: 'right' },
-            );
+            void Promise.resolve(
+              this.#callbacks.onFieldSave?.(
+                {
+                  name: `${field.name} copy`,
+                  type: field.type,
+                  ...(field.type === 'select' || field.type === 'multiSelect'
+                    ? {
+                        options: field.config.options.map((option) => ({
+                          name: option.name,
+                          color: option.color as SelectOptionColor,
+                        })),
+                      }
+                    : {}),
+                  ...(field.type === 'attachment' ? { maxCount: field.config.maxCount } : {}),
+                },
+                { mode: 'create', anchorFieldId: field.id, side: 'right' },
+              ),
+            ).then((outcome) => this.#reportFieldWriteOutcome(outcome));
           },
         },
       );
@@ -3586,7 +3617,10 @@ export class ReadonlyGridRenderer {
             this.#translate('field.menu.deleteConfirm').replace('{name}', field.name),
             this.#container,
           ).then((confirmed) => {
-            if (confirmed) void this.#callbacks.onFieldDelete?.(field.id);
+            if (!confirmed) return;
+            void Promise.resolve(this.#callbacks.onFieldDelete?.(field.id)).then((outcome) =>
+              this.#reportFieldWriteOutcome(outcome),
+            );
           }),
       });
     }
@@ -3629,7 +3663,9 @@ export class ReadonlyGridRenderer {
               )
             : null) ?? this.#container.querySelector<HTMLElement>('.loom-grid-add-field-button'),
         onSubmit: async (input) => {
-          await this.#callbacks.onFieldSave?.(input, context);
+          const outcome = await this.#callbacks.onFieldSave?.(input, context);
+          const failure = fieldWriteFailureMessage(outcome);
+          if (failure !== null) throw new Error(failure);
         },
       }),
     );
@@ -3669,10 +3705,12 @@ export class ReadonlyGridRenderer {
         host: this.#container,
         translate: this.#translate,
         onSubmit: async (format) => {
-          await this.#callbacks.onFieldSave?.(
+          const outcome = await this.#callbacks.onFieldSave?.(
             { name: field.name, type: 'number', format },
             { mode: 'edit', fieldId: field.id },
           );
+          const failure = fieldWriteFailureMessage(outcome);
+          if (failure !== null) throw new Error(failure);
         },
       }),
     );
@@ -5062,6 +5100,18 @@ const DRAFT_ERROR_KEYS: Record<DraftCreateErrorKind, MessageKey> = {
   request: 'grid.draftError.request',
   unknown: 'grid.draftError.unknown',
 };
+
+/**
+ * Reads a Controller Field write outcome (createField/updateField/
+ * deleteField resolve `{status:'failed'}` instead of rejecting) so overlay
+ * submit adapters and fire-and-forget menu actions can surface the failure.
+ */
+function fieldWriteFailureMessage(outcome: unknown): string | null {
+  if (typeof outcome !== 'object' || outcome === null) return null;
+  if ((outcome as { status?: unknown }).status !== 'failed') return null;
+  const message = (outcome as { error?: { message?: unknown } }).error?.message;
+  return typeof message === 'string' ? message : '';
+}
 
 /**
  * Map a create-commit rejection onto the draft error buckets (F-2). Safe
