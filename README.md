@@ -31,6 +31,7 @@ pnpm api:generate
 ## 文档
 
 - [Plugin 文档索引](./docs/README.md)
+- [Wave 1.5 实施与 Devin Plugin 入口](./docs/wave1.5/README.md)
 - [产品范围](./docs/product/scope.md)
 - [Plugin Client Interface](./docs/architecture/client-contract.md)
 - [Plugin 源码结构](./docs/architecture/source-layout.md)

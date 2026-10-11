@@ -31,3 +31,7 @@ src/
 - `grid-view-controller.ts` owns Workspace → Base → Table → Grid View selection, query pages, cursor transitions, and UI-facing status mapping. `readonly-grid-renderer.ts` owns native DOM layout and fixed-row-height virtualization; neither module depends on generated OpenAPI types.
 
 New source directories should represent a durable responsibility or seam, not a single call site. Keep tests under `tests/` with the same responsibility-oriented layout.
+
+## Wave 1.5 editor integration
+
+Field/product editor ownership and lifecycle constraints are defined in [field-editor-lifecycle.md](./field-editor-lifecycle.md). Scope, proposed new modules, tasks and API gates are tracked in [Wave 1.5](../wave1.5/README.md). Update the source tree above only when a module actually exists; UI consumers continue to use the existing Client/Controller/Queue seams.

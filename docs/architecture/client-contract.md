@@ -77,6 +77,10 @@ Schema、Workspace、Base、Table、View 和 Attachment 的管理操作也通过
 - 认证失败、版本不兼容、服务不可用和数据冲突必须映射为不同错误类型。
 - 网络重试不能导致 Mutation 重复应用。
 
+## Wave 1.5 能力边界
+
+当前合同支持的 UI 与待批准新能力分别见 [API Boundary](../wave1.5/api-boundary.md)。API-first 顺序由 Server 合同/OpenAPI 评审开始；Server 实现与固定 commit 交付后，Plugin 才显式更新 pin/generated/client。普通 UI 切片保持固定快照；不能因 Server HEAD 更新或 Figma 出现新控件而自动升级合同。
+
 ## OpenAPI 类型边界
 
 `LoomTable Server/docs/api/openapi.yaml` 是传输合同的唯一来源。Plugin 仓库保存一份明确版本的 OpenAPI 快照，并通过脚本生成 TypeScript Transport Types。生成文件不得手工修改；CI 必须重新生成并检查工作区是否产生差异，以阻止合同漂移。

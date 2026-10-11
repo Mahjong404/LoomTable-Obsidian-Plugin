@@ -1,0 +1,52 @@
+# Field Editor Lifecycle
+
+此文档定义 Wave 1.5 编辑器的技术所有权和集成约束；不声明尚未创建的 TypeScript 接口已经存在。视觉见 [DS](../ui/design-system.md)，接受/取消行为见 [HIG](../ui/interaction-hig.md#datepicker)，任务和当前 API 门槛见 [Wave 1.5](../wave1.5/README.md)。
+
+## 最小结构与依赖
+
+继续使用 Native DOM/TypeScript/Obsidian、现有 Client/Controller/Mutation Queue。保留 native createEditor 的现有消费者；product editor 用一个窄 typed handle提供 element、read canonical value/snapshot、focus、owns event path/target、适用的接受/dismiss能力与dispose。精确名称由 W15-07/10 的生产实现确定，不用 DOM instanceof猜业务值。
+
+Date 先用纯 date-only 逻辑与 Date-local state；Calendar factory 不依赖 Registry/Controller。native/Choice/Date 的保存时机由 consumer adapter定义，共享的是值/焦点/资源接缝。局部 Header/Footer helper可留在产品模块，定位 owner有实际复用需求时再提取；不预建未使用的通用 Picker framework或Time空壳。
+
+拟新增 src/ui/date-only.ts（无DOM/时区）、date-picker.ts（DOM与本地状态）、choice-picker.ts（生产Choice）；它们在实际实现前都是拟新增，不写进 source-layout事实树。consumer/Registry可依赖factory，factory不反向 import consumer，避免循环依赖。
+
+## 状态所有权
+
+| Owner                          | 持有                                                                                                            | 不持有                                              |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| Date/Choice 产品 editor        | 原 value/presence、本地 candidate/raw/validity、display/preferredDay/view、gesture/overlay、接受 intent/promise | HTTP、mutation body/id、revision 重试或独立保存队列 |
+| Persisted Grid/Detail adapter  | 原 profile/table/view/record/field/openEpoch、已接受 callback与当前恢复输入的挂载关系                           | 新 clientMutationId 或换 context 的 late publish    |
+| Controller / Durable Queue     | 校验后的 mutation、权威 revision、乐观结果、immutable body/id、receipt/unknown/CAS/conflict                     | Calendar临时focus或UI导航                           |
+| RecordCreate owner             | 已接受 local values/touched、outer Create intent及原context                                                     | 给未持久Record造ID/提前Update或option写入           |
+| Query panel / View coordinator | Filter/Sort/Display local draft、validated intent、View CAS/失效query/cursor                                    | Record编辑的accept/Undo/成功协议                    |
+
+## 接受与异步生命周期
+
+1. 选择/浏览更新 editor本地状态；接受触发时先同步 claim一个 intent/promise，重复 Confirm/outside/Tab返回同一工作，不另发请求。
+2. 先校验合法 canonical value与原 presence；未改无操作，Clear按真实业务语义为null/[]/undefined，不能通过空串替代。
+3. 捕获原context并调用唯一promise-aware consumer callback。持久Record仍通过已有Controller/Queue；失败/unknown保持输入与操作身份，不先结束编辑器再报Saved。
+4. UI取消/dispose取消未发intent、视觉工作与子overlay；已发工作继续归原operation。原owner失效后completion可以更新原队列/数据，但不能关闭新Form、重设新Current或抢外部focus。
+5. 原context仍有效时按已有failed draft机制恢复输入；没有原context时不得复制到新表。不存在全局未接受picker草稿持久层。
+
+## 持久化与 Draft 的接入
+
+- Grid Date branch、Detail Date adapter去掉native change/blur旁路；onCellEdit/onFieldEdit返回权威Promise而非fire-and-forget。其他字段保持既有保存时机。
+- Grid Draft/Form只在Date/Choice接受后更新values/touched；Date建议不触摸key。owned内部focus不触发row focusout Create；outer Submit必须处理有效本地值，invalid raw阻止所属Create并保输入，不能偷偷提交旧值。
+- Map的真实RecordCreateForm、Detail取消/成功/render/destroy、View/Profile/context/Field/anchor失效都走同一窄dispose seam。只接Gallery不足以交付生产生命周期。
+- Filter Calendar若复用，onAccept只更新query operand，Clear=undefined，继续validated debounce/View queue；不走RecordMutation或Undo。
+
+## 资源与上下文守卫
+
+一个 overlay owner登记trigger、所有owned child、close与return focus；composedPath内事件不当outside。捕获context/epoch校验成功和错误；child close、Field/operator删除、Rule reorder、新edit generation都失效旧callback。
+
+dispose必须可重复，释放listener、timer/rAF、observer、capture、子overlay；晚transitionend/scrollend只清理旧资源，不重写值。Esc/显式关闭回有效trigger；外点/真正Tab离开/context切换尊重用户新focus。anchor因virtualization失效按原owner策略保存/取消未发UI，不能生成第二次Mutation。
+
+## 数据与错误边界
+
+Date-only只用Gregorian YYYY-MM-DD或null，presence另保；低年份校验不经默认Date.UTC映射，已有值不经timestamp转换。当前无通用required字段配置，UI不得从Figma推导Server政策。Time/DateTime是另外的Future字段合同。
+
+未知结果由原Queue/body/id恢复；409沿原conflict机制，overwrite只有明确新用户意图才形成新Mutation。storage失败不得先HTTP；UI取消不更改已发请求identity。Schema/Queue格式升级仅在对应API Gate授权后做。
+
+## 验证接缝
+
+任务卡要求的Unit/DOM/Integration证明接受请求次数、无草稿提前持久化、originalpresence恢复、deferred失败/latecontext、重复dispose与资源清理。Gallery调用生产factory；Obsidian证明实际Focus/Popover/Sheet/Pointer与布局，Mobile证明真实touch/WebView。编译/jsdom不证明视觉几何或设备行为。

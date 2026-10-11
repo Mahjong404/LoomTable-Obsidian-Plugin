@@ -1,6 +1,6 @@
 # `.agents/skills/` — 项目级 Agent Skills
 
-本目录是 LoomTable 的项目级 Agent Skills（Devin/third-party skills 标准：`<skill>/SKILL.md` + 可选 `references/`）。它只覆盖 **UI/UX 设计工作**；产品规范仍在 `docs/ui/` 与 `docs/p1.5/`。
+本目录是 LoomTable 的项目级 Agent Skills（Devin/third-party skills 标准：`<skill>/SKILL.md` + 可选 `references/`）。它只覆盖 **UI/UX 设计工作**；产品规范仍在 `docs/ui/` 与 `docs/p1.5/`；已批准 Wave 1.5 的实施范围/任务/唯一状态见 `docs/wave1.5/README.md`，不继续设计探索。
 
 ## 结构与优先级
 
@@ -13,6 +13,8 @@ loomtable-ui-design   ← 最高优先级：项目权威 / 编排层 / review �
 
 规则：任何 specialist 的默认建议与 `loomtable-ui-design` 或 `docs/ui/` 冲突时，LoomTable 规则胜出。调度关系详见 `loomtable-ui-design/SKILL.md`。
 
+Motion Design 使用 `loomtable-ui-design` 内部的 [按需操作规程](loomtable-ui-design/references/motion-design.md)。它负责 Agent 判断、实施与验证流程；具体组件参数和行为仍只维护在 DS/HIG，不增加第三方 Skill 或平行规范。
+
 ## 使用场景速查
 
 | 场景 | 调用 |
@@ -21,6 +23,7 @@ loomtable-ui-design   ← 最高优先级：项目权威 / 编排层 / review �
 | 复杂新界面 / 需要比较多个方向 | loomtable-ui-design + opendesign + ux-designer |
 | 交互已正确，只差视觉打磨 | loomtable-ui-design + frontend-design |
 | UI 改动 review | loomtable-ui-design（checklist）+ ux-designer |
+| 动效设计、实现、review 或掉帧诊断 | loomtable-ui-design → references/motion-design.md → DS/HIG 对应合同 |
 
 ## 第三方 Skills 溯源
 

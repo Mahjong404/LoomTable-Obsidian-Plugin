@@ -44,6 +44,12 @@ P1.6 是 P1.5（功能交付）与 P2.0（新产品功能）之间的过渡稳�
 
 沿用仓库门禁：`npx vitest run`、`npx tsc --noEmit`、`npx eslint src tests`、`npx prettier --check .`、`npm run api:generate` 后零 diff、`npm run build`。UI 观感核验按仓库 AGENTS.md 的 CDP 流程执行。
 
+## Wave 1.5 实施批次
+
+当前设计阶段已完成，正式任务与批准边界见 [Wave 1.5](../wave1.5/README.md)，实施进度只在 [Wave status](../wave1.5/status.md) 维护。本节不改写下方历史交接。
+
+Lane A 仅收敛已有 UI/UX 和技术债，沿本阶段范围实施。Lane B 的 G1–G6、Time/DateTime 与整 Table 回滚需对应合同与执行授权；原则上进入 P2.0 合同轨道，G6 的窄正确性 API 例外需独立确认。设计批准与本次文档整理不授予这些 API/业务实现权限。
+
 ## 当前交接
 
 - 2026-09：阶段定义，P1.5 已交付封存（见 [P1.5 状态表](../p1.5/status.md)）。种子工作项按上节推进；每个会话在此更新最近交接。

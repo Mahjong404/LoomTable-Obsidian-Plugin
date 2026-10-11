@@ -31,6 +31,12 @@ docs/local/ 研究材料（仅内部参考，不构成规范）
 - 规范与实现不一致时，以「规范是否应该改」为显式议题处理：实现反映已确认决策的，修订规范；实现是缺陷的，记录为待办。不静默按任一方执行。
 - 规范之间的重复规则应合并到单一来源，其余位置只做指针。发现重复/矛盾/过时条款时顺手修正或登记，不允许两套说法并存。
 
+## Wave 1.5 实施引用
+
+设计阶段已完成，当前批准的长期视觉规则在 Design System，接受/取消/焦点/Query/Date 与 Future Time 行为在 HIG，Grid 几何/选择/加载在 Grid Spec。技术所有权只在 [Editor Lifecycle](../architecture/field-editor-lifecycle.md)；任务/依赖/验收见 [Wave 1.5](../wave1.5/README.md)，进度只在 [status](../wave1.5/status.md)。
+
+本目录描述目标行为；API-dependent 能力必须按 [API Boundary](../wave1.5/api-boundary.md) 启用，不因视觉批准或规范出现功能就自动扩展 P1.6。Figma authority 链接集中在 [Traceability](../wave1.5/traceability.md)，静态设计不替代 Runtime QA。实施规划引用本目录，不另建平行 UI 规范。
+
 ## 与 Agent Skills 的分工
 
 ```text
@@ -53,4 +59,4 @@ docs/ui/                    = 产品设计知识（规范说什么）
 
 `docs/local/`（gitignored）存放 UX 审计、外部产品研究与探索稿，仅供内部参考；正式规范不得引用其中内容作为依据，也不得在正式文档中以外部产品名称作为设计依据。
 
-本目录下的 `visual-style-comparison.md` 同属 gitignored 本地研究材料，不是正式规范，不适用本页的文档职责与层级。
+外部视觉比较原件统一保存在 `docs/local/ui-research/`，本目录只保留正式规范。历史日志中的研究路径不构成当前规范入口。

@@ -102,6 +102,8 @@ Grid 只请求当前窗口和相邻页面。Filter、Sort 和 Search 由 Server 
 
 ## 5. 编辑流程
 
+Wave 1.5 的 native/product editor 接缝、Date 单一接受 owner、Create Draft 和资源释放按 [Field Editor Lifecycle](./field-editor-lifecycle.md)；UI/任务范围见 [Wave 1.5](../wave1.5/README.md)。以下已有 Controller/Queue 流程保持。
+
 ```text
 Cell Editor
 → Field Type validate
@@ -208,8 +210,8 @@ interface LoomTableViewIdentity {
 P0 只注册并实现 Text、LongText、Number、Checkbox、Date、Select、MultiSelect、URL 和 Location。Field Registry 必须允许后续增加以下能力，但不能在 P0 通过自由 JSON 或字符串约定提前伪装实现：
 
 - `Region`：独立字段，使用 Server 提供的版本化层级目录和稳定 Region Code；不作为 Location 配置或层级 Select。
-- `DateTime`：UTC 时间点，支持单值和范围。
-- `Time`：不带日期的本地时刻，支持单值和范围。
+- `DateTime`：Future 领域合同按 [API Boundary](../wave1.5/api-boundary.md#future--time--datetime--12h) 先明确 instant 或 wall-time+zone、精度和范围；当前不注册或持久化。
+- `Time`：Future Time-only 字段；序列化、精度、范围与兼容性按上述 API Boundary 评审，不能借 Date 类型提前实现。
 - Location 的 `GeoWithin`：由 Server 执行矩形或圆形范围查询，后续再支持 Polygon。
 - Text 的区域化 Validation Preset，例如手机号和身份证号。
 - Number 的 Currency、Percent 只作为格式配置；Rating、Duration、User 等独立语义类型后续评估。

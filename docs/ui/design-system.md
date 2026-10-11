@@ -1,6 +1,6 @@
 # LoomTable UI Design System
 
-> 本文档是 LoomTable 视觉与样式体系的规范性来源：Token、CSS 层次、组件分层、命名空间、状态表达、视觉基调和依赖策略。通用交互规则以 [LoomTable Interaction HIG](./interaction-hig.md) 为准；各特性规范见 `grid-spec.md`、`map-spec.md`；文档职责划分与规范层级见 [UI 文档入口](./README.md)。本期范围、Gallery 与实现顺序见 [P1.5](../p1.5/README.md)。
+> 本文档是 LoomTable 视觉与样式体系的规范性来源：Token、CSS 层次、组件分层、命名空间、状态表达、视觉基调和依赖策略。通用交互规则以 [LoomTable Interaction HIG](./interaction-hig.md) 为准；各特性规范见 `grid-spec.md`、`map-spec.md`；文档职责划分与规范层级见 [UI 文档入口](./README.md)。当前实施范围见 [P1.6](../p1.6/README.md) 与 [Wave 1.5](../wave1.5/README.md)；P1.5 保留已交付合同。
 
 ## 目标
 
@@ -116,12 +116,11 @@ textarea {}
 
 ## 组件状态
 
-需要通过 `data-state` 或等价状态表达：
+按组件角色通过 `data-state` 或等价状态表达适用状态；不要求每个组件拥有全部状态组合：
 
 ```text
 default
 hover
-focus
 active
 disabled
 loading
@@ -132,7 +131,7 @@ conflict
 offline
 ```
 
-状态必须能被键盘、屏幕阅读器和自动化测试观察到，不能只依赖颜色变化。
+状态必须能被键盘、屏幕阅读器和自动化测试观察到，不能只依赖颜色变化。DOM 焦点使用可见的宿主 `:focus-visible`，不新建 Loom Focus variant。Grid Current/Selected 与系统写入状态分别按 HIG/Grid Spec 表达；Loading/Error/Conflict 不作为通用 Cell 装饰。
 
 ## 组件实现
 
@@ -170,8 +169,74 @@ createRecordDetail(record, context)
 
 Plugin 内提供开发用 Component Gallery，展示每个组件的：
 
-- 默认、Hover、Focus、Active、Disabled。
+- 各角色适用的 Default、Hover、Active、Disabled，以及真实键盘 focus-visible。
 - Loading、Error、Readonly、Dirty、Conflict。
 - Light/Dark 主题变量环境。
 - 长文本、空值和窄面板。
 - 键盘操作和触控操作。
+
+## 批准组件的视觉合同
+
+Wave 1 保持 Approved/Frozen；Wave 1.5 视觉基线已批准。此节定义目标外观，不声称生产组件已经全部对齐；当前可实施部分与 API/Future 状态见 [Wave 1.5](../wave1.5/README.md)。
+
+- Button/IconButton 按 Quiet、Neutral、Primary、Danger 和适用 Disabled/Loading 角色使用现有 Token。Toolbar 打开态保持中性，具有有效条件的激活态使用 accent，两者可同时存在。
+- Menu 的单选/多选状态与命令分开；只有选择项显示对应 Check。Check optical glyph 为 14px、描边 1.75px，仅适用于该图标；不把其他系统图标统一改为同样描边。
+- Drag Handle 使用透明 28px 稳定槽。Pin 采用同一 14px 图形的 Outline/Filled 中性 metadata 样式，保持槽位；More 为 28px target，与 8px resize lane 分开。Row Detail 为 Lucide maximize-2 透明 28px target，hover 仅加强 glyph accent。
+- Clear 使用 Quiet，规则移除用 X，Option 删除用 Trash；图标表达真实操作，所有 icon-only target 都有实际 label/tooltip。
+- Choice Tag 高 20px，单行、ellipsis 与 +N，在固定 Grid 行高中保持稳定；完整值通过可访问说明/详情获得，不靠换行撑高 Cell。
+- 所有浮层继承 owner 的 Loom Token 和两主题；body portal 必须有明确主题桥接，不能依赖不存在的祖先样式。Font 使用宿主 body token，数字使用 tabular-nums，不捆绑设计样本字体。
+
+### Choice 色板
+
+Grid、Picker 和历史 typed renderer 使用同一背景/前景 token 对。下表是批准的 fallback 值，只在 Token 定义层维护；组件不硬编码第二套色板。每个主题独立定义背景与前景，标签始终有文字；颜色不用于代替 Current 或系统保存状态。新三色 writer 仍受 [G1](../wave1.5/api-boundary.md#g1--12-color-write-compatibility) 约束，reader 对未知色保值并安全显示。
+
+| Color | Light background / foreground | Dark background / foreground | 写入范围 |
+| --- | --- | --- | --- |
+| gray | #F0F1F4 / #4D5663 | #47515F / #E0E6EE | 当前 9 色 |
+| red | #FCE8E8 / #9B323C | #7A3544 / #FFDCE2 | 当前 9 色 |
+| orange | #FCEBDD / #985017 | #784725 / #FFE0B9 | 当前 9 色 |
+| yellow | #FBF0C7 / #786006 | #665A22 / #FFEB9C | 当前 9 色 |
+| lime | #EFF3D6 / #566720 | #526820 / #E7F5B0 | G1 后启用 writer |
+| green | #E6F3E7 / #376946 | #2B6343 / #BDF2CE | 当前 9 色 |
+| cyan | #DEF3F4 / #21686D | #1E5D6B / #B4EDF4 | 当前 9 色 |
+| blue | #E7EEFC / #345BA4 | #2A5484 / #CEE2FF | 当前 9 色 |
+| indigo | #E7E8F9 / #5057A6 | #484789 / #DEDEFF | G1 后启用 writer |
+| purple | #EEE6F8 / #6F478F | #603E82 / #E8D4FF | 当前 9 色 |
+| pink | #F9E5EF / #98476B | #7A3D60 / #FFD6EC | 当前 9 色 |
+| brown | #F0E8E1 / #7C5845 | #62483B / #EED4BE | G1 后启用 writer |
+
+### Picker 视觉合同
+
+下表量值均以 Picker 左上角为原点。Date 6 个 master、Time 12 个 master 的固定设计尺寸均为 280×325；Time/DateTime/12h 是 Future/API-gated。容器承载形态和焦点按 HIG，不通过压缩内部几何解决窄 Pane。
+
+| 部位 | 批准值 |
+| --- | --- |
+| Root | 280×325 |
+| Header | x14/y8/w252/h36 |
+| Footer | x14/y276/w252/h28；Clear/Confirm 各 56×28，gap8；中心 x138/x202，右边缘 x258 |
+| Footer leading | 72px；Time mode target 28×28，中心 Picker x50；glyph 22×22；Date 使用 Today |
+| Date 标题 | 年/月 15px/600、line22，Quiet target 高28；Year slot112、Month64；无 caret 或常驻边框 |
+| Calendar | Day 7×6、day cell36×32；Month3×4；Year4×5、每页20年 |
+| Time body | x14/y48/w252/h220 |
+| Time anchor | 130×36，Header local x61；HH local x0/w56、colon x60.5/w9、MM x74/w56；Picker HH x75、MM x149，colon 中心 x140 |
+| Time 字体 | HH/MM 32px/600、line36；colon28px/500、line36；Clock labels13px/500 |
+| AM/PM | 独立 trailing control，Picker x210/y8/w40/h36；不参与 time anchor 居中计算；minute hit gap5、右侧 inset30 |
+| AM/PM 内容 | 字12px/600、line18；indicator x2/w36/h18/r4，AM y0/PM y18；浅 accent 背景、选中文字 accent，未选中中性可读 |
+| Wheel | 两列各 5×36px 可见行，窗口180px；中心选中带固定，不随数字滚动 |
+
+### Clock Pointer Geometry — Future
+
+Hour/Minute 使用同一公式，起点始终为 Clock 中心，终点为活动 ring 的 marker 中心。参数按活动环变化，不按示例分钟补偿。
+
+| 参数 | 批准值 |
+| --- | --- |
+| Dial envelope | 216×216；现有圆形 surface 可见直径212 |
+| 中心 | Dial(108,108)，Body(126,110)，Picker(140,158) |
+| Label / active ring | 外环 R94；24h 内环 R62；12h Hour 与 Minute 使用外环 R94 |
+| Pointer length | 24h Hour 按活动环为94/62；12h Hour94；Minute 所有0–59统一94 |
+| Hand stroke | Hour/Minute、两主题统一1.5px，消费 accent Token |
+| Selected marker radius | Hour12；Minute6；中心点 radius2.5 |
+| 输入 dead zone | R28；是 hit policy，不是可见空白或 pointer 起点 |
+| 24h ring hit threshold | R78 附近 ±4px hysteresis；与视觉 R94/R62 分开 |
+
+以12点为0°：θ=minute×6° 或 (hour mod12)×30°，P=C+R×(sinθ,−cosθ)。28分钟为168°，Dial endpoint=(127.543699,199.945874)。数字与指针前景层应保持可读；所有60分钟、跨0°与两环输入的真实比例和命中留到 Runtime QA。

@@ -11,6 +11,7 @@
 | `ui/` | UI/UX canonical 规范 | HIG、Design System、Grid/Map 特性规范（入口与层级见 [ui/README.md](./ui/README.md)） |
 | `architecture/` | 技术架构与工程决策 | Client 接口合同、源码/仓库结构、技术详细设计、ADR |
 | `p1.6/` | **当前阶段**：UI/UX 稳定化与打磨 | 阶段范围、允许工作与排除项 |
+| `wave1.5/` | 已批准设计的实施批次 | 完整任务/依赖/追踪、API Gate、风险、Devin 指南与唯一 status；不扩大 P1.6 |
 | `p1.5/` | P1.5 阶段实现规范与记录（**已交付**） | View/Grid、Map/Location、Record 生命周期的实现级行为合同 |
 | `releases/` | 版本与发布记录 | 各版本基线与范围 |
 | `local/` | 本地研究/审计/探索材料（gitignored） | 不是正式规范，不入库 |
@@ -34,6 +35,7 @@
 
 - [Plugin Client Interface](./architecture/client-contract.md)
 - [Plugin 详细设计](./architecture/detailed-design.md)
+- [Field Editor Lifecycle](./architecture/field-editor-lifecycle.md)
 - [Plugin 源码结构](./architecture/source-layout.md)
 - [Plugin 仓库结构与文件职责](./architecture/repository-layout.md)
 - [Attachment resource lifecycle decision](./architecture/attachment-resource-lifecycle-decision.md)
@@ -41,6 +43,16 @@
 ## 阶段实现规范与记录
 
 **当前阶段：[P1.6](./p1.6/README.md)** — UI/UX 稳定化与打磨（修复、对齐、技术债；不新增产品功能）。
+
+Wave 1.5 设计已批准，实施入口与状态由本批单独维护：
+
+- [Wave 1.5 正式实施入口](./wave1.5/README.md)
+- [Master Plan / 依赖与验收](./wave1.5/implementation-plan.md)
+- [Design-to-Code Traceability](./wave1.5/traceability.md)
+- [任务合同](./wave1.5/task-specifications.md)
+- [API Boundary](./wave1.5/api-boundary.md)
+- [Devin Plugin 执行指南](./wave1.5/devin-plugin.md)
+- [唯一实施状态](./wave1.5/status.md)
 
 P1.5 已交付（实现规范仍为已交付行为的有效合同）：
 
@@ -58,6 +70,6 @@ P1.5 已交付（实现规范仍为已交付行为的有效合同）：
 
 ## 本地材料
 
-`docs/local/`（gitignored）存放 UX 审计、外部产品研究与探索稿；`docs/ui/visual-style-comparison.md` 同属 gitignored 本地材料。它们仅供内部参考，不作为正式规范依据，正式规范不引用其中内容。
+`docs/local/`（gitignored）存放 UX 审计、外部产品研究与探索稿，视觉比较原件归入其中的 `ui-research/`。这些材料仅供内部参考，不作为正式规范依据，正式规范不引用其中内容。
 
 Plugin 使用的领域术语、字段语义和 API 合同以 LoomTable Server 仓库中的对应文档为准。

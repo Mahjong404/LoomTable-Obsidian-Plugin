@@ -1,6 +1,6 @@
 ---
 name: loomtable-ui-design
-description: LoomTable 项目 UI/UX 工作的最高优先级编排 Skill。任何涉及界面、交互、样式、组件、响应式或可访问性的任务都应先读本 Skill 确定规则、要读的正式规范、以及是否调度 ux-designer / opendesign / frontend-design 三个 specialist skill。
+description: LoomTable 项目 UI/UX 工作的最高优先级编排 Skill。涉及界面、交互、样式、组件、动效、响应式或可访问性时，先读本 Skill，确定正式规范、Motion Design 操作规程及所需 specialist skill。
 ---
 
 # LoomTable UI Design — 项目级编排 Skill
@@ -50,7 +50,7 @@ loomtable ──┼─ opendesign       （复杂界面的方向探索）
 ### 键盘与焦点
 
 - Enter/Escape/Tab/箭头/复制粘贴/Delete 的行为按 HIG 与各特性 spec 执行；新增交互面必须给出焦点进入、循环、恢复路径。
-- 焦点环可见；不允许键盘陷阱；浮层关闭后焦点回到触发源。
+- 焦点环可见；不允许键盘陷阱；关闭后的焦点按 HIG 浮层生命周期处理，外点/Tab/context 切换尊重用户目标。
 
 ### 响应式
 
@@ -71,16 +71,19 @@ loomtable ──┼─ opendesign       （复杂界面的方向探索）
 
 ## 文档路由表 — 任务 → 必读
 
+Wave 1.5 实施任务先读 `docs/wave1.5/README.md`、`status.md` 与目标任务卡，按本表进入产品规范；其设计阶段已完成，不默认启动 Figma 视觉探索、Figma Motion 制作或工具扩展。已批准的运行时动效随对应实施切片验证，Future/API Gate 保留。
+
 | 任务类型 | 必读 | 选读 |
 |---|---|---|
 | 任何 UI 任务（底线） | `docs/ui/interaction-hig.md`、`docs/ui/design-system.md` 对应节 | `docs/ui/README.md`（文档架构与规范层级） |
 | Grid 行为/性能/选择/编辑/虚拟化 | `docs/ui/grid-spec.md`、`docs/p1.5/view-grid.md`、`src/ui/readonly-grid-renderer.ts`、`src/ui/table-shell.ts` | `docs/architecture/detailed-design.md` |
 | Filter/Sort/Display/搜索面板 | `interaction-hig.md` 浮层与查询节、`docs/p1.5/view-grid.md`、`src/ui/filter-builder.ts`、`sort-panel.ts`、`display-panel.ts` | `grid-spec.md` 查询语义 |
-| 记录详情/字段编辑/字段渲染 | `docs/p1.5/record-lifecycle.md`、`src/ui/record-detail.ts`、`field-value-editor.ts`、`field-renderer-registry.ts` | `interaction-hig.md` 表单与状态节 |
+| 记录详情/字段编辑/字段渲染 | `docs/architecture/field-editor-lifecycle.md`、`docs/p1.5/record-lifecycle.md`、`src/ui/record-detail.ts`、`field-value-editor.ts`、`field-renderer-registry.ts` | `interaction-hig.md` 表单与状态节 |
 | View 生命周期/页签/视图管理 | `docs/p1.5/view-grid.md`、`src/ui/loomtable-view.ts`、`table-shell.ts` | `docs/architecture/detailed-design.md` |
 | Map | `docs/ui/map-spec.md`、`docs/p1.5/map-location.md`、`src/views/map/`、`src/maps/` | `interaction-hig.md` 状态节 |
 | 新组件/新 primitive/新状态 | `design-system.md` 全部、`styles.css` 相关块、`tests/gallery/` | `frontend-design`（打磨建议） |
 | 视觉打磨/层级/间距/密度 | `design-system.md` + 本 Skill 反模式节 + `frontend-design` | `ux-designer` 视觉参考 |
+| 动效设计/实现/review；过渡、拖动或滚动不自然/掉帧 | [Motion Design 操作规程](references/motion-design.md)、HIG 对应交互合同、Design System 样式约束；相关生产实现与测试 | 对应 `docs/wave1.5/` 任务卡、`src/ui/a11y.ts` |
 | 交互/IA/表单/键盘/可访问性疑难 | `ux-designer` 对应 references（21-data-tables、03-accessibility、06-interaction-design、07-forms-and-inputs 等） | `interaction-hig.md` |
 | 复杂新界面方向未定 | `opendesign` 产出探索稿（`docs/local/ui-exploration/`，不入库） | — |
 | i18n/文案 | `interaction-hig.md` 文案节、`src/i18n/` | `ux-designer` 09-ux-writing |
@@ -103,12 +106,17 @@ loomtable ──┼─ opendesign       （复杂界面的方向探索）
 
 按下方 checklist 逐项过；发现 spec ↔ 实现矛盾时明确指出"规范错"还是"实现错"及建议修法，不和稀泥。
 
+### Motion Design 任务
+
+按 [Motion Design 操作规程](references/motion-design.md) 执行用途/频率判断 → 读取既有合同 → 选择最小实现 → 检查中断与降级 → 分层验证。动效服务于 Obsidian 内安静、精确、高密度的数据操作；已有合同直接实施，不为每个过渡重新开启设计审批。
+
 ### Review checklist
 
 - [ ] 行为符合对应特性 spec（编辑流、查询语义、状态机）
 - [ ] 键盘全套：导航、提交/取消、焦点恢复、无键盘陷阱
 - [ ] 状态覆盖：default/hover/focus/active/disabled/loading/readonly/dirty/error/conflict/offline 中适用项齐全
 - [ ] 非颜色单通道；role/aria 正确；reduced-motion 生效
+- [ ] 涉及动效时，完成 Motion 操作规程中的用途、中断、状态所有权、降级及运行时证据检查；动画结束不触发业务提交
 - [ ] 容器宽度各档可用；窄面板/移动降级符合 HIG；popover↔sheet 走单一 seam
 - [ ] 明暗主题均验证；无硬编码颜色；token/namespace 合规
 - [ ] 乐观更新可回滚；冲突/错误如实呈现；无伪造成功态

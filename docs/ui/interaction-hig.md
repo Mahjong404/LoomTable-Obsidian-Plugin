@@ -181,7 +181,7 @@ LoomTable 使用双模式交互：
 - 移动端优先使用 Sheet；
 - Modal 只用于危险确认、阻塞状态或不可中断的复杂操作；
 - 打开后焦点必须进入容器；
-- 关闭后焦点必须返回触发控件或其稳定替代位置；
+- Esc/显式关闭后焦点返回有效触发控件或稳定替代位置；外点、Tab 离开和上下文切换尊重用户的新焦点目标；
 - `Esc` 必须关闭可取消的浮层；
 - 浮层嵌套时 `Esc` 只关闭最上层：如 View `...` 子菜单打开时第一次 `Esc` 关子菜单并把焦点还给 `...` 触发器，第二次 `Esc` 才关闭「全部视图」面板并把焦点还给面板触发器；外点关闭浮层不得抢走用户刚点击目标的焦点；
 - 有未提交草稿时，点击外部、系统返回或下拉关闭不得静默丢弃修改；
@@ -207,7 +207,7 @@ LoomTable 使用双模式交互：
 - View Tabs 只负责 View 导航，不承载 Record 编辑动作；
 - 顶部导航属于共享 Table/View Shell，由 View 宿主统一挂载；Grid、Map 与未来 View MUST 复用同一 Shell 实例，不在各自 Renderer 内重复渲染顶栏；
 - Shell 为单行结构：Table 上下文、「全部视图」入口与 View 快捷 Tabs 位于同一行，不为 View Tabs 单独占用第二行；不再提供独立的“添加视图/管理视图”按钮；
-- Table 上下文以轻量 breadcrumb 呈现 `Workspace / Base / Table`：Workspace 与 Base 两级弱化并以 `/` 分隔，Table 正常权重可带小型 table icon；三层统一控件高度（desktop 约 28px）、透明无阴影、带清晰 caret；三层共用原生 select 并保留可访问名称；窄 Pane 折叠为一个 compact context toggle 展开相同选择器；
+- Table 上下文以轻量 breadcrumb 呈现 `Workspace / Base / Table`：Workspace 与 Base 两级弱化并以 `/` 分隔，Table 正常权重，以 text-only 呈现；三层统一控件高度（desktop 约 28px）、透明无阴影、带清晰 caret；三层共用原生 select 并保留可访问名称；窄 Pane 折叠为一个 compact context toggle 展开相同选择器；
 - View 快捷 Tabs 横向连续排列；空间不足时横向滚动，MUST NOT 用 `+N` 折叠隐藏 View；
 - 当前 View 必须有明确选中状态；
 - 移动端可以使用横向滚动或 Sheet；
@@ -284,8 +284,8 @@ View 右上角 MUST 提供 View 级聚合保存状态指示器：
 - 下一次修改立即恢复“有修改”；
 - 保存失败和冲突不得被成功保存状态覆盖；
 - 状态变化 SHOULD 使用 `aria-live="polite"`，不得依赖动画；
-- Cell/Record 局部状态与 View 级聚合状态必须互补；
-- Status 面板的模式切换（Ops / History / Deleted）是标准 `tablist`：选中 Tab `tabIndex=0`，其余 `-1`；`←`/`→`/`↑`/`↓` 循环移动并即时激活，`Home`/`End` 到首末项；Tab 与面板通过 `aria-controls`/`aria-labelledby` 对应，面板为 `role="tabpanel"`；鼠标或键盘切换后 DOM 焦点 MUST 留在对应状态 Tab 上，不得被 Grid 的 Active Cell 焦点逻辑抢回（Active Cell 业务选中与 DOM focus 相互独立）；
+- 编辑器保留输入与局部校验；系统保存/失败/Conflict 由 Status/Operation Feedback 承接，不重新绘制为 Cell 装饰；
+- 目标入口为 Summary → Operation Records、独立 Trash → Deleted Records，具体生命周期与 API 启用边界见下文「操作记录与已删除记录」；不另建三 Tab 的第二套模式。Grid Current 与 DOM focus 独立，不能抢回面板焦点；
 
 ### Loading
 
@@ -310,7 +310,7 @@ View 右上角 MUST 提供 View 级聚合保存状态指示器：
 错误应就近显示：
 
 - Field 错误显示在字段附近；
-- Record/Mutation 错误显示在行、Cell 或 Record Detail 附近；
+- Record/Mutation 系统错误由 Status/Operation Feedback 提供可操作反馈；原编辑意图保留，Record Detail 继续使用对应字段级提示；Cell 附近只呈现输入本身的校验错误；
 - 网络、认证和 Server 错误可以使用状态条或 Notice 辅助表达；
 - 文案必须说明原因和下一步，技术错误码默认放在可展开诊断区域。
 
@@ -403,29 +403,12 @@ Detail/Sheet 提供：
 
 ### Cell 状态
 
-Grid Cell 至少区分：
+Grid Cell 区分 readonly、current、selected、hover、editing 和输入校验状态。DOM focus、Row Selection、Current、编辑草稿和系统写入生命周期分别维护。
 
-- `readonly`；
-- `focus`；
-- `selected`；
-- `editing`；
-- `dirty`；
-- `saving`；
-- `saved`；
-- `error`；
-- `conflict`；
-- `offline`。
-
-推荐的视觉优先级为：
-
-1. Conflict/Error；
-2. Editing；
-3. Saving/Dirty；
-4. Selected/Focus；
-5. Hover；
-6. Readonly。
-
-Focus 必须有明确 Focus Ring，Selected 必须与 Focus 可区分，Editing 必须有清晰编辑边界，状态不能只靠颜色表达。
+- Current 是独立于 DOM focus 的持久业务位置，以最终 2px overlay 表达；选中/hover 不覆盖它。
+- 编辑器有清晰边界；局部 invalid 提示只解释当前输入，保持固定行高。
+- 系统 Dirty/Pending/Saved/Error/Conflict/Offline 由既有 Controller/Queue 与 Status/Operation Feedback 表达，不能回流为 Cell 的第二套保存装饰。
+- 可访问的宿主 focus-visible 必须可见；不新增 Loom Focus variant。Selected 不等于 focus，也不等于 Current。
 
 以下状态是不同概念，不得混用同一字段或同一视觉：
 
@@ -483,7 +466,7 @@ Table ID + View ID + Record ID + Field ID
 - 顶部显示 Primary Field 和 Record 操作；
 - 字段按 Field 顺序展示；
 - 每个字段统一显示 Label、Value、Editor、Error 和 Save State；
-- 单次交互即可确定完整值的字段即选即存：Checkbox 点击即提交，Select/Date 在 change 后立即经 `onFieldEdit` 队列提交并关闭编辑器；文本、多值和复合字段保留显式保存/取消；保存失败保留所选值并就地显示字段级错误；
+- 单次交互可确定完整值的 Checkbox/Select 保留既有接受即存语义；Date 遵守下文「DatePicker」的 Confirm/outside/Tab 单一接受合同，不由 change/blur 直接写入。文本、多值与复合字段保留各自保存/取消边界；失败保留输入与字段级反馈；
 - 桌面端优先使用 Detail Panel；
 - 移动端优先使用 Sheet；
 - Grid、Map 和未来 View 点击记录时复用同一种 Detail 语义；
@@ -634,3 +617,81 @@ Component Gallery MUST 覆盖：
 - Server 文档只记录数据和 API 合同，不复制本文件的完整视觉规范；
 - HIG 的修改必须同步检查 Design System、Grid、Map、Client Contract 和 Component Gallery 的引用关系。
 
+
+## Wave 1.5 已批准交互合同
+
+本节定义目标交互；具体启动范围和当前能力见 [Wave 1.5 API Boundary](../wave1.5/api-boundary.md)。设计已批准不代表 Runtime QA 完成。技术所有权/资源释放见 [Editor Lifecycle](../architecture/field-editor-lifecycle.md)，视觉量值只在 DS 维护。
+
+### Owned Overlay
+
+每个浮层归一个稳定 owner，子菜单/值选择器登记为 owned child。inside 判定包含 trigger 与所有 owned overlay 的 composedPath；内部 pointer/focus/Tab 不产生 outside 提交。Esc 只处理最上层，取消未发草稿并在适用时回有效 trigger；外点和上下文切换不得抢回用户当前 focus。
+
+关闭/销毁释放 listener、timer、rAF、observer、pointer capture 与子 overlay；迟到成功/错误只归原操作，不能修改新 Table/View/editor。UI 销毁可取消尚未发出的 intent，不能把已发送 Mutation 伪装为撤回或换新 ID 重试。
+
+### Query Panels
+
+- Filter 保留 bare-first/root group 渐进披露、typed operand、touched 校验、depth8/nodes100 和约300ms串行自动生效。rule/group 只在同 parent 内重排，保持局部 stable identity；删除、Field/operator 改变或 context 切换使旧 child picker 无效。远端 distinct search/append 单 flight、cursor 去重，clear operand 为 undefined，保留 search 与 last valid query。
+- Sort 的 Add 先打开临时 Field Picker，选择 active/sortable/unused Field 后一次追加完整 Entry；最多10个去重 Field，移动保留 direction/nulls。失败草稿保留，不新增 Apply。
+- Display 使用正向 visibility、density Select、任意 frozen 子集、More freeze/unfreeze，与 Header 使用同一命令。隐藏时 unfreeze，但保留 active Field 宽度；obsolete Field 才清理。重显示不自动 refreeze，至少一个 visible。Display intent 不能覆盖并发 resize 的新宽度。
+- Reorder 只由明确 handle 启动，提供键盘/菜单等价入口；pointercancel 恢复原数组并释放 capture。whole-row click、checkbox、detail 和空白不启动 drag。
+- Filter Date 是 query operand；可复用 Calendar body 的本地接受，保留 clear=undefined 和自动更新。不把 Record Date 的持久化/Undo/完整 Footer 协议强加给 Query。
+
+### Choice Picker
+
+当前 ID 选择器始终提供 search、clear 和一致 option list，不按数量阈值切成不同保存协议。仅 active ID 可新选；deleted reference 可显示/移除；unknown sentinel 不提交。search 不写入、不清已选；clear 不清 query。
+
+Select clear 为 null，MultiSelect 为 []，Filter scalar 为 undefined。Single 保留既有消费者接受即存，Multi 保留各消费者草稿/保存边界；Create Draft 仅更新 local accepted values/touched。内部 owned focus 不触发旁路提交；失败保 draft/query。完整文字通过可访问说明/详情获得，Tag 外观按 DS。
+
+Field create 可搜索现有10种类型，edit 中类型固定；类型转换是另一个已有/未来流程，不由 Picker 自动增加业务。standalone options order 经既有 Field CAS 保存。新三色 writer 与 inline atomic create-and-select 等待 G1/G2；不能用临时 ID 或 Field PATCH + Record 两次请求伪装原子动作。
+
+### View 与 Inline Rename
+
+Current View 与 Default 独立，More 命令不选择 View。Context 为 text-only 层级/caret；快捷 tabs 不用 +N 折叠。Map 0/1/N 有效 Location Field 的既有流程保留，不为了创建示例新增 Field。
+
+Rename 保持 leading/name/trailing 槽、边界和行高稳定，输入不嵌入 button。Enter/blur 共享一次接受，IME 不提交；Esc 恢复原名。成功才结束；failure/conflict/unresolved 保输入与可修复错误。Table/edit epoch 改变后旧 completion 不关闭新编辑器。View order/生命周期 tail 等 G3，不用本地持久顺序替代 Server。
+
+### DatePicker
+
+Date-only 使用合法 Gregorian YYYY-MM-DD，年0000–9999，不经本地时区或 ISO timestamp 往返。null、unset/absent、空字符串分别处理；空串无效，Clear 不是 unset。低年0–99不能依赖 JS Date.UTC 的隐式1900映射。Today 只取可注入的本地系统年月日。
+
+Day/Month/Year 三层选择，Year 每页20年，选择 Year→Month→Day。preferred day 在短月 clamp 后保留，回到足够长月份恢复；导航/焦点/建议 Today 不自动 dirty。空值打开只给建议，不默默触摸 Record 值。
+
+| 输入 / 状态 | 接受与持久化 |
+| --- | --- |
+| 选择 day / 导航年月 | 只更新本地 candidate/display/preferredDay，不保存 |
+| Today | 选择本地今天为 candidate；是否保存仍按接受动作 |
+| Confirm | 合法时显式接受；空建议只有 Confirm 才接受 |
+| Outside / 真正 Tab 离开整个 picker | 有修改且合法时接受，未修改零写；和 Confirm 同一同步 claim 的 intent/promise |
+| Clear | optional 时一次 explicit null；原空无变化则零写；当前 Field 没有 required config，只有真实 consumer policy 才限制 Clear |
+| Esc | 取消未发草稿、恢复 original value/presence；只消费 picker 层，不触发外层第二次 discard/close |
+| Invalid / incomplete outside | 零写，保 raw draft 在原 context 可恢复；外部目标动作正常，不抢回 focus |
+| failure / conflict / unknown | 保意图与输入，沿既有 Controller/Queue/Status 恢复；不显示假成功、不换 body/id 伪重试 |
+| context switch / dispose | 取消未发草稿与视觉工作；已发 Mutation 仍由原 context/operation owner 处理 |
+
+Grid、Detail 使用一个捕获原 context 的 promise-aware save owner；没有 change/blur 第二条保存旁路。Create Draft 的 Confirm/Clear 只修改本地值/touched，outer Create 才唯一持久化；内部焦点不触发 row focusout create。提交前校验/接收本地值，非法 raw 不能被旧值偷偷替代。Map Create Form 使用同一生产组件与释放路径。Filter adapter 保持 query 语义。
+
+Calendar 使用 roving focus/native activation 和清晰 label；箭头、Home/End/PageUp/PageDown 属于当前 calendar 的局部导航，导航 focus 不选值、不提交。Tab 可以真正离开，不做非 modal trap。pane clamp/flip/低高度 Sheet、两主题/大字体/触控命中按真实宿主验证；视觉尺寸见 DS。
+
+### 操作记录与已删除记录
+
+Summary 打开 Operation Records，独立 neutral Trash 打开 Deleted Records；当前投影无 Actor/Profile。目标共用 header/close、body-only scroll、hasMore 时的 Load More footer，少量/空内容使用 HUG；pane clamp 与窄 Sheet 复用同一数据模型，焦点不被 Grid Current 抢回。
+
+Operation 行为五列：修改时间、Field、Before、After、Action；value change 不额外塞 Record title/ID，lifecycle Field 使用“—”或窄布局合并短语。宽/中/窄模式按同一 VM 呈现36/56/80px行，窄 lifecycle58px。保 typed 0/false/null/unset/deleted reference，历史 label/color/type 必须来自 event-time 数据；缺失明确显示未记录，不能用当前 schema 伪造。
+
+W15-08A 先修当前 history/recycle context、single-flight/410 与 local Undo busy/stack/metadata；真实 Deleted restore 保 revision/pending 门槛。W15-08B 的最终两入口必须等 G5 的 Server 分页前 Record category projection、metadata 与 identity；不能先丢弃已有真实功能、客户端全页后 filter 或把 local stack 改名为 Server feed。
+
+可恢复 Action 以真实 capability/identity/availability 判定并给出不可用原因。local session Undo 与跨 session 整 Table rollback 分开；后者 Future。30d 可读日志不等于30d可恢复，cursor/receipt/history 各自过期语义分别处理。
+
+### Future TimePicker
+
+本节保留批准的运行行为，Time/DateTime/12h 仍 API-gated。Clock/Wheel 共用 canonical TimeDraft，mode/active part/选择本身不保存；值、paint angle、radius、selected feedback 与 view 分开。视觉参数和指针公式只在 DS 维护。
+
+- Clock minute 支持所有0–59，nearest 每1分钟；24h 内环0°显示12，其余30°步进显示1–11；外环0°显示0，其余30°步进显示13–23。12h 的0°显示12，canonical hour 由当前 period 投影。中心 dead zone 保最后合法值，ring hysteresis 不改视觉半径。
+- 点击立即更新目标 draft，paint 沿最短弧约120ms ease-out（宿主可在100–160ms调校）；delta 使用正模 mod(targetAngle−paintAngle+180,360)−180；恰180°取固定顺时针。59→00 绘制354→360，拖动用连续 unwrapped sample angle，不每帧按 canonical 最短弧追赶。
+- pointerdown capture、move 直接跟随，最多每rAF一次绘制；release 最多0–80ms短收敛。小时 click/up 完成后进入 Minute，新输入取消旧 auto-advance；pointerdown 不提前切盘。cancel/lostcapture 保最后合法 draft，零保存。
+- Wheel 两列 native scroll/inertia + 一个 snap owner；不叠加第二套惯性。最多3个循环投影，静止 rebase 到中间；12h 仍24个 canonical hour ID，23↔0更新 period；minute59↔0不carry小时/日期。
+- scrollend feature detect，fallback 为无新输入约120ms、pointer/key释放且连续2rAF稳定；受控 Snap60–140ms，Confirm/outside settleBoth 推荐≤160ms。新输入取消旧 snap/epoch，模式切换先 settle/resolve 再取消旧工作，旧 completion 不反写 draft。
+- AM/PM 整体是一个 button，一次 activation 执行 hour=(hour+12)%24，minute不变；aria-pressed 表达 PM，内部 label/indicator aria-hidden。indicator 上下移动18px约120ms ease-out，颜色同步；快速切换重定向当前 paint，旧 transitionend 只清理不保存。
+- Reduced motion 直接落位，保连续输入的数值正确性；取消 gesture/timer/rAF/capture 并按原 session 处理 Clear/Esc/context。模式 target 的 keyboard 图标表示转 Wheel，clock 表示转 Clock，不增加第三种 keyboard mode 或持久化偏好。
+
+Pointer、Touch、Wheel 各设备、0°跨越、文字遮挡、Focus、settle/中断和资源释放必须在 Plugin Runtime 验证。Figma Motion 或静态播放演示不属于实现依赖。
