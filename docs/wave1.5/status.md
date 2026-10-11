@@ -4,35 +4,35 @@
 
 ## 批准与当前基线
 
-| 对象                              | 状态               | 生效范围 / 引用                                                   |
-| --------------------------------- | ------------------ | ----------------------------------------------------------------- |
-| Wave 1                            | Approved / Frozen  | 保留已交付基线                                                    |
-| Wave 1.5 设计                     | Approved           | 当前 authority 视觉、布局和交互；Future/API 门槛保留              |
-| 正式文档准备                      | Review             | 两仓库文档已准备；待审查、提交及发布，未开始产品切片              |
-| Lane A 实施授权                   | 未记录具体切片授权 | Devin 启动时记录用户给定 Task ID/范围，不能从文档整理推断代码授权 |
-| G1–G6 合同 / Server 实施          | Gated              | 每条批准、Server commit、部署 capability 与 Plugin 接入分开记录   |
-| Time/DateTime、12h、整 Table 回滚 | Future / API-gated | 不进入当前生产任务                                                |
+| 对象                              | 状态               | 生效范围 / 引用                                                                                                                                 |
+| --------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wave 1                            | Approved / Frozen  | 保留已交付基线                                                                                                                                  |
+| Wave 1.5 设计                     | Approved           | 当前 authority 视觉、布局和交互；Future/API 门槛保留                                                                                            |
+| 正式文档准备                      | Done               | 已审查并提交：Plugin `69e296cc6a02f74ca61a633c6168fb36b9b89398`、Server `5d430cd641e5a210eab3371c9864919837cd69a9`（本地 main，push/PR 未授权） |
+| Lane A 实施授权                   | W15-01 已授权      | 用户 2026-10-12 输入授权 W15-00 文档基线与 W15-01 切片                                                                                          |
+| G1–G6 合同 / Server 实施          | Gated              | 每条批准、Server commit、部署 capability 与 Plugin 接入分开记录                                                                                 |
+| Time/DateTime、12h、整 Table 回滚 | Future / API-gated | 不进入当前生产任务                                                                                                                              |
 
-审查基线：Plugin 336db8c47a5bf52a63eb1a4a127002c43872cf1e；Server 5f4827f6b7a7f189aac13e3bc3c0e92377a7873e；Plugin API pin 43da70e3c241380fff34d0deee8c1142ba39cb47。新 Session 必须读取实际 HEAD，不把这些值当永久最新。
+审查基线：Plugin 336db8c47a5bf52a63eb1a4a127002c43872cf1e；Server 5f4827f6b7a7f189aac13e3bc3c0e92377a7873e；Plugin API pin 43da70e3c241380fff34d0deee8c1142ba39cb47。文档基线 commit：Plugin 69e296cc6a02f74ca61a633c6168fb36b9b89398、Server 5d430cd641e5a210eab3371c9864919837cd69a9。新 Session 必须读取实际 HEAD，不把这些值当永久最新。
 
 ## 实施包
 
-| Task                         | State   | Owner / Branch     | Dependencies               | PR / Merge HEAD | Checks / Host QA                            | Next action                                  |
-| ---------------------------- | ------- | ------------------ | -------------------------- | --------------- | ------------------------------------------- | -------------------------------------------- |
-| W15-00 文档基线              | Review  | Codex / 当前工作树 | 当前文档审查               | 尚未提交        | 文档链接/锚点和覆盖检查通过；产品测试未运行 | 审查并按授权发布文档 commit，不重复迁移      |
-| W15-01 Primitive 消费者      | Planned | —                  | 00 与切片授权              | —               | 未运行 / 未验证                             | 第一个生产切片候选                           |
-| W15-02 Filter                | Planned | —                  | 01                         | —               | 未运行 / 未验证                             | stable rule/owned distinct 生命周期          |
-| W15-03 Sort                  | Planned | —                  | 01                         | —               | 未运行 / 未验证                             | transient Add/whole entry move               |
-| W15-04 Display               | Planned | —                  | 01                         | —               | 未运行 / 未验证                             | latest-base width/freeze intent              |
-| W15-05 Grid                  | Planned | —                  | 01、04                     | —               | 未运行 / 未验证                             | 几何/validation 可交付；G4/G6 另记录         |
-| W15-06 Continuous loading    | Planned | —                  | 05                         | —               | 未运行 / 未验证                             | ready retained rows/epoch/underfill          |
-| W15-07 Choice / Field Type   | Planned | —                  | 01、05                     | —               | 未运行 / 未验证                             | 现有 ID/9 色先做；G1/G2 保持门槛             |
-| W15-08A Activity / Undo 安全 | Planned | —                  | 01、05                     | —               | 未运行 / 未验证                             | 现有读竞态、stack、Deleted restore           |
-| W15-08B 最终操作入口         | Gated   | —                  | 08A、G5                    | —               | 未运行 / 未验证                             | 等待真实 Record projection/metadata/identity |
-| W15-09 View / Rename         | Planned | —                  | 01                         | —               | 未运行 / 未验证                             | 当前导航/命名；order 等 G3                   |
-| W15-10 Date / Grid           | Planned | —                  | 01、05、07 handle          | —               | 未运行 / 未验证                             | pure Gregorian + single commit owner         |
-| W15-11 Date 消费者           | Planned | —                  | 10                         | —               | 未运行 / 未验证                             | Detail/Create Draft/Map 生命周期             |
-| W15-12 集成验收              | Planned | —                  | 当前授权 Lane A 的所有切片 | —               | 未运行 / 未验证                             | 分层 QA；未解锁能力不得标完成                |
+| Task                         | State      | Owner / Branch | Dependencies               | PR / Merge HEAD                         | Checks / Host QA                                                                                                     | Next action                                  |
+| ---------------------------- | ---------- | -------------- | -------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
+| W15-00 文档基线              | Done       | Devin / main   | 当前文档审查               | Plugin 69e296c / Server 5d430cd（本地） | 271 相对链接/锚点零缺失；13 包×18 字段、39+R40、77 资产、6 Gate 一致；prettier/git-diff --check 通过；产品测试未运行 | push/merge 待用户授权                        |
+| W15-01 Primitive 消费者      | InProgress | Devin / main   | 00（69e296c）与切片授权    | —                                       | 未运行 / 未验证                                                                                                      | Primitive/Menu/Toolbar/Field/overlay 实现中  |
+| W15-02 Filter                | Planned    | —              | 01                         | —                                       | 未运行 / 未验证                                                                                                      | stable rule/owned distinct 生命周期          |
+| W15-03 Sort                  | Planned    | —              | 01                         | —                                       | 未运行 / 未验证                                                                                                      | transient Add/whole entry move               |
+| W15-04 Display               | Planned    | —              | 01                         | —                                       | 未运行 / 未验证                                                                                                      | latest-base width/freeze intent              |
+| W15-05 Grid                  | Planned    | —              | 01、04                     | —                                       | 未运行 / 未验证                                                                                                      | 几何/validation 可交付；G4/G6 另记录         |
+| W15-06 Continuous loading    | Planned    | —              | 05                         | —                                       | 未运行 / 未验证                                                                                                      | ready retained rows/epoch/underfill          |
+| W15-07 Choice / Field Type   | Planned    | —              | 01、05                     | —                                       | 未运行 / 未验证                                                                                                      | 现有 ID/9 色先做；G1/G2 保持门槛             |
+| W15-08A Activity / Undo 安全 | Planned    | —              | 01、05                     | —                                       | 未运行 / 未验证                                                                                                      | 现有读竞态、stack、Deleted restore           |
+| W15-08B 最终操作入口         | Gated      | —              | 08A、G5                    | —                                       | 未运行 / 未验证                                                                                                      | 等待真实 Record projection/metadata/identity |
+| W15-09 View / Rename         | Planned    | —              | 01                         | —                                       | 未运行 / 未验证                                                                                                      | 当前导航/命名；order 等 G3                   |
+| W15-10 Date / Grid           | Planned    | —              | 01、05、07 handle          | —                                       | 未运行 / 未验证                                                                                                      | pure Gregorian + single commit owner         |
+| W15-11 Date 消费者           | Planned    | —              | 10                         | —                                       | 未运行 / 未验证                                                                                                      | Detail/Create Draft/Map 生命周期             |
+| W15-12 集成验收              | Planned    | —              | 当前授权 Lane A 的所有切片 | —                                       | 未运行 / 未验证                                                                                                      | 分层 QA；未解锁能力不得标完成                |
 
 W15-08A/B 是一个任务包的两个交付阶段；本批仍为 W15-00–12 共 13 包。W15-05/07/09 的当前子集完成不表示相关 API Gate 交付。
 
