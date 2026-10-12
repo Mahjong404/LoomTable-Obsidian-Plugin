@@ -26,10 +26,13 @@
 
 ## Obsidian 真机审计（CDP）
 
-UI 观感/交互的核验走 Obsidian 内嵌 Chromium 的 DevTools 协议：
+UI 观感/交互的核验走 Obsidian 内嵌 Chromium 的 DevTools 协议。`docs/local/` 下的 CDP driver 是**可选本机工具、已 gitignore**——干净克隆不依赖它；宿主验收也可走本节末尾的正式手动 QA 方法。
 
-1. 启动 Obsidian 带调试端口：`Obsidian.exe --remote-debugging-port=9223`。
-2. 用 `docs/local/ux-followup-2026-09-19/cdp.mjs` 驱动（Node ≥24，零依赖）：
+1. 在隔离测试 Vault 中启动独立 Obsidian 实例（不得重启或重配用户正在使用的实例）：
+   `Obsidian.exe --remote-debugging-port=9223`。
+2. 若本机存在 `docs/local/ux-followup-2026-09-19/cdp.mjs`（Node ≥24，零依赖），可驱动：
    `node cdp.mjs list | eval "<js>" | shot <name> | hover/click/rclick "<selector>" | key <k> | type "<text>" | emulate <w> <h> | emulate 0 0`
-3. 鉴权探测服务端：页内 `app.secretStorage.getSecret('loomtable-server')` 取 token + `requestUrl()` 发请求（token 不出页面）。
+3. 鉴权探测服务端：页内 `app.secretStorage.getSecret('loomtable-server')` 取 token + `requestUrl()` 发请求（token 不出页面，绝不写入仓库或报告）。
 4. 证据存 `docs/local/<audit-dir>/shots/`；`docs/local/` 已 gitignore，审计产物不入库。
+
+正式手动 QA（无 CDP 时的等效验收路径）：构建 `npm run build` 后在隔离 Vault 中启用插件，逐项走对应任务卡的验收清单（菜单开关/重复触发/Outside/Escape/焦点恢复、Field Editor 成败/失败保 draft、双主题、窄 Pane、键盘/指针、Reduced Motion、组件卸载清理、跨 Pane 菜单隔离），结果与限制写入 `docs/wave1.5/status.md` 的 Checks/Host QA 列；Vitest/jsdom 结果不得冒充宿主验收。
