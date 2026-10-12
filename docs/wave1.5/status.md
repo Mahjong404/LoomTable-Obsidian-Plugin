@@ -20,7 +20,7 @@
 
 A实现完整Menu+Trigger焦点边界、View统一释放Renderer、Query显式flush与纯dispose、Field配置替换前释放Palette。真实Controller/View CAS不变；普通关闭可串行提交有效草稿，Escape/context/unload取消尚未调用consumer的timer与queued intent，已接受操作仍归原View。Sort/Display仅同步这一共享生命周期出口，不实施其新版领域UI。
 
-本地1065项测试通过（17项新增真实View/Renderer/Controller生命周期测试）；类型、全仓格式、构建、API生成零diff通过，lint 0 error / 723 warning（原基线718）。使用安装后的直接CLI执行，未把pnpm exec环境失败记成check通过。独立Obsidian桌面验收记录完整Menu/Tab/Arrow、双Pane、pointer及keyboard Grid→Map、300ms pending/late queued、普通关闭/Escape、Renderer替换/Pane unload、Field Palette切类型/失败重试、Light/Dark/Reduced Motion。最终bundle与实测数量在合并前核定；B视觉与真实Mobile/touch、生产Server持久化不由A测试证明。
+本地1068项测试通过（20项新增真实View/Renderer/Controller生命周期测试）；类型、全仓格式、构建、API生成零diff通过，lint 0 error / 723 warning（原基线718）。使用安装后的直接CLI执行，未把pnpm exec环境失败记成check通过。两轴review发现的列宽pointer listener释放、Cell Escape关闭原因、Query Escape回trigger均已窄修复并定向复核关闭。独立Obsidian桌面验收记录完整Menu/Tab/Arrow、双Pane、pointer及keyboard Grid→Map、300ms pending/late queued、普通关闭/Escape、Renderer替换/Pane unload、Field Palette切类型/失败重试、Light/Dark/Reduced Motion。最终bundle与实测数量在合并前核定；B视觉与真实Mobile/touch、生产Server持久化不由A测试证明。
 
 ## 实施包
 
