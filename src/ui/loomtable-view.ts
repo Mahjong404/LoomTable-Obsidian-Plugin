@@ -167,8 +167,7 @@ export class LoomTableView extends ItemView {
     if (!this.prepareForNavigation()) return;
     // Stash the outgoing Grid session before the renderer is replaced — the
     // renderer itself also captures on in-place View switches.
-    this.#gridRenderer?.captureSession();
-    this.#gridRenderer = null;
+    this.releaseGridRenderer();
     this.#activeProfile = profile;
     this.#activeMapViewId = null;
     this.#mapView?.destroy();
@@ -346,8 +345,7 @@ export class LoomTableView extends ItemView {
     this.#invalidationUnsubscribe = null;
     this.#mapView?.destroy();
     // Preserve the Grid working session for a later Map → Grid return.
-    this.#gridRenderer?.captureSession();
-    this.#gridRenderer = null;
+    this.releaseGridRenderer();
     this.#gridHost = null;
     this.#detailHost = null;
     this.contentEl.empty();
@@ -614,6 +612,7 @@ export class LoomTableView extends ItemView {
     const controller = this.#gridController;
     const profile = this.#activeProfile;
     if (controller === null || profile === null || !this.prepareForNavigation()) return;
+    this.#gridRenderer?.closeQueryPanels('context-switch');
     await (kind === 'workspace'
       ? controller.selectWorkspace(id)
       : kind === 'base'
@@ -626,6 +625,7 @@ export class LoomTableView extends ItemView {
     const controller = this.#gridController;
     const profile = this.#activeProfile;
     if (controller === null || profile === null || !this.prepareForNavigation()) return;
+    this.#gridRenderer?.closeQueryPanels('context-switch');
     const target = controller.state.views.find((candidate) => candidate.id === viewId);
     await controller.selectView(viewId);
     if (target?.type === 'grid' && this.#mapView !== null) {
@@ -924,7 +924,16 @@ export class LoomTableView extends ItemView {
     this.#shell?.createView({ type: 'map', locationFieldId: fieldId });
   }
 
+  private releaseGridRenderer(): void {
+    const renderer = this.#gridRenderer;
+    this.#gridRenderer = null;
+    renderer?.captureSession();
+    renderer?.dispose();
+  }
+
   private disposeAll(): void {
+    this.releaseGridRenderer();
+    this.#shell?.dispose();
     this.#locationPreview?.dispose();
     this.#locationPreview = null;
     this.#mapView?.destroy();
@@ -936,8 +945,6 @@ export class LoomTableView extends ItemView {
     this.#gridController?.dispose();
     this.#gridController = null;
     this.#gridClient = null;
-    this.#gridRenderer?.dispose();
-    this.#gridRenderer = null;
     this.#gridSessions.clear();
     this.#gridHost = null;
     this.#detailHost = null;

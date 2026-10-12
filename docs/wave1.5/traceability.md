@@ -151,7 +151,9 @@ Design System 负责视觉，HIG 负责交互，Grid Spec 负责 Grid 专属，E
 
 ## 2026-10-12 当前实现与视觉证据路由
 
-上表未更新行的源码行号仍是最初336db8c规划证据，不能据此认定最新HEAD缺陷。当前52b2c9d逐项Figma master/state→host rect/style→源码原因→最小scope→验收在 [UI 对齐矩阵](ui-alignment.md#figma-to-code-差异矩阵)。它补现有39组追踪，不增加另一组规范或状态。
+上表未更新行的源码行号仍是最初336db8c规划证据，不能据此认定最新HEAD缺陷。52b2c9d逐项Figma master/state→host rect/style→源码原因→最小scope→验收在 [UI 对齐矩阵](ui-alignment.md#figma-to-code-差异矩阵)，是固定历史审计，不随修复改写旧量尺。它补现有39组追踪，不增加另一组规范或状态。
+
+G05/G06/G13的A实现接缝见`src/ui/context-menu.ts`、`field-editor-panel.ts`、`filter-builder.ts`、`readonly-grid-renderer.ts`及`loomtable-view.ts`；`tests/ui/shared-owner-lifecycle.test.ts`通过真实View/Renderer/Controller断言焦点边界、原View写入次数、失效queued取消与Palette资源释放。实际交付/Host边界只在[唯一状态](status.md#首批a交付验证)维护；这些生命周期修复不代表G03/04的B视觉或G13完整Filter视觉已完成。
 
 G02–06/A01–04/A17→01 A/B；G08/G19–24/A09–13→05/09代表性C；G13/A05–06→02视觉续段；G14/A07→03；G15/A08→04；G07/G12/A14→07；G35–36/A15→10/11；Record/Map整页未获完整新authority，只验既有基线及明确consumer接缝。G37–39及Deferred保持原边界，不列当前遗漏。
 

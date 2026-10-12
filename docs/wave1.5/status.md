@@ -1,6 +1,6 @@
 # Wave 1.5 — 唯一实施状态
 
-更新：2026-10-12。只记录实际实施、授权与交付引用；范围见README/implementation-plan，行为见UI/Architecture，任务合同见task-specifications。用户本轮调整为真实UI审计→精确规格→首批代表性页面，不直接继续W15-03。
+更新：2026-10-13。只记录实际实施、授权与交付引用；范围见README/implementation-plan，行为见UI/Architecture，任务合同见task-specifications。当前授权由Codex实现首批A共享生命周期与B生产组件，Devin随后复用组件集成领域页面；不直接继续C或W15-03。
 
 ## 批准与当前基线
 
@@ -8,13 +8,19 @@
 |---|---|---|
 | Wave 1 / Wave 1.5设计 | Approved（当前实施基线） | 已批准视觉/布局/交互；用户可通过Design Delta迭代，规则见UI入口；Future/API门槛保留 |
 | W15-00 正式文档基线 | Done | Plugin69e296cc6a02f74ca61a633c6168fb36b9b89398；Server5d430cd641e5a210eab3371c9864919837cd69a9已发布 |
-| 当前Plugin代码 | main@eed381b | 52b2c9d基础上含API桥接eed381b；PR113已合并于23681e6；01/02实现保留 |
-| 本轮UI工程重校准 | 审计/规格已合并；A/B生产组件未交付 | Figma live + isolated snapshot/Obsidian证据见ui-alignment，第一批A→B→C合同已补齐；PR113经merge 23681e6合入，规格基线19741922b03fc946b1edccbca3bbce85bec91e3f；Codex A/B尚无生产组件commit，C保持阻塞 |
+| 当前Plugin代码 | main@f8c8ba2 + A PR114 | 已保留Devin API桥接eed381b；A固定代码78183e99fc46efa75eca19a8cb49e6a8ac681122，独立checkout实施，共享工作树原改动不动 |
+| 本轮UI工程重校准 | 规格已合并；A review/Host通过，待集成；B未开始 | Figma live + isolated snapshot/Obsidian审计见ui-alignment；[PR113](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/113)已合并，当前批准设计可按Design Delta迭代。A/B/C仍是原包的分段，不自动解锁后续范围 |
 | Plugin API pin | f3980b1b4126cdfce026c0a94779c8c8261b3997（v0.4.0） | eed381b接入G1/G6；生产/v1/meta实测choicePalette12+aggregateSearch |
 | Server固定交付 | G1/G6已交付；Plugin桥接eed381b已接入 | 详细contract/commit/capability验证来源如下表；其余Gate仍独立 |
 | Time/DateTime、12h、整Table回滚 | Future / API-gated | Avatar/Profile/Cascader/细粒度转换审计Deferred |
 
-审计bundle SHA-256 4f00ca03ecc5c117ea3cb5c9b064415c6a98100f63d73e90e7d89cfb32c93b89。Obsidian1.14.4、合成Vault/loopback内存API；本轮没有修改用户数据或产品源代码。旧336db8c/Server5f4827f是初始规划基线，新Session读取实际HEAD。
+历史审计bundle SHA-256 4f00ca03ecc5c117ea3cb5c9b064415c6a98100f63d73e90e7d89cfb32c93b89对应52b2c9d。A生产代码已修改，未修改用户数据；Obsidian1.14.4、独立profile及合成Vault/loopback内存API。旧336db8c/Server5f4827f是初始规划基线，新Session读取实际HEAD。
+
+### 首批A交付验证
+
+A实现完整Menu+Trigger焦点边界、View统一释放Renderer、Query显式flush与纯dispose、Field配置替换前释放Palette。真实Controller/View CAS不变；普通关闭可串行提交有效草稿，Escape/context/unload取消尚未调用consumer的timer与queued intent，已接受操作仍归原View。Sort/Display仅同步这一共享生命周期出口，不实施其新版领域UI。
+
+集成main桥接后本地1073项测试通过（20项新增真实View/Renderer/Controller生命周期测试）；类型、全仓格式、构建、API生成零diff通过，lint 0 error / 724 warning（桥接前原基线718）。使用安装后的直接CLI执行，未把pnpm exec环境失败记成check通过。两轴review发现的列宽pointer listener释放、Cell Escape关闭原因、Query Escape回trigger均已窄修复并定向复核关闭。独立Obsidian桌面验收记录完整Menu/Tab/Arrow、双Pane、pointer及keyboard Grid→Map、300ms pending/late queued、普通关闭/Escape、Renderer替换/Pane unload、Field Palette切类型/失败重试、Light/Dark/Reduced Motion。Host16项通过：bundle5545f72d0a075a168bdb4d853d6ce52adf421c08892fc458008cd1edb8c62ea2；隔离fixture使用生产HttpClient的60s timeout与loopback fetch注入以隔离10s timeout影响，不证明requestUrl延迟行为。最终集成bundle41b5ae96abf3863fde59d5f9b9c419bf3f550dea51af974f7fc613b09b0a7b9e另6项默认Obsidian requestUrl验收通过（完整Menu、Query/Cell Escape回trigger、Pending→Map零写、Palette、真实resize→Renderer释放）。[PR114](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/114)正常CI通过，review遗漏全部关闭；B视觉与真实Mobile/touch、生产Server持久化不由A测试证明。
 
 ## 实施包
 

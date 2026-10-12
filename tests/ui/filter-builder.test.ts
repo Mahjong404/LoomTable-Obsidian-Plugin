@@ -950,7 +950,7 @@ describe('FilterBuilder', () => {
       host.remove();
     });
 
-    it('flushes a pending debounced apply when the builder is disposed', async () => {
+    it('explicitly flushes a same-owner close before pure disposal', async () => {
       const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
       const builder = createBuilder(
         { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
@@ -962,6 +962,7 @@ describe('FilterBuilder', () => {
       input.value = 'b';
       input.dispatchEvent(new Event('input', { bubbles: true }));
 
+      await builder.flushPendingApply();
       builder.dispose();
       await waitForApply(onApply);
       expect(onApply.mock.calls.at(-1)?.[0]).toEqual({

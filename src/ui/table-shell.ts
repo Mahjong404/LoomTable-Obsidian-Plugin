@@ -99,11 +99,23 @@ export class TableShell {
   #panelFormError: string | null = null;
   #overlayDismiss: ((event: PointerEvent) => void) | null = null;
   #contextExpanded = false;
+  #menuClose: (() => void) | null = null;
 
   constructor(translate: Translator, callbacks: TableShellCallbacks) {
     this.#translate = translate;
     this.#callbacks = callbacks;
     this.panelId = `loom-view-panel-${++shellSequence}`;
+  }
+
+  dispose(): void {
+    this.#menuClose?.();
+    this.#menuClose = null;
+    if (this.#overlayDismiss !== null) {
+      this.#lastRoot?.ownerDocument.removeEventListener('pointerdown', this.#overlayDismiss, true);
+      this.#overlayDismiss = null;
+    }
+    this.#lastRoot = null;
+    this.#lastState = null;
   }
 
   /**
@@ -343,6 +355,7 @@ export class TableShell {
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'loom-view-panel-item';
+      item.dataset.loomContextNavigation = '';
       item.dataset.shellFocus = `view-item:${view.id}`;
       item.disabled = pending;
       if (view.id === state.selectedViewId) {
@@ -461,7 +474,8 @@ export class TableShell {
       },
     });
     const rect = anchor.getBoundingClientRect();
-    openContextMenu({
+    this.#menuClose?.();
+    this.#menuClose = openContextMenu({
       items,
       x: rect.right,
       y: rect.bottom + 4,
@@ -1038,6 +1052,7 @@ export class TableShell {
     const select = document.createElement('select');
     select.setAttribute('aria-label', this.#translate(labelKey));
     select.dataset.shellFocus = `select:${labelKey}`;
+    select.dataset.loomContextNavigation = '';
     for (const resource of resources) {
       const option = document.createElement('option');
       option.value = resource.id;
@@ -1072,6 +1087,7 @@ export class TableShell {
       tab.dataset.shellFocus = `tab:${view.id}`;
       const selected = view.id === state.selectedViewId;
       tab.setAttribute('aria-selected', selected ? 'true' : 'false');
+      tab.dataset.loomContextNavigation = '';
       tab.setAttribute('aria-controls', this.panelId);
       tab.tabIndex = selected ? 0 : -1;
       tab.append(createUiIcon(view.type === 'map' ? 'view-map' : 'view-grid'));
@@ -1153,7 +1169,8 @@ export class TableShell {
         action: () => this.#openViewPanelFor(view, 'delete'),
       },
     ];
-    openContextMenu({ items, x, y, host, trigger, label: view.name });
+    this.#menuClose?.();
+    this.#menuClose = openContextMenu({ items, x, y, host, trigger, label: view.name });
   }
 
   #openViewPanelFor(view: View, action: 'rename' | 'copy' | 'delete'): void {

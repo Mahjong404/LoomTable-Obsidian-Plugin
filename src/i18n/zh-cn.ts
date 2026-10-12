@@ -127,6 +127,7 @@ export const simplifiedChineseMessages = {
   'grid.error.authentication': '加载此网格需要认证。',
   'grid.error.forbidden': '当前 Token 无权访问所选资源。',
   'grid.error.network': '网格请求失败；请检查 Server 后重试。',
+  'grid.query.applyFailed': '查询未能保存。请重新打开面板检查并重试。',
   'grid.error.offline': '当前处于离线状态；恢复连接后重试网格请求。',
   'grid.error.server': 'Server 在加载此网格时返回了错误。',
   'grid.editConflict': '此记录已在 Server 上发生变化。',
