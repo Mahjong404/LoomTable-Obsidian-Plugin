@@ -244,3 +244,100 @@ describe('openContextMenu', () => {
     expect(document.querySelector('.loom-context-menu')).toBeNull();
   });
 });
+
+describe('W15-01 review remediation', () => {
+  it('keeps the menu open when focus moves to its trigger mid-toggle', () => {
+    // M1 — real press order on the second trigger click is
+    // pointerdown → focusout(to trigger) → click(toggle close). The trigger
+    // belongs to the owned boundary, so the focusout must not dismiss first.
+    const { host, trigger } = fixture();
+    trigger.setAttribute('aria-haspopup', 'menu');
+    openContextMenu({ items: ITEMS, x: 10, y: 20, host, trigger, label: 'menu' });
+    const menu = document.querySelector<HTMLElement>('.loom-context-menu');
+    expect(menu).not.toBeNull();
+
+    menu!.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: trigger }));
+    expect(document.querySelector('.loom-context-menu')).not.toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBe('true');
+
+    // The caller-side toggle then closes it — and it must not reopen.
+    closeActiveContextMenu();
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBeNull();
+  });
+
+  it('still closes on focusout to an element outside the owned boundary', () => {
+    const { host, trigger } = fixture();
+    trigger.setAttribute('aria-haspopup', 'menu');
+    const elsewhere = document.createElement('button');
+    host.append(elsewhere);
+    openContextMenu({ items: ITEMS, x: 10, y: 20, host, trigger, label: 'menu' });
+    const menu = document.querySelector<HTMLElement>('.loom-context-menu');
+
+    menu!.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: elsewhere }));
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
+    expect(trigger.getAttribute('aria-expanded')).toBeNull();
+  });
+
+  it('scopes closeActiveContextMenu to its owner pane', () => {
+    // M2 — a background pane's cleanup must not close another pane's menu.
+    const paneB = document.createElement('div');
+    document.body.append(paneB);
+    const { host: hostA } = fixture();
+    const hostB = document.createElement('div');
+    paneB.append(hostB);
+
+    openContextMenu({ items: ITEMS, x: 10, y: 20, host: hostA, label: 'pane-a' });
+    expect(document.querySelector('.loom-context-menu')).not.toBeNull();
+
+    expect(closeActiveContextMenu(hostB)).toBe(false);
+    expect(document.querySelector('.loom-context-menu')).not.toBeNull();
+
+    expect(closeActiveContextMenu(hostA)).toBe(true);
+    expect(document.querySelector('.loom-context-menu')).toBeNull();
+    paneB.remove();
+  });
+
+  it('keeps the single-active-menu rule even across pane owners', () => {
+    const paneB = document.createElement('div');
+    document.body.append(paneB);
+    const { host: hostA } = fixture();
+    const hostB = document.createElement('div');
+    paneB.append(hostB);
+
+    openContextMenu({ items: ITEMS, x: 10, y: 20, host: hostA, label: 'pane-a' });
+    openContextMenu({ items: ITEMS, x: 10, y: 20, host: hostB, label: 'pane-b' });
+    const menus = [...document.querySelectorAll<HTMLElement>('.loom-context-menu')];
+    expect(menus).toHaveLength(1);
+    expect(menus[0]?.getAttribute('aria-label')).toBe('pane-b');
+    paneB.remove();
+  });
+
+  it('uses menuitemradio/aria-checked only for true single-choice entries', () => {
+    const { host } = fixture();
+    openContextMenu({
+      items: [
+        { label: 'Retry', action: () => undefined },
+        'separator',
+        { label: 'Sum', checkable: 'radio', checked: true, action: () => undefined },
+        { label: 'Count', checkable: 'radio', checked: false, action: () => undefined },
+      ],
+      x: 10,
+      y: 20,
+      host,
+      label: 'aggregate',
+    });
+    const items = [...document.querySelectorAll<HTMLElement>('.loom-context-menu-item')];
+    // Plain commands stay ordinary menuitems — no selectable role.
+    expect(items[0]?.getAttribute('role')).toBe('menuitem');
+    expect(items[0]?.hasAttribute('aria-checked')).toBe(false);
+    expect(items[1]?.getAttribute('role')).toBe('menuitemradio');
+    expect(items[1]?.getAttribute('aria-checked')).toBe('true');
+    expect(items[2]?.getAttribute('role')).toBe('menuitemradio');
+    expect(items[2]?.getAttribute('aria-checked')).toBe('false');
+    // The check glyph rides only the checked choice.
+    expect(items[1]?.querySelector('.loom-context-menu-check')).not.toBeNull();
+    expect(items[2]?.querySelector('.loom-context-menu-check')).toBeNull();
+    closeActiveContextMenu();
+  });
+});

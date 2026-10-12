@@ -161,4 +161,132 @@ describe('openFieldEditor', () => {
     expect(() => close()).not.toThrow();
     expect(host.querySelector('.loom-field-editor')).toBeNull();
   });
+
+  it('locks every draft control while the submit is in flight', async () => {
+    // M3 — pending submit must freeze the draft: name, description, type
+    // picker, option editors and the submit action are all disabled, so no
+    // edit can be silently discarded by a late success.
+    const { host, trigger } = fixture();
+    let resolveSubmit!: () => void;
+    const onSubmit = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveSubmit = resolve;
+        }),
+    );
+    openCreate(host, trigger, onSubmit);
+    fillName(host, 'Notes');
+    submitPanel(host);
+
+    const panel = host.querySelector<HTMLElement>('.loom-field-editor');
+    expect(panel).not.toBeNull();
+    const controls = panel!.querySelectorAll<
+      HTMLInputElement | HTMLSelectElement | HTMLButtonElement | HTMLTextAreaElement
+    >('input, select, button, textarea');
+    expect(controls.length).toBeGreaterThan(0);
+    for (const control of controls) expect(control.disabled).toBe(true);
+
+    resolveSubmit();
+    await vi.waitFor(() => expect(host.querySelector('.loom-field-editor')).toBeNull());
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+  });
+
+  it('restores draft editing after a failed submit and permits retry', async () => {
+    const { host, trigger } = fixture();
+    let rejectSubmit!: (error: unknown) => void;
+    const onSubmit = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((_resolve, reject) => {
+            rejectSubmit = reject;
+          }),
+      )
+      .mockResolvedValueOnce(undefined);
+    openCreate(host, trigger, onSubmit);
+    fillName(host, 'Notes');
+    submitPanel(host);
+
+    rejectSubmit(new Error('boom'));
+    await vi.waitFor(() => {
+      const panel = host.querySelector<HTMLElement>('.loom-field-editor');
+      expect(panel?.dataset.submitting).toBeUndefined();
+    });
+    const name = host.querySelector<HTMLInputElement>('.loom-field-editor-name');
+    expect(name?.disabled).toBe(false);
+    expect(name?.value).toBe('Notes');
+    expect(host.querySelector('.loom-field-editor [role="alert"]')).not.toBeNull();
+
+    submitPanel(host);
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(2));
+  });
+
+  it('releases listeners and the palette when the owner host disconnects', async () => {
+    // M4/N1 — owner unload (view switch, pane teardown) detaches the host:
+    // the editor must close itself, drop its document listeners and dispose
+    // the child palette without stealing focus.
+    const { host, trigger } = fixture();
+    openCreate(
+      host,
+      trigger,
+      vi.fn(async () => undefined),
+    );
+    const panel = host.querySelector<HTMLElement>('.loom-field-editor');
+    expect(panel).not.toBeNull();
+    const name = host.querySelector<HTMLElement>('.loom-field-editor-name');
+    name?.focus();
+
+    host.remove();
+    await vi.waitFor(() => {
+      expect(document.querySelector('.loom-field-editor')).toBeNull();
+    });
+    // The dead editor no longer traps Tab or touches focus.
+    expect(document.activeElement).not.toBe(trigger);
+    document.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }),
+    );
+  });
+
+  it('releases the palette listener on pick, replace and parent close', async () => {
+    // N1 — the palette is a parent-owned child: only one mounted at a time,
+    // detached DOM never survives with a live capture listener.
+    const { host, trigger } = fixture();
+    openCreate(
+      host,
+      trigger,
+      vi.fn(async () => undefined),
+    );
+    const typeItems = () => [...host.querySelectorAll<HTMLElement>('.loom-field-editor-type')];
+    const selectItem = typeItems().find(
+      (el) => el.querySelector('.loom-field-editor-type-name')?.textContent === 'Select',
+    );
+    selectItem?.click();
+    await vi.waitFor(() => {
+      expect(host.querySelector('.loom-field-editor-option-list')).not.toBeNull();
+    });
+    // New fields start without options — add two rows to exercise swatches.
+    const addOption = () =>
+      host.querySelector<HTMLButtonElement>('.loom-field-editor-option-add')?.click();
+    addOption();
+    addOption();
+
+    // Scope to the row's own swatch — palette choices share the class but
+    // sit one level deeper inside the palette div.
+    const swatches = () =>
+      host.querySelectorAll<HTMLButtonElement>(
+        '.loom-field-editor-option-row > .loom-field-editor-swatch',
+      );
+    swatches()[0]?.click();
+    expect(host.querySelectorAll('.loom-field-editor-palette')).toHaveLength(1);
+    // Reopen on the other option — the first palette must be dismissed, not
+    // stacked.
+    swatches()[1]?.click();
+    expect(host.querySelectorAll('.loom-field-editor-palette')).toHaveLength(1);
+
+    host.querySelector<HTMLButtonElement>('.loom-field-editor-palette button')?.click();
+    expect(host.querySelectorAll('.loom-field-editor-palette')).toHaveLength(0);
+    // A document-level pointerdown after dismissal is a no-op, not a zombie.
+    document.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(host.querySelectorAll('.loom-field-editor-palette')).toHaveLength(0);
+  });
 });

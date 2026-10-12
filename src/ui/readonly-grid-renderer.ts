@@ -1205,6 +1205,21 @@ export class ReadonlyGridRenderer {
     return host;
   }
 
+  /**
+   * Owner-unload teardown: releases the document-level panel-dismiss
+   * listener, the tracked overlay (field editor / panels) and the Filter
+   * Builder's owned popover. Element listeners die with the detached DOM.
+   */
+  dispose(): void {
+    if (this.#panelDismiss !== null) {
+      this.#container.ownerDocument.removeEventListener('pointerdown', this.#panelDismiss, true);
+      this.#panelDismiss = null;
+    }
+    this.#filterBuilder?.dispose();
+    this.#filterBuilder = null;
+    this.#dismissOverlay();
+  }
+
   #closePanels(): void {
     this.#openPanel = null;
     this.#filterBuilder?.dispose();
@@ -1221,9 +1236,10 @@ export class ReadonlyGridRenderer {
     this.#overlayClose?.();
     this.#overlayClose = null;
     this.#overlayEl = null;
-    // Menus are body-mounted and can't ride the tracked overlay element, so
-    // the shared registry dismisses them on the same context changes.
-    closeActiveContextMenu();
+    // Menus are body-mounted and can't ride the tracked overlay element;
+    // owner-scoped dismissal closes only menus this container opened, so a
+    // background pane's cleanup never disturbs another pane's menu.
+    closeActiveContextMenu(this.#container);
   }
 
   /** Surfaces a fire-and-forget Field write failure instead of dropping it. */
@@ -2349,6 +2365,8 @@ export class ReadonlyGridRenderer {
         {
           label: this.#translate('grid.aggregate.none'),
           dataAction: 'aggregate-none',
+          checkable: 'radio',
+          checked: selected === undefined,
           disabled: selected === undefined,
           action: () => void onSetFieldAggregation(field.id, undefined),
         },
@@ -2356,6 +2374,9 @@ export class ReadonlyGridRenderer {
         ...aggregateFnsForField(field).map((fn): ContextMenuItem => ({
           label: this.#aggregateFnLabel(fn),
           dataAction: `aggregate-${fn}`,
+          // One aggregation per Field — a genuine single-choice menu.
+          checkable: 'radio',
+          checked: fn === selected,
           action: () => void onSetFieldAggregation(field.id, fn),
         })),
       ];

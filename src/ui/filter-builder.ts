@@ -10,7 +10,7 @@ import type {
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import { openFilterValuesPopover } from './filter-values-popover';
-import { openContextMenu } from './context-menu';
+import { closeActiveContextMenu, openContextMenu } from './context-menu';
 import { createUiIcon } from './icons';
 import { jsonEqual } from './json-equal';
 import {
@@ -636,6 +636,12 @@ export class FilterBuilder {
     button.setAttribute('aria-haspopup', 'menu');
     button.append(createUiIcon('menu-grip'));
     button.addEventListener('click', () => {
+      // The trigger is inside the owned overlay: a second press toggles the
+      // open menu off instead of dismissing it and immediately reopening.
+      if (button.getAttribute('aria-expanded') === 'true') {
+        closeActiveContextMenu();
+        return;
+      }
       const rect = button.getBoundingClientRect();
       openContextMenu({
         label: this.#translate('filter.move'),

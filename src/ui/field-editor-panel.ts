@@ -167,6 +167,13 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
 
   const optionDrafts: OptionDraft[] = initialOptionDrafts(options.field);
   let maxCount = options.field?.type === 'attachment' ? options.field.config.maxCount : 10;
+  // The palette is an owned child of this editor: the parent holds its
+  // disposer so choice, replacement, close and owner unload all release
+  // the capture listener, never just the detached DOM.
+  let paletteDismiss: (() => void) | null = null;
+  const dismissPalette = (): void => {
+    paletteDismiss?.();
+  };
 
   const renderConfig = (): void => {
     configHost.replaceChildren();
@@ -202,6 +209,9 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     list.className = 'loom-field-editor-option-list';
 
     const renderRows = (): void => {
+      // Rebuilding the rows detaches a mounted palette — release its
+      // document listener through the owned disposer before dropping DOM.
+      dismissPalette();
       list.replaceChildren();
       optionDrafts.forEach((draft, index) => {
         if (draft.deleted) return;
@@ -256,7 +266,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     };
 
     const openPalette = (anchor: HTMLButtonElement, index: number): void => {
-      panel.querySelector('.loom-field-editor-palette')?.remove();
+      dismissPalette();
       const palette = document.createElement('div');
       palette.className = 'loom-field-editor-palette';
       palette.setAttribute('role', 'listbox');
@@ -270,7 +280,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
         choice.addEventListener('click', () => {
           const target = optionDrafts[index];
           if (target !== undefined) target.color = color;
-          palette.remove();
+          dismissPalette();
           renderRows();
         });
         palette.append(choice);
@@ -278,9 +288,16 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
       anchor.after(palette);
       const dismiss = (event: PointerEvent): void => {
         if (!palette.contains(event.target as Node) && event.target !== anchor) {
-          palette.remove();
-          document.removeEventListener('pointerdown', dismiss, true);
+          dismissPalette();
         }
+      };
+      paletteDismiss = () => {
+        // The palette rides inside the option row; a rows rebuild detaches
+        // it without a remove() call, so the listener must be dropped
+        // unconditionally — isConnected early-returns would leak it.
+        palette.remove();
+        document.removeEventListener('pointerdown', dismiss, true);
+        paletteDismiss = null;
       };
       document.addEventListener('pointerdown', dismiss, true);
     };
@@ -321,16 +338,46 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     (connectedTrigger ?? options.restoreFocusTarget?.() ?? null)?.focus();
   };
   // Explicit closes (Escape, a successful submit) return focus to the
-  // invoking trigger; external dismissal — outside pointerdown, scroll or the
-  // owner's handle — never steals the user's new focus target.
+  // invoking trigger; external dismissal — outside pointerdown, scroll, a
+  // disconnected owner, or the owner's handle — never steals the user's
+  // new focus target.
   const close = (returnFocus = false): void => {
     if (closed) return;
     closed = true;
+    observer.disconnect();
+    dismissPalette();
     panel.remove();
     options.host.removeEventListener('scroll', onScroll);
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('keydown', onKeyDown, true);
     if (returnFocus) restoreFocus();
+  };
+  // Owner unload (view switch, map swap, pane teardown) must release every
+  // document listener and the palette — the editor cannot keep trapping
+  // Tab or focus after its host leaves the document.
+  const observer = new MutationObserver(() => {
+    if (!options.host.isConnected) close();
+  });
+
+  // While a submit is in flight the draft is locked: every mutable control
+  // is disabled so a still-pending write cannot be overtaken by edits that
+  // a late success would silently discard. Failure restores the controls.
+  const lockedControls: Array<
+    HTMLInputElement | HTMLSelectElement | HTMLButtonElement | HTMLTextAreaElement
+  > = [];
+  const lockDraft = (): void => {
+    lockedControls.length = 0;
+    for (const el of panel.querySelectorAll<
+      HTMLInputElement | HTMLSelectElement | HTMLButtonElement | HTMLTextAreaElement
+    >('input, select, button, textarea')) {
+      if (el.disabled) continue;
+      el.disabled = true;
+      lockedControls.push(el);
+    }
+  };
+  const unlockDraft = (): void => {
+    for (const el of lockedControls) el.disabled = false;
+    lockedControls.length = 0;
   };
 
   let submitting = false;
@@ -365,6 +412,8 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     // draft with the failure surfaced instead of silently closing.
     submitting = true;
     clearError();
+    dismissPalette();
+    lockDraft();
     panel.dataset.submitting = 'true';
     submit.setAttribute('aria-busy', 'true');
     try {
@@ -373,6 +422,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
       submitting = false;
       delete panel.dataset.submitting;
       submit.removeAttribute('aria-busy');
+      unlockDraft();
       if (closed) return;
       showError(
         error instanceof Error && error.message !== '' ? error.message : t('field.submit.failed'),
@@ -431,6 +481,10 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
   panel.classList.remove('loom-field-editor--measuring');
 
   renderConfig();
+  observer.observe(options.host.ownerDocument.documentElement, {
+    childList: true,
+    subtree: true,
+  });
   options.host.addEventListener('scroll', onScroll);
   document.addEventListener('pointerdown', onPointerDown, true);
   document.addEventListener('keydown', onKeyDown, true);

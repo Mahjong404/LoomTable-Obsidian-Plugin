@@ -6,6 +6,14 @@ export interface ContextMenuItem {
   readonly danger?: boolean;
   readonly disabled?: boolean;
   readonly dataAction?: string;
+  /**
+   * Selection semantics for true choice menus: 'radio' → menuitemradio,
+   * 'checkbox' → menuitemcheckbox, each exposing aria-checked. Plain
+   * commands must not set this — they stay menuitem.
+   */
+  readonly checkable?: 'radio' | 'checkbox';
+  /** Checked state for checkable items; renders the 14px/1.75 check glyph. */
+  readonly checked?: boolean;
   /** Marks the item as the currently active choice (aria-current + check). */
   readonly current?: boolean;
   readonly action: () => void;
@@ -36,11 +44,23 @@ const MENU_MARGIN = 4;
  * of the menu overlay lifecycle. Opening a menu closes the previous one so
  * callers never stack floating menus from different triggers or contexts.
  */
-let activeMenu: { readonly menu: HTMLElement; readonly close: () => void } | null = null;
+let activeMenu: {
+  readonly menu: HTMLElement;
+  readonly owner: HTMLElement;
+  readonly close: () => void;
+} | null = null;
 
-/** Closes the currently open context menu, if any. */
-export function closeActiveContextMenu(): void {
-  activeMenu?.close();
+/**
+ * Closes the currently open context menu. When `owner` is given, only a
+ * menu mounted under that owner element is dismissed — a background pane's
+ * cleanup path must not close a menu owned by another pane.
+ * Returns whether a menu was actually closed.
+ */
+export function closeActiveContextMenu(owner?: HTMLElement): boolean {
+  if (activeMenu === null) return false;
+  if (owner !== undefined && activeMenu.owner !== owner) return false;
+  activeMenu.close();
+  return true;
 }
 
 /**
@@ -70,14 +90,19 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     const item = ownerDocument.createElement('button');
     item.type = 'button';
     item.className = 'loom-context-menu-item clickable-icon';
-    item.setAttribute('role', 'menuitem');
+    if (entry.checkable === 'radio') item.setAttribute('role', 'menuitemradio');
+    else if (entry.checkable === 'checkbox') item.setAttribute('role', 'menuitemcheckbox');
+    else item.setAttribute('role', 'menuitem');
+    if (entry.checkable !== undefined) {
+      item.setAttribute('aria-checked', String(entry.checked === true));
+    }
     if (entry.danger === true) item.dataset.variant = 'danger';
     if (entry.dataAction !== undefined) item.dataset.action = entry.dataAction;
     item.disabled = entry.disabled === true;
     if (entry.icon !== undefined) item.append(createUiIcon(entry.icon));
     item.append(createTextSpan(ownerDocument, entry.label));
-    if (entry.current === true) {
-      item.setAttribute('aria-current', 'true');
+    if (entry.current === true || entry.checked === true) {
+      if (entry.current === true) item.setAttribute('aria-current', 'true');
       const check = createUiIcon('menu-check');
       check.classList.add('loom-context-menu-check');
       item.append(check);
@@ -120,7 +145,7 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
       else triggerControl.setAttribute('aria-expanded', triggerExpanded);
     }
   };
-  const record = { menu, close };
+  const record = { menu, owner: options.host, close };
   const onScroll = (): void => close();
   const onPointerDown = (event: PointerEvent): void => {
     const path = event.composedPath();
@@ -145,9 +170,19 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
   };
   // A true focus departure (Tab, or a click landing outside) dismisses the
   // menu without moving focus back — the user's new target is respected.
+  // The trigger belongs to the same owned boundary as the menu itself:
+  // pointerdown on the trigger moves focus there, and that focusout must
+  // not tear the menu down before the trigger's click toggles it.
   menu.addEventListener('focusout', (event) => {
     const next = event.relatedTarget;
-    if (!(next instanceof Node && menu.contains(next))) close();
+    if (
+      next instanceof Node &&
+      (menu.contains(next) ||
+        (triggerControl !== null && (next === triggerControl || triggerControl.contains(next))))
+    ) {
+      return;
+    }
+    close();
   });
 
   const pane = options.host.closest('.view-content');

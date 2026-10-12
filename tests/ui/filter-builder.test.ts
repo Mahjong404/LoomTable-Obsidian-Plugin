@@ -7,6 +7,7 @@ import type {
   FilterNode,
 } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
+import { closeActiveContextMenu } from '../../src/ui/context-menu';
 import { FilterBuilder } from '../../src/ui/filter-builder';
 
 function field(id: string, type: Field['type'], name = id): Field {
@@ -887,6 +888,71 @@ describe('FilterBuilder', () => {
         value: 'b',
       });
       host.remove();
+    });
+
+    it('toggles the move-handle menu on a second click instead of reopening', () => {
+      // W15-02 integration against the M1 fix: pointerdown → focusout(to the
+      // grip) → click must close, not dismiss-and-reopen.
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+            { kind: 'rule', fieldId: 'field_count', operator: 'is', value: 1 },
+          ],
+        },
+        {},
+      );
+      const host = mount(builder);
+      const handle = host.querySelector<HTMLElement>('[data-path="0"] [data-action="filter-move"]');
+      expect(handle).not.toBeNull();
+
+      handle!.click();
+      const menu = document.querySelector<HTMLElement>('.loom-context-menu');
+      expect(menu).not.toBeNull();
+      expect(handle!.getAttribute('aria-expanded')).toBe('true');
+
+      // Second press: focus leaves the menu for the grip, then click lands.
+      menu!.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: handle }));
+      expect(document.querySelector('.loom-context-menu')).not.toBeNull();
+      handle!.click();
+      expect(document.querySelector('.loom-context-menu')).toBeNull();
+      expect(handle!.getAttribute('aria-expanded')).toBeNull();
+      host.remove();
+    });
+
+    it('keeps a pane-A filter menu open while another pane cleans up', () => {
+      // W15-02 integration against M2: menu opened by pane A's builder rides
+      // the global registry, but pane B's owner-scoped cleanup must not
+      // dismiss it.
+      const paneB = document.createElement('div');
+      document.body.append(paneB);
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+            { kind: 'rule', fieldId: 'field_count', operator: 'is', value: 1 },
+          ],
+        },
+        {},
+      );
+      const host = mount(builder);
+      host.querySelector<HTMLElement>('[data-path="0"] [data-action="filter-move"]')?.click();
+      expect(document.querySelector('.loom-context-menu')).not.toBeNull();
+
+      const hostB = document.createElement('div');
+      paneB.append(hostB);
+      closeActiveContextMenu(hostB);
+      expect(document.querySelector('.loom-context-menu')).not.toBeNull();
+
+      // Pane A's own owner key releases it.
+      closeActiveContextMenu(host.firstElementChild as HTMLElement);
+      expect(document.querySelector('.loom-context-menu')).toBeNull();
+      host.remove();
+      paneB.remove();
     });
   });
 });

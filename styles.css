@@ -638,9 +638,17 @@
   font-weight: var(--loom-font-semibold);
 }
 
+/* Selection check per the approved design: 14px box, 1.75px stroke —
+   scoped to this glyph only, no global icon stroke change. */
 .loom-context-menu-check {
+  width: 14px;
+  height: 14px;
   margin-inline-start: auto;
   color: var(--loom-accent);
+}
+
+.loom-context-menu-check svg {
+  stroke-width: 1.75;
 }
 
 .loom-view-intents {

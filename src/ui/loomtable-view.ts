@@ -936,6 +936,7 @@ export class LoomTableView extends ItemView {
     this.#gridController?.dispose();
     this.#gridController = null;
     this.#gridClient = null;
+    this.#gridRenderer?.dispose();
     this.#gridRenderer = null;
     this.#gridSessions.clear();
     this.#gridHost = null;
