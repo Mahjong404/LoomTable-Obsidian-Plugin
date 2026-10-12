@@ -6,7 +6,7 @@
 
 | 对象 | 状态 | 生效范围 / 引用 |
 |---|---|---|
-| Wave 1 / Wave 1.5设计 | Approved / Frozen；Approved | 已批准视觉/布局/交互，Future/API门槛保留，不重开设计 |
+| Wave 1 / Wave 1.5设计 | Approved（当前实施基线） | 已批准视觉/布局/交互；用户可通过Design Delta迭代，规则见UI入口；Future/API门槛保留 |
 | W15-00 正式文档基线 | Done | Plugin69e296cc6a02f74ca61a633c6168fb36b9b89398；Server5d430cd641e5a210eab3371c9864919837cd69a9已发布 |
 | 当前Plugin代码 | main@52b2c9dc0a126ab23217973161b5dd5440b02bc1 | 本轮本地/远端核对一致，开始tracked tree干净；01/02已有实现和修复 |
 | 本轮UI工程重校准 | 审计/规格获授权；未实施产品修复 | Figma live + isolated snapshot/Obsidian证据见ui-alignment，第一批A→B→C合同已补齐；正式规格已提交[Draft PR113](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/113)，完整规格基线19741922b03fc946b1edccbca3bbce85bec91e3f；未合并、未启动产品修复 |

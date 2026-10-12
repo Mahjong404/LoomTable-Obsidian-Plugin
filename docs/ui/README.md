@@ -31,6 +31,8 @@ docs/local/ 研究材料（仅内部参考，不构成规范）
 - 规范与实现不一致时，以「规范是否应该改」为显式议题处理：实现反映已确认决策的，修订规范；实现是缺陷的，记录为待办。不静默按任一方执行。
 - 规范之间的重复规则应合并到单一来源，其余位置只做指针。发现重复/矛盾/过时条款时顺手修正或登记，不允许两套说法并存。
 
+Approved/Frozen 表示当前开发使用的批准基线，不是永久禁止设计迭代。用户提供新 Figma 或明确变更指令时，以 Design Delta 更新受影响的规范、Traceability、组件和验收；未提出确定变更的部分继续按当前基线实现，不预先猜测新布局，也不自动解锁 API/Future 能力。
+
 ## Wave 1.5 实施引用
 
 设计阶段已完成，当前批准的长期视觉规则在 Design System，接受/取消/焦点/Query/Date 与 Future Time 行为在 HIG，Grid 几何/选择/加载在 Grid Spec。技术所有权只在 [Editor Lifecycle](../architecture/field-editor-lifecycle.md)；任务/依赖/验收见 [Wave 1.5](../wave1.5/README.md)，进度只在 [status](../wave1.5/status.md)。
