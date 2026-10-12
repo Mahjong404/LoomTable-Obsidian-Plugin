@@ -239,7 +239,18 @@ export type Field =
     });
 
 export type SelectOptionColor =
-  'gray' | 'red' | 'orange' | 'yellow' | 'green' | 'cyan' | 'blue' | 'purple' | 'pink';
+  | 'gray'
+  | 'red'
+  | 'orange'
+  | 'yellow'
+  | 'lime'
+  | 'green'
+  | 'cyan'
+  | 'blue'
+  | 'indigo'
+  | 'purple'
+  | 'pink'
+  | 'brown';
 
 export interface SelectOptionInput {
   readonly id?: string;
@@ -384,6 +395,12 @@ export type AggregateFn = 'count' | 'sum' | 'avg' | 'min' | 'max';
 
 export interface AggregateRequest {
   readonly filter?: FilterNode;
+  /**
+   * Record Query Search text folded into the aggregate scope (Server
+   * v0.4.0+ `aggregateSearch` capability). Omit for the legacy
+   * filter-only request — an empty normalized value means no Search.
+   */
+  readonly search?: string;
   readonly fieldIds: readonly string[];
   readonly fns: readonly AggregateFn[];
 }

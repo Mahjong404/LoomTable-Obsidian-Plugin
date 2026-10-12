@@ -4908,6 +4908,24 @@ describe('Grid aggregate row', () => {
       document.querySelector<HTMLElement>('[data-action="aggregate-retry"]')?.textContent,
     ).toBe('Retry save');
   });
+
+  it('marks Search-scoped aggregates unavailable instead of showing a value', () => {
+    const container = document.createElement('div');
+    renderAggregate(
+      numericState({
+        fieldAggregations: { field_count: 'sum' as const },
+        aggregateResults: null,
+        aggregateStatus: 'unavailable',
+      }),
+      container,
+    );
+    const cell = container.querySelector<HTMLElement>(
+      '.loom-grid-aggregate-cell[data-field-id="field_count"]',
+    );
+    expect(cell?.dataset.status).toBe('unavailable');
+    expect(cell?.textContent).toBe('Sum unavailable for Search');
+    container.remove();
+  });
 });
 
 describe('Record drag reorder', () => {

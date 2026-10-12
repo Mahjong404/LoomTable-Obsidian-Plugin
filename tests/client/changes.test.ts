@@ -519,6 +519,40 @@ describe('HttpLoomTableClient aggregate contract', () => {
     });
   });
 
+  it('sends the current Search and omits it for an empty term', async () => {
+    const transport = queuedTransport([
+      jsonResponse(200, { results: { field_name: { count: 1 } }, changeCursor: 'change_31' }),
+      jsonResponse(200, { results: { field_name: { count: 3 } }, changeCursor: 'change_32' }),
+    ]);
+
+    await createClient(transport).aggregateRecords('table/01', {
+      fieldIds: ['field_name'],
+      fns: ['count'],
+      search: 'city 01',
+    });
+    await createClient(transport).aggregateRecords('table/01', {
+      fieldIds: ['field_name'],
+      fns: ['count'],
+    });
+
+    expect(transport).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        body: JSON.stringify({
+          fieldIds: ['field_name'],
+          fns: ['count'],
+          search: 'city 01',
+        }),
+      }),
+    );
+    expect(transport).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        body: JSON.stringify({ fieldIds: ['field_name'], fns: ['count'] }),
+      }),
+    );
+  });
+
   it('rejects an empty Field or function selection before requesting', async () => {
     const transport = queuedTransport([]);
     await expect(
