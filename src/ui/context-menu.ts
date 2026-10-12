@@ -119,6 +119,7 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     }
     item.setAttribute('aria-label', entry.label);
     item.addEventListener('click', () => {
+      if (closed || item.disabled) return;
       close();
       restoreFocus();
       entry.action();
@@ -138,7 +139,12 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     if (trigger !== undefined && trigger.isConnected) trigger.focus();
   };
   const observer = new MutationObserver(() => {
-    if (!options.host.isConnected) close();
+    if (
+      !options.host.isConnected ||
+      !menu.isConnected ||
+      (trigger !== undefined && !trigger.isConnected)
+    )
+      close();
   });
   let closed = false;
   const close = (): void => {
@@ -150,6 +156,7 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     options.host.removeEventListener('scroll', onScroll, true);
     ownerDocument.removeEventListener('pointerdown', onPointerDown, true);
     ownerDocument.removeEventListener('keydown', onKeyDown, true);
+    ownerDocument.removeEventListener('focusout', onFocusOut, true);
     if (triggerControl !== null) {
       if (triggerExpanded === null) triggerControl.removeAttribute('aria-expanded');
       else triggerControl.setAttribute('aria-expanded', triggerExpanded);
@@ -164,6 +171,7 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     if (!inside) close();
   };
   const onKeyDown = (event: KeyboardEvent): void => {
+    if (!ownsFocus(ownerDocument.activeElement)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       close();
@@ -175,7 +183,14 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     const enabled = buttons.filter((button) => !button.disabled);
     const current = enabled.indexOf(ownerDocument.activeElement as HTMLButtonElement);
     const step = event.key === 'ArrowDown' ? 1 : -1;
-    const next = enabled[(current + step + enabled.length) % enabled.length];
+    const next =
+      enabled[
+        current < 0
+          ? step === 1
+            ? 0
+            : enabled.length - 1
+          : (current + step + enabled.length) % enabled.length
+      ];
     next?.focus();
   };
   // A true focus departure (Tab, or a click landing outside) dismisses the
@@ -183,17 +198,12 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
   // The trigger belongs to the same owned boundary as the menu itself:
   // pointerdown on the trigger moves focus there, and that focusout must
   // not tear the menu down before the trigger's click toggles it.
-  menu.addEventListener('focusout', (event) => {
-    const next = event.relatedTarget;
-    if (
-      next instanceof Node &&
-      (menu.contains(next) ||
-        (triggerControl !== null && (next === triggerControl || triggerControl.contains(next))))
-    ) {
-      return;
-    }
-    close();
-  });
+  const ownsFocus = (target: EventTarget | null): boolean =>
+    target instanceof Node &&
+    (menu.contains(target) || (trigger !== undefined && trigger.contains(target)));
+  const onFocusOut = (event: FocusEvent): void => {
+    if (ownsFocus(event.target) && !ownsFocus(event.relatedTarget)) close();
+  };
 
   const pane = options.host.closest('.view-content');
   const bounds = pane?.getBoundingClientRect() ?? {
@@ -237,7 +247,9 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
   observer.observe(ownerDocument.documentElement, { childList: true, subtree: true });
   ownerDocument.addEventListener('pointerdown', onPointerDown, true);
   ownerDocument.addEventListener('keydown', onKeyDown, true);
-  buttons.find((button) => !button.disabled)?.focus();
+  ownerDocument.addEventListener('focusout', onFocusOut, true);
+  menu.tabIndex = -1;
+  (buttons.find((button) => !button.disabled) ?? menu).focus();
   return close;
 }
 

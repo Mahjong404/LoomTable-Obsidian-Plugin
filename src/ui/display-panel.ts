@@ -103,6 +103,8 @@ export class DisplayPanel {
   #applying = false;
   #applyQueued = false;
   #applyTimer: number | null = null;
+  #applyPromise: Promise<void> | null = null;
+  #disposed = false;
 
   constructor(config: GridViewConfig, options: DisplayPanelOptions) {
     this.#translate = options.translate;
@@ -156,6 +158,23 @@ export class DisplayPanel {
   render(): HTMLElement {
     if (this.#root === null) this.#root = this.#build();
     return this.#root;
+  }
+
+  dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
+    this.#applyQueued = false;
+    if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
+    this.#applyTimer = null;
+  }
+
+  flushPendingApply(): Promise<void> {
+    if (this.#disposed) return Promise.resolve();
+    const pending = this.#applyTimer !== null || this.#applyQueued;
+    if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
+    this.#applyTimer = null;
+    if (pending) return this.#apply();
+    return this.#applyPromise ?? Promise.resolve();
   }
 
   #build(): HTMLElement {
@@ -347,6 +366,7 @@ export class DisplayPanel {
   }
 
   #scheduleApply(): void {
+    if (this.#disposed) return;
     if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
     this.#applyTimer = window.setTimeout(() => {
       this.#applyTimer = null;
@@ -354,33 +374,36 @@ export class DisplayPanel {
     }, 300);
   }
 
-  async #apply(): Promise<void> {
+  #apply(): Promise<void> {
+    if (this.#disposed) return Promise.resolve();
     if (this.#applying) {
       this.#applyQueued = true;
-      return;
+      return this.#applyPromise ?? Promise.resolve();
     }
-    const { patch, issues } = this.#draftPatch();
-    if (issues.length > 0 || patch === null) {
-      this.#issues = issues;
-      this.#rerender();
-      return;
-    }
-    this.#issues = [];
     this.#applying = true;
+    this.#applyPromise = this.#runApply();
+    return this.#applyPromise;
+  }
+
+  async #runApply(): Promise<void> {
     try {
-      await this.#onApply(patch);
+      do {
+        this.#applyQueued = false;
+        const { patch, issues } = this.#draftPatch();
+        this.#issues = issues;
+        if (issues.length > 0 || patch === null) break;
+        await this.#onApply(patch);
+      } while (!this.#disposed && this.#applyQueued);
     } finally {
       this.#applying = false;
-      if (this.#applyQueued) {
-        this.#applyQueued = false;
-        void this.#apply();
-      } else {
-        this.#rerender();
-      }
+      this.#applyQueued = false;
+      this.#applyPromise = null;
+      this.#rerender();
     }
   }
 
   #rerender(): void {
+    if (this.#disposed) return;
     const focus = captureQueryControlFocus(this.#root);
     const next = this.#build();
     if (this.#root?.isConnected === true) {

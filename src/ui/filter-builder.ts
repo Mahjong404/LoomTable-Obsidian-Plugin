@@ -90,7 +90,9 @@ export class FilterBuilder {
   #applying = false;
   #applyQueued = false;
   #applyTimer: number | null = null;
+  #applyPromise: Promise<void> | null = null;
   #disposed = false;
+  readonly #renderTimers = new Set<number>();
   #popoverClose: (() => void) | null = null;
   readonly #localValueFields = new Set<string>();
   /**
@@ -140,18 +142,31 @@ export class FilterBuilder {
   }
 
   /**
-   * Releases the owned popover and flushes a pending debounced apply so a
-   * panel close or context switch never silently drops the last valid edit.
+   * Pure resource teardown. Unclaimed UI intents are cancelled; a callback
+   * already accepted by the consumer keeps its original operation identity.
    */
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#applyQueued = false;
+    for (const timer of this.#renderTimers) window.clearTimeout(timer);
+    this.#renderTimers.clear();
     this.#closePopover();
     if (this.#applyTimer !== null) {
       window.clearTimeout(this.#applyTimer);
       this.#applyTimer = null;
-      void this.#apply();
     }
+  }
+
+  /** Explicit same-owner close: serially claim the last pending valid edit. */
+  flushPendingApply(): Promise<void> {
+    if (this.#disposed) return Promise.resolve();
+    this.#closePopover();
+    const pending = this.#applyTimer !== null || this.#applyQueued;
+    if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
+    this.#applyTimer = null;
+    if (pending) return this.#apply();
+    return this.#applyPromise ?? Promise.resolve();
   }
 
   /** The values popover is an owned child: exactly one may be open. */
@@ -369,7 +384,11 @@ export class FilterBuilder {
       (event) => {
         if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) return;
         if (!this.#markTouched(path)) return;
-        window.setTimeout(() => this.#rerender(), 0);
+        const timer = window.setTimeout(() => {
+          this.#renderTimers.delete(timer);
+          this.#rerender();
+        }, 0);
+        this.#renderTimers.add(timer);
       },
       true,
     );
@@ -763,58 +782,50 @@ export class FilterBuilder {
     }, 300);
   }
 
-  async #apply(): Promise<void> {
+  #apply(): Promise<void> {
+    if (this.#disposed) return Promise.resolve();
     if (this.#applying) {
       this.#applyQueued = true;
-      return;
+      return this.#applyPromise ?? Promise.resolve();
     }
-    const issues = validateFilterDraft(this.#draft, this.#fields);
-    if (issues.length > 0) {
-      this.#rerender();
-      return;
-    }
-    const draft = this.#draft;
     this.#applying = true;
+    this.#applyPromise = this.#runApply();
+    return this.#applyPromise;
+  }
+
+  async #runApply(): Promise<void> {
     try {
-      const outcome = await this.#onApply(draft);
-      if (
-        outcome === undefined ||
-        (typeof outcome === 'object' &&
-          outcome !== null &&
-          (outcome as { status?: unknown }).status === 'saved')
-      ) {
-        this.#applied = draft;
-      }
+      do {
+        this.#applyQueued = false;
+        if (validateFilterDraft(this.#draft, this.#fields).length > 0) break;
+        const draft = this.#draft;
+        const outcome = await this.#onApply(draft);
+        if (
+          !this.#disposed &&
+          (outcome === undefined ||
+            (typeof outcome === 'object' &&
+              outcome !== null &&
+              (outcome as { status?: unknown }).status === 'saved'))
+        ) {
+          this.#applied = draft;
+        }
+      } while (!this.#disposed && this.#applyQueued);
     } finally {
       this.#applying = false;
-      if (this.#applyQueued) {
-        this.#applyQueued = false;
-        void this.#apply();
-      } else {
-        this.#rerender();
-      }
+      this.#applyQueued = false;
+      this.#applyPromise = null;
+      this.#rerender();
     }
   }
 
   async #clear(): Promise<void> {
+    if (this.#disposed) return;
     this.#draft = undefined;
     this.#touchedIds.clear();
-    this.#applying = true;
+    if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
+    this.#applyTimer = null;
     this.#rerender();
-    try {
-      const outcome = await this.#onApply(undefined);
-      if (
-        outcome === undefined ||
-        (typeof outcome === 'object' &&
-          outcome !== null &&
-          (outcome as { status?: unknown }).status === 'saved')
-      ) {
-        this.#applied = undefined;
-      }
-    } finally {
-      this.#applying = false;
-      this.#rerender();
-    }
+    await this.#apply();
   }
 
   #rerender(): void {

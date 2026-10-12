@@ -176,6 +176,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
   };
 
   const renderConfig = (): void => {
+    dismissPalette();
     configHost.replaceChildren();
     if (type === 'select' || type === 'multiSelect') {
       configHost.append(createOptionsEditor());
@@ -350,6 +351,8 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     options.host.removeEventListener('scroll', onScroll);
     document.removeEventListener('pointerdown', onPointerDown, true);
     document.removeEventListener('keydown', onKeyDown, true);
+    if (focusTimer !== null) window.clearTimeout(focusTimer);
+    focusTimer = null;
     if (returnFocus) restoreFocus();
   };
   // Owner unload (view switch, map swap, pane teardown) must release every
@@ -382,7 +385,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
 
   let submitting = false;
   const doSubmit = async (): Promise<void> => {
-    if (submitting) return;
+    if (submitting || closed) return;
     const name = nameInput.value.trim();
     if (name === '') {
       nameInput.setAttribute('aria-invalid', 'true');
@@ -419,11 +422,11 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     try {
       await options.onSubmit(input);
     } catch (error) {
+      if (closed) return;
       submitting = false;
       delete panel.dataset.submitting;
       submit.removeAttribute('aria-busy');
       unlockDraft();
-      if (closed) return;
       showError(
         error instanceof Error && error.message !== '' ? error.message : t('field.submit.failed'),
       );
@@ -496,6 +499,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
   // Retries stop when the panel closed (e.g. outside click) or focus already
   // lives inside it, so a deliberate click-away is never overridden.
   let focusAttempts = 0;
+  let focusTimer: number | null = null;
   const focusName = (): void => {
     if (closed || !panel.isConnected) return;
     const active = document.activeElement;
@@ -506,9 +510,9 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
       return;
     }
     focusAttempts += 1;
-    if (focusAttempts < 12) window.setTimeout(focusName, 50);
+    if (focusAttempts < 12) focusTimer = window.setTimeout(focusName, 50);
   };
-  window.setTimeout(focusName, 0);
+  focusTimer = window.setTimeout(focusName, 0);
   return close;
 }
 

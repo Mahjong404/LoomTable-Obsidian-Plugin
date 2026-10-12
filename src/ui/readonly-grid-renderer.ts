@@ -391,6 +391,9 @@ export class ReadonlyGridRenderer {
   #searchExpanded = false;
   #searchDebounceTimer: number | null = null;
   #searchError: string | null = null;
+  #disposed = false;
+  #cancelScrollPaint: (() => void) | null = null;
+  #cancelPanelMeasure: (() => void) | null = null;
   #draftCreateValues: Record<string, MutationValue> | null = null;
   #draftRowEl: HTMLElement | null = null;
   #draftAnchor: { index: number; afterRecordId: string | null } | null = null;
@@ -450,14 +453,16 @@ export class ReadonlyGridRenderer {
     this.#translate = translate;
     this.#callbacks = callbacks;
     this.#sessions = sessions ?? new Map<string, GridSessionSnapshot>();
-    container.addEventListener('keydown', (event) => {
-      if (event.key !== 'Escape' || this.#openPanel === null || event.defaultPrevented) return;
-      const el = event.target instanceof Element ? event.target : null;
-      if (el !== null && el.closest('.loom-grid-editor, .loom-detail-host') !== null) return;
-      event.preventDefault();
-      this.#closePanels();
-    });
+    container.addEventListener('keydown', this.#onPanelKeyDown);
   }
+
+  readonly #onPanelKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape' || this.#openPanel === null || event.defaultPrevented) return;
+    const el = event.target instanceof Element ? event.target : null;
+    if (el !== null && el.closest('.loom-grid-editor, .loom-detail-host') !== null) return;
+    event.preventDefault();
+    this.#closePanels('escape');
+  };
 
   /** Shows a transient toast anchored to the Grid; survives re-renders. */
   showToast(options: ToastOptions): () => void {
@@ -465,6 +470,7 @@ export class ReadonlyGridRenderer {
   }
 
   render(state: GridState): void {
+    if (this.#disposed) return;
     if (state.selectedViewId !== this.#lastViewId) {
       // Stash the outgoing View's session before switching — either to another
       // Grid View (in place) or before a Map View replaces this renderer.
@@ -473,10 +479,8 @@ export class ReadonlyGridRenderer {
       this.#openPanel = null;
       this.#searchDraft = null;
       this.#searchError = null;
-      this.#filterBuilder?.dispose();
-      this.#filterBuilder = null;
-      this.#sortPanel = null;
-      this.#displayPanel = null;
+      this.#releaseQueryOwners('context-switch');
+      this.#cancelSearch();
       this.#rowHeightAnchor = null;
       if (this.#pendingCreateFocus !== null) this.#pendingCreateFocus.outcome = 'switched';
       this.#pendingCreateFocus = null;
@@ -953,6 +957,7 @@ export class ReadonlyGridRenderer {
         // Defer: a render that replaces this input fires blur synchronously;
         // collapsing here would re-enter render() inside replaceChildren.
         window.setTimeout(() => {
+          if (this.#disposed || this.#lastViewId !== state.selectedViewId) return;
           if (!input.isConnected) return;
           if (input.value === '' && state.search === '') {
             this.#searchExpanded = false;
@@ -985,6 +990,7 @@ export class ReadonlyGridRenderer {
   }
 
   #scheduleSearch(term: string): void {
+    if (this.#disposed) return;
     if (this.#searchDebounceTimer !== null) {
       window.clearTimeout(this.#searchDebounceTimer);
     }
@@ -997,6 +1003,7 @@ export class ReadonlyGridRenderer {
   }
 
   #flushSearch(term: string): void {
+    if (this.#disposed) return;
     if (this.#searchDebounceTimer !== null) {
       window.clearTimeout(this.#searchDebounceTimer);
       this.#searchDebounceTimer = null;
@@ -1077,6 +1084,8 @@ export class ReadonlyGridRenderer {
     }
     button.addEventListener('click', () => {
       const opening = this.#openPanel !== panel;
+      this.#openPanel = null;
+      this.#releaseQueryOwners('user-close');
       if (opening) this.#dismissOverlay();
       this.#openPanel = opening ? panel : null;
       this.#rerenderSelf();
@@ -1154,6 +1163,7 @@ export class ReadonlyGridRenderer {
         this.#sortPanelManual !== manualSort ||
         (!this.#sortPanel.hasPendingEdits() && !this.#sortPanel.isInSyncWith(view.config.sort))
       ) {
+        this.#sortPanel?.dispose();
         this.#sortPanel = new SortPanel(view.config.sort, {
           fields: state.fields.filter((field) => field.deletedAt === undefined),
           translate: this.#translate,
@@ -1185,6 +1195,7 @@ export class ReadonlyGridRenderer {
           (this.#displayPanelFieldsKey !== displayFieldsKey ||
             !this.#displayPanel.isInSyncWith(view.config)))
       ) {
+        this.#displayPanel?.dispose();
         this.#displayPanel = new DisplayPanel(view.config, {
           fields: state.fields,
           translate: this.#translate,
@@ -1212,23 +1223,69 @@ export class ReadonlyGridRenderer {
    * Builder's owned popover. Element listeners die with the detached DOM.
    */
   dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
+    this.#container.removeEventListener('keydown', this.#onPanelKeyDown);
+    this.#toolbarObserver?.disconnect();
+    this.#toolbarObserver = null;
+    this.#cancelScrollPaint?.();
+    this.#cancelScrollPaint = null;
+    this.#cancelPanelMeasure?.();
+    this.#cancelPanelMeasure = null;
+    this.#cancelSearch();
     if (this.#panelDismiss !== null) {
       this.#container.ownerDocument.removeEventListener('pointerdown', this.#panelDismiss, true);
       this.#panelDismiss = null;
     }
-    this.#filterBuilder?.dispose();
-    this.#filterBuilder = null;
+    this.#releaseQueryOwners('context-switch');
+    this.#openPanel = null;
     this.#dismissOverlay();
+    this.#virtualGrid = null;
+    this.#lastState = null;
   }
 
-  #closePanels(): void {
-    this.#openPanel = null;
-    this.#filterBuilder?.dispose();
+  /** Navigation preflight cancels UI intent before Controller changes context. */
+  closeQueryPanels(reason: 'user-close' | 'escape' | 'context-switch'): void {
+    this.#closePanels(reason);
+  }
+
+  #cancelSearch(): void {
+    if (this.#searchDebounceTimer !== null) window.clearTimeout(this.#searchDebounceTimer);
+    this.#searchDebounceTimer = null;
+  }
+
+  #releaseQueryOwners(reason: 'user-close' | 'escape' | 'context-switch'): void {
+    const owners = [this.#filterBuilder, this.#sortPanel, this.#displayPanel];
+    if (reason === 'user-close') {
+      // Keep same-owner drafts cached, including failed raw input. Closing
+      // is an explicit flush; dispose is never an implicit business action.
+      for (const owner of owners) {
+        void owner?.flushPendingApply().catch(() => {
+          if (
+            !this.#disposed &&
+            [this.#filterBuilder, this.#sortPanel, this.#displayPanel].includes(owner)
+          )
+            this.showToast({ kind: 'error', text: this.#translate('grid.query.applyFailed') });
+        });
+      }
+      return;
+    }
+    for (const owner of owners) owner?.dispose();
     this.#filterBuilder = null;
     this.#sortPanel = null;
     this.#displayPanel = null;
+    this.#filterBuilderViewId = null;
+    this.#sortPanelViewId = null;
     this.#displayPanelViewId = null;
     this.#displayPanelFieldsKey = '';
+  }
+
+  #closePanels(reason: 'user-close' | 'escape' | 'context-switch' = 'user-close'): void {
+    this.#openPanel = null;
+    this.#releaseQueryOwners(reason);
+    if (reason === 'context-switch') this.#cancelSearch();
+    this.#cancelPanelMeasure?.();
+    this.#cancelPanelMeasure = null;
     this.#dismissOverlay();
     this.#rerenderSelf();
   }
@@ -1245,6 +1302,7 @@ export class ReadonlyGridRenderer {
 
   /** Surfaces a fire-and-forget Field write failure instead of dropping it. */
   #reportFieldWriteOutcome(outcome: unknown): void {
+    if (this.#disposed) return;
     const message = fieldWriteFailureMessage(outcome);
     if (message === null) return;
     this.showToast({
@@ -1301,7 +1359,14 @@ export class ReadonlyGridRenderer {
         typeof requestAnimationFrame === 'function'
           ? requestAnimationFrame
           : (callback: () => void) => window.setTimeout(callback, 0);
-      schedule(measure);
+      this.#cancelPanelMeasure?.();
+      const id = schedule(() => {
+        if (!this.#disposed) measure();
+      });
+      this.#cancelPanelMeasure = () => {
+        if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(id);
+        else window.clearTimeout(id);
+      };
     }
   }
 
@@ -1318,6 +1383,7 @@ export class ReadonlyGridRenderer {
       const el = event.target instanceof Element ? event.target : null;
       if (
         el !== null &&
+        this.#container.contains(el) &&
         el.closest('.loom-query-panel, .loom-grid-toolbar, .loom-filter-values') !== null
       ) {
         return;
@@ -1333,7 +1399,13 @@ export class ReadonlyGridRenderer {
       ) {
         return;
       }
-      this.#closePanels();
+      const navigation = el?.closest('[data-loom-context-navigation]');
+      const ownRoot = this.#container.closest('.loom-root');
+      this.#closePanels(
+        navigation !== null && navigation !== undefined && ownRoot?.contains(navigation) === true
+          ? 'context-switch'
+          : 'user-close',
+      );
     };
     this.#container.ownerDocument.addEventListener('pointerdown', onPointerDown, true);
     this.#panelDismiss = onPointerDown;
@@ -1769,12 +1841,15 @@ export class ReadonlyGridRenderer {
   }
 
   #rerenderSelf(): void {
-    if (this.#lastState === null) return;
+    if (this.#disposed || this.#lastState === null) return;
     this.render(this.#lastState);
   }
 
   async #submitSearch(term: string): Promise<void> {
+    if (this.#disposed) return;
+    const viewId = this.#lastViewId;
     const result = await this.#callbacks.onSearch?.(term);
+    if (this.#disposed || this.#lastViewId !== viewId) return;
     if (result === false) {
       this.#searchError = this.#translate('grid.search.tooLong');
       this.#rerenderSelf();
@@ -2099,7 +2174,15 @@ export class ReadonlyGridRenderer {
     // then a no-op while the visible window is unchanged (G-5).
     const win = viewport.ownerDocument.defaultView ?? window;
     let scrollRaf = 0;
+    this.#cancelScrollPaint?.();
+    this.#cancelScrollPaint = () => {
+      if (scrollRaf === 0) return;
+      if (typeof win.cancelAnimationFrame === 'function') win.cancelAnimationFrame(scrollRaf);
+      else win.clearTimeout(scrollRaf);
+      scrollRaf = 0;
+    };
     viewport.addEventListener('scroll', () => {
+      if (this.#disposed || this.#virtualGrid?.viewport !== viewport) return;
       if (scrollRaf !== 0) return;
       const raf =
         win.requestAnimationFrame?.bind(win) ??

@@ -134,6 +134,7 @@ export const englishMessages = {
   'grid.error.authentication': 'Authentication is required to load this Grid.',
   'grid.error.forbidden': 'This Token cannot access the selected resources.',
   'grid.error.network': 'The Grid request failed. Check the Server and retry.',
+  'grid.query.applyFailed': 'The query could not be saved. Reopen the panel to review and retry.',
   'grid.error.offline': 'You are offline. Reconnect and retry the Grid request.',
   'grid.error.server': 'The Server returned an error while loading this Grid.',
   'grid.editConflict': 'This Record changed on the Server.',

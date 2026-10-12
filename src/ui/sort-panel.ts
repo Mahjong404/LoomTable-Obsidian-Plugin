@@ -26,6 +26,8 @@ export class SortPanel {
   #applying = false;
   #applyQueued = false;
   #applyTimer: number | null = null;
+  #applyPromise: Promise<void> | null = null;
+  #disposed = false;
 
   constructor(initial: readonly SortSpec[], options: SortPanelOptions) {
     this.#draft = initial.map((entry) => ({ ...entry }));
@@ -40,6 +42,23 @@ export class SortPanel {
   render(): HTMLElement {
     if (this.#root === null) this.#root = this.#build();
     return this.#root;
+  }
+
+  dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
+    this.#applyQueued = false;
+    if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
+    this.#applyTimer = null;
+  }
+
+  flushPendingApply(): Promise<void> {
+    if (this.#disposed) return Promise.resolve();
+    const pending = this.#applyTimer !== null || this.#applyQueued;
+    if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
+    this.#applyTimer = null;
+    if (pending) return this.#apply();
+    return this.#applyPromise ?? Promise.resolve();
   }
 
   /** True while a draft change is waiting for the debounced apply or an apply
@@ -254,6 +273,7 @@ export class SortPanel {
   }
 
   #scheduleApply(): void {
+    if (this.#disposed) return;
     if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
     this.#applyTimer = window.setTimeout(() => {
       this.#applyTimer = null;
@@ -261,27 +281,33 @@ export class SortPanel {
     }, 300);
   }
 
-  async #apply(): Promise<void> {
+  #apply(): Promise<void> {
+    if (this.#disposed) return Promise.resolve();
     if (this.#applying) {
       this.#applyQueued = true;
-      return;
+      return this.#applyPromise ?? Promise.resolve();
     }
-    const sort = [...this.#draft];
     this.#applying = true;
+    this.#applyPromise = this.#runApply();
+    return this.#applyPromise;
+  }
+
+  async #runApply(): Promise<void> {
     try {
-      await this.#onApply(sort);
+      do {
+        this.#applyQueued = false;
+        await this.#onApply([...this.#draft]);
+      } while (!this.#disposed && this.#applyQueued);
     } finally {
       this.#applying = false;
-      if (this.#applyQueued) {
-        this.#applyQueued = false;
-        void this.#apply();
-      } else {
-        this.#rerender();
-      }
+      this.#applyQueued = false;
+      this.#applyPromise = null;
+      this.#rerender();
     }
   }
 
   #rerender(): void {
+    if (this.#disposed) return;
     const focus = captureQueryControlFocus(this.#root);
     const next = this.#build();
     if (this.#root?.isConnected === true) {
