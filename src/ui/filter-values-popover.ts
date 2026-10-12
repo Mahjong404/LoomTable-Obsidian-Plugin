@@ -48,9 +48,10 @@ export function openFilterValuesPopover(options: FilterValuesPopoverOptions): ()
   let nextCursor: string | undefined;
   let hasMore = false;
   let searchTimer: number | null = null;
-  // One Load-more request at a time; a new search *replaces* the in-flight
-  // one via the token instead of stacking parallel requests.
-  let loading = false;
+  // Single-flight is owned by the newest request generation: only the
+  // request that holds `activeRequest` may release it, so a stale page
+  // resolving late cannot unlock a newer search's lock or lend its cursor.
+  let activeRequest = 0;
   const seenValues = new Set<unknown>();
 
   const itemButton = (value: string | number | boolean, display: string, count: number) => {
@@ -122,12 +123,19 @@ export function openFilterValuesPopover(options: FilterValuesPopoverOptions): ()
   };
 
   const load = async (cursor: string | undefined, append: boolean): Promise<void> => {
-    // Load more is strictly single-flight; a first-page/search replace is
-    // allowed to supersede the pending request through the token.
-    if (append && loading) return;
-    loading = true;
+    // Load more is strictly single-flight while a request is pending; a
+    // first-page/search replace supersedes it and resets the paging state
+    // the old generation owned, so its cursor can never feed the new one.
+    if (append && activeRequest !== 0) return;
     const token = ++requestToken;
-    if (!append) renderStatus('filter.values.loading');
+    activeRequest = token;
+    if (!append) {
+      nextCursor = undefined;
+      hasMore = false;
+      seenValues.clear();
+      renderStatus('filter.values.loading');
+      renderFooter(0);
+    }
     try {
       const page = await options.load({
         ...(searchTerm === '' ? {} : { search: searchTerm }),
@@ -152,7 +160,7 @@ export function openFilterValuesPopover(options: FilterValuesPopoverOptions): ()
       if (closed || token !== requestToken) return;
       renderStatus('filter.values.error');
     } finally {
-      loading = false;
+      if (activeRequest === token) activeRequest = 0;
     }
   };
 

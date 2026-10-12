@@ -9,6 +9,8 @@ import type {
 import { createTranslator } from '../../src/i18n';
 import { closeActiveContextMenu } from '../../src/ui/context-menu';
 import { FilterBuilder } from '../../src/ui/filter-builder';
+import { GridViewController } from '../../src/ui/grid-view-controller';
+import { InMemoryLoomTableClient } from '../fixtures/in-memory-loomtable-client';
 
 function field(id: string, type: Field['type'], name = id): Field {
   return {
@@ -713,6 +715,87 @@ describe('FilterBuilder', () => {
       expect(popover()).toBeNull();
       host.remove();
     });
+
+    it('keeps the load lock and cursor owned by the newest search generation', async () => {
+      // W15-02 M2 — sequence: first page loads (hasMore), Load more pends
+      // (A2), a new search pends (B). A2 resolving late must not release
+      // B's lock or lend its cursor; B's own paging only starts after B's
+      // first page lands, using B's cursor.
+      const resolvers: Array<(page: DistinctValuesPage) => void> = [];
+      const loadFieldValues = vi.fn(
+        (_fieldId: string, request: { search?: string; cursor?: string }) =>
+          new Promise<DistinctValuesPage>((resolve) => {
+            resolvers.push(resolve);
+          }),
+      );
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+        { host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+
+      // First page: hasMore with cursor cA1.
+      await vi.waitFor(() => expect(resolvers).toHaveLength(1));
+      resolvers[0]!(
+        page([{ value: 'opt_a', display: 'Alpha', count: 4 }], {
+          hasMore: true,
+          nextCursor: 'cA1',
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(popover()?.querySelector('[data-action="load-more"]')).not.toBeNull(),
+      );
+
+      // A2: Load more pends.
+      popover()?.querySelector<HTMLButtonElement>('[data-action="load-more"]')?.click();
+      await vi.waitFor(() => expect(loadFieldValues).toHaveBeenCalledTimes(2));
+
+      // B: typing a new search term debounces into a replace request.
+      const search = popover()?.querySelector<HTMLInputElement>('.loom-filter-values-search');
+      search!.value = 'beta';
+      search!.dispatchEvent(new Event('input', { bubbles: true }));
+      await vi.waitFor(() => expect(loadFieldValues).toHaveBeenCalledTimes(3), {
+        timeout: 1000,
+      });
+      expect(loadFieldValues.mock.calls[2]?.[1]).toEqual({ search: 'beta' });
+
+      // A2 resolves late — stale token: response dropped, and its finally
+      // must NOT release B's lock.
+      resolvers[1]!(page([{ value: 'opt_late', display: 'Late', count: 1 }], { hasMore: true }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // A Load-more press while B is pending is swallowed — no request can
+      // run on A's stale cursor under B's search.
+      popover()?.querySelector<HTMLButtonElement>('[data-action="load-more"]')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(loadFieldValues).toHaveBeenCalledTimes(3);
+
+      // B resolves: its own page renders and owns the cursor.
+      resolvers[2]!(
+        page([{ value: 'opt_b', display: 'Beta', count: 2 }], {
+          hasMore: true,
+          nextCursor: 'cB1',
+        }),
+      );
+      await vi.waitFor(() =>
+        expect(popover()?.querySelectorAll('.loom-filter-values-item')).toHaveLength(1),
+      );
+      expect(popover()?.textContent).toContain('Beta');
+
+      popover()?.querySelector<HTMLButtonElement>('[data-action="load-more"]')?.click();
+      await vi.waitFor(() => expect(loadFieldValues).toHaveBeenCalledTimes(4));
+      expect(loadFieldValues.mock.calls[3]?.[1]).toEqual({
+        search: 'beta',
+        cursor: 'cB1',
+      });
+      // The A-generation cursor never entered any B request.
+      for (const call of loadFieldValues.mock.calls) {
+        expect(call[1]).not.toEqual({ search: 'beta', cursor: 'cA1' });
+      }
+      host.remove();
+      popover()?.remove();
+    });
   });
 
   describe('sibling reorder and draft ownership', () => {
@@ -953,6 +1036,238 @@ describe('FilterBuilder', () => {
       expect(document.querySelector('.loom-context-menu')).toBeNull();
       host.remove();
       paneB.remove();
+    });
+  });
+
+  describe('stable node identity (M3)', () => {
+    const nodeIds = (host: HTMLElement): string[] =>
+      [...host.querySelectorAll<HTMLElement>('[data-node-id]')].map(
+        (el) => el.dataset.nodeId ?? '',
+      );
+
+    it('gives the promotion wrapper a new id while the rule keeps its own', () => {
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+        {},
+      );
+      const host = mount(builder);
+      const ruleId = host.querySelector<HTMLElement>('.loom-filter-row')?.dataset.nodeId;
+      expect(ruleId).toBeDefined();
+
+      // Bare rule → add-rule promotes it into a root group wrapper.
+      host.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
+      const ids = nodeIds(host);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(ids).toContain(ruleId);
+      // The rule's row still carries its original id inside the new group.
+      expect(
+        host.querySelector<HTMLElement>(`.loom-filter-row[data-node-id="${ruleId}"]`),
+      ).not.toBeNull();
+      host.remove();
+    });
+
+    it('keeps surviving ancestor group ids across an immutable leaf edit', () => {
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+            { kind: 'rule', fieldId: 'field_count', operator: 'is', value: 1 },
+          ],
+        },
+        {},
+      );
+      const host = mount(builder);
+      const rootId = host.querySelector<HTMLElement>('.loom-filter-group')?.dataset.nodeId;
+      expect(rootId).toBeDefined();
+
+      const fieldSelect = host.querySelector<HTMLSelectElement>(
+        '[data-path="1"] select[data-role="filter-field"]',
+      );
+      fieldSelect!.value = 'field_due';
+      fieldSelect!.dispatchEvent(new Event('change', { bubbles: true }));
+
+      expect(host.querySelector<HTMLElement>('.loom-filter-group')?.dataset.nodeId).toBe(rootId);
+      host.remove();
+    });
+
+    it('does not recycle a deleted node’s identity on a later add', () => {
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+            { kind: 'rule', fieldId: 'field_count', operator: 'is', value: 1 },
+          ],
+        },
+        {},
+      );
+      const host = mount(builder);
+      const doomed = host.querySelector<HTMLElement>('[data-path="1"]')?.dataset.nodeId;
+      expect(doomed).toBeDefined();
+
+      host
+        .querySelector<HTMLButtonElement>('[data-path="1"] [data-action="filter-remove"]')
+        ?.click();
+      host.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')?.click();
+
+      const ids = nodeIds(host);
+      expect(ids).not.toContain(doomed);
+      expect(new Set(ids).size).toBe(ids.length);
+      host.remove();
+    });
+  });
+
+  describe('stale picker invalidation (M4)', () => {
+    it('drops a pick revived by an operator round-trip against the real write path', async () => {
+      // A→B→A must not resurrect a picker captured at A: the generation
+      // bumped on each semantic change invalidates the captured pick even
+      // after the meaning cycles back — verified through the real
+      // Controller + InMemory write path to the persisted config.
+      const data = {
+        workspaces: [
+          {
+            id: 'workspace_01',
+            name: 'Personal',
+            revision: 1,
+            createdAt: '2026-08-14T00:00:00Z',
+            updatedAt: '2026-08-14T00:00:00Z',
+          },
+        ],
+        bases: [
+          {
+            id: 'base_01',
+            workspaceId: 'workspace_01',
+            name: 'Notes',
+            revision: 1,
+            createdAt: '2026-08-14T00:00:00Z',
+            updatedAt: '2026-08-14T00:00:00Z',
+          },
+        ],
+        tables: [
+          {
+            id: 'table_01',
+            baseId: 'base_01',
+            name: 'Projects',
+            primaryFieldId: 'field_name',
+            revision: 1,
+            createdAt: '2026-08-14T00:00:00Z',
+            updatedAt: '2026-08-14T00:00:00Z',
+          },
+        ],
+        fields: [...FIELDS],
+        views: [
+          {
+            id: 'view_01',
+            tableId: 'table_01',
+            name: 'Grid',
+            type: 'grid' as const,
+            isDefault: false,
+            config: {
+              projection: ['field_name'],
+              columnOrder: ['field_name'],
+              columnWidths: { field_name: 180 },
+              frozenFieldIds: [],
+              rowHeight: 'standard' as const,
+              sort: [],
+            },
+            revision: 1,
+            createdAt: '2026-08-14T00:00:00Z',
+            updatedAt: '2026-08-14T00:00:00Z',
+          },
+        ],
+        records: [],
+      };
+      const client = new InMemoryLoomTableClient(data);
+      const controller = new GridViewController(client);
+      await controller.load();
+
+      const loadFieldValues = vi.fn(async () => ({
+        items: [{ value: 'opt_b', display: 'Beta', count: 2 }],
+        emptyCount: 0,
+        hasMore: false,
+        changeCursor: 'change_01',
+      }));
+      const builder = new FilterBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is', value: 'opt_a' },
+        {
+          fields: FIELDS,
+          translate: createTranslator('en'),
+          onApply: (filter) => controller.applyViewFilter('view_01', filter),
+          host: document.body,
+          loadFieldValues,
+        },
+      );
+      const host = mount(builder);
+      host.querySelector<HTMLButtonElement>('button.loom-filter-value-pick')?.click();
+      await vi.waitFor(() => {
+        expect(document.body.querySelectorAll('.loom-filter-values-item')).toHaveLength(1);
+      });
+      // Hold the detached picker item — its captured pick is what a late
+      // semantic round-trip must not resurrect.
+      const staleItem = document.body.querySelector<HTMLButtonElement>('.loom-filter-values-item')!;
+
+      const operator = () =>
+        host.querySelector<HTMLSelectElement>('select[data-role="filter-operator"]')!;
+      operator().value = 'isNot';
+      operator().dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      operator().value = 'is';
+      operator().dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      staleItem.click();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+
+      // The resurrected pick must never reach the persisted config — the
+      // last legitimate write keeps the original value.
+      const view = await client.getView('view_01');
+      const filter = view.type === 'grid' ? view.config.filter : undefined;
+      expect(filter).toEqual({
+        kind: 'rule',
+        fieldId: 'field_status',
+        operator: 'is',
+        value: 'opt_a',
+      });
+      host.remove();
+    });
+  });
+
+  describe('move focus restoration (N1)', () => {
+    it('restores focus to the moved node’s new grip after a keyboard move', async () => {
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+            { kind: 'rule', fieldId: 'field_count', operator: 'is', value: 1 },
+            { kind: 'rule', fieldId: 'field_due', operator: 'is', value: 'd' },
+          ],
+        },
+        {},
+      );
+      const host = mount(builder);
+      const nodeId = host.querySelector<HTMLElement>('[data-path="0"]')?.dataset.nodeId;
+
+      host.querySelector<HTMLElement>('[data-path="0"] [data-action="filter-move"]')?.click();
+      document
+        .querySelector<HTMLElement>('.loom-context-menu [data-action="filter-move-down"]')
+        ?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const active = document.activeElement;
+      expect(
+        active instanceof HTMLElement &&
+          active.dataset.action === 'filter-move' &&
+          active.closest(`[data-node-id="${nodeId}"]`) !== null,
+      ).toBe(true);
+      // The same logical node moved to path 1 — focus must never land on a
+      // detached grip or document body.
+      expect(active instanceof HTMLElement && active.isConnected).toBe(true);
+      host.remove();
     });
   });
 });

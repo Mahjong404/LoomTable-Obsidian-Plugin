@@ -64,6 +64,16 @@ export function closeActiveContextMenu(owner?: HTMLElement): boolean {
 }
 
 /**
+ * Whether the currently open menu is owned by `host` — lets a panel treat
+ * its own body-mounted menus (e.g. the filter grip menu) as inside the
+ * owned overlay instead of an outside press. Returns false for another
+ * pane's menu, so cross-pane clicks still dismiss normally.
+ */
+export function activeMenuOwnedBy(host: HTMLElement): boolean {
+  return activeMenu !== null && activeMenu.owner === host;
+}
+
+/**
  * Opens a small menu positioned at pointer coordinates. Mounted on
  * document.body with position:fixed so pane overflow cannot clip it; the
  * `loom-portal` class re-scopes the Loom tokens that body-mounting cannot

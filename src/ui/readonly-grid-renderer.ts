@@ -21,6 +21,7 @@ import { MutationQueueDiscardedError } from './mutation-queue-scheduler';
 import type { UndoEntryMeta } from './undo-history';
 import { ensureButtonLabels, labelContainer } from './a11y';
 import {
+  activeMenuOwnedBy,
   closeActiveContextMenu,
   openContextMenu,
   type ContextMenuEntry,
@@ -1318,6 +1319,17 @@ export class ReadonlyGridRenderer {
       if (
         el !== null &&
         el.closest('.loom-query-panel, .loom-grid-toolbar, .loom-filter-values') !== null
+      ) {
+        return;
+      }
+      // A body-mounted menu owned by this pane (filter grip, toolbar
+      // overflow) is inside the open panel's owned boundary — pressing one
+      // of its items must not be misread as an outside click. A menu owned
+      // by another pane still counts as outside for this pane.
+      if (
+        el !== null &&
+        el.closest('.loom-context-menu') !== null &&
+        activeMenuOwnedBy(this.#container)
       ) {
         return;
       }

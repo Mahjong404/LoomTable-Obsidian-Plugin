@@ -103,6 +103,12 @@ export class FilterBuilder {
   #idSeq = 0;
   /** Touched tracking keyed by stable node id, immune to reorder. */
   readonly #touchedIds = new Set<string>();
+  /**
+   * Monotonic semantic generation per rule id: every Field/Operator change
+   * bumps it, so a captured picker from an earlier meaning can never become
+   * valid again by cycling A → B → A. Local-only — never persisted.
+   */
+  readonly #ruleGens = new Map<string, number>();
 
   constructor(initial: FilterNode | undefined, options: FilterBuilderOptions) {
     this.#applied = initial;
@@ -313,9 +319,14 @@ export class FilterBuilder {
     fieldSelect.addEventListener('change', () => {
       const field = this.#fields.find((candidate) => candidate.id === fieldSelect.value);
       if (field === undefined || this.#disposed || this.#draft === undefined) return;
+      // A semantic change retires any outstanding picker for this rule —
+      // close the owned one and bump the generation so a late callback can
+      // never revive it by cycling back to the original meaning.
+      this.#closePopover();
       this.#replaceNodeAt(path, (node) =>
         node.kind === 'rule' ? coerceRuleForField(node, field) : node,
       );
+      this.#bumpRuleSemantic(path);
       this.#scheduleApply();
       this.#rerender();
     });
@@ -336,9 +347,11 @@ export class FilterBuilder {
     operatorSelect.addEventListener('change', () => {
       if (this.#disposed || this.#draft === undefined) return;
       const operator = operatorSelect.value as FilterOperator;
+      this.#closePopover();
       this.#replaceNodeAt(path, (node) =>
         node.kind === 'rule' ? coerceRuleForOperator(node, operator) : node,
       );
+      this.#bumpRuleSemantic(path);
       this.#scheduleApply();
       this.#rerender();
     });
@@ -381,10 +394,12 @@ export class FilterBuilder {
           // the captured field/operator, not by the index path that may
           // have moved under an open picker.
           this.#closePopover();
+          const nodeId = this.#idFor(rule);
           const capture = {
-            nodeId: this.#idFor(rule),
+            nodeId,
             fieldId: rule.fieldId,
             operator: rule.operator,
+            gen: this.#ruleGens.get(nodeId) ?? 0,
           };
           const close = openFilterValuesPopover({
             field,
@@ -516,12 +531,17 @@ export class FilterBuilder {
 
   /**
    * Applies a popover pick only when the captured rule still exists with
-   * the same field and operator — a rule that was removed, reordered into
-   * a different position, or semantically changed while the picker was
-   * open must not receive a stale write.
+   * the same field, operator, and semantic generation — a rule that was
+   * removed, reordered into a different position, or changed and changed
+   * back while the picker was open must not receive a stale write.
    */
   #pickRuleValue(
-    capture: { readonly nodeId: string; readonly fieldId: string; readonly operator: string },
+    capture: {
+      readonly nodeId: string;
+      readonly fieldId: string;
+      readonly operator: string;
+      readonly gen: number;
+    },
     value: JsonValue | undefined,
   ): void {
     if (this.#disposed || this.#draft === undefined) return;
@@ -530,7 +550,16 @@ export class FilterBuilder {
     const node = filterNodeAt(this.#draft, path);
     if (node === undefined || node.kind !== 'rule') return;
     if (node.fieldId !== capture.fieldId || node.operator !== capture.operator) return;
+    if ((this.#ruleGens.get(capture.nodeId) ?? 0) !== capture.gen) return;
     this.#setRuleValue(path, value);
+  }
+
+  /** Invalidates every outstanding semantic capture for the rule at path. */
+  #bumpRuleSemantic(path: FilterPath): void {
+    const node = this.#draft === undefined ? undefined : filterNodeAt(this.#draft, path);
+    if (node === undefined || node.kind !== 'rule') return;
+    const id = this.#idFor(node);
+    this.#ruleGens.set(id, (this.#ruleGens.get(id) ?? 0) + 1);
   }
 
   #findNodePath(node: FilterNode, id: string, base: number[] = []): FilterPath | null {
@@ -544,20 +573,37 @@ export class FilterBuilder {
   }
 
   /**
-   * Replaces the node at path while carrying its stable id over to the new
-   * object — an edit keeps the rule's identity, only removal releases it.
+   * Replaces the node at path — the edit keeps the rule's identity. Stable
+   * ids for the whole tree are then reconciled by #preserveIds so the
+   * recreated ancestor chain keeps its identity too.
    */
   #replaceNodeAt(path: FilterPath, updater: (node: FilterNode) => FilterNode): void {
     if (this.#draft === undefined) return;
-    const previous = filterNodeAt(this.#draft, path);
-    this.#draft = updateFilterNodeAt(this.#draft, path, (node) => {
-      const next = updater(node);
-      if (previous !== undefined && next !== node) {
-        const id = this.#nodeIds.get(previous);
-        if (id !== undefined) this.#nodeIds.set(next, id);
+    const before = this.#draft;
+    this.#draft = updateFilterNodeAt(before, path, updater);
+    this.#preserveIds(before, this.#draft);
+  }
+
+  /**
+   * Reconciles stable ids across an immutable draft rewrite: a node whose
+   * object was recreated inherits the id of the node that sat at the same
+   * path — but only when it has none and kinds match. Unchanged subtrees
+   * reuse the same object (WeakMap id intact); a structural wrapper (root
+   * promotion) differs in kind and correctly gains a fresh id, a removed
+   * node's id dies with it, and a new child has no before-counterpart.
+   */
+  #preserveIds(before: FilterNode | undefined, after: FilterNode | undefined): void {
+    if (before === undefined || after === undefined) return;
+    if (this.#nodeIds.get(after) === undefined && before.kind === after.kind) {
+      const id = this.#nodeIds.get(before);
+      if (id !== undefined) this.#nodeIds.set(after, id);
+    }
+    if (before.kind === 'group' && after.kind === 'group') {
+      const shared = Math.min(before.children.length, after.children.length);
+      for (let index = 0; index < shared; index += 1) {
+        this.#preserveIds(before.children[index], after.children[index]);
       }
-      return next;
-    });
+    }
   }
 
   #setRuleValue(path: FilterPath, value: JsonValue | undefined): void {
@@ -617,7 +663,9 @@ export class FilterBuilder {
     );
     button.addEventListener('click', () => {
       if (this.#disposed || this.#draft === undefined) return;
-      this.#draft = removeFilterNodeAt(this.#draft, path);
+      const next = removeFilterNodeAt(this.#draft, path);
+      this.#preserveIds(this.#draft, next);
+      this.#draft = next;
       this.#scheduleApply();
       this.#rerender();
     });
@@ -632,6 +680,7 @@ export class FilterBuilder {
     const button = createElement('button', 'loom-button loom-filter-handle');
     button.type = 'button';
     button.dataset.action = 'filter-move';
+    button.dataset.role = 'filter-move-handle';
     button.setAttribute('aria-label', this.#translate('filter.move'));
     button.setAttribute('aria-haspopup', 'menu');
     button.append(createUiIcon('menu-grip'));
@@ -670,25 +719,30 @@ export class FilterBuilder {
 
   #moveNode(path: FilterPath, delta: -1 | 1): void {
     if (this.#disposed || this.#draft === undefined) return;
+    const moved = filterNodeAt(this.#draft, path);
+    const movedId = moved === undefined ? undefined : this.#idFor(moved);
     const next = moveFilterChild(this.#draft, path, delta);
     if (next === this.#draft) return;
+    this.#preserveIds(this.#draft, next);
     this.#draft = next;
     this.#scheduleApply();
     this.#rerender();
+    // The handle that issued the move was rerendered away — restore focus
+    // to the same logical node's new grip, resolved through its stable id.
+    if (movedId !== undefined) {
+      this.#root
+        ?.querySelector<HTMLElement>(`[data-node-id="${movedId}"] [data-role="filter-move-handle"]`)
+        ?.focus();
+    }
   }
 
-  /** Appends a child and carries the parent's id over to the wrapper object
-      addFilterChild recreates — the parent keeps its identity across the
-      structural edit. */
+  /** Appends a child — the parent's recreated object keeps its identity via
+      #preserveIds, while a promotion wrapper is a new kind and gets its own. */
   #addChild(path: FilterPath, kind: 'rule' | 'group', field: Field): void {
     if (this.#draft === undefined) return;
-    const parentBefore = filterNodeAt(this.#draft, path);
-    const parentId = parentBefore === undefined ? undefined : this.#nodeIds.get(parentBefore);
-    this.#draft = addFilterChild(this.#draft, path, kind, field);
-    if (parentId !== undefined) {
-      const parentAfter = filterNodeAt(this.#draft, path);
-      if (parentAfter !== undefined) this.#nodeIds.set(parentAfter, parentId);
-    }
+    const before = this.#draft;
+    this.#draft = addFilterChild(before, path, kind, field);
+    this.#preserveIds(before, this.#draft);
   }
 
   #markTouched(path: FilterPath): boolean {

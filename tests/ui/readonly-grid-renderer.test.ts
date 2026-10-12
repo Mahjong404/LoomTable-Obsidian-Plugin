@@ -11,6 +11,7 @@ import type {
 } from '../../src/client/loomtable-client';
 import { LoomTableClientError } from '../../src/client/loomtable-client';
 import { createTranslator } from '../../src/i18n';
+import { openContextMenu } from '../../src/ui/context-menu';
 import { ReadonlyGridRenderer, getVirtualRowRange } from '../../src/ui/readonly-grid-renderer';
 import type { GridDisplayPatch } from '../../src/ui/grid-display';
 import type { GridState } from '../../src/ui/grid-view-controller';
@@ -1212,6 +1213,105 @@ describe('Grid query controls', () => {
     // Dismissing the panel disposes the builder, which closes its child.
     expect(document.querySelector('.loom-filter-values')).toBeNull();
     container.remove();
+  });
+
+  function filteredState(): { state: GridState; view: View } {
+    const state = createState(1);
+    const view = state.views[0]!;
+    if (view.type !== 'grid') throw new Error('Grid fixture is missing.');
+    return {
+      state: {
+        ...state,
+        views: [
+          {
+            ...view,
+            config: {
+              ...view.config,
+              filter: {
+                kind: 'group',
+                operator: 'and',
+                children: [
+                  { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+                  { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'b' },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      view,
+    };
+  }
+
+  it('runs a grip-menu move through the real pointerdown path without closing the panel', async () => {
+    // W15-02 M1 — the grip menu mounts on document.body, so panel dismissal
+    // must recognize it as an owned child of this pane, not an outside click.
+    const container = document.createElement('div');
+    document.body.append(container);
+    const { state, view } = filteredState();
+    const onApplyFilter = vi.fn(
+      async (_viewId: string, _filter: FilterNode | undefined) =>
+        ({ status: 'saved', view }) as const,
+    );
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter,
+    });
+    renderer.render(state);
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')?.click();
+
+    container.querySelector<HTMLElement>('[data-path="0"] [data-action="filter-move"]')?.click();
+    const item = document.querySelector<HTMLElement>(
+      '.loom-context-menu [data-action="filter-move-down"]',
+    );
+    expect(item).not.toBeNull();
+
+    item!.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
+    item!.click();
+
+    await vi.waitFor(() => expect(onApplyFilter).toHaveBeenCalled(), { timeout: 1000 });
+    expect(onApplyFilter.mock.calls.at(-1)?.[1]).toEqual({
+      kind: 'group',
+      operator: 'and',
+      children: [
+        { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'b' },
+        { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+      ],
+    });
+    // The panel stays open — immediate-mode editing continues after the move.
+    expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
+    container.remove();
+  });
+
+  it('still dismisses the panel on a pointerdown inside another pane’s menu', () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const paneB = document.createElement('div');
+    document.body.append(paneB);
+    const { state, view } = filteredState();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter: vi.fn(async () => ({ status: 'saved', view }) as const),
+    });
+    renderer.render(state);
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')?.click();
+    expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
+
+    // A menu owned by pane B is not part of pane A's panel boundary.
+    openContextMenu({
+      items: [{ label: 'B item', action: () => undefined }],
+      x: 10,
+      y: 20,
+      host: paneB,
+      label: 'pane-b',
+    });
+    document
+      .querySelector('.loom-context-menu')
+      ?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    expect(container.querySelector('.loom-filter-builder')).toBeNull();
+    container.remove();
+    paneB.remove();
   });
 
   it('selects the whole column on header click without sorting', () => {
