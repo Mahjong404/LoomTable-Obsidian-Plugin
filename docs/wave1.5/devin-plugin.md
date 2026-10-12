@@ -2,21 +2,21 @@
 
 Repository: https://github.com/Mahjong404/LoomTable-Obsidian-Plugin.git
 
-本入口可在单独 Plugin clone 中执行。当前设计已批准，正式文档已准备；文档整理不等于生产切片或 API Gate 已获执行授权。每次输入必须指定 Task ID 与允许范围。
+本入口可在单独 Plugin clone 中执行。当前设计已批准，既有文档/01/02实现已发布；当前真实UI收敛仍待验收；文档整理不等于生产切片或 API Gate 已获执行授权。每次输入必须指定 Task ID 与允许范围。
 
 ## 启动与首个任务
 
 1. 读仓库 AGENTS.md、CONTRIBUTING.md、本目录 README 和 [status](status.md)，确认明确授权与未完成任务。没有同级工作区时，以仓库内这些文件为完整入口。
 2. 读 [Master Plan](implementation-plan.md)、目标 [任务卡](task-specifications.md)、[追踪矩阵](traceability.md) 与涉及的 [API Boundary](api-boundary.md)。UI 任务按项目 Skill 路由到 DS/HIG/Grid；编辑器读 [生命周期](../architecture/field-editor-lifecycle.md)。
 3. 检查 git status/diff、branch、实际 HEAD、未跟踪文件、package/lockfile、API pin；保留已有改动，不 reset/clean。审查已有 PR，避免重复实现已完成任务。
-4. **首个文档工作是 W15-00 审查/发布已准备的基线，不再从本地目录重新迁移。** 文档 commit 提供后，获授权的首个生产切片为 W15-01：真实 Field/Menu/Toolbar 的 Primitive 语义、失败保 draft 和 owned overlay。
+4. W15-00不重复启动。先读ui-alignment与任务卡UI首批A→B→C；当前仅执行明确交接的首批，共享正确性和Primitive通过后才组合代表性Grid，不直接继续W15-03。
 5. 在 status claim 一个 Ready 纵向切片，记录真实 base HEAD、owner/branch、前置、共享文件范围；完成实现、测试、review 与状态更新后再换包。
 
 普通工程细节在现有合同内决定；新产品/API 语义按 Gate 停在依赖部分，继续其他获授权任务。不要继续 Figma 视觉探索、Motion 制作或工具扩展。
 
 ## 当前 API 不变时先交付的 UI
 
-推荐主路径 **00 → 01 → 04 → 05 → 07 → 10 → 11**。02/03/09 在 01 后可独立模块推进；06、08A 在 Grid 基线稳定后集成；12 最后验收当前授权范围。
+当前实施顺序以Master Plan的UI重校准节和任务卡首批合同为准：先01正确性→01视觉→05/09代表性页面；再02视觉/03/04与后续消费者。前段质量未过不扩大并行。
 
 Date-only、现有 ID Choice、Filter/Sort/Display、Grid 几何与局部校验、连续加载、View/Rename、当前 Undo/读生命周期修复均不需要等待新 Server。API pin/generated 不变；无需为了这些 UI 拉取 Server HEAD 或运行 api:sync。
 
@@ -69,4 +69,4 @@ PR 说明具体问题/新行为、Task/需求/正式权威、代码范围、实�
 
 > 在本仓库读取 docs/wave1.5/README.md、status.md、devin-plugin.md 和 W15-XX 任务卡。执行本次明确授权的 W15-XX 当前合同子集；检查实际 HEAD/工作树/固定 API，保留已有改动。按正式 DS/HIG/Grid/Architecture 实现一个完整纵向切片、测试、review 和状态更新。未获授权的 API/Future 部分保持 gated；无需同级 Server checkout 或本地研究。交付真实 diff、验证及下一步，不自动扩大范围或发布。
 
-首次正式 handoff 应把 W15-XX 替换为 W15-00（文档审查/发布），或在该基线已完成后替换为获授权的 W15-01，并给出实际文档 commit 与当前验证环境。
+本轮首批handoff使用task-specifications内完整Prompt，给出实际规格commit/PR；不再使用W15-00或泛化W15-XX作为首个执行任务。

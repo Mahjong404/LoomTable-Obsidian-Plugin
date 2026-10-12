@@ -179,3 +179,13 @@ Current 与 Ctrl/Cmd+A 的已交付 Cell rectangle独立；Row Selection 不隐�
 保现有 opaque cursor、page100/max500、query epoch、dedupe、bounded DOM 和 rAF。接近tail约2 viewport提前加载，初始underfill有界继续直到填满/end；重复阈值只单flight，不自动下载全Table。
 
 已加载rows保持ready/editable；incremental loading/error/hasMore独立，正常Load More入口由自动续页替代，失败在tail提供retry。append保Current/editor/selection/scroll；late page/error不发布到新query/context。410重查首page并保可用anchor/clamp，end/空页不能无限循环。真实滚动/冻结/布局与资源释放需要宿主QA。
+
+### 代表性 Grid 的组合验收
+
+W15-05可先交付既有Display config支持的几何子集，与W15-09的已授权Shell/Tab外观组合；完整Display意图合并仍在W15-04。这不是W15-05全包或W15-09全部Rename/生命周期完成。
+
+同一resolved columns模型必须同时提供Header、Data、Add、Aggregate、冻结偏移、range/canvas和hit test；只改CSS的56→88会留下旧命中/滚动常量，不能验收。Footer与viewport相邻，同列起点一致，不另留8px悬浮缝；外层hairline不得使Footer与Header错位1px。Header/Footer36、Add tail56、system88/132、行密度30/36/44与透明28/44hit分别验证。
+
+Golden Baseline的字段、viewport、主题、操作状态及量值见 [对齐入口](../wave1.5/ui-alignment.md#golden-baseline)。Review frame中的16px authoring padding、360px样例总高不是宿主Shell的固定布局要求。完整页面按pane可用空间，比较共通tracks与实际消费者，不能把Figma组件画板当成已经批准的完整应用截图。
+
+现有API pin下Header query-wide checkbox须呈现准确disabled/unavailable及解释；loaded-row选择不能冒充全query。Footer未选函数时为空是预期；验收Count/Sum/Min要先通过真实Aggregate Menu设定。Search非空在Plugin完成G6接入前明确unavailable，Server已部署不自动解锁当前Plugin。

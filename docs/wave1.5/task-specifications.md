@@ -1,10 +1,10 @@
 # Wave 1.5 — Detailed Task Specifications
 
-2026-10-12。共 13 个实施包 W15-00–12；每包保留 18 项任务合同。W15-00 的文档已经准备，其余产品任务尚未开始。六条 API Gate 及 Future 统一见 [API Boundary](api-boundary.md)。
+2026-10-12。共 13 个实施包 W15-00–12；每包保留 18 项任务合同。W15-00 已交付，W15-01/02 已有实现与修复；本轮补齐真实视觉与共享生命周期验收，不能依据历史测试数量宣称完成。六条 API Gate 及 Future 统一见 [API Boundary](api-boundary.md)。
 
 ## 共通执行与验收合同
 
-- 设计批准已生效。用户授权具体切片后执行 Lane A；API Gate 需要精确合同与仓库授权。源码审查基线为 Plugin `336db8c`、Server `5f4827f`；实施前复查真实 HEAD、工作树和 API pin。
+- 设计批准已生效。用户授权具体切片后执行 Lane A；API Gate 需要精确合同与仓库授权。旧任务证据基线为336db8c；本轮固定Plugin基线52b2c9dc0a126ab23217973161b5dd5440b02bc1，实际状态和Server固定交付见status。实施前复查HEAD、工作树和API pin；本轮纯UI不sync API。
 - 生产NativeDOM/TS/Obsidian/既有CSSnamespace；不新增runtime依赖、不改Figma、不做Motion工具任务、不重写Grid/Controller/Queue。相邻已正确功能保留。设计原ID/视觉稳定，代码不与Figma层逐层同构。
 - 每个源码包的**C-CODE**：指定focused Vitest → `pnpm typecheck` → `pnpm format:check` → `pnpm lint` → `pnpm test:run` → 合并前按workflow `pnpm check`（包含API生成/build，UI包要求生成diff/pin零变化）和`git diff --check`。实施时按最新package/CI要求，不把这份命令缓存当永久事实。
 - **C-GALLERY**：`pnpm gallery`后打开实际 `tests/gallery/index.html`，生产factory、InMemory/typedfakes；实际入口`main.ts/scenarios.ts/data.ts/gallery.test.ts`。生成bundle不提交。每包覆盖相关Light/Dark、longtext/empty/disabled/error/320–400/600/960pane，正常desktop与coarse布局；不得复制独立demo组件。
@@ -43,7 +43,7 @@
 | 1 ID/名称      | W15-01 / Primitive consumer semantics and owned overlays                                                                                                                                                                                                                               |
 | 2 用户结果     | Menu/Toolbar/Field表单主题、命中、语义、loading/failure一致；失败输入可修正，不假成功                                                                                                                                                                                                  |
 | 3 设计权威     | [Design System](../ui/design-system.md#批准组件的视觉合同)、[HIG 浮层](../ui/interaction-hig.md#popoversheet-与-modal)；节点 见追踪矩阵对应需求组                                                                                                                                      |
-| 4 当前证据     | `styles.css:1,363,417,423,2867`；`icons.ts:13,303`；`context-menu.ts:40,133` bodyportal/主题祖先缺口；`field-editor-panel.ts:312,350`提交前关闭；`save-status.ts:17`                                                                                                                   |
+| 4 当前证据     | 52b2c9d：context-menu.ts:186只监听Menu focusout；Field pending/owner observer已存在，但renderConfig:178漏child dispose；Field Submit:318的Primary被真实宿主CSS覆盖；view renderGrid/showMap缺Renderer.dispose、disposeAll顺序与Filter flush竞态，详见对齐矩阵A18–21                                                                                                                   |
 | 5 必须行为     | Quiet/Neutral/Primary/Danger/Disabled/Loading针对真实consumer；toolbarOpenneutral与activeconditionaccent分离；Check14px/optical1.75只改该glyph；Menu真实radio/checkboxselected，命令不打勾；Field提交singleflight、成功才关闭、失败保draft；overlay有owner/有效returnfocus/themebridge |
 | 6 文件         | 修改`styles.css`、`icons.ts`、`context-menu.ts`、`a11y.ts`、`field-editor-panel.ts`、`save-status.ts`与必要renderertoolbar窄区；对应tests/i18n/Gallery。无必需新大模块                                                                                                                 |
 | 7 接口/owner   | 复用createUiIcon/nativebutton；ContextMenuItem窄增加owner/selectedrole能力；overlayclose由局部owner持有；Fielddialog owns draft+promise，真实保存仍callback/Controller                                                                                                                 |
@@ -51,7 +51,7 @@
 | 9 API          | 既有Field保存/View功能；无Server/API/schema/颜色enum变更                                                                                                                                                                                                                               |
 | 10 错误/边界   | 双submit一次；readonly/disabled0动作；离开owner/更换context晚成功不关闭新dialog；outside不抢focus；不把hostfocus反馈删除                                                                                                                                                               |
 | 11 a11y/响应式 | icon-only真实label；role/current/selected语义区分；menuArrow/Esc/nativeactivation；pane内flip/clamp、themeportalcomputedstyle；touchtarget不重叠                                                                                                                                       |
-| 12 测试        | 现有`context-menu.test.ts`、`readonly-grid-renderer.test.ts:3396`Fieldeditor集成、`gallery/gallery.test.ts`、i18n；拟新增`tests/ui/field-editor-panel.test.ts`直接测busy/failure/returnfocus/context。当前确实没有该独立测试文件，不冒称既有                                           |
+| 12 测试        | 现有`context-menu.test.ts`、`readonly-grid-renderer.test.ts:3396`Fieldeditor集成、`gallery/gallery.test.ts`、i18n；既有`tests/ui/field-editor-panel.test.ts`已覆盖busy/failure/returnfocus/context；补完整boundary、真实View销毁及type键盘切换路径，不能以已通过这些基础测试替代新缺口                                           |
 | 13 命令        | focused上述实际测试 + C-CODE、C-GALLERY                                                                                                                                                                                                                                                |
 | 14 宿主        | Field create失败→修正→成功；menu在pane角/两主题；Open同时有active条件；按Esc外点检查focus                                                                                                                                                                                              |
 | 15 DoD         | 至少上述三个真实消费者对齐、现有clamp/roving测试保留；无全局token大换名或全部SVG改stroke                                                                                                                                                                                               |
@@ -329,3 +329,62 @@ Grid renderer新增窄dispose/ownedDate释放，并在View销毁/context变化/f
 ## API 与 Future 任务的入口
 
 Gate 的精确目标、Server 模块、兼容性、跨仓库顺序及验收统一见 [API Boundary](api-boundary.md)。Time/DateTime、12h 和整 Table 回滚不属于本批当前生产任务；其视觉和运行行为分别维护在 DS/HIG，不安排 Figma Motion 或工具开发。
+
+## Wave 1.5 UI 首批执行合同
+
+以下为既有任务包的分段交付合同，不新增编号、Design System或status；Current/量尺证据见 [ui-alignment](ui-alignment.md)。执行顺序A→B→C，每段达到自己的功能/视觉/Host门才进入下一段。当前只把第一批交给Devin；W15-03和后续全包尚未启动。
+
+### A — W15-01 共享生命周期收口
+
+| 项 | 精确合同 |
+|---|---|
+| 用户结果 / Current→Expected | 菜单离开完整boundary不再抢焦点；Grid换Map/换Renderer无遗留全局监听；关闭owner不把尚未接受Filter意图写入已失效View；Field切类型不留下Palette捕获 |
+| Authority / State machine | HIG完整焦点边界与关闭原因表、Lifecycle Renderer释放顺序；对应矩阵A18–21。Menu closed/open/action/owner-disposed；Query valid-debounce/in-flight/queued/invalid/failed/closed-disposed；Field config子owner mounted/disposed。user-close有效owner显式串行flush；Escape/context/owner dispose取消未发，不在dispose中onApply |
+| 文件 / 禁止区域 | context-menu.ts、field-editor-panel.ts、filter-builder.ts、readonly-grid-renderer.ts的close/cache/dispose接缝、loomtable-view.ts的替换/销毁出口、必要table-shell navigation preflight，以及对应tests。只改本次证实路径，不重写Controller、ViewWriteCoordinator、MutationQueue，不改Server/openapi/generated/settings持久schema |
+| 数据 / ownership / API | 稳定HTMLElement owner在所有调用方一致；in-flight真实View/Field工作仍归原CAS/operation；失效completion只清理，不重新调onApply。点击导航的pointerdown/outside先识别context失效，不能先以ordinary outside flush再导航；keyboard/programmatic切换同样取消。现有API Ready，pin43da70e不变 |
+| Unit / integration | Menu完整pointerdown→focusout→click、menu→trigger→Tab/outside、Arrow不夺外部focus、Esc/action只恢复有效trigger；A/B rerender与新menu切换；Field Palette keyboard type/config/rows/pending/owner出口；真实Renderer+Controller dispose顺序，valid/invalid300ms前关闭、旧in-flight finally的queued apply、新owner无publish/无额外updateView；检查listener/observer/timer幂等释放 |
+| Host / failure / DoD | 合成Vault，Field失败→修正→成功及pending锁/原disabled恢复；Filter未发编辑后Pointer与Keyboard Grid→Map、关闭Pane/换Table，看请求ledger零新写及document资源归零。正常user-close最后有效草稿按合同串行成功，invalid不覆盖旧query。72项既有菜单/Field/Filter测试必须保持，补本轮4个失败边界；真实B Pane rerender不关A菜单。缺设备如实Not Verified；功能失败停止本段，不以视觉优化替代 |
+| 交付 | 一个窄fix PR，具体复现/新行为/检查与Host限制；完整commit与API零diff、状态更新；不以PR标题称01全包Done。回滚该owner adapter，不撤销既有数据或重发操作 |
+
+### B — W15-01 Primitive 的生产视觉收敛
+
+| 项 | 精确合同 |
+|---|---|
+| 用户结果 / Current→Expected | 实际Field Submit恢复accent/on-accent Primary；Toolbar达到28/r4和Open trailing14、有效count；Menu item13/20、明确slots。与A共享正确owner，成功/失败/disabled状态不跳尺寸 |
+| Figma Authority | 6:127内容compact/default、Primary6:186及其Disabled/Loading；Toolbar9:888/898/906与Dark9:931/941/949；Menu13:1690/1705/1729与Dark13:1765/1780/1804。其几何只在DS维护，矩阵A01/03/04应用到生产消费者；不得重设计Figma |
+| Anatomy / Token | native button owns leading14/label/trailing14或count；component角色选择quiet/neutral/primary/danger和compact28/default32；Field基础form使用32，Type/search/Query后续compact28；Control4与Floating8分离。基础Menu230/p4并受pane clamp，label占可用空间，command不Check；冻结等glyph不随Check修改stroke |
+| Component API / owners | 拟新增一个native controls factory/更新接缝，在Toolbar与Field Submit同PR实际使用；size/variant/glyph/label/disabled/busy与原生Enter/Space可访问语义。保既有ContextMenu/Field Pattern，不创建抽象保存/Picker框架；名称由实际导出确定，不预写source-layout。Palette/type仍Field所有，不进Primitive |
+| 文件 / 禁止 | styles.css token/primitives与窄Toolbar selectors；实际control模块、field-editor-panel、context-menu、renderer Toolbar窄接缝、icons仅指定Check，i18n/对应tests/Gallery；不迁移整个Renderer或改typed value/API。VitePress只dev文档Adapter，未批准runtime dependency不得新增 |
+| Unit / integration | 两个真实factory consumers、按钮role/label/nativeactivation一次、disabled零callback、busy不重排、controlled Open/Active/count组合；CSS/DOM测试不能仅匹配类名。Host computedStyle必须证明Primary实际颜色和28/32/r4，不以jsdom声明颜色；被嵌Query/Field button不能继承Toolbar quiet覆盖 |
+| Figma视觉 / Showcase / Host | 同一中文variant、Light/Dark对比slot/height/radius/padding/gap/typography；正常/open/active/open+active/disabled/loading/failure，长label/窄Pane/portal/200% zoom。Showcase imports生产factory，每次mount/dispose；先在现有Gallery提供可控场景，再建立VitePress同源入口。拟新增docs/.vitepress与同源组件挂载页，package/lock仅允许dev依赖与站点script；Plugin bundle不导入Vue/VitePress。未建立VitePress属于本段未完成，不能签B完成；两者都不能代替真实Obsidian |
+| 失败 / 交付 | 真实宿主Primary仍白、控件仍30/r8、状态漏槽或observer残留均验收失败；修同一窄PR后复测，不改批准设计消除diff。交付docs/代码追踪、截图/DOM测量引用、独立PR与固定SHA；API pin零变化 |
+
+### C — W15-05 几何 + W15-09 外观的代表性 Grid 页面
+
+| 项 | 精确合同 |
+|---|---|
+| 用户结果 / Current→Expected | 一个可浏览、选行、打开详情、创建并取消Draft、打开Field/Menu的真实Grid，从56 system/40 tail/20 More/15 body/21.5 Tag、悬空Footer收敛到批准结构；不是只渲染孤立按钮 |
+| Figma Authority / anatomy | Grid review303:91947；RowHeader205:33044、Row205:34437/Dark205:35553、Header205:34361/Dark205:35477、Aggregate205:35622/Dark205:35647；ViewTab9:807/Dark9:869、Context9:762；Field glyph/Check/Tag按DS。Review authoring padding/画板总高排除；完整Shell按HIG组合，不自创新布局 |
+| geometry / tokens | Grid单resolved model供header/body/add/footer/range/canvas/frozen/hit；desktop88三28槽，coarse132三44槽，Header/Footer36、tail56，普通row36及30/44密度，More28/resize8/rail1；Cell13/20，Tag20/12/18，body Checkbox glyph与值语义一致；数字是否分组按真实config，不改格式业务 |
+| State / ownership | Current、hover、row selection、drag独立；Row number只现query ordinal；handle启动与cancel、detail/check不drag。Component持有slots/hit/DOM，既有Controller/Queue保selection资格、分页、写入；Grid首次/换Map/换Pane继承A的owner释放。Current/default View独立，More不选择View |
+| scope / files | readonly-grid-renderer几何与typed显示窄区、grid-display共享geometry、registry已批准Renderer展示、table-shell已批准Tab/Context外观、styles/icon/i18n与focused tests/真实Gallery。保keyed DOM/rAF、虚拟化、编辑/clipboard、Controller/Queue。W15-04 full意图合并与W15-09 Rename暂不实现；使用当前合法visible widths/order/standard config完成第一页。全Picker/Date/continuous loading/Operation保后续任务 |
+| API / capability | 既有Grid/Record/Field/View/Aggregate可用；Header query-wide仍disabled/gated（G4），保当前Row selection/Ctrl+A矩形；G6 Plugin尚未接入，非空Search Aggregate unavailable。现有9色Tag视觉可用，G1新三色writer在专门pin/capability切片前关闭。禁止伪聚合/loaded scope/Fake IDs |
+| Unit / integration | 单geometry输出在所有track/hit一致；resize/任意freeze/横滚、More与resize无重叠；row30/36/44与coarse一致、row ordinal/Current/selection/dragcancel；checkbox真实boolean/Tag截断+N；Footer Count/Sum/Date Min语义及query stale/unavailable；Shell两主题/滚动/Current vsDefault，A/B生命周期回归 |
+| Golden / Host | 完整条件与G0–G3见ui-alignment Golden。先960宽fullpage Light/Dark，再1360 viewport完整toolbar、双468 Grid、320–400及600pane/长文案/200% zoom/coarse（无真实touch写Not Verified）。至少完整浏览→hover+Current+多行selection→menu→Field失败重试→Detail→Draft取消→Map往返→Filter child操作，量尺及请求归属都过；typed fixtures不冒充ServerQA |
+| 失败 / DoD / 交付 | 固定system/hit/header/footer/controls达标、header/footer同列起点、viewport仅一个竖scroll owner；视觉截图和DOM数据与Figma对应，每项结论分Confirmed/Allowed/Missing。任何结构/层级/密度失败回本段修，测试绿不签视觉通过。一个bounded PR可含05/09明确子集，status分别记录部分交付；01不因C未实现标旧回归，05/09不因C完成标全Done；窄geometry adapter可revert无数据迁移 |
+
+### 首批 Devin 执行 Prompt
+
+> 在Plugin独立checkout读取AGENTS、项目UI Skill、docs/wave1.5/README、status、devin-plugin、ui-alignment，以及本任务卡“UI首批执行合同”和DS/HIG/Grid/Lifecycle。用户要求先证明批准设计在真实产品中落地。本次只执行A→B→C这一批，不自动继续W15-03或所有Wave任务。
+>
+> 固定审计代码为52b2c9dc0a126ab23217973161b5dd5440b02bc1；启动先核对当前HEAD/branch/status及与该SHA差异，保留用户改动，已修路径要复核而非重复改。使用本次handoff提供的正式规格commit/PR；不依赖docs/local、聊天或另一仓库。
+>
+> A先修已证实的完整Menu boundary、Renderer替换漏dispose、owner卸载Filter flush/queued apply、type切换Palette capture。按HIG close reason与Lifecycle顺序实现；同时保留跨Pane single owner、pending锁/disabled恢复、roles/Check等正确行为。补真实Renderer+Controller、deferred和keyboard/pointer边界测试；已发operation身份不变。完成单独PR和独立review/Host验收后再进B。
+>
+> B实现有限native Loom controls seam并让真实Toolbar和Field Submit使用；按指定Figma variant/DS量值修宿主CSS竞争、28/32/r4、slot/chevron/count、Primary和Menu文案。Gallery/后续VitePress只挂载同源factory，不建独立demo；不引入Plugin UI框架/runtime库。必须测Obsidian实际computedStyle，类名/测试通过不足以验收。独立PR通过后再进C。
+>
+> C只实现05共享几何/typed展示和09 Tab/Context外观子集，组合ui-alignment固定Grid fixture/G0–G3。一次只有一个owner改Renderer/styles/registry；保虚拟化/Controller/Queue。完整页面、两主题、真实菜单/Field/Detail/Draft/Map来回必须同时验证，保Figma导出+host截图+rect/token/font证据；量值失败修本段，不扩大任务。
+>
+> Server/OpenAPI/Plugin pin/generated保持不变（当前43da70e3c241380fff34d0deee8c1142ba39cb47）；G1/G6虽有Server交付但本次不接API，不启用新三色或Search Aggregate。G2–5、Time/DateTime/12h/Table rollback保持门槛；不造假能力。实际Mobile/touch不可用明确Not Verified。
+>
+> 每段focused测试和仓库required checks通过；纯UI要求API生成零diff、生产build成功。交付窄分支/commit/PR、具体Current→Expected、Figma node/variant、真实visual/host evidence及限制、可回滚范围，更新唯一status/Traceability；不得把所有planned包或Server完成自动标Done。A或B未过门就停止扩散、报告精确失败；C整页质量达到后才提出下一批02视觉/03/04任务。

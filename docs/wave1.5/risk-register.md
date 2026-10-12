@@ -1,6 +1,6 @@
 # Wave 1.5 — Open Decisions and Risk Register
 
-2026-10-12。设计阶段已完成，文档整理已授权并准备；产品实现尚未开始。此表只记录重大合同门槛与可验证的工程风险。进度和审批引用统一在 [status.md](status.md)。
+2026-10-12。设计已批准，00/01/02已有交付；本轮针对固定52b2c9d进行真实UI工程重校准。此表只记录重大合同门槛与可验证的工程风险。进度和审批引用统一在 [status.md](status.md)。
 
 ## 1. 设计与工程问题裁决
 
@@ -29,7 +29,7 @@ A设计足够明确不表示代码已完成。B是普通实现选择，不应逐
 
 ## 2. 真正需要批准的事项
 
-**文档整理已经获得授权；当前文档基线待审查/发布，产品任务未开始。** Devin 获得明确切片授权后按正式指南执行。无需重新批准视觉或普通工程细节。
+**本轮审计、正式规格与任务设计已授权；生产新切片通过首批明确handoff再执行。** Devin 获得明确切片授权后按正式指南执行。无需重新批准视觉或普通工程细节。
 
 以下是未来合同的批准点，均不要求本轮重做已经选定的产品方向：
 
@@ -40,11 +40,11 @@ A设计足够明确不表示代码已完成。B是普通实现选择，不应逐
 | D-G3       | server-owned Table View order，create/duplicate/restore tail | list一致snapshot、orderRevision/CAS、completepermutation、并发/lifecycle/default兼容。推荐独立Tableorder合同，禁止Plugin-local持久替代                                          | View拖拽持久化/tail新语义前                 |
 | D-G4       | Header全query，binary/partial unchecked                      | membership/filter+searchfingerprint/count/token/TTL/exclusion/权限与scope失效。推荐Server scope；Sort/Display不改membership                                                     | Header全query选择可用前；不授权bulkmutation |
 | D-G5       | Table-only统一Audit，当前Record投影无Actor、默认30d方向      | 全writer/eventpayload版本、event-time字段/option/presence、分页前投影、operation/change对应、applied/no-op与retention/capability。推荐先只读投影/安全availability，rollback独立 | W15-08B最终Ops投产前                        |
-| D-G6       | Aggregate应与Record Filter+Search同范围                      | 当前API不接Search；复用Search语义/权限/query一致性、pin/transport/client/cache和旧client兼容。推荐小范围独立正确性补齐；是否作为P1.6窄API例外需单独批准                         | 非空Search的query-wide数值汇总前            |
+| D-G6       | Aggregate应与Record Filter+Search同范围                      | Server固定f398已批准/实现/部署；Plugin旧pin仍无Search，接入审查optional参数/capability、HTTP/InMemory/Controller/cache与旧Server安全不可用，独立于纯UI首批                         | 非空Search的query-wide数值汇总前            |
 | D-Time     | Time视觉批准，领域未批准；12h保Future                        | 建议先Time-only分钟精度HH:mm/24hcanonical，12h只projection；这是候选。DateTime必须选择instant vswall-time，明确zone/DST/precision/跨日/nullable/Required/config/兼容            | Time/DateTime真实Field或持久化前            |
 | D-Rollback | inclusive跨session整Table回到目标前、含资源inverse，30d方向  | writer覆盖/inverse/checkpoints/earliestRestorable/barriers、preview/headCAS/事务/权限/GC/unknown/replay。推荐独立Server阶段，不能以localUndo模拟                                | 正式恢复动作前                              |
 
-当前所有 Gate 仍为 **Gated / 未实施**。只有明确的 Gate 合同与仓库授权才启动 Server/API-first 实施。G6可以单独获准提前补齐，不能由P1.6文档的“原则”推断已有例外批准。是否进入P2.0批次在合同启动时确认；不用本轮改历史阶段定义。
+G1/G6已按Server工作线授权审查并部署，固定合同/交付见API Boundary与唯一status；其Plugin接入仍未实施。G2–G5按独立精确合同推进，不能由产品方向或另一Gate交付推断Plugin能力已具备。是否进入P2.0批次在合同启动时确认；不用本轮改历史阶段定义。
 
 ## 3. 风险登记（当前与跨层分开）
 
@@ -85,3 +85,17 @@ A设计足够明确不表示代码已完成。B是普通实现选择，不应逐
 ## 5. 推荐处理
 
 先完成 W15-00 的文档审查/发布，然后按明确授权交付 Lane A 的纵向 UI 切片。Server Gate 按产品需要独立进行 API-first 评审与实施，Plugin 仅等待相应合同，不等待全部未来功能。当前没有必须重开 Figma 的设计阻断；类名、CSS 组织、局部 helper 和 listener 释放由开发者在既有合同内决定。
+
+## 4. 当前 HEAD 独立确认的首批门槛
+
+固定52b2c9dc0a126ab23217973161b5dd5440b02bc1的证据在 [ui-alignment](ui-alignment.md)，不把旧SHA结论直接沿用。仅记录工程门槛，实际处置状态仍在status。
+
+| 风险 | 严重度 / 精确证据 | 最小处理与验收 |
+|---|---|---|
+| R23 完整Menu focus boundary遗漏 | P1：Grip trigger→真实Tab到Field时menu仍Open；document Arrow将外部焦点夺回item | 01/A：统一trigger+portal focus离开判定、Arrow owned guard；保pointertoggle/外点/动作/Esc与跨Pane |
+| R24 Renderer换Map只null不dispose | P1：showMap/renderGrid源码出口；真实Map页面仍保旧Query capture pointerdown且732ms后PATCH旧Grid View | 01/A：capture后所有替换出口dispose；父UI资源清理先于Controller失效；Map/Grid/Pane测试覆盖晚于ViewWrite debounce的完整窗口；已确认late PATCH |
+| R25 Filter dispose提交未发/queued | P1数据正确性：真实Renderer+Controller定向测试在controller dispose后updateView1；deferred finally在dispose后onApply第二次 | 01/A：显式close reason、纯dispose与generation/queue guard；有效normal-close串行flush仍保；in-flight身份不改，无新owner publish |
+| R26 Palette keyboard type替换泄漏 | P1资源正确性：PaletteDOM已移除，pointer capture listener仍active，父Esc才释放 | 01/A：先dismiss子config再replace；row/config/选项/pending/parent/host出口幂等配对 |
+| R27 基础视觉/Golden假完成 | P1：真实Primary白底，Toolbar30/r8，Grid56system、20More、40tail、15body；Gallery没有宿主CSS竞争 | 01/B→05/09/C：真实consumer与同源Showcase/Host量尺；三门独立，无截图/量值对应不签视觉通过 |
+
+设计无需本轮重新裁决；字体家族/抗锯齿/native语义颜色允许适配，结构/控制密度不允许漂移。整页authority缺失先组合既有HIG/组件，仅真正冲突才提交具体证据询问，不用个人审美补设计。
