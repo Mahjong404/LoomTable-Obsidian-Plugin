@@ -695,3 +695,20 @@ W15-08A 先修当前 history/recycle context、single-flight/410 与 local Undo 
 - Reduced motion 直接落位，保连续输入的数值正确性；取消 gesture/timer/rAF/capture 并按原 session 处理 Clear/Esc/context。模式 target 的 keyboard 图标表示转 Wheel，clock 表示转 Clock，不增加第三种 keyboard mode 或持久化偏好。
 
 Pointer、Touch、Wheel 各设备、0°跨越、文字遮挡、Focus、settle/中断和资源释放必须在 Plugin Runtime 验证。Figma Motion 或静态播放演示不属于实现依赖。
+
+## 完整焦点边界与关闭原因
+
+Menu的逻辑boundary包含trigger与portal/所有owned child；从Menu回trigger保持Open，随后trigger经Tab或程序focus离开完整boundary必须关闭。document Arrow监听只服务当前boundary内的菜单焦点；不能从其他表单夺回焦点。trigger pointerdown → item focusout → trigger click必须只切换一次；新菜单关闭旧菜单不抢focus。Owner B重渲染不关闭Owner A，Owner A销毁必关闭其menu。
+
+Query自动更新的不同出口须显式表达原因：
+
+| 出口 | 未发出的valid intent | 已发工作 / focus |
+|---|---|---|
+| 用户切换同owner的Query面板、点回toolbar或真正outside关闭 | 串行flush最后有效草稿；invalid不覆盖last-valid query | 按原View CAS结果更新；outside不恢复trigger焦点 |
+| Escape关闭当前Query面板 | 取消尚未发送的草稿；保留此前已生效query | 已发工作不能伪撤回；回有效trigger；Esc关闭child只取消child |
+| View/Table/Profile切换、Grid→Map、owner卸载/替换 | 取消timer和未发queued intent，禁止flush；新context不接收旧draft | 原在途工作归原operation；completion不得调用旧UI或启动下一次apply，不恢复旧trigger |
+| 异步failure/conflict/unknown，owner仍有效 | 保留raw/draft和可修复错误；invalid不进入query | 成功证据来自真实outcome；unknown保原identity，不假Saved；不自动重复提交 |
+
+关闭策略由consumer传入原因；dispose只释放，不能隐藏持久化副作用。Filter/Sort当前自动Apply协议不新增Apply按钮。draft-local有效规则计数与Open可同时表达；invalid placeholder不计数，失败保留草稿时不得把权威cache静默覆盖到编辑区。
+
+Field Editor pending时锁住所有可修改控件（名称/说明/类型、Options增删改、Palette、类型配置），保留各控件原disabled状态。close取消未发UI；已发Promise完成后，关闭/卸载的面板不得解锁或抢focus。切换Field type先dispose旧config的所有child，再替换DOM；pointer与keyboard走同一出口。

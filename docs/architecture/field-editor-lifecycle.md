@@ -50,3 +50,13 @@ Date-only只用Gregorian YYYY-MM-DD或null，presence另保；低年份校验不
 ## 验证接缝
 
 任务卡要求的Unit/DOM/Integration证明接受请求次数、无草稿提前持久化、originalpresence恢复、deferred失败/latecontext、重复dispose与资源清理。Gallery调用生产factory；Obsidian证明实际Focus/Popover/Sheet/Pointer与布局，Mobile证明真实touch/WebView。编译/jsdom不证明视觉几何或设备行为。
+
+## Renderer 与 Query owner 释放顺序
+
+Grid的Renderer是稳定的UI owner。LoomTableView在renderGrid替换、showMap、View/Profile/Table切换及disposeAll中，先capture允许保留的Grid工作session，再dispose旧Renderer及其子owner，最后清DOM/引用、销毁或替换Controller。不能仅把gridRenderer设null，也不能在Controller失效之后让Renderer的销毁回调继续发View写入。
+
+Renderer只在owner仍有效时响应query dismiss；区分user-close、escape与context-switch/owner-dispose，按HIG的关闭原因表处理未发intent。FilterBuilder/SortPanel的资源dispose不触发onApply；in-flight finally在disposed/generation失效时只清理，丢弃未发queued apply，不递归调用旧owner。普通user-close的flush由有效consumer显式执行并await/串行claim。
+
+所有Field/Values/Menu/Palette子owner登记一个幂等disposer。替换config/rows、virtualized anchor失效、ownerDOM脱离都要走disposer，而不只remove子DOM。Field的MutationObserver不能替代Renderer自身timer/document listener释放。Rendererdispose清理其Query/search debounce、document/capture listener、Menu与所有child；新Renderer不继承旧listener。
+
+UI守卫不更改Controller/ViewWriteCoordinator/MutationQueue的持久合同：已发送的immutable operation继续归原数据context；不替换clientMutationId/body，不取消原receipt恢复，不在失效owner上启动新的intent。

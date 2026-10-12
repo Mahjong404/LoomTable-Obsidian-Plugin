@@ -75,7 +75,7 @@ Server 独立执行流程见 [Server docs/wave1.5/README.md](https://github.com/
 ### G6 — Aggregate 与 Filter+Search query 同域
 
 - 目标：Footer聚合与当前activeRecord Filter+Search范围一致；不是显示Filter-only或loadedpage和。
-- 当前证据：Plugin`AggregateRequest`仅fields/filter；ServerOpenAPI `AggregateRequest`/postgres`values.go:101–129`无Search。Distinct已有Search不能推导Aggregate也有。
+- 当前证据：Plugin`AggregateRequest`仅fields/filter；最初Server基线OpenAPI/Postgres无Search；最新固定f398已交付该能力，详见本文交付节。Distinct已有Search不能推导Aggregate也有。
 - 范围：Serverrecordaggregate/request/validator/httpapi/postgresquery共享Search语义、OpenAPI；Pluginclient/HTTP/InMemory/controlleraggregationrequest/cache/pin；复用现有query normalization与read scope，不新建另套聚合引擎。
 - Gate：作为窄正确性合同补齐独立评审，明确Searchtrim/空值/权限/active/filter口径、计数/number/date聚合和snapshot一致性；若需P1.6API修复例外由用户批准，不默许。
 - 验收：Filter+Search/仅Search/空Search、Search变更lateaggregate不污染、rename/option搜索投影、sum/avg/count/min/max范围一致、oldServercapabilityfallback不误报；合成DB/HTTPfixtures。无capability时Searchactive数值真实unavailable，不假全scope。可独立于G4/其他Gate实施。
@@ -101,3 +101,15 @@ Server 独立执行流程见 [Server docs/wave1.5/README.md](https://github.com/
 Avatar/Profile、Administrative Cascader、细粒度转换审计等不进入当前生产任务，不阻断 Date/Query/Grid。新增 bulk mutation、View 回收站 UI、二维剪贴板及新字段权限不由这些 Gate 自动授权。
 
 Server 集成测试读取 LOOMTABLE_TEST_DATABASE_URL，执行 DROP SCHEMA public CASCADE。只允许专用、可销毁、使用合成数据的 CI/test 数据库；名字包含 test 仍不足以证明环境可重置。不默认在本机启动 Docker/PostgreSQL，不重置生产或长期共享环境。未具备环境就记录未验证，Plugin 可用 typed fixtures 验证，不宣称真实 Server 事务通过。
+
+## 2026-10-12 固定 Server 交付与 Plugin 分界
+
+以上“当前合同”表指Plugin pin43da70e3c241380fff34d0deee8c1142ba39cb47；不能再把它当作最新Server事实。G1和G6有已发布合同/实现/部署交接，Plugin本轮未sync、未改generated或consumer。
+
+- G1 approved contract及源码47fc985bd9376dc761469b40fe40dcfd1ceb483e，merge173c2f031dd4acf0957a40afcb07e94125e8305f，[PR10](https://github.com/Mahjong404/LoomTable-Server/pull/10)。[固定G1合同](https://github.com/Mahjong404/LoomTable-Server/blob/47fc985bd9376dc761469b40fe40dcfd1ceb483e/docs/wave1.5/contracts/g1-choice-palette.md)：严格12色writer、reader保陌生string，choicePalette12 capability；Record仍Option ID，不解锁G2。旧writer含新色config resave会422，先reader/兼容再writer。
+- G6 approved contract及源码f3980b1b4126cdfce026c0a94779c8c8261b3997（含G1），mergebf6237b7450af3ff3ca1ba9d0155c19096a352fb，[PR11](https://github.com/Mahjong404/LoomTable-Server/pull/11)。[固定G6合同](https://github.com/Mahjong404/LoomTable-Server/blob/f3980b1b4126cdfce026c0a94779c8c8261b3997/docs/wave1.5/contracts/g6-aggregate-search.md)：Aggregate可选search、aggregateSearch capability、Filter交集与Query同域；Unicode Trim→NFC→500码点→Default Case Folding，schema不以raw maxLength拒合法输入。单响应同快照，不保证独立Query/Aggregate跨请求固定快照；无Queue/revision/receipt变更。
+- [固定发布证据](https://github.com/Mahjong404/LoomTable-Server/blob/bb00e6ad3d100a6e5e0879d1e8c1fb25ab51bfec/docs/wave1.5/deliveries/g6-aggregate-search.md)记录实际v0.4.0+f3980b1b4126、公开/内部Meta的choicePalette12/aggregateSearch、CI与恢复/回滚。部署验证来自Server工作线及该tracked交付；本Session没有再请求生产或写QA Record。
+
+状态术语统一：既有UI使用Existing API Ready；新Gate依次为Contract Approved / Server Pending、Server Implemented / Not Deployed、Deployed / Capability Verified（注明验证来源）、Plugin Integration Ready（已显式pin/生成/consumer兼容通过）。G1/G6目前达到Server发布交付，**未达到Plugin Integration Ready**；G2–G5精确合同/实现仍按各自交付，产品方向不重选。
+
+未来获授权的Plugin API接入用固定f3980b1b4126cdfce026c0a94779c8c8261b3997，api:sync→api:generate审查0.4.0 optional search/12-color enum/capability。HTTP、InMemory、Controller、aggregate cache/generation传同一Search，测试超过一页成员、null/0/Unicode/Filter交集与旧Server缺capability；connection/Profile/Table切换失效能力与晚响应。G1/G6消费者独立验收，不因一次pin含两者就全部启用；纯UI首批继续旧pin不变。

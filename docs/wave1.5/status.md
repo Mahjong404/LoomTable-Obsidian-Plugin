@@ -1,59 +1,59 @@
 # Wave 1.5 — 唯一实施状态
 
-更新：2026-10-13。本表只记录实际实施、审批与交付引用；范围见 README，行为见 UI/Architecture，任务合同见 task-specifications。设计已批准，Lane A 实施进行中。
+更新：2026-10-12。只记录实际实施、授权与交付引用；范围见README/implementation-plan，行为见UI/Architecture，任务合同见task-specifications。用户本轮调整为真实UI审计→精确规格→首批代表性页面，不直接继续W15-03。
 
 ## 批准与当前基线
 
-| 对象                              | 状态               | 生效范围 / 引用                                                                                                                                 |
-| --------------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| Wave 1                            | Approved / Frozen  | 保留已交付基线                                                                                                                                  |
-| Wave 1.5 设计                     | Approved           | 当前 authority 视觉、布局和交互；Future/API 门槛保留                                                                                            |
-| 正式文档准备                      | Done               | 已审查并发布：Plugin `69e296cc6a02f74ca61a633c6168fb36b9b89398`、Server `5d430cd641e5a210eab3371c9864919837cd69a9`（已推送各自 origin/main） |
-| Lane A 实施授权                   | W15-01 已授权      | 用户 2026-10-12 输入授权 W15-00 文档基线与 W15-01 切片                                                                                          |
-| G1–G6 合同 / Server 实施          | Gated              | 每条批准、Server commit、部署 capability 与 Plugin 接入分开记录                                                                                 |
-| Time/DateTime、12h、整 Table 回滚 | Future / API-gated | 不进入当前生产任务                                                                                                                              |
+| 对象 | 状态 | 生效范围 / 引用 |
+|---|---|---|
+| Wave 1 / Wave 1.5设计 | Approved / Frozen；Approved | 已批准视觉/布局/交互，Future/API门槛保留，不重开设计 |
+| W15-00 正式文档基线 | Done | Plugin69e296cc6a02f74ca61a633c6168fb36b9b89398；Server5d430cd641e5a210eab3371c9864919837cd69a9已发布 |
+| 当前Plugin代码 | main@52b2c9dc0a126ab23217973161b5dd5440b02bc1 | 本轮本地/远端核对一致，开始tracked tree干净；01/02已有实现和修复 |
+| 本轮UI工程重校准 | 审计/规格获授权；未实施产品修复 | Figma live + isolated snapshot/Obsidian证据见ui-alignment，第一批A→B→C合同已补齐；正式规格按docs PR review交付 |
+| Plugin API pin | 43da70e3c241380fff34d0deee8c1142ba39cb47 | 旧writer9色/Aggregate无Search，本轮保持source/generated零变化 |
+| Server固定交付 | G1/G6已交付；其Plugin消费者未接入 | 详细contract/commit/capability验证来源如下表；其余Gate仍独立 |
+| Time/DateTime、12h、整Table回滚 | Future / API-gated | Avatar/Profile/Cascader/细粒度转换审计Deferred |
 
-审查基线：Plugin 336db8c47a5bf52a63eb1a4a127002c43872cf1e；Server 5f4827f6b7a7f189aac13e3bc3c0e92377a7873e；Plugin API pin 43da70e3c241380fff34d0deee8c1142ba39cb47。文档基线 commit：Plugin 69e296cc6a02f74ca61a633c6168fb36b9b89398、Server 5d430cd641e5a210eab3371c9864919837cd69a9。新 Session 必须读取实际 HEAD，不把这些值当永久最新。
+审计bundle SHA-256 4f00ca03ecc5c117ea3cb5c9b064415c6a98100f63d73e90e7d89cfb32c93b89。Obsidian1.14.4、合成Vault/loopback内存API；本轮没有修改用户数据或产品源代码。旧336db8c/Server5f4827f是初始规划基线，新Session读取实际HEAD。
 
 ## 实施包
 
-| Task                         | State      | Owner / Branch | Dependencies               | PR / Merge HEAD                         | Checks / Host QA                                                                                                     | Next action                                  |
-| ---------------------------- | ---------- | -------------- | -------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| W15-00 文档基线              | Done       | Devin / main   | 当前文档审查               | Plugin 69e296c / Server 5d430cd（已推送） | 271 相对链接/锚点零缺失；13 包×18 字段、39+R40、77 资产、6 Gate 一致；prettier/git-diff --check 通过；产品测试未运行 | 已发布                                     |
-| W15-01 Primitive 消费者      | Review     | Devin / main   | 00（69e296c）与切片授权    | Plugin 5e55e68 + remediation 732e855 | 1048 vitest 全绿（含 M1–M4/N1–N2 回归）；Codex 独立审查 M1–M4/N1–N2 已修复；tsc/eslint(0 err)/prettier/git-diff --check 通过；api:generate 零 diff；esbuild production 成功；Obsidian 宿主 QA 已执行（9223+隔离 vault+本地 stub）：trigger 二次点击/Escape/outside/portal token/menuitemradio/Field pending 锁定·失败·重试·成功/owner 卸载清理/light·dark·窄 pane·reduced-motion 均 PASS；双 pane 宿主仅单 grid 可达（jsdom 双渲染器覆盖）、touch 无设备、在途 stale pick 复活时序 jsdom 覆盖——证据 docs/local/qa-w15-0102-host-qa.md | 剩余项见 Host QA 记录；正式 Done 待审                          |
-| W15-02 Filter                | Review     | Devin / main   | 01                         | Plugin bde37b9 + remediation 732e855 + 27e00bd | 1048 vitest 全绿；Codex W15-02 审查 M1–M4/N1 已修复（owned 菜单边界、请求 generation、稳定 id 调和、语义 generation、焦点恢复）并有受控回归；W15-01 修复集成回归保持；tsc/eslint/prettier/diff --check/api 合同/esbuild 均通过；Obsidian 宿主 QA 已执行：grip pointerdown→move·键盘 move·焦点恢复·root promotion 唯一 id·operator 变更 picker 失效·search replace·Load More·持久化 PATCH·嵌套分组 均 PASS；双 pane/touch/在途 pick 复活同 W15-01 记录 | 剩余项见 Host QA 记录；W15-03 待授权            |
-| W15-03 Sort                  | Planned    | —              | 01                         | —                                       | 未运行 / 未验证                                                                                                      | transient Add/whole entry move               |
-| W15-04 Display               | Planned    | —              | 01                         | —                                       | 未运行 / 未验证                                                                                                      | latest-base width/freeze intent              |
-| W15-05 Grid                  | Planned    | —              | 01、04                     | —                                       | 未运行 / 未验证                                                                                                      | 几何/validation 可交付；G4/G6 另记录         |
-| W15-06 Continuous loading    | Planned    | —              | 05                         | —                                       | 未运行 / 未验证                                                                                                      | ready retained rows/epoch/underfill          |
-| W15-07 Choice / Field Type   | Planned    | —              | 01、05                     | —                                       | 未运行 / 未验证                                                                                                      | 现有 ID/9 色先做；G1/G2 保持门槛             |
-| W15-08A Activity / Undo 安全 | Planned    | —              | 01、05                     | —                                       | 未运行 / 未验证                                                                                                      | 现有读竞态、stack、Deleted restore           |
-| W15-08B 最终操作入口         | Gated      | —              | 08A、G5                    | —                                       | 未运行 / 未验证                                                                                                      | 等待真实 Record projection/metadata/identity |
-| W15-09 View / Rename         | Planned    | —              | 01                         | —                                       | 未运行 / 未验证                                                                                                      | 当前导航/命名；order 等 G3                   |
-| W15-10 Date / Grid           | Planned    | —              | 01、05、07 handle          | —                                       | 未运行 / 未验证                                                                                                      | pure Gregorian + single commit owner         |
-| W15-11 Date 消费者           | Planned    | —              | 10                         | —                                       | 未运行 / 未验证                                                                                                      | Detail/Create Draft/Map 生命周期             |
-| W15-12 集成验收              | Planned    | —              | 当前授权 Lane A 的所有切片 | —                                       | 未运行 / 未验证                                                                                                      | 分层 QA；未解锁能力不得标完成                |
+| Task | State | Owner / code baseline | Checks / Host QA与实际边界 | Next action |
+|---|---|---|---|---|
+| W15-00 | Done | Devin / 文档基线69e296c | 既有文档已发布；本轮仅在同一规范上补精确工程验收 | 不重复启动 |
+| W15-01 Primitive消费者 | Review / Incomplete | 实现5e55e68 + remediation732e855；当前52b2c9d | Devin此前报告1048 tests/静态检查/build/隔离Host PASS；**不能据此认定六项及视觉全部完成**。本轮固定快照原有1048项全通过；format/typecheck/build通过、lint0error/718存量warnings、API生成SHA未变（分项CLI执行）。另3个现有菜单/Field/Filter文件72项通过，4个追加定向复现失败：完整Menu boundary、config Palette释放、dispose未发Filter写入、disposed queued apply。真实Grip Tab/Arrow、Palette键盘切type、Map旧Query listener及732ms后旧Grid PATCH复现；双Pane A菜单不被B render关闭且新B menu替换A、Reduce Motion0s通过。当前Primary/Toolbar量值偏差见矩阵 | 首批A正确性，再B视觉/同源Showcase；独立review与Host重验 |
+| W15-02 Filter | Review / Visual not accepted | 实现bde37b9 + remediation27e00bd（集成01修复）；当前52b2c9d | 已有stable identity/generation/reorder修复及历史Host证据；本轮未重复完整原实现review。Filter32px controls/文字Remove等旧anatomy尚未对齐；owner销毁flush是共享新确认门槛，valid draft count待定向验证 | A共享正确性先修；Golden通过后02视觉续段，不重复计算已修02旧缺陷 |
+| W15-03 Sort | Planned / Hold | — | 未实施批准的临时Add/Grip新版；当前旧UI不是01/02回归 | 首批代表性页面达标后启动 |
+| W15-04 Display | Planned | — | 新positive visibility/More/density/hidden widths merge未验收 | 02视觉/03后；不阻断当前合法config的05几何子集 |
+| W15-05 Grid | Planned | — | 真实system56/More20/tail40/body15/Footer gap8；standard rows36/Footer36已正确 | 首批C交付geometry/typed展示子集；完整04/G4/G6分别追踪 |
+| W15-06 Continuous loading | Planned | — | 未运行本包验收 | Grid基线后 |
+| W15-07 Choice / Field Type | Planned | — | 当前9色/native types保持；Tag视觉及完整Picker目标有差异 | C含9色Tag窄展示接缝；完整07、G1/G2独立 |
+| W15-08A Activity / Undo安全 | Planned | — | 未运行本包验收 | 页面基础稳定后按共享owner推进 |
+| W15-08B 最终操作入口 | Gated | — | G5完整投影/metadata/identity未交付 | 不做假feed |
+| W15-09 View / Rename | Planned | — | 当前Tab30/r8/600；导航可用，完整Rename/生命周期未验收 | 首批C仅Tab/Context外观；其余与G3保持原范围 |
+| W15-10 Date / Grid | Planned | — | 实际仍native date input；Calendar未实施，不报01回归 | 07窄handle/稳定Grid后 |
+| W15-11 Date消费者 | Planned | — | Detail/Draft/Map基线入口可达；新Date消费者未实施 | 10后 |
+| W15-12 集成验收 | Planned | — | 本轮局部CDP审计不等于全Wave Host QA Passed | 按包及Golden三门；保未验证设备/能力 |
 
-W15-08A/B 是一个任务包的两个交付阶段；本批仍为 W15-00–12 共 13 包。W15-05/07/09 的当前子集完成不表示相关 API Gate 交付。
+仍为W15-00–12共13包，08A/B是分段，首批A/B/C不是新任务包/第二状态表。所有部分交付不得自动标父包Done；下一Devin交接范围只限任务卡首批，不自动派发所有W15。
 
 ## API / Future
 
-| Gate                                   | Contract approval | Server PR / 40 位 commit | Deployed capability / compatibility | Plugin PR / pin | State / Next action                           |
-| -------------------------------------- | ----------------- | ------------------------ | ----------------------------------- | --------------- | --------------------------------------------- |
-| G1 12 色 writer                        | 未完成            | —                        | 未验证                              | —               | Gated；reader-first/enum/rollout              |
-| G2 Atomic Choice                       | 未完成            | —                        | 未验证                              | —               | Gated；双 revision、事务、receipt、Queue 兼容 |
-| G3 View order                          | 未完成            | —                        | 未验证                              | —               | Gated；一致 snapshot/CAS/tail                 |
-| G4 Query RowSelection                  | 未完成            | —                        | 未验证                              | —               | Gated；membership/snapshot/TTL/exclusion      |
-| G5 Audit / Record projection           | 未完成            | —                        | 未验证                              | —               | Gated；分页前投影、event-time、identity       |
-| G6 Aggregate Search                    | 未完成            | —                        | 未验证                              | —               | Gated；独立正确性补齐，例外需批准             |
-| F-Time / DateTime / 12h                | 领域合同未完成    | —                        | 未验证                              | —               | Future；UI 视觉批准不解锁字段                 |
-| F-Rollback                             | 技术合同未完成    | —                        | 未验证                              | —               | Future；inverse/checkpoint/preview/headCAS    |
-| Avatar/Profile/Cascader/细粒度转换审计 | 无当前实施授权    | —                        | —                                   | —               | Deferred                                      |
+| Gate | Contract approval | Server PR / fixed source / merge | Deployed capability /验证来源 | Plugin PR / pin | State / Next action |
+|---|---|---|---|---|---|
+| G1 12色writer | Approved，固定合同47fc985 | [PR10](https://github.com/Mahjong404/LoomTable-Server/pull/10)；47fc985bd9376dc761469b40fe40dcfd1ceb483e；merge173c2f031dd4acf0957a40afcb07e94125e8305f | Server tracked delivery：v0.3.0+47fc985→后续v0.4.0保choicePalette12，CI/公开Meta/恢复/回滚已验证；本Session未再次请求生产 | 未接入，仍43da70e | Deployed / Capability Verified（Server证据）；未Plugin Integration Ready，先pin/旧新writer/unknown reader，再消费者 |
+| G6 Aggregate Search | Approved，固定合同f3980b1 | [PR11](https://github.com/Mahjong404/LoomTable-Server/pull/11)；f3980b1b4126cdfce026c0a94779c8c8261b3997；mergebf6237b7450af3ff3ca1ba9d0155c19096a352fb | [固定交付证据](https://github.com/Mahjong404/LoomTable-Server/blob/bb00e6ad3d100a6e5e0879d1e8c1fb25ab51bfec/docs/wave1.5/deliveries/g6-aggregate-search.md)：v0.4.0+f3980b1b4126、公开/内部Meta aggregateSearch、CI/隔离DB/恢复验证；本Session只核对tracked交付 | 未接入，仍43da70e | Deployed / Capability Verified（Server证据）；未来固定f398同步/生成/HTTP+InMemory+Controller+stale/capability，不在本轮启用 |
+| G2 Atomic Choice | 精确合同未交付 | Server工作线后续 | 未验证 | 未接入 | 事务/双CAS/receipt/Queue正式交付前，不两请求伪原子 |
+| G3 View order | 精确合同未交付 | Server工作线后续 | 未验证 | 未接入 | snapshot/orderRevision/CAS/tail独立交付 |
+| G4 Query RowSelection | 精确合同未交付 | Server工作线后续 | 未验证 | 未接入 | 不伪loaded/all-query |
+| G5 Audit / Record projection | 精确合同未交付 | Server工作线后续 | 未验证 | 未接入 | 08B保持Gated |
+| F-Time / DateTime / 12h | 领域合同未完成 | — | 未验证 | — | Future，视觉批准不解锁字段 |
+| F-Rollback | 技术合同未完成 | — | 未验证 | — | inverse/checkpoint/preview/headCAS另行合同 |
 
-Server 自身 PR/合同文件记录其代码、审查和测试证据；本表是整个批次唯一进度汇总。Server handoff 交付 PR/commit/能力说明后，由 Plugin 集成切片同步本表，不要求 Server Session 持有 Plugin 工作树。不得各新建一个相互矛盾的全批进度清单。
+API Boundary引用实际Server固定合同与发布证据；原Server工作线已获G1–G6工程授权，不能再记成全未授权，但该授权不等同Plugin所有消费者已交付。G1/G6当前不是Server Pending，Plugin Integration仍Pending；一次pin含两Gate不自动完成两消费者。
 
-## 更新规则
+## 验收与更新规则
 
-Planned：范围已列出但启动条件未完成。Ready：具体执行获授权、前置交付且文件所有权清楚。InProgress：一个 owner claim。Review：可审查 diff 与验证结果。Done：DoD、约定审查/合并及实际证据齐全。Gated/Future/Deferred 保留具体原因。
+功能、Figma视觉量尺、Obsidian Host分别签证据；测试总数只描述真实命令结果，不作产品完成证明。本轮真实触控/Mobile、200%缩放、完整Map marker/Record mutation及Server持久联调未验证；合成stub无上述证明力。历史忽略目录QA材料可选，不是任务必需输入。
 
-每次接手记录 owner/branch、真实 base HEAD、授权范围、共享文件、PR/merge HEAD、实际命令/exit 或 CI、宿主设备/主题/pane/限制及下一步。宿主未测就写未验证，不沿用历史测试数量；失败回原切片修复。新 Session 直接读本表、相关 PR 和真实源码，不依赖上一 Session 消息。
+每次接手记录实际owner/branch/base HEAD、授权子集、共享文件、PR/merge SHA、检查/exit/CI、Figma node+variant与host尺寸/主题/字体/操作状态及限制。发现已修路径复核，不沿用旧结论；视觉失败回原子段，不跳下个包。只从本表/正式规范/PR恢复，不依赖跨Session聊天。

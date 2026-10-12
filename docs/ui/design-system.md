@@ -104,7 +104,8 @@ textarea {}
 | Settings | Obsidian 原生 Setting |
 | Command | Obsidian Command |
 | Notice | Obsidian Notice |
-| Menu | Obsidian Menu |
+| 宿主原生菜单 | Obsidian Menu；宿主命令使用 |
+| Loom 产品菜单 | 既有 openContextMenu；拥有 trigger、pane、选择语义和生命周期 |
 | 基础 Modal | Obsidian Modal |
 | Button / Input | Loom 包装和样式 |
 | Grid | Loom 自定义 DOM |
@@ -135,7 +136,7 @@ offline
 
 ## 组件实现
 
-实现使用 TypeScript 工厂函数和原生 DOM（`src/ui/`）：
+实现使用 TypeScript 工厂函数和原生 DOM（`src/ui/`）。以下是接口方向示例，不能据此假定这些导出已经存在：
 
 ```ts
 createLoomButton(options)
@@ -144,7 +145,7 @@ createFieldEditor(field, value, context)
 createRecordDetail(record, context)
 ```
 
-不引入 React 或其他 UI 框架，不引入组件库，不复制完整主题 CSS。未来出现第二个前端消费者时，再评估独立 Web Adapter。
+不引入 React 或其他 UI 框架，不引入组件库，不复制完整主题 CSS。Plugin Runtime 保持 native DOM；VitePress 文档站只挂载同源 DOM factory，Vue 仅用于站点宿主，不进入 Plugin bundle。
 
 ### 依赖策略
 
@@ -166,6 +167,8 @@ createRecordDetail(record, context)
 容器适配通过 `.loom-root` 上的具名 query container（`container-name: loom`）实现；工具栏标签折叠、上下文面包屑、导航与 query/status 面板规则使用 `@container loom` 按 pane 宽度生效。Grid 工具栏在容器宽度不足时把 Sort、Display、Undo、Redo 收容进 `⋯` 菜单（Create、Filter、Search、保存状态保留主行，被收容的激活项以徽标提示）；导航为单行——`Workspace / Base / Table` 上下文面包屑、「全部视图」入口与 View 页签同行，页签横向滚动且不用 `+N` 折叠；窄容器下上下文面包屑折叠为 compact toggle。query/status 面板在窄容器内以宿主 pane 为边界转为底部 Sheet。
 
 ## Component Gallery
+
+落地链路为 Figma → Loom UI → VitePress Component Showcase → Obsidian Plugin。当前代码只有 tests/gallery 开发 Gallery，没有 VitePress 工程或通用 Button/Popover factory；已有 Menu、Field、Query 等生产模块不能据此称作完整 Primitive 库。迁移展示站须在真实消费者同批复用组件；Gallery 是过渡验收入口，不能为网站复制组件或以网站完成替代宿主完成。
 
 Plugin 内提供开发用 Component Gallery，展示每个组件的：
 
@@ -240,3 +243,35 @@ Hour/Minute 使用同一公式，起点始终为 Clock 中心，终点为活动 
 | 24h ring hit threshold | R78 附近 ±4px hysteresis；与视觉 R94/R62 分开 |
 
 以12点为0°：θ=minute×6° 或 (hour mod12)×30°，P=C+R×(sinθ,−cosθ)。28分钟为168°，Dial endpoint=(127.543699,199.945874)。数字与指针前景层应保持可读；所有60分钟、跨0°与两环输入的真实比例和命中留到 Runtime QA。
+
+## Wave 1.5 工程量值与 CSS 边界
+
+本节补充批准组件的落地量值；Figma 节点与本轮实测在 [对齐入口](../wave1.5/ui-alignment.md)。颜色、字体家族适配宿主；结构、状态槽、组件密度不能由宿主默认 button/select chrome 决定。
+
+| 层 / 部位 | 批准量值及消费方式 |
+|---|---|
+| Compact control | 固定 border-box 高28；Toolbar/IconButton/Menu target/Query operand 使用；默认表单 control 高32。使用 height，不能只设 min-height 后留下宿主30/32px默认高度 |
+| Control geometry token | 单一定义 compact28/default32、control radius4、inline padding8、icon14、icon-label gap4；已有 token 可保名称但须表达准确用途。floating radius8 独立；不将宿主 radius-s=8 当作 compact control 的4px批准值 |
+| Button label | 13px/400、line20；Primary 使用 accent/on-accent，Quiet 透明；loading/disabled 不改变宽高。样本内容宽度随文案与宿主字体，不把60px固定给所有语言 |
+| ViewTab | 高28、padding0/8、gap4、label13/500/20、radius4；Current accent-soft；Default metadata独立。名称截断和tabs横滚依 HIG，不为长文案增加行高 |
+| Toolbar Button | Default icon14 + label；Open 增加 trailing chevron14、neutral surface；Active 显示12px/18 count + accent；Open与Active可组合，不能以 aria-expanded 推导 query active |
+| Menu | 基础Menu root230宽/padding4（Light13:1841、Dark13:1868），受pane clamp与真实内容约束；item target高28、label13/20、glyph14；radio/checkbox 与 command 分开；Check14/1.75只影响Check。item布局显式控制 leading/label/trailing，不能让 clickable-icon 将整个hug文案居中而失去label可用空间 |
+| Query surfaces | padding8；Filter/Sort gap8；Display gap4。具体 root宽度/typed布局来自对应 Panel variant；不是一律384px或一律240px |
+| Filter | Empty320×98；Single480×108；TwoRules520×189；Narrow304×225；rule controls28，X target28；组、规则、operand 是领域 Pattern，不能降成通用 Button 列表 |
+| Sort | Empty320×143；TwoRules432×215；Narrow304×223；完整 entry 高28；临时 Add Field picker，与已选 entry 区分 |
+| Display | Standard304×169 / Narrow264×169为3字段样本；每字段row高28，heading20、density row28。更多字段高度自然增长/内部滚动，不拿3行样本总高强压7行 |
+| Grip | 普通命中槽28透明；Figma Query实例的24px视觉占位不缩小28px命中要求。实现可用透明外槽扩展hit，保持行/邻控件无重叠；coarse规则见Grid/HIG |
+| Grid contents | body13/20；metadata12/18；Choice Tag高20、label12/18、无独立重边框、padding inline8，主题bg/fg对按现有色板；当前行高密度不变 |
+
+CSS限定到组件角色和直接槽位，例如 Toolbar的直接command group。禁止通过 .loom-grid-toolbar .loom-button 这类所有后代选择器改变 Query/Field/child Primary。组件需覆盖实际 Obsidian button:not(.clickable-icon) 和 input/select 的默认高度、颜色与圆角，使用有界组件选择器；不得复制宿主整套CSS或全局覆盖 button。
+
+body portal 有 .loom-portal 的全局主题映射仍不足以证明 owner 局部覆盖被继承。overlay owner负责传递其生效的Loom语义token；仅拷贝必要computed custom properties，不克隆整套样式。主题变更时同步或重取；dispose移除桥接资源。不同Pane的主题桥接不得互相覆盖。
+
+## Loom UI 收敛的最小接口
+
+现有 openContextMenu、openFieldEditor、openFilterValuesPopover、createUiIcon 可继续作为生产接缝，分别保留所属领域的状态；不根据678个设计variant生成678个实现。
+
+- 一个 native control factory/更新接缝承载 size、variant、label、leading/trailing glyph、disabled/pending 与真实原生button语义；由至少 Toolbar 和 Field Submit 两个生产消费者使用，再接Showcase。名称由实施确定，只在导出存在后更新source-layout。
+- Overlay共享的内容仅为稳定 owner/trigger、owned child、focus边界、theme/position与幂等释放；菜单roving、Field draft、Filter树和Date calendar保持各自Pattern。第二真实消费者出现后才提取已验证定位helper。
+- Component持有DOM/视觉/焦点/局部draft和child disposer；Controller/View coordinator/Queue持有权威值、revision、CAS、mutation identity、unknown outcome与数据缓存。组件不直接发HTTP，不另建保存协调器。
+- Showcase每次mount返回disposer；卸载、切主题和重复mount须释放旧owner。站点案例和Obsidian使用同一factory与token源码；静态Gallery继续服务回归，直到VitePress适配有同源证据。站点依赖仅dev，未经本批批准不得加runtime依赖。

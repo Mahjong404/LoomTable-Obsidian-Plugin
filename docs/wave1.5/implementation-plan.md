@@ -1,6 +1,6 @@
 # LoomTable Wave 1.5 — Master Implementation Plan
 
-2026-10-12。设计基线已批准；本文定义后续实施范围和依赖。文档整理已完成，生产切片尚未开始。审批及实施状态只在 [status.md](status.md) 维护。
+2026-10-12。设计基线已批准；本文定义后续实施范围和依赖。W15-00已交付，01/02已有实现。本轮以52b2c9d的Figma/真实宿主证据调整工程顺序，历史源码表保留为最初规划基线。审批及实施状态只在 [status.md](status.md) 维护。
 
 ## 1. 结论与审批边界
 
@@ -46,7 +46,7 @@
 使用 **Wave 1.5 实施批次**跟踪目录 `docs/wave1.5/`，保持 P1.5/P1.6 的历史定位。它是交付批次，不是未经批准的新产品阶段。
 
 - **Lane A — P1.6-compatible UI convergence**：已有功能替换、交互修复、可访问性/响应式、组件同源 Gallery、技术债。Date 是既有 Date 编辑的替换；Choice/Search/Field/Query/Deleted 等也是已有功能改造。
-- **Lane B — P2.0 contract evolution，未启动**：G1–G6 的跨层合同及之后的 Time/Table rollback。Gate 获批、隔离 Server 环境就绪和 rollout 方案审查后才能进入，不能塞入 P1.6。G6是已有功能正确性补齐，可经独立批准作为窄API修复例外，不必等待整个P2.0，但本轮不隐式启用例外。
+- **Lane B — contract evolution，逐Gate推进**：G1–G6 的跨层合同及之后的 Time/Table rollback。Gate 获批、隔离 Server 环境就绪和 rollout 方案审查后才能进入，不能塞入 P1.6。G6是已有功能正确性补齐，可经独立批准作为窄API修复例外，不必等待整个P2.0，用户已在Server工作线授权G1–G6工程；实际G1/G6交付与Plugin尚未接入分别见status。本轮不修改Plugin API。
 - `docs/p1.6/README.md` 保留阶段范围和旧交接，只维护阶段范围与新批次导航。`docs/wave1.5/status.md` 为本批任务的唯一状态表，阶段 README、AGENTS、Skill 使用引用，不维护第二份进度。P1.5 需求/status保持封存。
 
 Lane A 退出：所有可用合同的已批准需求有代码与测试追踪；真实宿主关键路径通过；API 文件未意外变化；未提供能力有明确 unavailable/gated 表述；Gates 不被标为已交付。Lane B 退出按各合同及 rollout 另行定义。文档准备不启动生产开发；用户授权后的切片逐项启动，不自动批准任何 Server 变更。
@@ -145,3 +145,13 @@ QA出口按实际已解锁范围：每条Requirement→Task→Test→宿主结�
 正式文档已按 [README](README.md) 的职责分工准备。W15-00 审查链接、规范冲突、完整覆盖和纯文档 diff，并按授权发布文档基线；不再从本地研究重新提炼。然后 W15-01 建立第一个真实 Primitive 消费者纵向切片。
 
 Plugin 执行见 [Devin Guide](devin-plugin.md)，Server 执行见 [Server 独立入口](https://github.com/Mahjong404/LoomTable-Server/blob/main/docs/wave1.5/README.md)。重大合同和风险见 [Risk Register](risk-register.md)。每个 PR 同步 [status](status.md) 和 [traceability](traceability.md)；尚未解锁部分保持 Gated，不自动发布、合并或启用未来业务能力。
+
+## UI 工程重校准的执行顺序
+
+用户2026-10-12调整实施方法：功能测试、code review与历史Host PASS不能代表Figma视觉落地。先按 [ui-alignment](ui-alignment.md) 的真实证据，补同一DS/HIG/Grid/Lifecycle及任务合同；不重开设计阶段。
+
+第一批串行：W15-01共享正确性→W15-01真实Primitive/Showcase→W15-05几何与W15-09 Shell/Tab外观子集，交付一个完整Grid产品页面。使用当前合法Display config，不要求先完成04的所有UI；之后04仍负责hidden-width/freeze/resize intent合同，05剩余依赖保留。A/B/C定义和首批Prompt只在task-specifications维护。
+
+页面通过功能、Figma量尺及实际Host三门后，第二批才做02视觉续段→03→04，收拢05剩余/06；随后07→10→11、08A与09剩余按热点owner串行，08B依赖G5。G1/G6 Plugin接入另按API Boundary用已交付固定SHA，不让API进度驱动未验收UI扩散；Future不进入。
+
+每段交付真实consumer、同源Showcase与宿主证据。不能只写组件库/Gallery，也不能只围绕旧DOM加补丁；组件抽取限制在两个真实消费者验证的control/owned-overlay接缝，领域draft/值/提交协议继续各自owner。
