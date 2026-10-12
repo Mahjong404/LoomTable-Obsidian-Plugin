@@ -472,6 +472,7 @@ export class ReadonlyGridRenderer {
       this.#openPanel = null;
       this.#searchDraft = null;
       this.#searchError = null;
+      this.#filterBuilder?.dispose();
       this.#filterBuilder = null;
       this.#sortPanel = null;
       this.#displayPanel = null;
@@ -1125,6 +1126,7 @@ export class ReadonlyGridRenderer {
               : { kind: 'group', operator: 'and', children: [rule] };
         }
         const onQueryFieldValues = this.#callbacks.onQueryFieldValues;
+        this.#filterBuilder?.dispose();
         this.#filterBuilder = new FilterBuilder(initial, {
           fields: state.fields.filter((field) => field.deletedAt === undefined),
           translate: this.#translate,
@@ -1205,6 +1207,7 @@ export class ReadonlyGridRenderer {
 
   #closePanels(): void {
     this.#openPanel = null;
+    this.#filterBuilder?.dispose();
     this.#filterBuilder = null;
     this.#sortPanel = null;
     this.#displayPanel = null;
@@ -1296,7 +1299,12 @@ export class ReadonlyGridRenderer {
     if (this.#panelDismiss !== null) return;
     const onPointerDown = (event: PointerEvent) => {
       const el = event.target instanceof Element ? event.target : null;
-      if (el !== null && el.closest('.loom-query-panel, .loom-grid-toolbar') !== null) return;
+      if (
+        el !== null &&
+        el.closest('.loom-query-panel, .loom-grid-toolbar, .loom-filter-values') !== null
+      ) {
+        return;
+      }
       this.#closePanels();
     };
     this.#container.ownerDocument.addEventListener('pointerdown', onPointerDown, true);

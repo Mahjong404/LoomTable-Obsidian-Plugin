@@ -154,6 +154,31 @@ export function addFilterChild(
   });
 }
 
+/**
+ * Swaps a child with its adjacent sibling inside the same parent group —
+ * the only reorder the Filter draft allows. Returns the original root for
+ * a bare rule, an unknown path, or an edge move so callers can skip writes.
+ */
+export function moveFilterChild(root: FilterNode, path: FilterPath, delta: -1 | 1): FilterNode {
+  if (path.length === 0) return root;
+  const parentPath = path.slice(0, -1);
+  const index = path[path.length - 1]!;
+  const parent = filterNodeAt(root, parentPath);
+  if (parent === undefined || parent.kind !== 'group') return root;
+  const target = index + delta;
+  if (index >= parent.children.length || target < 0 || target >= parent.children.length) {
+    return root;
+  }
+  return updateFilterNodeAt(root, parentPath, (node) => {
+    if (node.kind !== 'group') return node;
+    const children = [...node.children];
+    const [moved] = children.splice(index, 1);
+    if (moved === undefined) return node;
+    children.splice(target, 0, moved);
+    return { ...node, children };
+  });
+}
+
 export function removeFilterNodeAt(root: FilterNode, path: FilterPath): FilterNode | undefined {
   if (path.length === 0) return undefined;
   const parentPath = path.slice(0, -1);

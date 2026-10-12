@@ -481,5 +481,412 @@ describe('FilterBuilder', () => {
       expect(pick?.textContent).toContain('(deleted)');
       host.remove();
     });
+
+    it('keeps the pick bound to its rule when siblings reorder while open', async () => {
+      const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
+      const loadFieldValues = vi.fn(async () =>
+        page([
+          { value: 'opt_a', display: 'Alpha', count: 4 },
+          { value: 'opt_b', display: 'Beta', count: 2 },
+        ]),
+      );
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+            { kind: 'rule', fieldId: 'field_tags', operator: 'includes', value: 'opt_a' },
+          ],
+        },
+        { onApply, host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+      await vi.waitFor(() => {
+        expect(popover()?.querySelectorAll('.loom-filter-values-item')).toHaveLength(2);
+      });
+
+      // Reorder while the picker is open: the Status rule moves from index 0
+      // to index 1. The pick must still land on the Status rule, not on
+      // whatever now sits at the captured index path.
+      host.querySelector<HTMLElement>('[data-path="0"] [data-action="filter-move"]')?.click();
+      document
+        .querySelector<HTMLElement>('.loom-context-menu [data-action="filter-move-down"]')
+        ?.click();
+      popover()?.querySelectorAll<HTMLButtonElement>('.loom-filter-values-item')[0]?.click();
+
+      await waitForApply(onApply);
+      const sent = onApply.mock.calls.at(-1)?.[0] as FilterGroup;
+      expect(sent.children[0]).toEqual({
+        kind: 'rule',
+        fieldId: 'field_tags',
+        operator: 'includes',
+        value: 'opt_a',
+      });
+      expect(sent.children[1]).toEqual({
+        kind: 'rule',
+        fieldId: 'field_status',
+        operator: 'is',
+        value: 'opt_a',
+      });
+      host.remove();
+      popover()?.remove();
+    });
+
+    it('drops the pick when its rule was removed while the picker was open', async () => {
+      const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
+      const loadFieldValues = vi.fn(async () =>
+        page([{ value: 'opt_a', display: 'Alpha', count: 4 }]),
+      );
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+            { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'keep' },
+          ],
+        },
+        { onApply, host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+      await vi.waitFor(() => {
+        expect(popover()?.querySelectorAll('.loom-filter-values-item')).toHaveLength(1);
+      });
+
+      host.querySelector<HTMLElement>('[data-path="0"] [data-action="filter-remove"]')?.click();
+      await waitForApply(onApply);
+      onApply.mockClear();
+
+      popover()?.querySelector<HTMLButtonElement>('.loom-filter-values-item')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(onApply).not.toHaveBeenCalled();
+      host.remove();
+      popover()?.remove();
+    });
+
+    it('drops the pick when the rule Field changed while the picker was open', async () => {
+      const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
+      const loadFieldValues = vi.fn(async () =>
+        page([{ value: 'opt_a', display: 'Alpha', count: 4 }]),
+      );
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+        { onApply, host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+      await vi.waitFor(() => {
+        expect(popover()?.querySelectorAll('.loom-filter-values-item')).toHaveLength(1);
+      });
+
+      const fieldSelect = host.querySelector<HTMLSelectElement>('select[data-role="filter-field"]');
+      if (fieldSelect === null || fieldSelect === undefined) throw new Error('field missing');
+      fieldSelect.value = 'field_name';
+      fieldSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      onApply.mockClear();
+
+      popover()?.querySelector<HTMLButtonElement>('.loom-filter-values-item')?.click();
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(onApply).not.toHaveBeenCalled();
+      host.remove();
+      popover()?.remove();
+    });
+
+    it('owns a single child popover — opening another replaces the first', async () => {
+      const loadFieldValues = vi.fn(async () => page([]));
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+            { kind: 'rule', fieldId: 'field_tags', operator: 'includes' },
+          ],
+        },
+        { host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+      await vi.waitFor(() => expect(loadFieldValues).toHaveBeenCalledTimes(1));
+      const first = popover();
+
+      host.querySelector<HTMLElement>('[data-path="1"] button.loom-filter-value-pick')?.click();
+      await vi.waitFor(() => expect(loadFieldValues).toHaveBeenCalledTimes(2));
+      const second = popover();
+
+      expect(second).not.toBeNull();
+      expect(first).not.toBe(second);
+      expect(first?.isConnected).toBe(false);
+      expect(document.body.querySelectorAll('.loom-filter-values')).toHaveLength(1);
+      host.remove();
+      second?.remove();
+    });
+
+    it('closes the owned popover on dispose', async () => {
+      const loadFieldValues = vi.fn(async () => page([]));
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+        { host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+      await vi.waitFor(() => expect(popover()).not.toBeNull());
+
+      builder.dispose();
+      expect(popover()).toBeNull();
+      host.remove();
+    });
+
+    it('serves one Load more request at a time and dedupes repeated values', async () => {
+      let resolveFirst!: (page: DistinctValuesPage) => void;
+      const loadFieldValues = vi
+        .fn()
+        .mockResolvedValueOnce(
+          page([{ value: 'opt_a', display: 'Alpha', count: 4 }], {
+            hasMore: true,
+            nextCursor: 'values_01',
+          }),
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<DistinctValuesPage>((resolve) => {
+              resolveFirst = resolve;
+            }),
+        )
+        .mockResolvedValueOnce(page([{ value: 'opt_b', display: 'Beta', count: 2 }]));
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+        { host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+      await vi.waitFor(() =>
+        expect(popover()?.querySelectorAll('.loom-filter-values-item')).toHaveLength(1),
+      );
+
+      const more = popover()?.querySelector<HTMLButtonElement>('[data-action="load-more"]');
+      more?.click();
+      more?.click();
+      await vi.waitFor(() => expect(loadFieldValues).toHaveBeenCalledTimes(2));
+
+      // Second page overlaps opt_a — the appended list must dedupe it.
+      resolveFirst(
+        page(
+          [
+            { value: 'opt_a', display: 'Alpha', count: 4 },
+            { value: 'opt_b', display: 'Beta', count: 2 },
+          ],
+          { hasMore: false },
+        ),
+      );
+      await vi.waitFor(() => {
+        expect(popover()?.querySelectorAll('.loom-filter-values-item')).toHaveLength(2);
+      });
+      expect(loadFieldValues).toHaveBeenCalledTimes(2);
+      host.remove();
+      popover()?.remove();
+    });
+
+    it('ignores a late page that resolves after the popover closed', async () => {
+      let resolveLoad!: (page: DistinctValuesPage) => void;
+      const loadFieldValues = vi.fn(
+        () =>
+          new Promise<DistinctValuesPage>((resolve) => {
+            resolveLoad = resolve;
+          }),
+      );
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+        { host: document.body, loadFieldValues },
+      );
+      const host = mount(builder);
+      openPicker(host);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(popover()).toBeNull();
+
+      resolveLoad(page([{ value: 'opt_a', display: 'Alpha', count: 1 }]));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(popover()).toBeNull();
+      host.remove();
+    });
+  });
+
+  describe('sibling reorder and draft ownership', () => {
+    it('reorders rules inside one parent through the move handle menu', async () => {
+      const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+            { kind: 'rule', fieldId: 'field_count', operator: 'is', value: 1 },
+          ],
+        },
+        { onApply },
+      );
+      const host = mount(builder);
+
+      const handle = host.querySelector<HTMLElement>('[data-path="1"] [data-action="filter-move"]');
+      expect(handle).not.toBeNull();
+      handle?.click();
+      const menuItem = document.querySelector<HTMLElement>(
+        '.loom-context-menu [data-action="filter-move-up"]',
+      );
+      expect(menuItem).not.toBeNull();
+      menuItem?.click();
+
+      await waitForApply(onApply);
+      expect(onApply.mock.calls.at(-1)?.[0]).toEqual({
+        kind: 'group',
+        operator: 'and',
+        children: [
+          { kind: 'rule', fieldId: 'field_count', operator: 'is', value: 1 },
+          { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+        ],
+      });
+      host.remove();
+    });
+
+    it('disables edge moves so a child cannot leave its parent', () => {
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+            { kind: 'rule', fieldId: 'field_count', operator: 'is', value: 1 },
+          ],
+        },
+        {},
+      );
+      const host = mount(builder);
+
+      host.querySelector<HTMLElement>('[data-path="0"] [data-action="filter-move"]')?.click();
+      const up = document.querySelector<HTMLButtonElement>(
+        '.loom-context-menu [data-action="filter-move-up"]',
+      );
+      const down = document.querySelector<HTMLButtonElement>(
+        '.loom-context-menu [data-action="filter-move-down"]',
+      );
+      expect(up?.disabled).toBe(true);
+      expect(down?.disabled).toBe(false);
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      host.remove();
+    });
+
+    it('keeps a touched issue attached to its rule across a reorder', () => {
+      const builder = createBuilder(
+        {
+          kind: 'group',
+          operator: 'and',
+          children: [
+            { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+            { kind: 'rule', fieldId: 'field_count', operator: 'is' },
+          ],
+        },
+        {},
+      );
+      const host = mount(builder);
+
+      host
+        .querySelector<HTMLElement>('[data-path="1"] select[data-role="filter-field"]')
+        ?.dispatchEvent(new Event('change', { bubbles: true }));
+      expect(host.querySelector('.loom-filter-issue')).not.toBeNull();
+
+      host.querySelector<HTMLElement>('[data-path="1"] [data-action="filter-move"]')?.click();
+      document
+        .querySelector<HTMLElement>('.loom-context-menu [data-action="filter-move-up"]')
+        ?.click();
+
+      // The missing-value issue must still sit on the Count rule — now at
+      // index 0 — rather than being dropped or landing on the Name rule.
+      const issue = host.querySelector<HTMLElement>('.loom-filter-issue');
+      expect(issue).not.toBeNull();
+      // The issue sits inside its rule row — the parent is the row itself
+      // (the issue element also carries a data-path, so closest() can't be
+      // used to reach the row).
+      const row = issue?.parentElement;
+      expect(row?.dataset.path).toBe('0');
+      expect(row?.querySelector<HTMLSelectElement>('select[data-role="filter-field"]')?.value).toBe(
+        'field_count',
+      );
+      host.remove();
+    });
+
+    it('clears a text operand to undefined and keeps the last valid query', async () => {
+      const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+        { onApply },
+      );
+      const host = mount(builder);
+      const input = host.querySelector<HTMLInputElement>('input[data-role="filter-value"]');
+      if (input === null || input === undefined) throw new Error('input missing');
+
+      input.value = '';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      // The cleared operand is undefined — an invalid draft must never apply
+      // over the previously persisted query.
+      expect(onApply).not.toHaveBeenCalledWith(expect.objectContaining({ value: '' }));
+      expect(onApply).not.toHaveBeenCalled();
+      expect(host.querySelector('.loom-filter-issue')).not.toBeNull();
+      host.remove();
+    });
+
+    it('does not write mid-composition input; composition end commits', async () => {
+      const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+        { onApply },
+      );
+      const host = mount(builder);
+      const input = host.querySelector<HTMLInputElement>('input[data-role="filter-value"]');
+      if (input === null || input === undefined) throw new Error('input missing');
+
+      input.dispatchEvent(new Event('compositionstart'));
+      input.value = ' composing';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('compositionend'));
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+
+      await waitForApply(onApply);
+      expect(onApply.mock.calls.at(-1)?.[0]).toEqual({
+        kind: 'rule',
+        fieldId: 'field_name',
+        operator: 'is',
+        value: ' composing',
+      });
+      host.remove();
+    });
+
+    it('flushes a pending debounced apply when the builder is disposed', async () => {
+      const onApply = vi.fn(async (_filter: FilterNode | undefined) => true);
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'a' },
+        { onApply },
+      );
+      const host = mount(builder);
+      const input = host.querySelector<HTMLInputElement>('input[data-role="filter-value"]');
+      if (input === null || input === undefined) throw new Error('input missing');
+      input.value = 'b';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+
+      builder.dispose();
+      await waitForApply(onApply);
+      expect(onApply.mock.calls.at(-1)?.[0]).toEqual({
+        kind: 'rule',
+        fieldId: 'field_name',
+        operator: 'is',
+        value: 'b',
+      });
+      host.remove();
+    });
   });
 });

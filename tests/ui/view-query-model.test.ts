@@ -12,6 +12,7 @@ import {
   MAX_FILTER_NODES,
   addFilterChild,
   countFilterRules,
+  moveFilterChild,
   filterOperatorsForField,
   isSortableField,
   nextHeaderSort,
@@ -277,6 +278,52 @@ describe('view-query-model Filter validation', () => {
     expect(coerced.value).toBeUndefined();
     const kept = coerceRuleForField(rule('field_text', 'is', 'abc'), FIELDS[0]!);
     expect(kept.value).toBe('abc');
+  });
+});
+
+describe('view-query-model sibling move', () => {
+  it('swaps a rule with the adjacent sibling inside the same parent', () => {
+    const first = rule('field_text', 'is', 'a');
+    const second = rule('field_number', 'is', 1);
+    const third = rule('field_check', 'is', true);
+    const root = group('and', [first, second, third]);
+
+    const moved = moveFilterChild(root, [1], -1) as FilterGroup;
+    expect(moved.children).toEqual([second, first, third]);
+    expect(moveFilterChild(root, [0], 1)).toEqual(moved);
+  });
+
+  it('moves a nested group child without crossing the group boundary', () => {
+    const inner = group('or', [rule('field_text', 'is', 'a'), rule('field_number', 'is', 1)]);
+    const root = group('and', [inner, rule('field_check', 'is', true)]);
+
+    const moved = moveFilterChild(root, [0, 1], -1) as FilterGroup;
+    const movedInner = moved.children[0];
+    if (movedInner === undefined || movedInner.kind !== 'group') {
+      throw new Error('expected nested group');
+    }
+    expect(movedInner.children[0]).toEqual(rule('field_number', 'is', 1));
+    expect(movedInner.children[1]).toEqual(rule('field_text', 'is', 'a'));
+    // The child stays inside its parent; the parent's position is unchanged.
+    expect(moved.children[1]).toEqual(rule('field_check', 'is', true));
+  });
+
+  it('rejects edge moves and keeps the original tree', () => {
+    const root = group('and', [rule('field_text', 'is', 'a'), rule('field_number', 'is', 1)]);
+    expect(moveFilterChild(root, [0], -1)).toBe(root);
+    expect(moveFilterChild(root, [1], 1)).toBe(root);
+    expect(moveFilterChild(root, [], 1)).toBe(root);
+    expect(moveFilterChild(root, [9], 1)).toBe(root);
+    expect(moveFilterChild(rule('field_text', 'is', 'a'), [], -1)).toEqual(
+      rule('field_text', 'is', 'a'),
+    );
+  });
+
+  it('moves a whole group child as one unit', () => {
+    const inner = group('or', [rule('field_text', 'is', 'a')]);
+    const root = group('and', [rule('field_number', 'is', 1), inner]);
+    const moved = moveFilterChild(root, [1], -1) as FilterGroup;
+    expect(moved.children[0]).toEqual(inner);
   });
 });
 

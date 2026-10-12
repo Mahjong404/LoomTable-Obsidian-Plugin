@@ -31,6 +31,7 @@ export type UiIconName =
   | 'menu-open'
   | 'menu-delete'
   | 'menu-ellipsis'
+  | 'menu-grip'
   | 'tool-filter'
   | 'tool-search'
   | 'tool-sort'
@@ -182,6 +183,14 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
     ['circle', { cx: '12', cy: '12', r: '1' }],
     ['circle', { cx: '19', cy: '12', r: '1' }],
     ['circle', { cx: '5', cy: '12', r: '1' }],
+  ],
+  'menu-grip': [
+    ['circle', { cx: '9', cy: '12', r: '1' }],
+    ['circle', { cx: '9', cy: '5', r: '1' }],
+    ['circle', { cx: '9', cy: '19', r: '1' }],
+    ['circle', { cx: '15', cy: '12', r: '1' }],
+    ['circle', { cx: '15', cy: '5', r: '1' }],
+    ['circle', { cx: '15', cy: '19', r: '1' }],
   ],
   'tool-filter': [['path', { d: 'M22 3H2l8 9.46V19l4 2v-8.54z' }]],
   'tool-search': [

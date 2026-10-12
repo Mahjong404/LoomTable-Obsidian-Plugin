@@ -10,6 +10,8 @@ import type {
 import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import { openFilterValuesPopover } from './filter-values-popover';
+import { openContextMenu } from './context-menu';
+import { createUiIcon } from './icons';
 import { jsonEqual } from './json-equal';
 import {
   addFilterChild,
@@ -17,10 +19,11 @@ import {
   coerceRuleForOperator,
   countFilterRules,
   createFilterRule,
+  filterNodeAt,
   filterOperatorsForField,
+  moveFilterChild,
   operatorNeedsValue,
   removeFilterNodeAt,
-  setFilterGroupOperator,
   updateFilterNodeAt,
   validateFilterDraft,
   type FilterIssueReason,
@@ -39,6 +42,11 @@ export interface FilterBuilderOptions {
     fieldId: string,
     request: { search?: string; cursor?: string },
   ) => Promise<DistinctValuesPage>;
+}
+
+interface SiblingContext {
+  readonly index: number;
+  readonly count: number;
 }
 
 const ISSUE_KEYS: Record<FilterIssueReason, MessageKey> = {
@@ -82,8 +90,19 @@ export class FilterBuilder {
   #applying = false;
   #applyQueued = false;
   #applyTimer: number | null = null;
+  #disposed = false;
+  #popoverClose: (() => void) | null = null;
   readonly #localValueFields = new Set<string>();
-  readonly #touchedPaths = new Set<string>();
+  /**
+   * Stable local identity per draft node — the UI-side counterpart to the
+   * index path, which shifts on every sibling reorder or removal. Ids live
+   * only in this map (never in the persisted query); draft edits recreate
+   * the edited node object, so an unchanged sibling keeps its identity.
+   */
+  readonly #nodeIds = new WeakMap<FilterNode, string>();
+  #idSeq = 0;
+  /** Touched tracking keyed by stable node id, immune to reorder. */
+  readonly #touchedIds = new Set<string>();
 
   constructor(initial: FilterNode | undefined, options: FilterBuilderOptions) {
     this.#applied = initial;
@@ -94,15 +113,45 @@ export class FilterBuilder {
     this.#onInvalidate = options.onInvalidate;
     this.#host = options.host;
     this.#loadFieldValues = options.loadFieldValues;
-    const seedTouched = (node: FilterNode | undefined, path: number[]): void => {
+    const seedTouched = (node: FilterNode | undefined): void => {
       if (node === undefined) return;
       if (node.kind === 'rule') {
-        this.#touchedPaths.add(pathKey(path));
+        this.#touchedIds.add(this.#idFor(node));
         return;
       }
-      node.children.forEach((child, index) => seedTouched(child, [...path, index]));
+      node.children.forEach((child) => seedTouched(child));
     };
-    seedTouched(initial, []);
+    seedTouched(initial);
+  }
+
+  #idFor(node: FilterNode): string {
+    let id = this.#nodeIds.get(node);
+    if (id === undefined) {
+      id = `node_${this.#idSeq++}`;
+      this.#nodeIds.set(node, id);
+    }
+    return id;
+  }
+
+  /**
+   * Releases the owned popover and flushes a pending debounced apply so a
+   * panel close or context switch never silently drops the last valid edit.
+   */
+  dispose(): void {
+    if (this.#disposed) return;
+    this.#disposed = true;
+    this.#closePopover();
+    if (this.#applyTimer !== null) {
+      window.clearTimeout(this.#applyTimer);
+      this.#applyTimer = null;
+      void this.#apply();
+    }
+  }
+
+  /** The values popover is an owned child: exactly one may be open. */
+  #closePopover(): void {
+    this.#popoverClose?.();
+    this.#popoverClose = null;
   }
 
   render(): HTMLElement {
@@ -149,16 +198,30 @@ export class FilterBuilder {
       }
     }
 
-    const issues = validateFilterDraft(this.#draft, this.#fields).filter(
-      (issue) =>
-        (issue.reason !== 'value-missing' && issue.reason !== 'value-invalid') ||
-        this.#touchedPaths.has(pathKey(issue.path)),
-    );
+    // Prune touched entries whose nodes left the draft (remove/collapse)
+    // and anchor issues by stable node id so a reorder keeps them attached.
+    const liveIds = new Set<string>();
+    const collectLive = (node: FilterNode | undefined): void => {
+      if (node === undefined) return;
+      liveIds.add(this.#idFor(node));
+      if (node.kind === 'group') node.children.forEach(collectLive);
+    };
+    collectLive(this.#draft);
+    for (const id of this.#touchedIds) {
+      if (!liveIds.has(id)) this.#touchedIds.delete(id);
+    }
+    const issues = validateFilterDraft(this.#draft, this.#fields).filter((issue) => {
+      if (issue.reason !== 'value-missing' && issue.reason !== 'value-invalid') return true;
+      const node = this.#draft === undefined ? undefined : filterNodeAt(this.#draft, issue.path);
+      return node !== undefined && this.#touchedIds.has(this.#idFor(node));
+    });
     for (const issue of issues) {
+      const issueNode =
+        this.#draft === undefined ? undefined : filterNodeAt(this.#draft, issue.path);
       const host =
-        issue.path.length === 0
+        issue.path.length === 0 || issueNode === undefined
           ? root
-          : root.querySelector<HTMLElement>(`[data-path="${pathKey(issue.path)}"]`);
+          : (root.querySelector<HTMLElement>(`[data-node-id="${this.#idFor(issueNode)}"]`) ?? root);
       const note = createElement('div', 'loom-filter-issue');
       note.dataset.path = pathKey(issue.path);
       note.setAttribute('role', 'alert');
@@ -181,14 +244,19 @@ export class FilterBuilder {
     return root;
   }
 
-  #renderNode(node: FilterNode, path: FilterPath): HTMLElement {
-    return node.kind === 'group' ? this.#renderGroup(node, path) : this.#renderRule(node, path);
+  #renderNode(node: FilterNode, path: FilterPath, siblings?: SiblingContext): HTMLElement {
+    return node.kind === 'group'
+      ? this.#renderGroup(node, path, siblings)
+      : this.#renderRule(node, path, siblings);
   }
 
-  #renderGroup(group: FilterGroup, path: FilterPath): HTMLElement {
+  #renderGroup(group: FilterGroup, path: FilterPath, siblings?: SiblingContext): HTMLElement {
     const container = createElement('div', 'loom-filter-group');
     container.dataset.path = pathKey(path);
+    container.dataset.nodeId = this.#idFor(group);
     const head = createElement('div', 'loom-filter-group-head');
+    const handle = this.#moveHandle(path, siblings);
+    if (handle !== null) head.append(handle);
     const operator = document.createElement('select');
     operator.dataset.role = 'filter-group-op';
     operator.setAttribute('aria-label', this.#translate('filter.group'));
@@ -202,8 +270,10 @@ export class FilterBuilder {
     }
     operator.value = group.operator;
     operator.addEventListener('change', () => {
-      if (this.#draft === undefined) return;
-      this.#draft = setFilterGroupOperator(this.#draft, path, operator.value as 'and' | 'or');
+      if (this.#disposed || this.#draft === undefined) return;
+      this.#replaceNodeAt(path, (node) =>
+        node.kind === 'group' ? { ...node, operator: operator.value as 'and' | 'or' } : node,
+      );
       this.#scheduleApply();
       this.#rerender();
     });
@@ -214,15 +284,21 @@ export class FilterBuilder {
     container.append(head);
     const children = createElement('div', 'loom-filter-children');
     group.children.forEach((child, index) => {
-      children.append(this.#renderNode(child, [...path, index]));
+      children.append(
+        this.#renderNode(child, [...path, index], { index, count: group.children.length }),
+      );
     });
     container.append(children);
     return container;
   }
 
-  #renderRule(rule: FilterRule, path: FilterPath): HTMLElement {
+  #renderRule(rule: FilterRule, path: FilterPath, siblings?: SiblingContext): HTMLElement {
     const row = createElement('div', 'loom-filter-row');
     row.dataset.path = pathKey(path);
+    row.dataset.nodeId = this.#idFor(rule);
+
+    const handle = this.#moveHandle(path, siblings);
+    if (handle !== null) row.append(handle);
 
     const fieldSelect = document.createElement('select');
     fieldSelect.dataset.role = 'filter-field';
@@ -236,8 +312,8 @@ export class FilterBuilder {
     fieldSelect.value = rule.fieldId;
     fieldSelect.addEventListener('change', () => {
       const field = this.#fields.find((candidate) => candidate.id === fieldSelect.value);
-      if (field === undefined || this.#draft === undefined) return;
-      this.#draft = updateFilterNodeAt(this.#draft, path, (node) =>
+      if (field === undefined || this.#disposed || this.#draft === undefined) return;
+      this.#replaceNodeAt(path, (node) =>
         node.kind === 'rule' ? coerceRuleForField(node, field) : node,
       );
       this.#scheduleApply();
@@ -258,9 +334,9 @@ export class FilterBuilder {
     }
     operatorSelect.value = rule.operator;
     operatorSelect.addEventListener('change', () => {
-      if (this.#draft === undefined) return;
+      if (this.#disposed || this.#draft === undefined) return;
       const operator = operatorSelect.value as FilterOperator;
-      this.#draft = updateFilterNodeAt(this.#draft, path, (node) =>
+      this.#replaceNodeAt(path, (node) =>
         node.kind === 'rule' ? coerceRuleForOperator(node, operator) : node,
       );
       this.#scheduleApply();
@@ -300,7 +376,17 @@ export class FilterBuilder {
         button.textContent = this.#optionLabel(field, rule.value);
         const host = this.#host;
         button.addEventListener('click', (event) => {
-          openFilterValuesPopover({
+          // The popover is an owned child — a second picker replaces the
+          // open one — and the pick is bound by stable node identity plus
+          // the captured field/operator, not by the index path that may
+          // have moved under an open picker.
+          this.#closePopover();
+          const capture = {
+            nodeId: this.#idFor(rule),
+            fieldId: rule.fieldId,
+            operator: rule.operator,
+          };
+          const close = openFilterValuesPopover({
             field,
             selected: rule.value,
             x: event.clientX,
@@ -308,12 +394,17 @@ export class FilterBuilder {
             host,
             translate: this.#translate,
             load: (request) => load(field.id, request),
-            onPick: (value) => this.#setRuleValue(path, value),
+            onPick: (value) => this.#pickRuleValue(capture, value),
             onFallback: () => {
+              if (this.#disposed) return;
               this.#localValueFields.add(field.id);
               this.#rerender();
             },
           });
+          this.#popoverClose = () => {
+            close();
+            if (this.#popoverClose !== null) this.#popoverClose = null;
+          };
         });
         return button;
       }
@@ -381,8 +472,20 @@ export class FilterBuilder {
     }
     input.type = 'text';
     input.value = typeof rule.value === 'string' ? rule.value : '';
+    // IME composition must not write mid-composition: the candidate string
+    // is not the committed operand yet.
+    let composing = false;
+    input.addEventListener('compositionstart', () => {
+      composing = true;
+    });
+    input.addEventListener('compositionend', () => {
+      composing = false;
+    });
     input.addEventListener('input', () => {
-      this.#setRuleValue(path, input.value);
+      if (composing) return;
+      // A cleared operand is undefined — an incomplete draft never writes
+      // an empty-string value over the last valid query.
+      this.#setRuleValue(path, input.value === '' ? undefined : input.value);
     });
     return input;
   }
@@ -411,9 +514,55 @@ export class FilterBuilder {
     return option;
   }
 
-  #setRuleValue(path: FilterPath, value: JsonValue | undefined): void {
+  /**
+   * Applies a popover pick only when the captured rule still exists with
+   * the same field and operator — a rule that was removed, reordered into
+   * a different position, or semantically changed while the picker was
+   * open must not receive a stale write.
+   */
+  #pickRuleValue(
+    capture: { readonly nodeId: string; readonly fieldId: string; readonly operator: string },
+    value: JsonValue | undefined,
+  ): void {
+    if (this.#disposed || this.#draft === undefined) return;
+    const path = this.#findNodePath(this.#draft, capture.nodeId);
+    if (path === null) return;
+    const node = filterNodeAt(this.#draft, path);
+    if (node === undefined || node.kind !== 'rule') return;
+    if (node.fieldId !== capture.fieldId || node.operator !== capture.operator) return;
+    this.#setRuleValue(path, value);
+  }
+
+  #findNodePath(node: FilterNode, id: string, base: number[] = []): FilterPath | null {
+    if (this.#idFor(node) === id) return base;
+    if (node.kind !== 'group') return null;
+    for (let index = 0; index < node.children.length; index += 1) {
+      const found = this.#findNodePath(node.children[index]!, id, [...base, index]);
+      if (found !== null) return found;
+    }
+    return null;
+  }
+
+  /**
+   * Replaces the node at path while carrying its stable id over to the new
+   * object — an edit keeps the rule's identity, only removal releases it.
+   */
+  #replaceNodeAt(path: FilterPath, updater: (node: FilterNode) => FilterNode): void {
     if (this.#draft === undefined) return;
+    const previous = filterNodeAt(this.#draft, path);
     this.#draft = updateFilterNodeAt(this.#draft, path, (node) => {
+      const next = updater(node);
+      if (previous !== undefined && next !== node) {
+        const id = this.#nodeIds.get(previous);
+        if (id !== undefined) this.#nodeIds.set(next, id);
+      }
+      return next;
+    });
+  }
+
+  #setRuleValue(path: FilterPath, value: JsonValue | undefined): void {
+    if (this.#disposed || this.#draft === undefined) return;
+    this.#replaceNodeAt(path, (node) => {
       if (node.kind !== 'rule') return node;
       return value === undefined
         ? { kind: 'rule', fieldId: node.fieldId, operator: node.operator }
@@ -434,8 +583,7 @@ export class FilterBuilder {
       if (this.#draft === undefined) {
         this.#draft = createFilterRule(field);
       } else {
-        this.#promoteTouchedRootRule();
-        this.#draft = addFilterChild(this.#draft, path, 'rule', field);
+        this.#addChild(path, 'rule', field);
       }
       this.#scheduleApply();
       this.#rerender();
@@ -452,8 +600,7 @@ export class FilterBuilder {
       if (this.#draft === undefined) return;
       const field = this.#fields.find((candidate) => candidate.deletedAt === undefined);
       if (field === undefined) return;
-      this.#promoteTouchedRootRule();
-      this.#draft = addFilterChild(this.#draft, path, 'group', field);
+      this.#addChild(path, 'group', field);
       this.#scheduleApply();
       this.#rerender();
     });
@@ -469,46 +616,86 @@ export class FilterBuilder {
       target === 'rule' ? 'filter.removeRule' : 'filter.removeGroup',
     );
     button.addEventListener('click', () => {
-      if (this.#draft === undefined) return;
+      if (this.#disposed || this.#draft === undefined) return;
       this.#draft = removeFilterNodeAt(this.#draft, path);
-      this.#retireTouchedPath(path);
-      if (this.#draft === undefined) this.#touchedPaths.clear();
       this.#scheduleApply();
       this.#rerender();
     });
     return button;
   }
 
+  /** Adds a move handle that opens the up/down menu — the non-drag,
+      keyboard-reachable entry for same-parent reorder. */
+  #moveHandle(path: FilterPath, siblings: SiblingContext | undefined): HTMLButtonElement | null {
+    if (siblings === undefined || siblings.count < 2) return null;
+    const { index, count } = siblings;
+    const button = createElement('button', 'loom-button loom-filter-handle');
+    button.type = 'button';
+    button.dataset.action = 'filter-move';
+    button.setAttribute('aria-label', this.#translate('filter.move'));
+    button.setAttribute('aria-haspopup', 'menu');
+    button.append(createUiIcon('menu-grip'));
+    button.addEventListener('click', () => {
+      const rect = button.getBoundingClientRect();
+      openContextMenu({
+        label: this.#translate('filter.move'),
+        x: rect.left,
+        y: rect.bottom + 4,
+        host: this.#host ?? this.#root ?? document.body,
+        trigger: button,
+        items: [
+          {
+            label: this.#translate('filter.moveUp'),
+            dataAction: 'filter-move-up',
+            disabled: index === 0,
+            action: () => this.#moveNode(path, -1),
+          },
+          {
+            label: this.#translate('filter.moveDown'),
+            dataAction: 'filter-move-down',
+            disabled: index === count - 1,
+            action: () => this.#moveNode(path, 1),
+          },
+        ],
+      });
+    });
+    return button;
+  }
+
+  #moveNode(path: FilterPath, delta: -1 | 1): void {
+    if (this.#disposed || this.#draft === undefined) return;
+    const next = moveFilterChild(this.#draft, path, delta);
+    if (next === this.#draft) return;
+    this.#draft = next;
+    this.#scheduleApply();
+    this.#rerender();
+  }
+
+  /** Appends a child and carries the parent's id over to the wrapper object
+      addFilterChild recreates — the parent keeps its identity across the
+      structural edit. */
+  #addChild(path: FilterPath, kind: 'rule' | 'group', field: Field): void {
+    if (this.#draft === undefined) return;
+    const parentBefore = filterNodeAt(this.#draft, path);
+    const parentId = parentBefore === undefined ? undefined : this.#nodeIds.get(parentBefore);
+    this.#draft = addFilterChild(this.#draft, path, kind, field);
+    if (parentId !== undefined) {
+      const parentAfter = filterNodeAt(this.#draft, path);
+      if (parentAfter !== undefined) this.#nodeIds.set(parentAfter, parentId);
+    }
+  }
+
   #markTouched(path: FilterPath): boolean {
-    const key = pathKey(path);
-    if (this.#touchedPaths.has(key)) return false;
-    this.#touchedPaths.add(key);
+    const node = this.#draft === undefined ? undefined : filterNodeAt(this.#draft, path);
+    if (node === undefined) return false;
+    const id = this.#idFor(node);
+    if (this.#touchedIds.has(id)) return false;
+    this.#touchedIds.add(id);
     return true;
   }
 
-  #promoteTouchedRootRule(): void {
-    if (this.#draft?.kind === 'rule' && this.#touchedPaths.delete('')) {
-      this.#touchedPaths.add('0');
-    }
-  }
-
-  #retireTouchedPath(path: FilterPath): void {
-    const parent = path.slice(0, -1);
-    const index = path[path.length - 1]!;
-    const next = new Set<string>();
-    for (const key of this.#touchedPaths) {
-      const parts = key === '' ? [] : key.split('.').map(Number);
-      const sameParent =
-        parts.length > parent.length && parent.every((value, i) => parts[i] === value);
-      if (sameParent && parts[parent.length] === index) continue;
-      if (sameParent && parts[parent.length]! > index) parts[parent.length]! -= 1;
-      next.add(parts.join('.'));
-    }
-    this.#touchedPaths.clear();
-    for (const key of next) this.#touchedPaths.add(key);
-  }
-
   #scheduleApply(): void {
+    if (this.#disposed) return;
     if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
     this.#applyTimer = window.setTimeout(() => {
       this.#applyTimer = null;
@@ -551,7 +738,7 @@ export class FilterBuilder {
 
   async #clear(): Promise<void> {
     this.#draft = undefined;
-    this.#touchedPaths.clear();
+    this.#touchedIds.clear();
     this.#applying = true;
     this.#rerender();
     try {
@@ -571,6 +758,7 @@ export class FilterBuilder {
   }
 
   #rerender(): void {
+    if (this.#disposed) return;
     const focus = captureQueryControlFocus(this.#root);
     const next = this.#build();
     if (this.#root?.isConnected === true) {

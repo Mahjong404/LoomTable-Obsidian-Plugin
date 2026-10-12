@@ -1154,6 +1154,66 @@ describe('Grid query controls', () => {
     container.remove();
   });
 
+  it('keeps the Filter panel open while interacting with the values popover', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const state = createState(1);
+    const baseField = state.fields[0]!;
+    const selectField: Field = {
+      ...baseField,
+      id: 'field_status',
+      name: 'Status',
+      type: 'select',
+      config: {
+        options: [{ id: 'opt_a', name: 'Alpha', color: 'blue' }],
+        deletedOptions: [],
+      },
+    };
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('Grid fixture is missing.');
+    const filtered: GridState = {
+      ...state,
+      fields: [baseField, selectField],
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            filter: { kind: 'rule', fieldId: 'field_status', operator: 'is' },
+          },
+        },
+      ],
+    };
+    const onQueryFieldValues = vi.fn(async () => ({
+      items: [{ value: 'opt_a', display: 'Alpha', count: 1 }],
+      emptyCount: 0,
+      hasMore: false,
+      changeCursor: 'change_01',
+    }));
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
+      ...rendererCallbacks(),
+      onApplyFilter: vi.fn(async () => ({ status: 'saved', view }) as const),
+      onQueryFieldValues,
+    });
+    renderer.render(filtered);
+    container.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')?.click();
+    container.querySelector<HTMLButtonElement>('button.loom-filter-value-pick')?.click();
+    await vi.waitFor(() => expect(container.querySelector('.loom-filter-values')).not.toBeNull());
+
+    const popover = container.querySelector<HTMLElement>('.loom-filter-values');
+    popover?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    // The popover is owned by the Filter panel: interaction inside it must
+    // not be treated as an outside click that dismisses the panel.
+    expect(container.querySelector('.loom-filter-builder')).not.toBeNull();
+    expect(container.querySelector('.loom-filter-values')).not.toBeNull();
+
+    document.body.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    await vi.waitFor(() => expect(container.querySelector('.loom-filter-builder')).toBeNull());
+    // Dismissing the panel disposes the builder, which closes its child.
+    expect(document.querySelector('.loom-filter-values')).toBeNull();
+    container.remove();
+  });
+
   it('selects the whole column on header click without sorting', () => {
     const container = document.createElement('div');
     document.body.append(container);

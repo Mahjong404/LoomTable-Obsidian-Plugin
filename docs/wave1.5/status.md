@@ -1,6 +1,6 @@
 # Wave 1.5 — 唯一实施状态
 
-更新：2026-10-12。本表只记录实际实施、审批与交付引用；范围见 README，行为见 UI/Architecture，任务合同见 task-specifications。设计已批准，文档整理已授权，产品实现未开始。
+更新：2026-10-12。本表只记录实际实施、审批与交付引用；范围见 README，行为见 UI/Architecture，任务合同见 task-specifications。设计已批准，Lane A 实施进行中。
 
 ## 批准与当前基线
 
@@ -20,8 +20,8 @@
 | Task                         | State      | Owner / Branch | Dependencies               | PR / Merge HEAD                         | Checks / Host QA                                                                                                     | Next action                                  |
 | ---------------------------- | ---------- | -------------- | -------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------- |
 | W15-00 文档基线              | Done       | Devin / main   | 当前文档审查               | Plugin 69e296c / Server 5d430cd（本地） | 271 相对链接/锚点零缺失；13 包×18 字段、39+R40、77 资产、6 Gate 一致；prettier/git-diff --check 通过；产品测试未运行 | push/merge 待用户授权                        |
-| W15-01 Primitive 消费者      | Done       | Devin / main   | 00（69e296c）与切片授权    | Plugin 5e55e68（本地）                   | 1011 vitest 全绿；tsc 0 错；eslint 0 error（存量 warning）；prettier/git-diff --check 通过；api:generate 零 diff；esbuild production 成功；Obsidian 宿主/CDP 未验证 | W15-02 待授权                                |
-| W15-02 Filter                | Planned    | —              | 01                         | —                                       | 未运行 / 未验证                                                                                                      | stable rule/owned distinct 生命周期          |
+| W15-01 Primitive 消费者      | Done       | Devin / main   | 00（69e296c）与切片授权    | Plugin 5e55e68（已推送 origin/main 388490b） | 1011 vitest 全绿；tsc/eslint(0 err)/prettier/git-diff --check 通过；api:generate 零 diff；esbuild production 成功；Obsidian 宿主/CDP 未验证（9223 无调试实例，宿主验收阻塞） | 宿主 QA 待调试环境                          |
+| W15-02 Filter                | Done       | Devin / main   | 01                         | Plugin 待提交                            | 1029 vitest 全绿（+18 新测试）；tsc 0 错；eslint 0 error；prettier/diff --check 通过；api:generate 零 diff；esbuild production 成功；Obsidian 宿主/CDP 未验证 | 宿主 QA 待调试环境；W15-03 待授权            |
 | W15-03 Sort                  | Planned    | —              | 01                         | —                                       | 未运行 / 未验证                                                                                                      | transient Add/whole entry move               |
 | W15-04 Display               | Planned    | —              | 01                         | —                                       | 未运行 / 未验证                                                                                                      | latest-base width/freeze intent              |
 | W15-05 Grid                  | Planned    | —              | 01、04                     | —                                       | 未运行 / 未验证                                                                                                      | 几何/validation 可交付；G4/G6 另记录         |

@@ -266,6 +266,8 @@ describe('Filter, sort and display panels', () => {
     expect(host.querySelector('.loom-sort-panel')).not.toBeNull();
     expect(host.querySelector('.loom-display-panel')).not.toBeNull();
     expect(host.querySelectorAll('.loom-filter-group').length).toBeGreaterThanOrEqual(2);
+    // Same-parent reorder affordance rides every multi-child Filter node.
+    expect(host.querySelectorAll('[data-action="filter-move"]').length).toBeGreaterThanOrEqual(2);
   });
 
   it('reports an operator that is unavailable for the field type', async () => {

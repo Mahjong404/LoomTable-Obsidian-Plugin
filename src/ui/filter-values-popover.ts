@@ -48,6 +48,10 @@ export function openFilterValuesPopover(options: FilterValuesPopoverOptions): ()
   let nextCursor: string | undefined;
   let hasMore = false;
   let searchTimer: number | null = null;
+  // One Load-more request at a time; a new search *replaces* the in-flight
+  // one via the token instead of stacking parallel requests.
+  let loading = false;
+  const seenValues = new Set<unknown>();
 
   const itemButton = (value: string | number | boolean, display: string, count: number) => {
     const item = document.createElement('button');
@@ -118,6 +122,10 @@ export function openFilterValuesPopover(options: FilterValuesPopoverOptions): ()
   };
 
   const load = async (cursor: string | undefined, append: boolean): Promise<void> => {
+    // Load more is strictly single-flight; a first-page/search replace is
+    // allowed to supersede the pending request through the token.
+    if (append && loading) return;
+    loading = true;
     const token = ++requestToken;
     if (!append) renderStatus('filter.values.loading');
     try {
@@ -126,9 +134,15 @@ export function openFilterValuesPopover(options: FilterValuesPopoverOptions): ()
         ...(cursor === undefined ? {} : { cursor }),
       });
       if (closed || token !== requestToken) return;
-      if (!append) list.replaceChildren();
+      if (!append) {
+        list.replaceChildren();
+        seenValues.clear();
+      }
       list.querySelector('.loom-filter-values-status')?.remove();
       for (const item of page.items) {
+        // Cursor pages may overlap: a repeated value must not duplicate.
+        if (seenValues.has(item.value)) continue;
+        seenValues.add(item.value);
         list.append(itemButton(item.value, item.display ?? String(item.value), item.count));
       }
       nextCursor = page.nextCursor;
@@ -137,16 +151,31 @@ export function openFilterValuesPopover(options: FilterValuesPopoverOptions): ()
     } catch {
       if (closed || token !== requestToken) return;
       renderStatus('filter.values.error');
+    } finally {
+      loading = false;
     }
   };
 
-  search.addEventListener('input', () => {
+  // IME candidate text is not a committed search term yet.
+  let composing = false;
+  search.addEventListener('compositionstart', () => {
+    composing = true;
+  });
+  search.addEventListener('compositionend', () => {
+    composing = false;
+    scheduleSearch();
+  });
+  const scheduleSearch = (): void => {
     if (searchTimer !== null) window.clearTimeout(searchTimer);
     searchTimer = window.setTimeout(() => {
       searchTimer = null;
       searchTerm = search.value.trim();
       void load(undefined, false);
     }, 300);
+  };
+  search.addEventListener('input', () => {
+    if (composing) return;
+    scheduleSearch();
   });
 
   const close = (): void => {

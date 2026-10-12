@@ -1235,6 +1235,28 @@
   flex-basis: 100%;
 }
 
+/* Reorder affordance: the grip is the non-drag entry — click opens the
+   Move menu — sized like the row's other compact controls. */
+.loom-filter-handle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--loom-control-compact-height);
+  min-height: var(--loom-control-compact-height);
+  padding: 0;
+  color: var(--loom-text-muted);
+  cursor: grab;
+  touch-action: pan-y;
+}
+
+.loom-filter-handle:hover {
+  color: var(--loom-text-normal);
+}
+
+.loom-filter-handle .loom-ui-icon {
+  margin-inline-end: 0;
+}
+
 .loom-sort-list {
   display: flex;
   flex-direction: column;
