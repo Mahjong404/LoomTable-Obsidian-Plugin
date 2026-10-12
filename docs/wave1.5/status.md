@@ -9,7 +9,7 @@
 | Wave 1 / Wave 1.5设计 | Approved / Frozen；Approved | 已批准视觉/布局/交互，Future/API门槛保留，不重开设计 |
 | W15-00 正式文档基线 | Done | Plugin69e296cc6a02f74ca61a633c6168fb36b9b89398；Server5d430cd641e5a210eab3371c9864919837cd69a9已发布 |
 | 当前Plugin代码 | main@52b2c9dc0a126ab23217973161b5dd5440b02bc1 | 本轮本地/远端核对一致，开始tracked tree干净；01/02已有实现和修复 |
-| 本轮UI工程重校准 | 审计/规格获授权；未实施产品修复 | Figma live + isolated snapshot/Obsidian证据见ui-alignment，第一批A→B→C合同已补齐；正式规格按docs PR review交付 |
+| 本轮UI工程重校准 | 审计/规格获授权；未实施产品修复 | Figma live + isolated snapshot/Obsidian证据见ui-alignment，第一批A→B→C合同已补齐；正式规格已提交[Draft PR113](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/113)，完整规格基线19741922b03fc946b1edccbca3bbce85bec91e3f；未合并、未启动产品修复 |
 | Plugin API pin | 43da70e3c241380fff34d0deee8c1142ba39cb47 | 旧writer9色/Aggregate无Search，本轮保持source/generated零变化 |
 | Server固定交付 | G1/G6已交付；其Plugin消费者未接入 | 详细contract/commit/capability验证来源如下表；其余Gate仍独立 |
 | Time/DateTime、12h、整Table回滚 | Future / API-gated | Avatar/Profile/Cascader/细粒度转换审计Deferred |
