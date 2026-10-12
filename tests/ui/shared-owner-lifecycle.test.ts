@@ -165,6 +165,46 @@ describe('shared owner lifecycle', () => {
     expect(write).not.toHaveBeenCalled();
   });
 
+  it('Escape from a Grid cell cancels pending Filter and restores its trigger', async () => {
+    const { view, write } = await mountView();
+    vi.useFakeTimers();
+    edit(view, 'unissued-cell-escape');
+    const cell = view.contentEl.querySelector<HTMLElement>('.loom-grid-cell')!;
+    cell.focus();
+    cell.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(write).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(
+      view.contentEl.querySelector('[data-action="toggle-filter"]'),
+    );
+  });
+
+  it.each(['unload', 'pointercancel'] as const)(
+    'releases an active resize on %s without a late write',
+    async (exit) => {
+      const { view, write } = await mountView();
+      const add = vi.spyOn(document, 'addEventListener');
+      const remove = vi.spyOn(document, 'removeEventListener');
+      view.contentEl
+        .querySelector('.loom-grid-col-resize')!
+        .dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, bubbles: true }));
+      const listeners = add.mock.calls.filter((call) =>
+        ['pointermove', 'pointerup', 'pointercancel'].includes(call[0]),
+      );
+      expect(listeners).toHaveLength(3);
+      if (exit === 'unload') await view.onClose();
+      else document.dispatchEvent(new PointerEvent('pointercancel'));
+      for (const [name, listener] of listeners)
+        expect(remove.mock.calls.some((call) => call[0] === name && call[1] === listener)).toBe(
+          true,
+        );
+      document.dispatchEvent(new PointerEvent('pointerup', { clientX: 140 }));
+      expect(write).not.toHaveBeenCalled();
+    },
+  );
+
   it.each(['pointer', 'keyboard'])(
     'Grid → Map cancels pending Filter via %s navigation',
     async (mode) => {
@@ -204,6 +244,9 @@ describe('shared owner lifecycle', () => {
       );
     await vi.advanceTimersByTimeAsync(1000);
     expect(write).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(
+      view.contentEl.querySelector('[data-action="toggle-filter"]'),
+    );
   });
 
   it('in-flight → queued → owner dispose permits only the accepted original View write', async () => {

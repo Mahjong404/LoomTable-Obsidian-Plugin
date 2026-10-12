@@ -393,6 +393,7 @@ export class ReadonlyGridRenderer {
   #searchError: string | null = null;
   #disposed = false;
   #cancelScrollPaint: (() => void) | null = null;
+  #cancelColumnResize: (() => void) | null = null;
   #cancelPanelMeasure: (() => void) | null = null;
   #draftCreateValues: Record<string, MutationValue> | null = null;
   #draftRowEl: HTMLElement | null = null;
@@ -472,6 +473,7 @@ export class ReadonlyGridRenderer {
   render(state: GridState): void {
     if (this.#disposed) return;
     if (state.selectedViewId !== this.#lastViewId) {
+      this.#cancelColumnResize?.();
       // Stash the outgoing View's session before switching — either to another
       // Grid View (in place) or before a Map View replaces this renderer.
       this.captureSession();
@@ -1230,6 +1232,7 @@ export class ReadonlyGridRenderer {
     this.#toolbarObserver = null;
     this.#cancelScrollPaint?.();
     this.#cancelScrollPaint = null;
+    this.#cancelColumnResize?.();
     this.#cancelPanelMeasure?.();
     this.#cancelPanelMeasure = null;
     this.#cancelSearch();
@@ -1281,6 +1284,7 @@ export class ReadonlyGridRenderer {
   }
 
   #closePanels(reason: 'user-close' | 'escape' | 'context-switch' = 'user-close'): void {
+    const panel = this.#openPanel;
     this.#openPanel = null;
     this.#releaseQueryOwners(reason);
     if (reason === 'context-switch') this.#cancelSearch();
@@ -1288,6 +1292,9 @@ export class ReadonlyGridRenderer {
     this.#cancelPanelMeasure = null;
     this.#dismissOverlay();
     this.#rerenderSelf();
+    if (reason === 'escape' && panel !== null && !this.#disposed) {
+      this.#container.querySelector<HTMLButtonElement>(`[data-action="toggle-${panel}"]`)?.focus();
+    }
   }
 
   #dismissOverlay(): void {
@@ -2090,8 +2097,11 @@ export class ReadonlyGridRenderer {
         const resize = createElement('span', 'loom-grid-col-resize');
         resize.setAttribute('aria-hidden', 'true');
         resize.addEventListener('pointerdown', (event) => {
+          if (this.#disposed) return;
           event.preventDefault();
           event.stopPropagation();
+          this.#cancelColumnResize?.();
+          const doc = this.#container.ownerDocument;
           const startX = event.clientX;
           const startWidth = columns.widths.get(field.id) ?? GRID_COLUMN_WIDTH_DEFAULT;
           const onMove = (move: PointerEvent) => {
@@ -2101,13 +2111,24 @@ export class ReadonlyGridRenderer {
             );
           };
           const onUp = (move: PointerEvent) => {
-            document.removeEventListener('pointermove', onMove);
-            document.removeEventListener('pointerup', onUp);
+            cleanup();
             const width = clampGridColumnWidth(startWidth + move.clientX - startX);
             if (width !== startWidth) this.#commitColumnWidth(field, width);
           };
-          document.addEventListener('pointermove', onMove);
-          document.addEventListener('pointerup', onUp);
+          const onCancel = () => {
+            cleanup();
+            this.#rerenderSelf();
+          };
+          const cleanup = () => {
+            doc.removeEventListener('pointermove', onMove);
+            doc.removeEventListener('pointerup', onUp);
+            doc.removeEventListener('pointercancel', onCancel);
+            this.#cancelColumnResize = null;
+          };
+          this.#cancelColumnResize = cleanup;
+          doc.addEventListener('pointermove', onMove);
+          doc.addEventListener('pointerup', onUp);
+          doc.addEventListener('pointercancel', onCancel);
         });
         fieldHeader.append(resize);
       }
@@ -2903,7 +2924,7 @@ export class ReadonlyGridRenderer {
             this.#applySelection();
           } else if (this.#openPanel !== null) {
             event.preventDefault();
-            this.#closePanels();
+            this.#closePanels('escape');
           }
           return;
         }
