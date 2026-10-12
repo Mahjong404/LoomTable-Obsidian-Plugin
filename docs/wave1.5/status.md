@@ -8,10 +8,10 @@
 |---|---|---|
 | Wave 1 / Wave 1.5设计 | Approved（当前实施基线） | 已批准视觉/布局/交互；用户可通过Design Delta迭代，规则见UI入口；Future/API门槛保留 |
 | W15-00 正式文档基线 | Done | Plugin69e296cc6a02f74ca61a633c6168fb36b9b89398；Server5d430cd641e5a210eab3371c9864919837cd69a9已发布 |
-| 当前Plugin代码 | main@52b2c9dc0a126ab23217973161b5dd5440b02bc1 | 本轮本地/远端核对一致，开始tracked tree干净；01/02已有实现和修复 |
-| 本轮UI工程重校准 | 审计/规格获授权；未实施产品修复 | Figma live + isolated snapshot/Obsidian证据见ui-alignment，第一批A→B→C合同已补齐；正式规格已提交[Draft PR113](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/113)，完整规格基线19741922b03fc946b1edccbca3bbce85bec91e3f；未合并、未启动产品修复 |
-| Plugin API pin | 43da70e3c241380fff34d0deee8c1142ba39cb47 | 旧writer9色/Aggregate无Search，本轮保持source/generated零变化 |
-| Server固定交付 | G1/G6已交付；其Plugin消费者未接入 | 详细contract/commit/capability验证来源如下表；其余Gate仍独立 |
+| 当前Plugin代码 | main@eed381b | 52b2c9d基础上含API桥接eed381b；PR113已合并于23681e6；01/02实现保留 |
+| 本轮UI工程重校准 | 审计/规格已合并；A/B生产组件未交付 | Figma live + isolated snapshot/Obsidian证据见ui-alignment，第一批A→B→C合同已补齐；PR113经merge 23681e6合入，规格基线19741922b03fc946b1edccbca3bbce85bec91e3f；Codex A/B尚无生产组件commit，C保持阻塞 |
+| Plugin API pin | f3980b1b4126cdfce026c0a94779c8c8261b3997（v0.4.0） | eed381b接入G1/G6；生产/v1/meta实测choicePalette12+aggregateSearch |
+| Server固定交付 | G1/G6已交付；Plugin桥接eed381b已接入 | 详细contract/commit/capability验证来源如下表；其余Gate仍独立 |
 | Time/DateTime、12h、整Table回滚 | Future / API-gated | Avatar/Profile/Cascader/细粒度转换审计Deferred |
 
 审计bundle SHA-256 4f00ca03ecc5c117ea3cb5c9b064415c6a98100f63d73e90e7d89cfb32c93b89。Obsidian1.14.4、合成Vault/loopback内存API；本轮没有修改用户数据或产品源代码。旧336db8c/Server5f4827f是初始规划基线，新Session读取实际HEAD。
@@ -41,8 +41,8 @@
 
 | Gate | Contract approval | Server PR / fixed source / merge | Deployed capability /验证来源 | Plugin PR / pin | State / Next action |
 |---|---|---|---|---|---|
-| G1 12色writer | Approved，固定合同47fc985 | [PR10](https://github.com/Mahjong404/LoomTable-Server/pull/10)；47fc985bd9376dc761469b40fe40dcfd1ceb483e；merge173c2f031dd4acf0957a40afcb07e94125e8305f | Server tracked delivery：v0.3.0+47fc985→后续v0.4.0保choicePalette12，CI/公开Meta/恢复/回滚已验证；本Session未再次请求生产 | 未接入，仍43da70e | Deployed / Capability Verified（Server证据）；未Plugin Integration Ready，先pin/旧新writer/unknown reader，再消费者 |
-| G6 Aggregate Search | Approved，固定合同f3980b1 | [PR11](https://github.com/Mahjong404/LoomTable-Server/pull/11)；f3980b1b4126cdfce026c0a94779c8c8261b3997；mergebf6237b7450af3ff3ca1ba9d0155c19096a352fb | [固定交付证据](https://github.com/Mahjong404/LoomTable-Server/blob/bb00e6ad3d100a6e5e0879d1e8c1fb25ab51bfec/docs/wave1.5/deliveries/g6-aggregate-search.md)：v0.4.0+f3980b1b4126、公开/内部Meta aggregateSearch、CI/隔离DB/恢复验证；本Session只核对tracked交付 | 未接入，仍43da70e | Deployed / Capability Verified（Server证据）；未来固定f398同步/生成/HTTP+InMemory+Controller+stale/capability，不在本轮启用 |
+| G1 12色writer | Approved，固定合同47fc985 | [PR10](https://github.com/Mahjong404/LoomTable-Server/pull/10)；47fc985bd9376dc761469b40fe40dcfd1ceb483e；merge173c2f031dd4acf0957a40afcb07e94125e8305f | Server tracked delivery：v0.3.0+47fc985→后续v0.4.0保choicePalette12，CI/公开Meta/恢复/回滚已验证；本Session实测/v1/meta仍含choicePalette12 | eed381b：pin f3980b1，SelectOptionColor类型同步12色；writer palette仍9色、reader任意字符串保留不变 | Partial Plugin integration；新三色writer启用须检测choicePalette12，归Choice消费者切片，不标07/G1 Done |
+| G6 Aggregate Search | Approved，固定合同f3980b1 | [PR11](https://github.com/Mahjong404/LoomTable-Server/pull/11)；f3980b1b4126cdfce026c0a94779c8c8261b3997；mergebf6237b7450af3ff3ca1ba9d0155c19096a352fb | [固定交付证据](https://github.com/Mahjong404/LoomTable-Server/blob/bb00e6ad3d100a6e5e0879d1e8c1fb25ab51bfec/docs/wave1.5/deliveries/g6-aggregate-search.md)：v0.4.0+f3980b1b4126、公开/内部Meta aggregateSearch、CI/隔离DB/恢复验证；本Session实测/v1/meta仍含aggregateSearch | eed381b：AggregateRequest.search贯穿Client/HTTP/Controller/InMemory；非空Search无capability→footer unavailable；空Search保旧请求形状；token挡过期响应 | Plugin Integration Implemented（1053 tests绿，含Search范围/能力门/迟到响应/五fn跨页null0）；真实Server联调与宿主证据随C验收 |
 | G2 Atomic Choice | 精确合同未交付 | Server工作线后续 | 未验证 | 未接入 | 事务/双CAS/receipt/Queue正式交付前，不两请求伪原子 |
 | G3 View order | 精确合同未交付 | Server工作线后续 | 未验证 | 未接入 | snapshot/orderRevision/CAS/tail独立交付 |
 | G4 Query RowSelection | 精确合同未交付 | Server工作线后续 | 未验证 | 未接入 | 不伪loaded/all-query |
