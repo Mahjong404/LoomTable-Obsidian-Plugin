@@ -2460,6 +2460,9 @@ export class ReadonlyGridRenderer {
     } else if (state.aggregateStatus === 'error') {
       cell.dataset.status = 'error';
       cell.textContent = `${this.#aggregateFnLabel(selected)} ${this.#translate('grid.aggregate.error')}`;
+    } else if (state.aggregateStatus === 'unavailable') {
+      cell.dataset.status = 'unavailable';
+      cell.textContent = `${this.#aggregateFnLabel(selected)} ${this.#translate('grid.aggregate.unavailable')}`;
     } else {
       const value = state.aggregateResults?.[field.id]?.[selected];
       cell.textContent = `${this.#aggregateFnLabel(selected)} ${formatAggregateValue(value)}`;

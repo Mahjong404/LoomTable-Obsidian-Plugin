@@ -1995,7 +1995,7 @@ describe('GridViewController query controls', () => {
     );
 
     const pendingPage = controller.loadNextPage();
-    await controller.setSearch('beta');
+    await controller.setSearch('record');
     resolvePage({
       items: [createRecords(3)[2]!],
       hasMore: false,
@@ -2163,6 +2163,140 @@ describe('GridViewController query controls', () => {
 
     await controller.setSearch('record');
     await vi.waitFor(() => expect(client.aggregateRequests).toHaveLength(2));
+    expect(client.aggregateRequests[1]?.request.search).toBe('record');
+  });
+
+  it('scopes Search aggregates to matching Records across pages', async () => {
+    const records: LoomTableRecord[] = [
+      {
+        id: 'record_01',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'AA 1', field_number: 0 },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_02',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'AA 2', field_number: null },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_03',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'AA 3', field_number: 4 },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_04',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'BB 1', field_number: 10 },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+    ];
+    const client = new InMemoryLoomTableClient(
+      createData(records, createGridConfig(false), [], [createNumberField()]),
+    );
+    const controller = new GridViewController(client, { pageSize: 1 });
+    await controller.load();
+    await controller.setSearch('aa');
+
+    controller.setFieldAggregation('field_name', 'count');
+    await vi.waitFor(() => expect(controller.state.aggregateStatus).toBe('ready'));
+    // Search matched 3 Records — three pages at pageSize 1 — but the
+    // aggregate covers the full Search scope, not the loaded page.
+    expect(client.aggregateRequests.at(-1)?.request.search).toBe('aa');
+    expect(controller.state.aggregateResults?.['field_name']?.['count']).toBe(3);
+
+    controller.setFieldAggregation('field_number', 'count');
+    controller.setFieldAggregation('field_name', undefined);
+    await vi.waitFor(() => expect(client.aggregateRequests).toHaveLength(3));
+    expect(client.aggregateRequests[2]?.request.fieldIds).toEqual(['field_number']);
+    // count ignores null but keeps 0: AA 1 = 0, AA 2 = null, AA 3 = 4.
+    expect(controller.state.aggregateResults?.['field_number']?.['count']).toBe(2);
+
+    const fnValues = { sum: 4, avg: 2, min: 0, max: 4 } as const;
+    for (const fn of ['sum', 'avg', 'min', 'max'] as const) {
+      controller.setFieldAggregation('field_number', fn);
+      await vi.waitFor(() =>
+        expect(controller.state.aggregateResults?.['field_number']?.[fn]).toBe(fnValues[fn]),
+      );
+    }
+  });
+
+  it('marks Search aggregates unavailable when the connection lacks aggregateSearch', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(false)),
+      { capabilities: [] },
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+
+    controller.setFieldAggregation('field_name', 'count');
+    await vi.waitFor(() => expect(controller.state.aggregateStatus).toBe('ready'));
+    expect(client.aggregateRequests).toHaveLength(1);
+
+    await controller.setSearch('record');
+    await vi.waitFor(() => expect(controller.state.aggregateStatus).toBe('unavailable'));
+
+    expect(client.aggregateRequests).toHaveLength(1);
+    expect(controller.state.aggregateResults).toBeNull();
+
+    await controller.setSearch('');
+    await vi.waitFor(() => expect(controller.state.aggregateStatus).toBe('ready'));
+    expect(client.aggregateRequests).toHaveLength(2);
+    expect(client.aggregateRequests[1]?.request).not.toHaveProperty('search');
+  });
+
+  it('keeps the newest Search aggregate when an older response lands late', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(3), createGridConfig(false)),
+    );
+    const pending: Array<{
+      request: { search?: string };
+      resolve: (result: Awaited<ReturnType<typeof client.aggregateRecords>>) => void;
+    }> = [];
+    const source: GridDataSource = {
+      listWorkspaces: () => client.listWorkspaces(),
+      listBases: (workspaceId) => client.listBases(workspaceId),
+      listTables: (baseId) => client.listTables(baseId),
+      listFields: (tableId) => client.listFields(tableId),
+      listViews: (tableId) => client.listViews(tableId),
+      query: (request) => client.query(request),
+      getMeta: () => client.getMeta(),
+      aggregateRecords: (tableId, request) =>
+        new Promise((resolve) => {
+          pending.push({ request, resolve });
+        }),
+    };
+    const controller = new GridViewController(source);
+    await controller.load();
+
+    controller.setFieldAggregation('field_name', 'count');
+    await vi.waitFor(() => expect(pending).toHaveLength(1));
+    await controller.setSearch('record 1');
+    await vi.waitFor(() => expect(pending).toHaveLength(2));
+    await controller.setSearch('record 2');
+    await vi.waitFor(() => expect(pending).toHaveLength(3));
+
+    expect(pending[1]?.request.search).toBe('record 1');
+    expect(pending[2]?.request.search).toBe('record 2');
+
+    const result = (count: number) => ({ results: { field_name: { count } }, changeCursor: 'c' });
+    pending[2]?.resolve(result(1));
+    await vi.waitFor(() => expect(controller.state.aggregateStatus).toBe('ready'));
+    expect(controller.state.aggregateResults?.['field_name']?.['count']).toBe(1);
+
+    pending[1]?.resolve(result(99));
+    await Promise.resolve();
+    expect(controller.state.aggregateResults?.['field_name']?.['count']).toBe(1);
   });
 
   it('stays idle when the source cannot aggregate', async () => {

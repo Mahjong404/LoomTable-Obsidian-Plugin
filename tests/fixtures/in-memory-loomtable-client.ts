@@ -61,11 +61,12 @@ type ViewWriteSource = Pick<
   'getView' | 'createView' | 'updateView' | 'deleteView' | 'restoreView' | 'setDefaultView'
 >;
 
+const IN_MEMORY_CAPABILITIES: readonly string[] = ['aggregateSearch'];
 const IN_MEMORY_META: ServerMeta = {
   serverVersion: 'in-memory',
   apiVersion: 'v1',
   minPluginVersion: '0.0.0',
-  capabilities: [],
+  capabilities: IN_MEMORY_CAPABILITIES,
   changeRetention: '30d',
   idempotencyRetention: '30d',
   migrationRequired: false,
@@ -107,11 +108,17 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
   #fieldSequence = 0;
   #clock = 0;
 
-  constructor(data: InMemoryGridData) {
+  readonly #meta: ServerMeta;
+
+  constructor(data: InMemoryGridData, options: { capabilities?: readonly string[] } = {}) {
     this.#data = data;
     this.#records = [...data.records];
     this.#views = [...data.views];
     this.#fields = [...data.fields];
+    this.#meta = {
+      ...IN_MEMORY_META,
+      capabilities: options.capabilities ?? IN_MEMORY_CAPABILITIES,
+    };
   }
 
   async listWorkspaces(): Promise<readonly Workspace[]> {
@@ -509,8 +516,17 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
   async query(request: QueryRequest): Promise<QueryResult> {
     this.queryRequests.push(request);
     const lifecycle = request.lifecycle ?? 'active';
+    const primaryFieldId =
+      this.#data.tables.find((table) => table.id === request.tableId)?.primaryFieldId ?? '';
     const records = this.#records.filter((record) => {
       if (record.tableId !== request.tableId) return false;
+      if (
+        request.search !== undefined &&
+        request.search !== '' &&
+        !matchesSearchTerm(record, request.search, this.#fields, primaryFieldId)
+      ) {
+        return false;
+      }
       if (lifecycle === 'all') return true;
       return lifecycle === 'deleted'
         ? record.deletedAt !== undefined
@@ -712,8 +728,14 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
 
   async aggregateRecords(tableId: string, request: AggregateRequest): Promise<AggregateResult> {
     this.aggregateRequests.push({ tableId, request });
+    const primaryFieldId =
+      this.#data.tables.find((table) => table.id === tableId)?.primaryFieldId ?? '';
     const active = this.#records.filter(
-      (record) => record.tableId === tableId && record.deletedAt === undefined,
+      (record) =>
+        record.tableId === tableId &&
+        record.deletedAt === undefined &&
+        (request.search === undefined ||
+          matchesSearchTerm(record, request.search, this.#fields, primaryFieldId)),
     );
     const results: Record<string, Record<string, number | string | null>> = {};
     for (const fieldId of request.fieldIds) {
@@ -883,11 +905,11 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
   }
 
   async getMeta(): Promise<ServerMeta> {
-    return IN_MEMORY_META;
+    return this.#meta;
   }
 
   async checkConnection(): Promise<ConnectionCheckResult> {
-    return { kind: 'connected', meta: IN_MEMORY_META };
+    return { kind: 'connected', meta: this.#meta };
   }
 
   async pullChanges(): Promise<ChangePage> {
@@ -1099,6 +1121,30 @@ function aggregateValue(
     return null;
   }
   return null;
+}
+
+// Mirrors the Server contract: contains search over the Primary Field plus
+// Text, LongText, and URL fields; trim + NFC + case-insensitive compare.
+function matchesSearchTerm(
+  record: LoomTableRecord,
+  search: string,
+  fields: readonly Field[],
+  primaryFieldId: string,
+): boolean {
+  const term = search.trim().normalize('NFC').toLowerCase();
+  if (term === '') return true;
+  return fields.some((field) => {
+    if (
+      field.id !== primaryFieldId &&
+      field.type !== 'text' &&
+      field.type !== 'longText' &&
+      field.type !== 'url'
+    ) {
+      return false;
+    }
+    const value = record.values[field.id];
+    return typeof value === 'string' && value.normalize('NFC').toLowerCase().includes(term);
+  });
 }
 
 function unsupported(): LoomTableClientError {

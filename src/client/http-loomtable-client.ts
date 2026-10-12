@@ -510,6 +510,7 @@ export class HttpLoomTableClient implements LoomTableClient {
       fieldIds: [...request.fieldIds],
       fns: [...request.fns],
       ...(request.filter === undefined ? {} : { filter: toTransportFilter(request.filter) }),
+      ...(request.search === undefined ? {} : { search: request.search }),
     };
     const value = await this.#requestJson(
       `/v1/tables/${encodeURIComponent(normalizedTableId)}/records/aggregate`,

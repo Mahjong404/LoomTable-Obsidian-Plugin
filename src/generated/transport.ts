@@ -467,7 +467,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** @description Aggregates active Records matching the optional filter. Each requested Field returns one result object keyed by the requested function names. count is the number of Records with a non-empty value. sum and avg apply to number Fields only and return null otherwise. min and max return numbers for number Fields, YYYY-MM-DD strings for date Fields, and null otherwise. Results share one read-only transaction snapshot with changeCursor. */
+        /** @description Aggregates active Records matching the intersection of the optional filter and search, using the same Search normalization and Record search projection as Record Query. Requires aggregateSearch capability when sending search. Each requested Field returns one result object keyed by the requested function names. count is the number of Records with a non-empty value. sum and avg apply to number Fields only and return null otherwise. min and max return numbers for number Fields, YYYY-MM-DD strings for date Fields, and null otherwise. Results share one read-only transaction snapshot with changeCursor; separate Query and Aggregate requests do not share a pinned snapshot. */
         post: operations["aggregateRecords"];
         delete?: never;
         options?: never;
@@ -659,7 +659,7 @@ export interface components {
             /** @example v1 */
             apiVersion: string;
             minPluginVersion: string;
-            /** @description Enabled server capabilities. P1 may include attachments when the Attachment module and its file volume are available. */
+            /** @description Enabled server capabilities. P1 may include attachments when the Attachment module and its file volume are available. A server that accepts the extended 12-color SelectOptionColor writer declares `choicePalette12`. A server that supports Record Query Search in AggregateRequest declares `aggregateSearch`. */
             capabilities: string[];
             /**
              * @description Change Cursor retention currently enforced by this server.
@@ -1305,7 +1305,7 @@ export interface components {
          * @description Required Server-defined semantic palette token. Clients map the token to their active theme; CSS color values are never stored.
          * @enum {string}
          */
-        SelectOptionColor: "gray" | "red" | "orange" | "yellow" | "green" | "cyan" | "blue" | "purple" | "pink";
+        SelectOptionColor: "gray" | "red" | "orange" | "yellow" | "lime" | "green" | "cyan" | "blue" | "indigo" | "purple" | "pink" | "brown";
         /** @description The Server trims leading/trailing Unicode whitespace, normalizes to NFC, rejects control characters, then enforces 1–100 Unicode code points. Active sibling Option names are unique after locale-neutral Unicode Default Case Folding; deleted Options may share a name with an active Option. */
         SelectOptionName: string;
         /** @description A discriminated P0 View creation request. */
@@ -1563,6 +1563,8 @@ export interface components {
         };
         AggregateRequest: {
             filter?: components["schemas"]["FilterNode"];
+            /** @description Requires aggregateSearch capability. Contains Search over the Primary Field, Text, LongText, and URL fields only, independent of requested aggregate fieldIds or pagination. The Server trims outer Unicode whitespace and applies NFC before enforcing a maximum of 500 Unicode code points; this is not a bound on the raw string length. An empty normalized value means no Search. Comparison then uses locale-neutral Unicode Default Case Folding and remains accent-sensitive, exactly as Record Query. null is not accepted. */
+            search?: string;
             fieldIds: components["schemas"]["FieldId"][];
             fns: ("count" | "sum" | "avg" | "min" | "max")[];
         };

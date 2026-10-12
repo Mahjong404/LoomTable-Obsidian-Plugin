@@ -172,7 +172,7 @@ export interface GridState {
   readonly aggregateResults: Readonly<
     Record<string, Readonly<Record<string, AggregateValue>>>
   > | null;
-  readonly aggregateStatus: 'idle' | 'loading' | 'ready' | 'error';
+  readonly aggregateStatus: 'idle' | 'loading' | 'ready' | 'error' | 'unavailable';
 }
 
 export type RecordDeleteGate = 'ok' | 'draft' | 'pending' | 'offline' | 'unavailable';
@@ -214,6 +214,7 @@ export type GridDataSource = Pick<
       | 'moveRecord'
       | 'queryFieldValues'
       | 'aggregateRecords'
+      | 'getMeta'
     >
   >;
 
@@ -453,6 +454,11 @@ export class GridViewController {
   #requestToken = 0;
   #loadingMoreToken: number | null = null;
   #aggregateToken = 0;
+  // Session-scoped capability cache (G1 §4.4.4): the meta probe runs at most
+  // once per controller — a new connection builds a new controller, while
+  // Table/View switches re-evaluate the gate against the same cache.
+  #aggregateSearchCaps: ReadonlySet<string> | null = null;
+  #aggregateMetaPromise: Promise<ReadonlySet<string> | null> | null = null;
   #searchTerm = '';
   #searchViewId: string | null = null;
 
@@ -974,21 +980,53 @@ export class GridViewController {
     const view = this.#state.views.find((candidate) => candidate.id === this.#state.selectedViewId);
     const filter = view?.type === 'grid' ? view.config.filter : undefined;
     const fns = [...new Set(Object.values(selections))];
+    const search = this.#searchTerm;
     const token = ++this.#aggregateToken;
     this.#publish({ aggregateStatus: 'loading' });
-    void aggregateRecords(tableId, {
-      fieldIds,
-      fns,
-      ...(filter === undefined ? {} : { filter }),
-    })
-      .then((result) => {
+    void (async () => {
+      // G6: a non-empty Search needs the aggregateSearch capability — probe
+      // the connection's Meta once per session; an absent capability (or a
+      // source that cannot answer Meta at all) must surface as unavailable
+      // instead of sending a request the Server would reject.
+      if (search !== '' && !(await this.#supportsAggregateSearch())) {
         if (token !== this.#aggregateToken) return;
-        this.#publish({ aggregateResults: result.results, aggregateStatus: 'ready' });
-      })
-      .catch(() => {
-        if (token !== this.#aggregateToken) return;
-        this.#publish({ aggregateStatus: 'error' });
+        this.#publish({ aggregateResults: null, aggregateStatus: 'unavailable' });
+        return;
+      }
+      const result = await aggregateRecords(tableId, {
+        fieldIds,
+        fns,
+        ...(filter === undefined ? {} : { filter }),
+        ...(search === '' ? {} : { search }),
       });
+      if (token !== this.#aggregateToken) return;
+      this.#publish({ aggregateResults: result.results, aggregateStatus: 'ready' });
+    })().catch(() => {
+      if (token !== this.#aggregateToken) return;
+      this.#publish({ aggregateStatus: 'error' });
+    });
+  }
+
+  /** True when the connection declares `aggregateSearch`; cached per session. */
+  async #supportsAggregateSearch(): Promise<boolean> {
+    const getMeta = this.#client.getMeta?.bind(this.#client);
+    if (getMeta === undefined) return false;
+    if (this.#aggregateSearchCaps !== null) {
+      return this.#aggregateSearchCaps.has('aggregateSearch');
+    }
+    this.#aggregateMetaPromise ??= getMeta()
+      .then((meta) => new Set(meta.capabilities))
+      .catch(() => null);
+    const caps = await this.#aggregateMetaPromise;
+    if (caps === null) {
+      // The Meta probe failed — treat as unavailable rather than error so a
+      // transient Meta failure doesn't misreport the aggregate itself, and
+      // let the next refresh retry the probe.
+      this.#aggregateMetaPromise = null;
+      return false;
+    }
+    this.#aggregateSearchCaps = caps;
+    return caps.has('aggregateSearch');
   }
 
   async restoreRecord(recordId: string): Promise<RecordRestoreOutcome> {
