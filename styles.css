@@ -24,6 +24,7 @@
   --loom-text-warning: var(--text-warning, #8a5a00);
   --loom-text-error: var(--text-error, #b42318);
   --loom-border: var(--background-modifier-border, #dddddd);
+  --loom-border-strong: var(--background-modifier-border-hover, var(--loom-border));
   --loom-accent: var(--interactive-accent, #7c3aed);
   --loom-accent-hover: var(--interactive-accent-hover, var(--interactive-accent, #6d28d9));
   --loom-on-accent: var(--text-on-accent, #ffffff);
@@ -38,8 +39,16 @@
   --loom-focus: var(--interactive-accent, #7c3aed);
   --loom-radius-sm: var(--radius-s, 4px);
   --loom-radius-md: var(--radius-m, 8px);
-  --loom-control-min-height: 2rem;
-  --loom-control-compact-height: 1.75rem;
+  --loom-control-min-height: 32px;
+  --loom-control-compact-height: 28px;
+  --loom-radius-control: 4px;
+  --loom-radius-floating: 6px;
+  --loom-control-icon-size: 14px;
+  --loom-control-font-size: 13px;
+  --loom-control-line-height: 20px;
+  --loom-control-gap: 4px;
+  --loom-control-inline: 8px;
+  --loom-floating-shadow: var(--shadow-s, 0 4px 12px #0000001f);
   --loom-control-padding-block: var(--loom-space-1);
   --loom-control-padding-inline: var(--loom-space-2);
   --loom-map-control-size: 2rem;
@@ -415,7 +424,7 @@
   background: var(--loom-accent-hover);
 }
 
-.loom-grid-toolbar .loom-button,
+.loom-grid-toolbar > .loom-toolbar-group .loom-button,
 .loom-map-toolbar .loom-button {
   min-height: var(--loom-control-compact-height);
   padding-block: 0;
@@ -435,7 +444,7 @@
   color: var(--loom-text-muted);
 }
 
-.loom-grid-toolbar .loom-button:hover:not(:disabled),
+.loom-grid-toolbar > .loom-toolbar-group .loom-button:hover:not(:disabled),
 .loom-table-shell .loom-shell-action:hover:not(:disabled),
 .loom-map-toolbar .loom-button:hover:not(:disabled) {
   background: var(--loom-bg-hover);
@@ -445,13 +454,13 @@
 /* An expanded control is open, not "active": it takes the neutral open
    background; real active conditions use their own observable state. */
 .loom-table-shell .loom-shell-action[aria-expanded='true'],
-.loom-grid-toolbar .loom-button[aria-expanded='true'],
+.loom-grid-toolbar > .loom-toolbar-group .loom-button[aria-expanded='true'],
 .loom-map-toolbar .loom-button[aria-expanded='true'] {
   background: var(--loom-bg-hover);
   color: var(--loom-text-normal);
 }
 
-.loom-grid-toolbar .loom-button.loom-grid-record-create,
+.loom-grid-toolbar > .loom-toolbar-group .loom-button.loom-grid-record-create:not(.loom-control),
 .loom-map-toolbar .loom-button.loom-map-record-create {
   border-color: transparent;
   background: var(--loom-accent);
@@ -459,7 +468,9 @@
   font-weight: var(--loom-font-semibold);
 }
 
-.loom-grid-toolbar .loom-button.loom-grid-record-create:hover:not(:disabled),
+.loom-grid-toolbar
+  > .loom-toolbar-group
+  .loom-button.loom-grid-record-create:not(.loom-control):hover:not(:disabled),
 .loom-map-toolbar .loom-button.loom-map-record-create:hover:not(:disabled) {
   background: var(--loom-accent-hover);
   color: var(--loom-on-accent);
@@ -649,6 +660,10 @@
 
 .loom-context-menu-check svg {
   stroke-width: 1.75;
+}
+
+.loom-context-menu-check svg path {
+  vector-effect: non-scaling-stroke;
 }
 
 .loom-view-intents {
@@ -1003,15 +1018,10 @@
   flex-basis: 100%;
 }
 
-.loom-grid-toolbar .loom-grid-query-toggle[data-active='true'] {
-  border-color: var(--loom-text-accent);
-  color: var(--loom-text-accent);
-}
-
 .loom-grid-query-count {
-  margin-inline-start: var(--loom-space-1);
-  color: var(--loom-text-muted);
-  font-size: var(--loom-font-ui-smaller);
+  color: var(--loom-text-accent);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .loom-grid-header-cell:hover {
@@ -2741,7 +2751,7 @@
     margin-inline-start: 0;
   }
 
-  .loom-grid-toolbar .loom-button,
+  .loom-grid-toolbar > .loom-toolbar-group .loom-button,
   .loom-table-shell .loom-button,
   .loom-map-toolbar .loom-button {
     flex: 1 1 auto;
@@ -2912,29 +2922,34 @@
 .loom-context-menu {
   position: fixed;
   z-index: 60;
-  min-width: 10rem;
-  padding: var(--loom-space-1);
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 4px;
   overflow-y: auto;
-  border: 1px solid var(--loom-grid-line-strong);
-  border-radius: var(--loom-radius-md);
+  border: 1px solid var(--loom-border-strong);
+  border-radius: var(--loom-radius-floating);
   background: var(--loom-bg-primary);
-  box-shadow: var(--loom-map-control-shadow, var(--shadow-s));
+  box-shadow: var(--loom-floating-shadow);
 }
 
 .loom-context-menu-item {
   display: flex;
   align-items: center;
-  gap: var(--loom-space-2);
+  gap: var(--loom-control-inline);
   width: 100%;
+  height: var(--loom-control-compact-height);
   min-height: var(--loom-control-compact-height);
+  box-sizing: border-box;
   margin: 0;
-  padding: 0 var(--loom-space-2);
+  padding: 0 var(--loom-control-inline);
   border: none;
-  border-radius: var(--loom-radius-sm);
+  border-radius: var(--loom-radius-control);
   background: transparent;
   box-shadow: none;
   color: var(--loom-text-normal);
-  font-size: var(--loom-font-ui-smaller);
+  font-size: var(--loom-control-font-size);
+  font-weight: 400;
+  line-height: var(--loom-control-line-height);
   text-align: start;
   cursor: pointer;
 }
@@ -3221,9 +3236,7 @@
 }
 
 .loom-field-editor-submit {
-  min-height: var(--loom-control-min-height);
-  border-radius: var(--loom-radius-md);
-  font-size: var(--loom-font-ui-smaller);
+  width: 100%;
 }
 
 .loom-field-editor-submit[aria-busy='true'] {
@@ -3354,8 +3367,161 @@
 
 .loom-context-menu-separator {
   height: 1px;
-  margin: var(--loom-space-1) var(--loom-space-2);
+  margin: 0;
   background: color-mix(in srgb, var(--loom-border) 30%, transparent);
+}
+
+/* Production Native DOM controls. Explicit role/size beats host button chrome
+   and legacy consumer selectors without styling nested domain controls. */
+:is(.loom-root, .loom-portal) .loom-control[data-size] {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--loom-control-gap);
+  box-sizing: border-box;
+  height: var(--loom-control-min-height);
+  min-height: var(--loom-control-min-height);
+  max-width: 100%;
+  margin: 0;
+  padding: 0 var(--loom-control-inline);
+  border: 0;
+  border-radius: var(--loom-radius-control);
+  background: var(--loom-control-bg);
+  box-shadow: inset 0 0 0 1px var(--loom-border);
+  color: var(--loom-text-normal);
+  font-family: var(--loom-font-body);
+  font-size: var(--loom-control-font-size);
+  font-weight: 400;
+  line-height: var(--loom-control-line-height);
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+:is(.loom-root, .loom-portal) .loom-control[data-size='compact'] {
+  height: var(--loom-control-compact-height);
+  min-height: var(--loom-control-compact-height);
+}
+
+:is(.loom-root, .loom-portal) .loom-control[data-variant='quiet'],
+:is(.loom-root, .loom-portal) .loom-control[data-variant='danger'] {
+  background: transparent;
+  box-shadow: none;
+}
+
+:is(.loom-root, .loom-portal) .loom-control[data-variant='danger'] {
+  color: var(--loom-text-error);
+}
+
+:is(.loom-root, .loom-portal) .loom-control[data-variant='primary'] {
+  background: var(--loom-accent);
+  color: var(--loom-on-accent);
+  box-shadow: none;
+}
+
+:is(.loom-root, .loom-portal) .loom-control[data-size]:hover:not(:disabled) {
+  background: var(--loom-control-hover);
+}
+
+:is(.loom-root, .loom-portal) .loom-control[data-size]:active:not(:disabled) {
+  background: var(--loom-bg-hover);
+}
+
+:is(.loom-root, .loom-portal)
+  .loom-control[data-variant='primary']:is(:hover, :active):not(:disabled) {
+  background: var(--loom-accent-hover);
+  color: var(--loom-on-accent);
+}
+
+:is(.loom-root, .loom-portal) .loom-control[data-size]:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+:is(.loom-root, .loom-portal) .loom-control[data-size][aria-busy='true'] {
+  opacity: 1;
+}
+
+.loom-control .loom-button-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.loom-control :is(.loom-control-leading, .loom-control-trailing, .loom-control-loading),
+.loom-control .loom-ui-icon,
+.loom-context-menu-item > .loom-ui-icon {
+  display: inline-flex;
+  flex: 0 0 var(--loom-control-icon-size);
+  align-items: center;
+  justify-content: center;
+  width: var(--loom-control-icon-size);
+  height: var(--loom-control-icon-size);
+  margin: 0;
+}
+
+.loom-control [hidden],
+.loom-control .loom-ui-icon svg,
+.loom-context-menu-item > .loom-ui-icon svg {
+  width: var(--loom-control-icon-size);
+  height: var(--loom-control-icon-size);
+}
+
+.loom-control [hidden] {
+  display: none;
+}
+
+.loom-control-loading[data-busy='false'] {
+  visibility: hidden;
+}
+
+/* Figma Loading indicator is independent of the content's 4px icon gap. */
+.loom-control .loom-control-loading {
+  margin-inline-start: var(--loom-control-gap);
+}
+
+.loom-control-loading[data-busy='true'] svg {
+  animation: loom-control-spin 900ms linear infinite;
+}
+
+@keyframes loom-control-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+:is(.loom-root, .loom-portal) .loom-grid-query-toggle[data-size][aria-expanded='true'] {
+  border: 1px solid var(--loom-border);
+  background: var(--loom-bg-hover);
+  box-shadow: none;
+}
+
+.loom-grid-query-toggle .loom-control-trailing {
+  transform: rotate(180deg);
+}
+
+.loom-grid-query-toggle .loom-grid-query-count {
+  flex: 0 0 auto;
+  font-weight: 400;
+}
+
+.loom-context-menu-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.loom-context-menu-item[data-selected='true'] .loom-context-menu-label,
+.loom-context-menu-item[data-selected='true'] .loom-context-menu-check {
+  color: var(--loom-text-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loom-control-loading[data-busy='true'] svg {
+    animation: none;
+  }
 }
 
 /* Shared add affordance — the bottom `+` (records) and the header `+`
@@ -3715,8 +3881,8 @@
 
 /* Tablet: icon-only toolbar labels (aria-labels remain for a11y) */
 @container loom (max-width: 1100px) {
-  .loom-grid-toolbar .loom-button > span:not([class]),
-  .loom-grid-toolbar .loom-button-label,
+  .loom-grid-toolbar > .loom-toolbar-group .loom-button > span:not([class]),
+  .loom-grid-toolbar > .loom-toolbar-group .loom-button-label,
   .loom-table-shell .loom-button > span:not([class]),
   .loom-table-shell .loom-button-label {
     display: none;

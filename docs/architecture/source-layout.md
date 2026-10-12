@@ -35,3 +35,5 @@ New source directories should represent a durable responsibility or seam, not a 
 ## Wave 1.5 editor integration
 
 Field/product editor ownership and lifecycle constraints are defined in [field-editor-lifecycle.md](./field-editor-lifecycle.md). Scope, proposed new modules, tasks and API gates are tracked in [Wave 1.5](../wave1.5/README.md). Update the source tree above only when a module actually exists; UI consumers continue to use the existing Client/Controller/Queue seams.
+
+`ui/loom-button.ts` exports the production Native DOM control factory; `ui/toolbar-toggle.ts` composes it for controlled Open/Active/count presentation. Renderer Toolbar/Create and Field Submit consume these modules. Their API and disposal boundaries are documented in [Loom UI](../ui/loom-ui.md). `tests/gallery/control-showcase.ts` mounts the same factories for Gallery and the development-only `docs/.vitepress/` Vue adapter; neither documentation entry is imported by the Plugin runtime.

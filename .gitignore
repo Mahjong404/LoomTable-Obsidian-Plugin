@@ -24,6 +24,7 @@ coverage/
 .parcel-cache/
 .vite/
 .vite-temp/
+docs/.vitepress/cache/
 
 # Local Obsidian state and test vaults
 .obsidian/

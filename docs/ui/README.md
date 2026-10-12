@@ -4,12 +4,12 @@
 
 ## 文档职责
 
-| 文档 | 职责 | 不定义 |
-|---|---|---|
+| 文档                                       | 职责                                                                                                  | 不定义                     |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------- |
 | [interaction-hig.md](./interaction-hig.md) | 全局交互规范：设计优先级、状态语义、键盘/焦点、浮层、保存/错误/离线、容器响应式、可访问性、文案、验收 | 具体组件视觉细节、CSS 组织 |
-| [design-system.md](./design-system.md) | 视觉与样式体系：视觉基调、Token、CSS 层次、控件分工、图标分层、命名空间、状态表达、依赖策略 | 交互行为与状态机 |
-| [grid-spec.md](./grid-spec.md) | Grid 特性规范：性能与虚拟化、选择/编辑/剪贴板、查询与分页、列与行操作、Grid 状态 | 通用交互规则（引用 HIG） |
-| [map-spec.md](./map-spec.md) | Map 特性规范：配置边界、Provider/Renderer/Geocoding、Camera、Attribution、失败行为 | 通用交互规则（引用 HIG） |
+| [design-system.md](./design-system.md)     | 视觉与样式体系：视觉基调、Token、CSS 层次、控件分工、图标分层、命名空间、状态表达、依赖策略           | 交互行为与状态机           |
+| [grid-spec.md](./grid-spec.md)             | Grid 特性规范：性能与虚拟化、选择/编辑/剪贴板、查询与分页、列与行操作、Grid 状态                      | 通用交互规则（引用 HIG）   |
+| [map-spec.md](./map-spec.md)               | Map 特性规范：配置边界、Provider/Renderer/Geocoding、Camera、Attribution、失败行为                    | 通用交互规则（引用 HIG）   |
 
 View 生命周期、记录生命周期等 P1.5 实现规范在 [docs/p1.5/](../p1.5/README.md)；它们是与正式规范同级的实现级合同，不比本目录更通用。
 
@@ -64,3 +64,5 @@ docs/ui/                    = 产品设计知识（规范说什么）
 外部视觉比较原件统一保存在 `docs/local/ui-research/`，本目录只保留正式规范。历史日志中的研究路径不构成当前规范入口。
 
 本轮具体设计到代码差异、固定Golden条件与任务入口见 [Wave UI 对齐](../wave1.5/ui-alignment.md)；它记录证据与执行路由，不建立新的DS/HIG或状态表。
+
+已有生产导出、两处实际消费者、mount/update/dispose与Devin复用边界见 [Loom UI 接口](loom-ui.md)。它记录实现接缝，不另建视觉或业务规范。

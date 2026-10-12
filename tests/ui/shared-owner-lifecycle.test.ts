@@ -104,6 +104,25 @@ afterEach(async () => {
 });
 
 describe('shared owner lifecycle', () => {
+  it('updates the real Toolbar count from valid draft without applying invalid input', async () => {
+    const { view, write } = await mountView();
+    const button = view.contentEl.querySelector<HTMLButtonElement>(
+      '[data-action="toggle-filter"]',
+    )!;
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(button.querySelector('.loom-grid-query-count')?.textContent).toBe('1');
+    edit(view, '');
+    expect(button.dataset.active).toBe('false');
+    expect(button.querySelector<HTMLElement>('.loom-grid-query-count')?.hidden).toBe(true);
+    expect(button.getAttribute('aria-label')).toBe('Filter');
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(write).not.toHaveBeenCalled();
+    edit(view, 'valid');
+    expect(button.dataset.active).toBe('true');
+    expect(button.querySelector('.loom-grid-query-count')?.textContent).toBe('1');
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    await view.onClose();
+  });
   it('closes menu → trigger → outside and leaves outside Arrow focus alone', () => {
     const owner = host();
     const trigger = document.createElement('button');

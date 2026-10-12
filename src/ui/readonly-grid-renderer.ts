@@ -31,6 +31,8 @@ import { createFieldTypeIcon } from './field-type-icon';
 import { createUiIcon, type UiIconName } from './icons';
 import { jsonEqual } from './json-equal';
 import { FilterBuilder } from './filter-builder';
+import { createLoomButton, type LoomButtonHandle } from './loom-button';
+import { createToolbarToggle, type ToolbarToggleHandle } from './toolbar-toggle';
 import { openFieldEditor, type FieldEditorSubmit } from './field-editor-panel';
 import { openFieldConverter } from './field-convert-panel';
 import { openNumberFormatPanel } from './number-format-panel';
@@ -394,6 +396,8 @@ export class ReadonlyGridRenderer {
   #disposed = false;
   #cancelScrollPaint: (() => void) | null = null;
   #cancelColumnResize: (() => void) | null = null;
+  #toolbarControls: Array<LoomButtonHandle | ToolbarToggleHandle> = [];
+  #filterToggle: ToolbarToggleHandle | null = null;
   #cancelPanelMeasure: (() => void) | null = null;
   #draftCreateValues: Record<string, MutationValue> | null = null;
   #draftRowEl: HTMLElement | null = null;
@@ -696,6 +700,9 @@ export class ReadonlyGridRenderer {
   }
 
   #renderToolbar(state: GridState): HTMLElement {
+    for (const control of this.#toolbarControls) control.dispose();
+    this.#toolbarControls = [];
+    this.#filterToggle = null;
     const toolbar = createElement('div', 'loom-grid-toolbar');
     toolbar.setAttribute('role', 'toolbar');
     labelContainer(toolbar, this.#translate('grid.status'));
@@ -703,11 +710,18 @@ export class ReadonlyGridRenderer {
     const end = createElement('div', 'loom-toolbar-group loom-toolbar-end');
     const gridView = selectedGridView(state);
     if (this.#callbacks.onCreateRecord !== undefined && state.selectedTableId !== null) {
-      const createButton = createElement('button', 'loom-button loom-grid-record-create');
-      createButton.type = 'button';
+      const createControl = createLoomButton({
+        label: this.#translate('record.create.add'),
+        leadingIcon: 'tool-create',
+        size: 'compact',
+        variant: 'primary',
+        disabled: state.status === 'offline',
+        onActivate: () => this.#beginDraftCreate(),
+      });
+      this.#toolbarControls.push(createControl);
+      const createButton = createControl.element;
+      createButton.classList.add('loom-grid-record-create');
       createButton.dataset.action = 'create-record';
-      createButton.append(createUiIcon('tool-create'));
-      createButton.append(createTextElement('span', this.#translate('record.create.add')));
       // Only unfinished ops count as pending; an applied op keeps its "open the
       // new record" affordance in the ops list but is already done.
       const pendingCreates = state.recordCreateOps.filter(
@@ -722,7 +736,6 @@ export class ReadonlyGridRenderer {
         createButton.append(count);
       }
       createButton.disabled = state.status === 'offline';
-      createButton.addEventListener('click', () => this.#beginDraftCreate());
       start.append(createButton);
     }
     let searchControls: HTMLElement | null = null;
@@ -845,9 +858,7 @@ export class ReadonlyGridRenderer {
     const hiddenItems = items.filter((item) => item.hidden);
     if (hiddenItems.length === 0) return;
     overflowButton.hidden = false;
-    const activeCount = hiddenItems.filter(
-      (item) => item.querySelector('.loom-grid-query-count') !== null,
-    ).length;
+    const activeCount = hiddenItems.filter((item) => item.dataset.active === 'true').length;
     let badge = overflowButton.querySelector<HTMLElement>('.loom-grid-query-count');
     if (activeCount === 0) {
       badge?.remove();
@@ -1019,7 +1030,11 @@ export class ReadonlyGridRenderer {
       const button = this.#toggleButton(
         'filter',
         this.#translate('grid.filter'),
-        view.config.filter === undefined ? 0 : countFilterRules(view.config.filter),
+        this.#openPanel === 'filter' && this.#filterBuilder !== null
+          ? this.#filterBuilder.getValidRuleCount()
+          : view.config.filter === undefined
+            ? 0
+            : countFilterRules(view.config.filter),
         'grid.filter.active',
         'tool-filter',
       );
@@ -1065,42 +1080,36 @@ export class ReadonlyGridRenderer {
     icon?: UiIconName,
     overflowable = false,
   ): HTMLButtonElement {
-    const button = createElement('button', 'loom-button loom-grid-query-toggle');
-    button.type = 'button';
+    const control = createToolbarToggle({
+      label,
+      count: activeCount,
+      open: this.#openPanel === panel,
+      accessibleLabel:
+        activeCount > 0
+          ? `${label}, ${this.#translate(activeKey).replace('{count}', String(activeCount))}`
+          : label,
+      ...(icon === undefined ? {} : { icon }),
+      onActivate: () => {
+        const opening = this.#openPanel !== panel;
+        this.#openPanel = null;
+        this.#releaseQueryOwners('user-close');
+        if (opening) this.#dismissOverlay();
+        this.#openPanel = opening ? panel : null;
+        this.#rerenderSelf();
+        const selector = opening
+          ? '.loom-query-panel select, .loom-query-panel input, .loom-query-panel button'
+          : `[data-action="toggle-${panel}"]`;
+        this.#container.querySelector<HTMLElement>(selector)?.focus();
+      },
+    });
+    this.#toolbarControls.push(control);
+    if (panel === 'filter') this.#filterToggle = control;
+    const button = control.element;
     button.dataset.action = `toggle-${panel}`;
     if (overflowable) {
       button.dataset.overflow = panel;
       button.dataset.overflowLabel = label;
     }
-    // The button expands an inline panel — aria-pressed would misreport a
-    // persisted toggle state; the active condition is a separate observable.
-    button.setAttribute('aria-expanded', this.#openPanel === panel ? 'true' : 'false');
-    button.dataset.active = activeCount > 0 ? 'true' : 'false';
-    if (icon !== undefined) button.append(createUiIcon(icon));
-    const labelSpan = createTextElement('span', label);
-    button.append(labelSpan);
-    if (activeCount > 0) {
-      const count = createElement('span', 'loom-grid-query-count');
-      count.textContent = this.#translate(activeKey).replace('{count}', String(activeCount));
-      button.append(count);
-    }
-    button.addEventListener('click', () => {
-      const opening = this.#openPanel !== panel;
-      this.#openPanel = null;
-      this.#releaseQueryOwners('user-close');
-      if (opening) this.#dismissOverlay();
-      this.#openPanel = opening ? panel : null;
-      this.#rerenderSelf();
-      if (opening) {
-        this.#container
-          .querySelector<HTMLElement>(
-            '.loom-query-panel select, .loom-query-panel input, .loom-query-panel button',
-          )
-          ?.focus();
-      } else {
-        this.#container.querySelector<HTMLElement>(`[data-action="toggle-${panel}"]`)?.focus();
-      }
-    });
     return button;
   }
 
@@ -1145,6 +1154,14 @@ export class ReadonlyGridRenderer {
           onApply: (filter) => onApplyFilter(view.id, filter),
           onInvalidate: () => this.#rerenderSelf(),
           host: this.#container,
+          onDraftCount: (count) =>
+            this.#filterToggle?.update({
+              count,
+              accessibleLabel:
+                count > 0
+                  ? `${this.#translate('grid.filter')}, ${this.#translate('grid.filter.active').replace('{count}', String(count))}`
+                  : this.#translate('grid.filter'),
+            }),
           ...(onQueryFieldValues === undefined
             ? {}
             : {
@@ -1230,6 +1247,9 @@ export class ReadonlyGridRenderer {
     this.#container.removeEventListener('keydown', this.#onPanelKeyDown);
     this.#toolbarObserver?.disconnect();
     this.#toolbarObserver = null;
+    for (const control of this.#toolbarControls) control.dispose();
+    this.#toolbarControls = [];
+    this.#filterToggle = null;
     this.#cancelScrollPaint?.();
     this.#cancelScrollPaint = null;
     this.#cancelColumnResize?.();

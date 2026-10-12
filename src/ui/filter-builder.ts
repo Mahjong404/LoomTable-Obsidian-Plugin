@@ -37,6 +37,7 @@ export interface FilterBuilderOptions {
   readonly translate: Translator;
   readonly onApply: (filter: FilterNode | undefined) => void | Promise<unknown>;
   readonly onInvalidate?: () => void;
+  readonly onDraftCount?: (count: number) => void;
   readonly host?: HTMLElement;
   readonly loadFieldValues?: (
     fieldId: string,
@@ -82,6 +83,7 @@ export class FilterBuilder {
   readonly #translate: Translator;
   readonly #onApply: FilterBuilderOptions['onApply'];
   readonly #onInvalidate: (() => void) | undefined;
+  readonly #onDraftCount: FilterBuilderOptions['onDraftCount'];
   readonly #host: HTMLElement | undefined;
   readonly #loadFieldValues: FilterBuilderOptions['loadFieldValues'];
   #applied: FilterNode | undefined;
@@ -119,6 +121,7 @@ export class FilterBuilder {
     this.#translate = options.translate;
     this.#onApply = options.onApply;
     this.#onInvalidate = options.onInvalidate;
+    this.#onDraftCount = options.onDraftCount;
     this.#host = options.host;
     this.#loadFieldValues = options.loadFieldValues;
     const seedTouched = (node: FilterNode | undefined): void => {
@@ -177,6 +180,7 @@ export class FilterBuilder {
 
   render(): HTMLElement {
     if (this.#root === null) this.#root = this.#build();
+    if (!this.#disposed) this.#onDraftCount?.(this.getValidRuleCount());
     return this.#root;
   }
 
@@ -184,6 +188,18 @@ export class FilterBuilder {
       is in flight — the host must not rebuild the panel in that window. */
   hasPendingEdits(): boolean {
     return this.#applyTimer !== null || this.#applying || this.#draft !== this.#applied;
+  }
+
+  getValidRuleCount(): number {
+    const count = (node: FilterNode | undefined): number =>
+      node === undefined
+        ? 0
+        : node.kind === 'group'
+          ? node.children.reduce((sum, child) => sum + count(child), 0)
+          : validateFilterDraft(node, this.#fields).length === 0
+            ? 1
+            : 0;
+    return count(this.#draft);
   }
 
   /** True when the draft already matches the persisted config slice. */
@@ -775,6 +791,7 @@ export class FilterBuilder {
 
   #scheduleApply(): void {
     if (this.#disposed) return;
+    this.#onDraftCount?.(this.getValidRuleCount());
     if (this.#applyTimer !== null) window.clearTimeout(this.#applyTimer);
     this.#applyTimer = window.setTimeout(() => {
       this.#applyTimer = null;
@@ -830,6 +847,7 @@ export class FilterBuilder {
 
   #rerender(): void {
     if (this.#disposed) return;
+    this.#onDraftCount?.(this.getValidRuleCount());
     const focus = captureQueryControlFocus(this.#root);
     const next = this.#build();
     if (this.#root?.isConnected === true) {
