@@ -94,6 +94,52 @@ function edit(view: LoomTableView, value: string): void {
   input.value = value;
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
+
+function expectFilterCount(view: LoomTableView, open: boolean, count: number): void {
+  const button = view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!;
+  expect(button.getAttribute('aria-expanded')).toBe(String(open));
+  expect(button.dataset.active).toBe(String(count > 0));
+  expect(button.querySelector('.loom-grid-query-count')?.textContent).toBe(
+    count > 0 ? String(count) : '',
+  );
+  expect(button.getAttribute('aria-label')).toBe(
+    count > 0 ? `Filter, ${count} conditions` : 'Filter',
+  );
+}
+
+// Observe even a transient accessible-label overwrite before a later render
+// replaces the button. Final DOM alone can hide the closed draft publication.
+function closedFilterLabels(): string[] {
+  const labels: string[] = [];
+  // The spy supplies the original Element receiver via .call below.
+  // eslint-disable-next-line @typescript-eslint/unbound-method -- Original receiver is supplied with .call.
+  const original = Element.prototype.setAttribute;
+  vi.spyOn(Element.prototype, 'setAttribute').mockImplementation(function (
+    this: Element,
+    name,
+    value,
+  ) {
+    if (
+      this instanceof HTMLButtonElement &&
+      this.isConnected &&
+      this.dataset.action === 'toggle-filter' &&
+      this.getAttribute('aria-expanded') === 'false' &&
+      name === 'aria-label'
+    )
+      labels.push(value);
+    original.call(this, name, value);
+  });
+  return labels;
+}
+
+function addValidRule(view: LoomTableView): void {
+  view.contentEl.querySelector<HTMLButtonElement>('[data-action="filter-add-rule"]')!.click();
+  const input = [
+    ...view.contentEl.querySelectorAll<HTMLInputElement>('[data-role="filter-value"]'),
+  ].at(-1)!;
+  input.value = 'new';
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
 afterEach(async () => {
   for (const view of views.splice(0)) await view.onClose();
   for (const release of releases.splice(0)) release();
@@ -104,6 +150,162 @@ afterEach(async () => {
 });
 
 describe('shared owner lifecycle', () => {
+  it('keeps a failed closed Apply count authoritative and restores its draft on reopen', async () => {
+    const { view, client, write } = await mountView();
+    let reject!: (reason: Error) => void;
+    write.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    const labels = closedFilterLabels();
+    vi.useFakeTimers();
+    addValidRule(view);
+    expectFilterCount(view, true, 2);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    expectFilterCount(view, false, 1);
+    await vi.advanceTimersByTimeAsync(0);
+    reject(new LoomTableClientError('forbidden', { message: 'Synthetic rejection' }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(labels).toEqual([]);
+    expectFilterCount(view, false, 1);
+    expect((await client.getView('view_grid')).revision).toBe(1);
+    expect(write).toHaveBeenCalledTimes(1);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    expectFilterCount(view, true, 2);
+    expect(view.contentEl.querySelectorAll('[data-role="filter-value"]')).toHaveLength(2);
+  });
+
+  it('keeps a failed closed Clear active and preserves the cleared recovery draft', async () => {
+    const { view, client, write } = await mountView();
+    let reject!: (reason: Error) => void;
+    write.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    const labels = closedFilterLabels();
+    vi.useFakeTimers();
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="filter-clear"]')!.click();
+    expectFilterCount(view, true, 0);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    expectFilterCount(view, false, 1);
+    await vi.advanceTimersByTimeAsync(0);
+    reject(new LoomTableClientError('forbidden', { message: 'Synthetic rejection' }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(labels).toEqual([]);
+    expectFilterCount(view, false, 1);
+    expect((await client.getView('view_grid')).revision).toBe(1);
+    expect(write).toHaveBeenCalledTimes(1);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    expectFilterCount(view, true, 0);
+  });
+
+  it('refreshes a successful closed Apply from Controller state without a late draft publication', async () => {
+    const { view, client, write } = await mountView();
+    let finish!: () => void;
+    write.mockImplementationOnce(
+      (...args) =>
+        new Promise((resolve) => {
+          finish = () => {
+            void InMemoryLoomTableClient.prototype.updateView.call(client, ...args).then(resolve);
+          };
+        }),
+    );
+    const labels = closedFilterLabels();
+    vi.useFakeTimers();
+    addValidRule(view);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    expectFilterCount(view, false, 1);
+    await vi.advanceTimersByTimeAsync(0);
+    finish();
+    await vi.advanceTimersByTimeAsync(1000);
+    expectFilterCount(view, false, 2);
+    expect(labels).toEqual([]);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect((await client.getView('view_grid')).revision).toBe(2);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    expectFilterCount(view, true, 2);
+  });
+
+  it('ignores a retained Builder callback while closed but accepts the same owner on reopen', async () => {
+    const render = vi.spyOn(FilterBuilder.prototype, 'render');
+    const { view, write } = await mountView();
+    const builder = render.mock.contexts.find((context) => context instanceof FilterBuilder)!;
+    vi.useFakeTimers();
+    edit(view, ''); // Invalid local draft: zero valid rules, no write.
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    const labels = closedFilterLabels();
+    builder.render();
+    expect(labels).toEqual([]);
+    expectFilterCount(view, false, 1);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    expectFilterCount(view, true, 0);
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('removes closed Active state only after a successful Clear is committed', async () => {
+    const { view, client, write } = await mountView();
+    let finish!: () => void;
+    write.mockImplementationOnce(
+      (...args) =>
+        new Promise((resolve) => {
+          finish = () => {
+            void InMemoryLoomTableClient.prototype.updateView.call(client, ...args).then(resolve);
+          };
+        }),
+    );
+    vi.useFakeTimers();
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="filter-clear"]')!.click();
+    expectFilterCount(view, true, 0);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    expectFilterCount(view, false, 1);
+    await vi.advanceTimersByTimeAsync(0);
+    finish();
+    await vi.advanceTimersByTimeAsync(1000);
+    expectFilterCount(view, false, 0);
+    const saved = await client.getView('view_grid');
+    expect(saved.type === 'grid' && saved.config.filter).toBeUndefined();
+    expect(write).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not publish old Builder counts after View switch and return', async () => {
+    const render = vi.spyOn(FilterBuilder.prototype, 'render');
+    const { view, client, write } = await mountView();
+    const builder = render.mock.contexts.find((context) => context instanceof FilterBuilder)!;
+    let reject!: (reason: Error) => void;
+    write.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    vi.useFakeTimers();
+    addValidRule(view);
+    await vi.advanceTimersByTimeAsync(301);
+    const map = [...view.contentEl.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) =>
+      b.textContent?.includes('Map'),
+    )!;
+    map.click();
+    await vi.advanceTimersByTimeAsync(300);
+    const grid = [...view.contentEl.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) =>
+      b.textContent?.includes('Grid'),
+    )!;
+    grid.click();
+    await vi.advanceTimersByTimeAsync(300);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    expectFilterCount(view, true, 1);
+    reject(new LoomTableClientError('forbidden', { message: 'Synthetic rejection' }));
+    await vi.advanceTimersByTimeAsync(1000);
+    builder.render();
+    expectFilterCount(view, true, 1);
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(write.mock.calls[0]?.[0]).toBe('view_grid');
+    expect((await client.getView('view_grid')).revision).toBe(1);
+  });
+
   it('updates the real Toolbar count from valid draft without applying invalid input', async () => {
     const { view, write } = await mountView();
     const button = view.contentEl.querySelector<HTMLButtonElement>(

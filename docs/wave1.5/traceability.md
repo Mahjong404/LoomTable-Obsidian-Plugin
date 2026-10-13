@@ -157,6 +157,8 @@ G05/G06/G13的A实现接缝见`src/ui/context-menu.ts`、`field-editor-panel.ts`
 
 G03/04/05/06的B生产接缝现为`src/ui/loom-button.ts:createLoomButton`、`toolbar-toggle.ts:createToolbarToggle`、Renderer Toolbar/Create、Field Submit与既有ContextMenu。接口/使用/限制见[生产API](../ui/loom-ui.md)；`loom-controls.test.ts`覆盖action所有权、busy/disabled恢复、controlled状态、Field失败重试和portal主题更新；`shared-owner-lifecycle.test.ts`补真实Controller路径的valid draft计数。Gallery与VitePress挂载同一`tests/gallery/control-showcase.ts`，生产入口不含站点框架。当前量尺结论见[矩阵B证据](ui-alignment.md#b-生产收敛证据2026-10-13)，状态/SHA/限制仍只在status。G04 TableShell/Tab、G13领域布局及完整Grid Golden仍待C/后续切片，不据此标全组完成。
 
+B最终计数边界由Renderer拥有：仅当前open Builder发布draft；closed从已提交View读取。`shared-owner-lifecycle.test.ts`新增六项覆盖Apply/Clear失败恢复与成功提交、closed retained callback、旧View/Renderer迟到响应；观测公开aria-label的瞬态发布，防止后续重绘掩盖错误。FilterBuilder/Controller/Queue合同不变，见[PR115审查关闭项](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/115#discussion_r4251850229)。
+
 G02–06/A01–04/A17→01 A/B；G08/G19–24/A09–13→05/09代表性C；G13/A05–06→02视觉续段；G14/A07→03；G15/A08→04；G07/G12/A14→07；G35–36/A15→10/11；Record/Map整页未获完整新authority，只验既有基线及明确consumer接缝。G37–39及Deferred保持原边界，不列当前遗漏。
 
 01/02已有功能/remediation不等于所有视觉组完成；cross-pane ownership和pending draft锁的正确实现保留。新增4个定向失败与真实Grip/Map/Palette证据进入首批A，不把已解决的02旧问题再计为新问题。Showcase factory、生产消费者、Figma/Host证据与fixedSHA须同PR追踪；视觉缺证据单列，不冒称Host QA Passed。

@@ -1148,26 +1148,35 @@ export class ReadonlyGridRenderer {
         }
         const onQueryFieldValues = this.#callbacks.onQueryFieldValues;
         this.#filterBuilder?.dispose();
-        this.#filterBuilder = new FilterBuilder(initial, {
+        const isCurrentOwner = (): boolean =>
+          !this.#disposed && this.#filterBuilder === builder && this.#lastViewId === view.id;
+        const builder = new FilterBuilder(initial, {
           fields: state.fields.filter((field) => field.deletedAt === undefined),
           translate: this.#translate,
           onApply: (filter) => onApplyFilter(view.id, filter),
-          onInvalidate: () => this.#rerenderSelf(),
+          onInvalidate: () => {
+            if (isCurrentOwner()) this.#rerenderSelf();
+          },
           host: this.#container,
-          onDraftCount: (count) =>
+          onDraftCount: (count) => {
+            // Cached failed drafts survive a same-owner close, but only the
+            // current open panel may publish them into the Toolbar.
+            if (!isCurrentOwner() || this.#openPanel !== 'filter') return;
             this.#filterToggle?.update({
               count,
               accessibleLabel:
                 count > 0
                   ? `${this.#translate('grid.filter')}, ${this.#translate('grid.filter.active').replace('{count}', String(count))}`
                   : this.#translate('grid.filter'),
-            }),
+            });
+          },
           ...(onQueryFieldValues === undefined
             ? {}
             : {
                 loadFieldValues: (fieldId, request) => onQueryFieldValues(fieldId, request),
               }),
         });
+        this.#filterBuilder = builder;
         this.#filterBuilderViewId = view.id;
       }
       host.append(this.#filterBuilder.render());

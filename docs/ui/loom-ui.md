@@ -58,6 +58,8 @@ filter.dispose(); // Renderer 替换 Toolbar / dispose 时释放。
 
 生产参考为 `ReadonlyGridRenderer.#toggleButton`。FilterBuilder 的 `getValidRuleCount()` 与可选 `onDraftCount(count)` 只报告 draft-local 有效 rule；invalid operand/placeholder 不计数，通知不发写入。关闭后的 count 使用 Controller 已持久化 filter。Sort/Display 提供自己的有效计数，不从 aria-expanded 推导 Active。窄 Pane 保留既有标签折叠/overflow规则与完整 aria-label；Toolbar 后代样式不得覆盖嵌套 Field/Query。
 
+Renderer 仅允许当前 Builder、当前 View、未销毁 owner 且 Filter 打开时发布草稿 count。普通关闭保留失败草稿供同 context 重开，但 retained Builder 的 Apply/Clear completion 不得覆盖闭合态；闭合态由 Controller 已提交 View 刷新。旧 Builder 的 invalidate 也须通过当前 owner 检查。该展示守卫不改变300ms debounce、flush/dispose、CAS 或 MutationQueue。
+
 ## Menu / owner
 
 复用 `src/ui/context-menu.ts` 的 `openContextMenu(options): () => void`、`closeActiveContextMenu(owner?)`、`activeMenuOwnedBy(host)`。可选 `width:number` 用于领域宽度；默认值/clamp 在 DS/HIG。host 必须是稳定 Renderer/Pattern owner，与关闭调用方同一 HTMLElement。新 Menu 关闭旧 Menu，不能跨 Pane 无条件 global close。
