@@ -55,6 +55,8 @@ Obsidian1.14.4隔离合成Vault、默认requestUrl+loopback内存API、Microsoft
 
 ### C 阶段交付与 Host 验收（2026-10-14，Devin）
 
+交付引用：[PR116](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/116)；分支 `devin/w15-c-grid`；commit `696879b`（基于 B merge `fe9f24a`）。
+
 授权范围：W15-05 Grid 几何与 Typed Display 子集 + W15-09 View Tab/Context 外观子集；完整组合的生产 Grid 页面，复用 A/B 交付的 `createLoomButton`/`createToolbarToggle`/`openContextMenu`，未新建第二套控件、未侵入 Controller/Client/CAS/Queue。
 
 - **单一 Geometry Model**：新增 `src/ui/grid-geometry.ts`，renderer/grid-display/styles 全部消费同一 resolved 模型（desktop track 88=2+28×3+2、coarse 132=44×3、header/footer 36、tail 56、More 28、rail 8、row 30/36/44）；冻结列偏移、footer 模板、resize 命中、横向滚动统一。
