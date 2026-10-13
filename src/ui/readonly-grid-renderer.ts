@@ -42,11 +42,12 @@ import { DisplayPanel } from './display-panel';
 import {
   clampGridColumnWidth,
   GRID_COLUMN_WIDTH_DEFAULT,
-  GRID_INDEX_COLUMN_WIDTH,
+  GRID_SYSTEM_TRACK_WIDTH,
   resolveGridColumns,
   type GridDisplayPatch,
   type ResolvedGridColumns,
 } from './grid-display';
+import { resolveGridGeometry, type GridGeometry } from './grid-geometry';
 import {
   captureQueryControlFocus,
   restoreQueryControlFocus,
@@ -247,6 +248,7 @@ interface VirtualGridRefs {
   readonly fields: readonly Field[];
   readonly columns: ResolvedGridColumns;
   readonly columnTemplate: string;
+  readonly geometry: GridGeometry;
   readonly rowHeight: number;
   readonly contextKey: string;
   /** Last state actually painted into rows — identity shortcut for no-op renders. */
@@ -1901,15 +1903,25 @@ export class ReadonlyGridRenderer {
     return restoreQueryControlFocus(this.#container, ref);
   }
 
+  #coarsePointer(): boolean {
+    const win = this.#container.ownerDocument?.defaultView;
+    if (win === null || typeof win.matchMedia !== 'function') return false;
+    return win.matchMedia('(pointer: coarse)').matches;
+  }
+
   #renderGrid(state: GridState): HTMLElement {
     const gridView = selectedGridView(state);
-    const columns = resolveGridColumns(state.fields, gridView?.config);
-    const fields = columns.ordered;
     const rowHeight = rowHeightPixels(state);
+    const geometry = resolveGridGeometry({
+      rowHeight,
+      coarse: this.#coarsePointer(),
+    });
+    const columns = resolveGridColumns(state.fields, gridView?.config, geometry.systemTrack);
+    const fields = columns.ordered;
     const lastFrozenId = columns.frozen.at(-1)?.id;
     const hasAddField = this.#callbacks.onFieldSave !== undefined;
     const columnTemplate = [
-      '56px',
+      `${geometry.systemTrack}px`,
       ...fields.map((field) => `${columns.widths.get(field.id) ?? 180}px`),
     ].join(' ');
     const canCreate =
@@ -1925,6 +1937,7 @@ export class ReadonlyGridRenderer {
       state.selectedViewId ?? '-',
       fields.map((field) => `${field.id}:${field.revision}:${field.name}:${field.type}`).join(','),
       columnTemplate,
+      geometry.systemTrack,
       rowHeight,
       hasAddField ? 1 : 0,
       canCreate ? 1 : 0,
@@ -1952,6 +1965,7 @@ export class ReadonlyGridRenderer {
     }
 
     const wrapper = createElement('div', 'loom-grid-wrapper');
+    if (geometry.coarse) wrapper.dataset.track = 'coarse';
     const viewport = createElement('div', 'loom-grid-viewport');
     viewport.tabIndex = 0;
     viewport.setAttribute('role', 'grid');
@@ -1964,10 +1978,22 @@ export class ReadonlyGridRenderer {
 
     const header = createElement('div', 'loom-grid-header');
     header.setAttribute('role', 'row');
-    header.style.gridTemplateColumns = hasAddField ? `${columnTemplate} 2.5rem` : columnTemplate;
-    const indexHeader = createGridCell('#', 'loom-grid-header-cell loom-grid-index-header');
+    header.style.gridTemplateColumns = hasAddField
+      ? `${columnTemplate} ${geometry.addTail}px`
+      : columnTemplate;
+    const indexHeader = createElement('div', 'loom-grid-header-cell loom-grid-index-header');
     indexHeader.setAttribute('role', 'columnheader');
     indexHeader.setAttribute('aria-colindex', '1');
+    // Query-wide selection waits for G4 — until the capability ships the
+    // approved header anatomy keeps a disabled checkbox with the reason.
+    const selectAll = document.createElement('input');
+    selectAll.type = 'checkbox';
+    selectAll.className = 'loom-grid-select-all';
+    selectAll.disabled = true;
+    selectAll.tabIndex = -1;
+    selectAll.setAttribute('aria-label', this.#translate('grid.selectAll'));
+    selectAll.title = this.#translate('grid.selectAllUnavailable');
+    indexHeader.append(selectAll);
     header.append(indexHeader);
     for (const [fieldIndex, field] of fields.entries()) {
       const fieldHeader = createGridCell('', 'loom-grid-header-cell');
@@ -2193,7 +2219,12 @@ export class ReadonlyGridRenderer {
     const draftSlot = this.#draftCreateValues !== null || canCreate ? 1 : 0;
     const errorSlot = this.#draftCreateValues !== null && this.#draftError !== null ? 1 : 0;
     canvas.style.height = `${(state.records.length + draftSlot + errorSlot) * rowHeight}px`;
-    canvas.style.backgroundImage = gridFillerBackground(columns, fields, rowHeight);
+    canvas.style.backgroundImage = gridFillerBackground(
+      columns,
+      fields,
+      rowHeight,
+      geometry.systemTrack,
+    );
     const rowLayer = createElement('div', 'loom-grid-row-layer');
     canvas.append(rowLayer);
     viewport.append(header, canvas);
@@ -2208,6 +2239,7 @@ export class ReadonlyGridRenderer {
       fields,
       columns,
       columnTemplate,
+      geometry,
       rowHeight,
       contextKey,
       renderedState: null,
@@ -2314,7 +2346,7 @@ export class ReadonlyGridRenderer {
     const addRow = createElement('button', 'loom-grid-add-row loom-add-affordance clickable-icon');
     addRow.type = 'button';
     addRow.dataset.action = 'grid-add-row';
-    addRow.style.width = `${GRID_INDEX_COLUMN_WIDTH}px`;
+    addRow.style.width = `${this.#virtualGrid?.geometry.systemTrack ?? GRID_SYSTEM_TRACK_WIDTH}px`;
     const indexCell = createElement('span', 'loom-grid-index-cell loom-grid-add-row-index');
     indexCell.append(createUiIcon('tool-create'));
     addRow.append(indexCell);
@@ -2347,6 +2379,9 @@ export class ReadonlyGridRenderer {
       state.totalCount,
       state.unfilteredTotal,
       fields.map((field) => field.id),
+      // Frozen layout and the resolved template are part of footer geometry.
+      columnTemplate,
+      [...grid.columns.frozenOffsets.entries()],
       hasAddField,
     ]);
     if (grid.footer !== null && grid.footer.dataset.fingerprint === fingerprint) {
@@ -2356,8 +2391,9 @@ export class ReadonlyGridRenderer {
     const footer = this.#renderAggregateRow(
       state,
       fields,
-      hasAddField ? `${columnTemplate} 2.5rem` : columnTemplate,
-      grid.rowHeight,
+      grid.columns,
+      hasAddField ? `${columnTemplate} ${grid.geometry.addTail}px` : columnTemplate,
+      grid.geometry.footerHeight,
     );
     footer.dataset.fingerprint = fingerprint;
     footer.scrollLeft = grid.viewport.scrollLeft;
@@ -2430,13 +2466,14 @@ export class ReadonlyGridRenderer {
   #renderAggregateRow(
     state: GridState,
     fields: readonly Field[],
+    columns: ResolvedGridColumns,
     columnTemplate: string,
-    rowHeight: number,
+    footerHeight: number,
   ): HTMLElement {
     const row = createElement('div', 'loom-grid-aggregate');
     row.setAttribute('role', 'row');
     row.style.gridTemplateColumns = columnTemplate;
-    row.style.height = `${rowHeight}px`;
+    row.style.height = `${footerHeight}px`;
     const indexCell = createElement('div', 'loom-grid-aggregate-cell loom-grid-index-cell');
     indexCell.setAttribute('role', 'cell');
     const symbol = createTextElement('span', 'Σ');
@@ -2444,8 +2481,16 @@ export class ReadonlyGridRenderer {
     indexCell.append(symbol);
     indexCell.setAttribute('aria-label', this.#translate('grid.aggregate.menu'));
     row.append(indexCell);
+    const lastFrozenId = columns.frozen.at(-1)?.id;
     for (const field of fields) {
-      row.append(this.#renderAggregateCell(state, field));
+      const cell = this.#renderAggregateCell(state, field);
+      const frozenOffset = columns.frozenOffsets.get(field.id);
+      if (frozenOffset !== undefined) {
+        cell.classList.add('loom-grid-frozen');
+        cell.style.left = `${frozenOffset}px`;
+        if (field.id === lastFrozenId) cell.classList.add('loom-grid-frozen-last');
+      }
+      row.append(cell);
     }
     // D-3: the Toolbar owns the base row count; this filler only carries a
     // live selection summary written by #applySelection.
@@ -2777,11 +2822,17 @@ export class ReadonlyGridRenderer {
     const indexCell = createElement('div', 'loom-grid-index-cell');
     indexCell.setAttribute('role', 'rowheader');
     indexCell.setAttribute('aria-colindex', '1');
+    // Three transparent 28px slots (44px coarse): drag handle, row number
+    // revealing the selection checkbox on hover, and the detail opener. Only
+    // the handle slot may start a drag — checkbox/detail/blanks never do.
+    const handleSlot = createElement('span', 'loom-grid-slot loom-grid-slot-handle');
+    const dragHandle = createElement('span', 'loom-grid-row-drag');
+    dragHandle.append(createUiIcon('menu-grip'));
+    dragHandle.setAttribute('aria-hidden', 'true');
+    handleSlot.append(dragHandle);
+    const indexSlot = createElement('span', 'loom-grid-slot loom-grid-slot-index');
     const rowNumber = createTextElement('span', String(rowIndex + 1));
     rowNumber.className = 'loom-grid-row-number';
-    const dragHandle = createTextElement('span', '≡');
-    dragHandle.className = 'loom-grid-row-drag';
-    dragHandle.setAttribute('aria-hidden', 'true');
     const check = createElement('input', 'loom-grid-row-check');
     check.type = 'checkbox';
     check.checked = this.#isRowSelected(record.id);
@@ -2791,6 +2842,8 @@ export class ReadonlyGridRenderer {
       event.stopPropagation();
       this.#toggleRowSelected(record.id, event.shiftKey);
     });
+    indexSlot.append(rowNumber, check);
+    const detailSlot = createElement('span', 'loom-grid-slot loom-grid-slot-detail');
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'loom-grid-open loom-grid-row-expand clickable-icon';
@@ -2801,10 +2854,11 @@ export class ReadonlyGridRenderer {
       event.stopPropagation();
       this.#callbacks.onRecordOpen(record);
     });
-    indexCell.append(rowNumber, dragHandle, check, open);
+    detailSlot.append(open);
+    indexCell.append(handleSlot, indexSlot, detailSlot);
     indexCell.addEventListener('click', (event) => {
       event.stopPropagation();
-      if ((event.target as HTMLElement).closest('input') !== null) return;
+      if ((event.target as HTMLElement).closest('input,button') !== null) return;
       if (event.shiftKey && this.#rowAnchorRecordId !== null) {
         this.#selectRowRange(this.#rowAnchorRecordId, record.id);
       } else if (event.ctrlKey || event.metaKey) {
@@ -2820,17 +2874,13 @@ export class ReadonlyGridRenderer {
     });
     if (manualOrderEnabled(gridState) && this.#callbacks.onMoveRecord !== undefined) {
       indexCell.classList.add('is-manual-order');
-      indexCell.draggable = true;
-      indexCell.addEventListener('dragstart', (event) => {
-        if ((event.target as HTMLElement).closest('input,button') !== null) {
-          event.preventDefault();
-          return;
-        }
+      handleSlot.draggable = true;
+      handleSlot.addEventListener('dragstart', (event) => {
         event.dataTransfer?.setData(RECORD_DRAG_MIME, record.id);
         if (event.dataTransfer !== null) event.dataTransfer.effectAllowed = 'move';
         row.classList.add('is-dragging');
       });
-      indexCell.addEventListener('dragend', () => {
+      handleSlot.addEventListener('dragend', () => {
         row.classList.remove('is-dragging');
         this.#clearRowDropTargets();
       });
@@ -5043,14 +5093,15 @@ export class ReadonlyGridRenderer {
     const grid = this.#virtualGrid;
     if (grid === null) return;
     const base = [
-      `${GRID_INDEX_COLUMN_WIDTH}px`,
+      `${grid.geometry.systemTrack}px`,
       ...grid.fields.map(
         (field) =>
           `${field.id === fieldId ? width : (grid.columns.widths.get(field.id) ?? GRID_COLUMN_WIDTH_DEFAULT)}px`,
       ),
     ].join(' ');
     // The header carries the trailing add-field cell; body rows do not.
-    const headerTemplate = this.#callbacks.onFieldSave !== undefined ? `${base} 2.5rem` : base;
+    const headerTemplate =
+      this.#callbacks.onFieldSave !== undefined ? `${base} ${grid.geometry.addTail}px` : base;
     grid.viewport.querySelectorAll<HTMLElement>('.loom-grid-header').forEach((row) => {
       row.style.gridTemplateColumns = headerTemplate;
     });
@@ -5059,6 +5110,8 @@ export class ReadonlyGridRenderer {
       .forEach((row) => {
         row.style.gridTemplateColumns = base;
       });
+    // The detached footer shares the resolved columns, tail track included.
+    if (grid.footer !== null) grid.footer.style.gridTemplateColumns = headerTemplate;
   }
 
   #commitColumnWidth(field: Field, width: number): void {
@@ -5357,11 +5410,15 @@ function selectedGridView(state: GridState): Extract<View, { type: 'grid' }> | n
   return view?.type === 'grid' ? view : null;
 }
 
-function columnTemplateFor(fields: readonly Field[], state?: GridState): string {
+function columnTemplateFor(
+  fields: readonly Field[],
+  state?: GridState,
+  systemTrack = GRID_SYSTEM_TRACK_WIDTH,
+): string {
   const view = state === undefined ? null : selectedGridView(state);
-  const widths = resolveGridColumns(state?.fields ?? fields, view?.config).widths;
+  const widths = resolveGridColumns(state?.fields ?? fields, view?.config, systemTrack).widths;
   const columns = fields.map((field) => `${widths.get(field.id) ?? clampGridColumnWidth(180)}px`);
-  return ['56px', ...columns].join(' ');
+  return [`${systemTrack}px`, ...columns].join(' ');
 }
 
 function rowHeightPixels(state: GridState): number {
@@ -5467,11 +5524,12 @@ function gridFillerBackground(
   columns: ResolvedGridColumns,
   fields: readonly Field[],
   rowHeight: number,
+  systemTrack = GRID_SYSTEM_TRACK_WIDTH,
 ): string {
   const layers = [
     `repeating-linear-gradient(to bottom, transparent 0, transparent ${rowHeight - 1}px, var(--loom-grid-line) ${rowHeight - 1}px, var(--loom-grid-line) ${rowHeight}px)`,
   ];
-  let edge = GRID_INDEX_COLUMN_WIDTH;
+  let edge = systemTrack;
   for (const field of fields) {
     layers.push(
       `linear-gradient(to right, transparent ${edge - 1}px, var(--loom-grid-line) ${edge - 1}px, var(--loom-grid-line) ${edge}px, transparent ${edge}px)`,

@@ -44,7 +44,8 @@ import type {
 
 describe('GridViewController', () => {
   it('discovers the current Workspace/Base/Table/View and submits the saved query contract', async () => {
-    const data = createData(createRecords(3), createGridConfig(true));
+    // The saved Filter applies on the Server: names must honestly contain 'a'.
+    const data = createData(createRecords(3, 'alpha'), createGridConfig(true));
     const client = new InMemoryLoomTableClient(data);
     const controller = new GridViewController(client, { pageSize: 2 });
 
@@ -2114,7 +2115,7 @@ describe('GridViewController query controls', () => {
 
   it('aggregates the selected Field with the active View filter', async () => {
     const client = new InMemoryLoomTableClient(
-      createData(createRecords(3), createGridConfig(true)),
+      createData(createRecords(3, 'alpha'), createGridConfig(true)),
     );
     const controller = new GridViewController(client);
     await controller.load();
@@ -2229,6 +2230,110 @@ describe('GridViewController query controls', () => {
         expect(controller.state.aggregateResults?.['field_number']?.[fn]).toBe(fnValues[fn]),
       );
     }
+  });
+
+  it('applies Filter and Search together so the aggregate never widens scope', async () => {
+    // 'alpha 1' matches both; 'beta x' matches the Filter but not the Search;
+    // 'cord 9' matches the Search-eligible fields but not the Filter.
+    const records: LoomTableRecord[] = [
+      {
+        id: 'record_01',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'alpha 1' },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_02',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'beta x' },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_03',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'cord 9' },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+    ];
+    const client = new InMemoryLoomTableClient(createData(records, createGridConfig(true)));
+    const controller = new GridViewController(client);
+    await controller.load();
+    await controller.setSearch('alp');
+
+    controller.setFieldAggregation('field_name', 'count');
+    await vi.waitFor(() => expect(controller.state.aggregateStatus).toBe('ready'));
+
+    const request = client.aggregateRequests.at(-1)?.request;
+    expect(request?.filter).toEqual({
+      kind: 'rule',
+      fieldId: 'field_name',
+      operator: 'contains',
+      value: 'a',
+    });
+    expect(request?.search).toBe('alp');
+    // Filter ∧ Search — not the Filter-only or Search-only superset.
+    expect(controller.state.aggregateResults?.['field_name']?.['count']).toBe(1);
+  });
+
+  it('evaluates group and rule Filter semantics in query pages', async () => {
+    const records: LoomTableRecord[] = [
+      {
+        id: 'record_01',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'alpha', field_number: 5 },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_02',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'beta', field_number: 50 },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_03',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'gamma', field_number: 500 },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+    ];
+    const groupView = createView({
+      ...createGridConfig(false),
+      filter: {
+        kind: 'group',
+        operator: 'and',
+        children: [
+          { kind: 'rule', fieldId: 'field_name', operator: 'contains', value: 'a' },
+          { kind: 'rule', fieldId: 'field_number', operator: 'greaterOrEqual', value: 50 },
+        ],
+      },
+      projection: ['field_name', 'field_number'],
+      columnOrder: ['field_name', 'field_number'],
+    });
+    const client = new InMemoryLoomTableClient(
+      createData(records, createGridConfig(false), [], [createNumberField()]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    await controller.applyViewFilter('view_01', groupView.config.filter);
+
+    await vi.waitFor(() =>
+      expect(controller.state.records.map((record) => record.id)).toEqual([
+        'record_02',
+        'record_03',
+      ]),
+    );
   });
 
   it('marks Search aggregates unavailable when the connection lacks aggregateSearch', async () => {
@@ -2473,12 +2578,12 @@ function createView(config: GridViewConfig): Extract<View, { type: 'grid' }> {
   };
 }
 
-function createRecords(count: number): readonly LoomTableRecord[] {
+function createRecords(count: number, namePrefix = 'Record'): readonly LoomTableRecord[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `record_0${index + 1}`,
     tableId: 'table_01',
     revision: 1,
-    values: { field_name: `Record ${index + 1}` },
+    values: { field_name: `${namePrefix} ${index + 1}` },
     createdAt: '2026-08-14T00:00:00Z',
     updatedAt: '2026-08-14T00:00:00Z',
   }));

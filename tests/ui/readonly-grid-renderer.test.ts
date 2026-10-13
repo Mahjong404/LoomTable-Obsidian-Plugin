@@ -14,6 +14,7 @@ import { createTranslator } from '../../src/i18n';
 import { openContextMenu } from '../../src/ui/context-menu';
 import { ReadonlyGridRenderer, getVirtualRowRange } from '../../src/ui/readonly-grid-renderer';
 import type { GridDisplayPatch } from '../../src/ui/grid-display';
+import { resolveGridGeometry } from '../../src/ui/grid-geometry';
 import type { GridState } from '../../src/ui/grid-view-controller';
 import type { ViewWriteOutcome } from '../../src/ui/view-write-coordinator';
 
@@ -1695,8 +1696,8 @@ describe('Grid query controls', () => {
       '.loom-grid-row .loom-grid-cell.loom-grid-frozen',
     );
     const indexCell = container.querySelector<HTMLElement>('.loom-grid-index-cell');
-    expect(headerCell?.style.left).toBe('56px');
-    expect(rowCell?.style.left).toBe('56px');
+    expect(headerCell?.style.left).toBe('88px');
+    expect(rowCell?.style.left).toBe('88px');
     expect(indexCell?.classList.contains('loom-grid-index-cell')).toBe(true);
     expect(headerCell?.classList.contains('loom-grid-frozen-last')).toBe(true);
     expect(headerCell?.textContent).toContain('Second');
@@ -4553,7 +4554,7 @@ describe('refresh indicator and anchored panels', () => {
 
     const addRow = container.querySelector<HTMLElement>('.loom-grid-add-row');
     expect(addRow).not.toBeNull();
-    expect(addRow?.style.width).toBe('56px');
+    expect(addRow?.style.width).toBe('88px');
     expect(addRow?.querySelector('.loom-grid-add-row-label')).toBeNull();
     addRow?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     expect(container.querySelector('.loom-grid-draft-row')).not.toBeNull();
@@ -4753,10 +4754,10 @@ describe('refresh indicator and anchored panels', () => {
     renderer.render(createState(2));
     const header = container.querySelector<HTMLElement>('.loom-grid-header');
     const row = container.querySelector<HTMLElement>('.loom-grid-row');
-    expect(header?.style.gridTemplateColumns.endsWith(' 2.5rem')).toBe(true);
-    expect(row?.style.gridTemplateColumns.endsWith('2.5rem')).toBe(false);
+    expect(header?.style.gridTemplateColumns.endsWith(' 56px')).toBe(true);
+    expect(row?.style.gridTemplateColumns.endsWith('56px')).toBe(false);
     expect(row?.style.gridTemplateColumns).toBe(
-      header?.style.gridTemplateColumns.replace(/ 2\.5rem$/, ''),
+      header?.style.gridTemplateColumns.replace(/ 56px$/, ''),
     );
     expect(container.querySelector('.loom-grid-add-field')).not.toBeNull();
     expect(container.querySelector('.loom-grid-viewport')?.getAttribute('aria-colcount')).toBe('3');
@@ -4973,7 +4974,7 @@ describe('Record drag reorder', () => {
     });
     renderer.render(createState(3));
     const indexCell = container.querySelector<HTMLElement>('.loom-grid-index-cell');
-    expect(indexCell?.querySelector('.loom-grid-row-drag')?.textContent).toBe('≡');
+    expect(indexCell?.querySelector('.loom-grid-row-drag .loom-ui-icon')).not.toBeNull();
     expect(indexCell?.querySelector('input.loom-grid-row-check')).not.toBeNull();
     expect(indexCell?.querySelector('.loom-grid-open')).not.toBeNull();
     expect(indexCell?.classList.contains('is-manual-order')).toBe(false);
@@ -5000,20 +5001,25 @@ describe('Record drag reorder', () => {
     ).toBe(false);
   });
 
-  it('makes index cells draggable only in manual order mode', () => {
+  it('makes only the grip slot draggable, and only in manual order mode', () => {
     const container = document.createElement('div');
     const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), {
       ...rendererCallbacks(),
       onMoveRecord: vi.fn(async () => {}),
     });
     renderer.render(manualViewState());
-    expect(container.querySelector<HTMLElement>('.loom-grid-index-cell')?.draggable).toBe(true);
+    const grip = () =>
+      container.querySelector<HTMLElement>('.loom-grid-row .loom-grid-slot-handle');
+    expect(grip()?.draggable).toBe(true);
+    expect(
+      container.querySelector<HTMLElement>('.loom-grid-row .loom-grid-index-cell')?.draggable,
+    ).toBe(false);
 
     renderer.render(manualViewState([{ fieldId: 'field_name', direction: 'asc', nulls: 'last' }]));
-    expect(container.querySelector<HTMLElement>('.loom-grid-index-cell')?.draggable).toBe(false);
+    expect(grip()?.draggable).toBe(false);
 
     renderer.render(createState(3));
-    expect(container.querySelector<HTMLElement>('.loom-grid-index-cell')?.draggable).toBe(false);
+    expect(grip()?.draggable).toBe(false);
   });
 
   it('stays inert when the move callback is not wired', () => {
@@ -5024,7 +5030,9 @@ describe('Record drag reorder', () => {
       rendererCallbacks(),
     );
     renderer.render(manualViewState());
-    expect(container.querySelector<HTMLElement>('.loom-grid-index-cell')?.draggable).toBe(false);
+    expect(
+      container.querySelector<HTMLElement>('.loom-grid-row .loom-grid-slot-handle')?.draggable,
+    ).toBe(false);
   });
 
   it('drops before or after the target row by drop position', () => {
@@ -5036,7 +5044,7 @@ describe('Record drag reorder', () => {
     });
     renderer.render(manualViewState());
     const rows = container.querySelectorAll<HTMLElement>('.loom-grid-row');
-    const sourceIndex = rows[0]?.querySelector<HTMLElement>('.loom-grid-index-cell');
+    const sourceIndex = rows[0]?.querySelector<HTMLElement>('.loom-grid-slot-handle');
     const target = rows[2];
 
     const transfer = recordTransfer();
@@ -5061,7 +5069,11 @@ describe('Record drag reorder', () => {
     renderer.render(manualViewState());
     const first = container.querySelector<HTMLElement>('.loom-grid-row');
     const transfer = recordTransfer();
-    dispatchDrag(first?.querySelector<HTMLElement>('.loom-grid-index-cell'), 'dragstart', transfer);
+    dispatchDrag(
+      first?.querySelector<HTMLElement>('.loom-grid-slot-handle'),
+      'dragstart',
+      transfer,
+    );
     dispatchDrag(first, 'drop', transfer);
     expect(onMoveRecord).not.toHaveBeenCalled();
   });
@@ -5998,6 +6010,189 @@ describe('F-5 edit-entry diagnostics', () => {
     expect(
       trace.some((entry) => entry.includes('enter-cell') && entry.includes('editable=false')),
     ).toBe(true);
+    container.remove();
+  });
+});
+
+describe('Resolved Grid geometry (W15-05 C)', () => {
+  it('resolves the approved desktop anatomy', () => {
+    const geometry = resolveGridGeometry({ rowHeight: 36 });
+    expect(geometry.systemTrack).toBe(88);
+    expect(geometry.systemSlot).toBe(28);
+    expect(geometry.systemInset).toBe(2);
+    expect(geometry.headerHeight).toBe(36);
+    expect(geometry.footerHeight).toBe(36);
+    expect(geometry.addTail).toBe(56);
+    expect(geometry.moreTarget).toBe(28);
+    expect(geometry.resizeRail).toBe(8);
+    expect(geometry.coarse).toBe(false);
+  });
+
+  it('widens the system track to 132px with three 44px slots on coarse pointers', () => {
+    const geometry = resolveGridGeometry({ rowHeight: 44, coarse: true });
+    expect(geometry.systemTrack).toBe(132);
+    expect(geometry.systemSlot).toBe(44);
+    expect(geometry.systemInset).toBe(0);
+    expect(geometry.rowHeight).toBe(44);
+  });
+
+  it('shares one resolved track across header, rows, draft row, and the detached footer', () => {
+    const container = document.createElement('div');
+    const callbacks = {
+      ...rendererCallbacks(),
+      onFieldSave: vi.fn(async () => ({ ok: true as const })),
+      onSetFieldAggregation: vi.fn(),
+    };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(
+      createState(2, { aggregateResults: {}, aggregateStatus: 'ready', fieldAggregations: {} }),
+    );
+
+    const header = container.querySelector<HTMLElement>('.loom-grid-header');
+    const row = container.querySelector<HTMLElement>('.loom-grid-row');
+    const footer = container.querySelector<HTMLElement>('.loom-grid-aggregate');
+    expect(header?.style.gridTemplateColumns.startsWith('88px ')).toBe(true);
+    expect(header?.style.gridTemplateColumns.endsWith(' 56px')).toBe(true);
+    expect(row?.style.gridTemplateColumns.startsWith('88px ')).toBe(true);
+    expect(footer?.style.gridTemplateColumns).toBe(header?.style.gridTemplateColumns);
+    expect(footer?.style.height).toBe('36px');
+    container.remove();
+  });
+
+  it('keeps the header select-all affordance visibly gated until G4 ships', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    renderer.render(createState(2));
+
+    const selectAll = container.querySelector<HTMLInputElement>('.loom-grid-select-all');
+    expect(selectAll).not.toBeNull();
+    expect(selectAll?.disabled).toBe(true);
+    expect(selectAll?.getAttribute('aria-label')).not.toBe('');
+    expect(selectAll?.title).toContain('unavailable');
+    container.remove();
+  });
+
+  it('lays out three transparent slots and routes only the grip to drag', () => {
+    const container = document.createElement('div');
+    const callbacks = {
+      ...rendererCallbacks(),
+      onMoveRecord: vi.fn(async () => {}),
+    };
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    const state = createState(3);
+    const view = state.views[0];
+    if (view?.type !== 'grid') throw new Error('Grid fixture is missing.');
+    renderer.render({
+      ...state,
+      views: [{ ...view, config: { ...view.config, sort: [], manualSort: true } }],
+    });
+
+    const indexCell = container.querySelector<HTMLElement>('.loom-grid-row .loom-grid-index-cell');
+    const slots = indexCell?.querySelectorAll('.loom-grid-slot');
+    expect(slots).toHaveLength(3);
+    const handleSlot = indexCell?.querySelector<HTMLElement>('.loom-grid-slot-handle');
+    const indexSlot = indexCell?.querySelector<HTMLElement>('.loom-grid-slot-index');
+    const detailSlot = indexCell?.querySelector<HTMLElement>('.loom-grid-slot-detail');
+    expect(handleSlot?.draggable).toBe(true);
+    expect(indexSlot?.draggable).not.toBe(true);
+    expect(detailSlot?.draggable).not.toBe(true);
+    expect(indexSlot?.querySelector('.loom-grid-row-number')?.textContent).toBe('1');
+    expect(indexSlot?.querySelector('input.loom-grid-row-check')).not.toBeNull();
+    expect(detailSlot?.querySelector('.loom-grid-open')).not.toBeNull();
+    container.remove();
+  });
+
+  it('keeps the detail and checkbox actions free of selection side effects', () => {
+    const container = document.createElement('div');
+    const callbacks = rendererCallbacks();
+    const renderer = new ReadonlyGridRenderer(container, createTranslator('en'), callbacks);
+    renderer.render(createState(2));
+
+    const indexCell = container.querySelector<HTMLElement>('.loom-grid-row .loom-grid-index-cell');
+    indexCell?.querySelector<HTMLElement>('.loom-grid-open')?.click();
+    expect(callbacks.onRecordOpen).toHaveBeenCalledTimes(1);
+    expect(indexCell?.classList.contains('is-selected')).toBe(false);
+
+    indexCell?.querySelector<HTMLInputElement>('input.loom-grid-row-check')?.click();
+    expect(callbacks.onRecordOpen).toHaveBeenCalledTimes(1);
+    expect(indexCell?.classList.contains('is-selected')).toBe(true);
+    container.remove();
+  });
+});
+
+describe('Typed cell display (W15-05 C)', () => {
+  function checkboxState(checked: boolean): GridState {
+    const state = createState(1);
+    const view = state.views[0];
+    const record = state.records[0];
+    if (view?.type !== 'grid' || record === undefined) throw new Error('Grid fixture is missing.');
+    const field: Field = {
+      id: 'field_verified',
+      tableId: 'table_01',
+      name: 'Verified',
+      position: 0,
+      schemaVersion: 1,
+      revision: 1,
+      type: 'checkbox',
+      config: {},
+    };
+    return {
+      ...state,
+      fields: [field],
+      views: [
+        {
+          ...view,
+          config: {
+            ...view.config,
+            projection: ['field_verified'],
+            columnOrder: ['field_verified'],
+          },
+        },
+      ],
+      records: [{ ...record, values: { field_verified: checked } }],
+    };
+  }
+
+  it('renders checked and unchecked values as a glyph with truthful semantics', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+
+    renderer.render(checkboxState(true));
+    let box = container.querySelector<HTMLElement>('.loom-field-check');
+    expect(box?.dataset.checked).toBe('true');
+    expect(box?.getAttribute('role')).toBe('img');
+    expect(box?.querySelector('.loom-ui-icon')).not.toBeNull();
+
+    renderer.render(checkboxState(false));
+    box = container.querySelector<HTMLElement>('.loom-field-check');
+    expect(box?.dataset.checked).toBe('false');
+    expect(box?.querySelector('.loom-ui-icon')).toBeNull();
+    container.remove();
+  });
+
+  it('keeps null and unset checkbox values out of the value state', () => {
+    const container = document.createElement('div');
+    const renderer = new ReadonlyGridRenderer(
+      container,
+      createTranslator('en'),
+      rendererCallbacks(),
+    );
+    const state = checkboxState(false);
+    const record = state.records[0];
+    if (record === undefined) throw new Error('Grid fixture is missing.');
+
+    renderer.render({ ...state, records: [{ ...record, values: {} }] });
+    const cell = container.querySelector<HTMLElement>('.loom-grid-cell');
+    expect(cell?.querySelector('.loom-field-check')).toBeNull();
+    expect(cell?.dataset.valueState).not.toBe('value');
     container.remove();
   });
 });

@@ -48,7 +48,14 @@ async function mountView() {
             ...view,
             config: {
               ...view.config,
-              filter: { kind: 'rule', fieldId: 'field_title', operator: 'contains', value: 'old' },
+              // 'project' honestly matches three gallery Records; 'old' matched
+              // none once the fixture started evaluating filters for real.
+              filter: {
+                kind: 'rule',
+                fieldId: 'field_title',
+                operator: 'contains',
+                value: 'project',
+              },
             },
           }
         : view,
@@ -621,7 +628,7 @@ describe('shared owner lifecycle', () => {
     const saved = await client.getView('view_grid');
     expect(
       saved.type === 'grid' && saved.config.filter?.kind === 'rule' && saved.config.filter.value,
-    ).toBe('old');
+    ).toBe('project');
   });
 
   it.each(['sort', 'display'])('owner teardown also cancels the owned %s timer', async (panel) => {

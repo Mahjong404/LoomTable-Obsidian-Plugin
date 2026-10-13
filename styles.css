@@ -619,15 +619,34 @@
 
 .loom-view-tab {
   box-sizing: border-box;
-  min-height: var(--loom-control-compact-height);
-  padding: 0 0.625rem;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--loom-space-1);
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px;
   border: none;
-  border-radius: var(--loom-radius-md);
+  border-radius: var(--loom-radius-sm);
   background: transparent;
   box-shadow: none;
-  color: var(--loom-text-muted);
+  color: var(--loom-text-normal);
   cursor: pointer;
   max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.loom-view-tab .loom-ui-icon {
+  width: 14px;
+  height: 14px;
+  margin-inline-end: 0;
+}
+
+.loom-view-tab > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -643,10 +662,13 @@
   outline-offset: -2px;
 }
 
-.loom-view-tab[aria-selected='true'] {
+/* Approved Current state (Figma 9:807 / design-system ViewTab): accent-soft
+   fill + accent text, distinct from the Default metadata label. Scoped to
+   outrank the chromeless-button reset above. */
+.loom-table-shell .loom-view-tab[aria-selected='true'],
+.loom-root .loom-view-tab[aria-selected='true'] {
   background: var(--loom-accent-soft);
-  color: var(--loom-accent);
-  font-weight: var(--loom-font-semibold);
+  color: var(--loom-text-accent);
 }
 
 /* Selection check per the approved design: 14px box, 1.75px stroke —
@@ -784,6 +806,13 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.loom-view-panel-default {
+  flex: 0 0 auto;
+  color: var(--loom-text-faint);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 .loom-table-shell .loom-view-panel-more {
@@ -1378,8 +1407,12 @@
 .loom-grid-wrapper {
   display: flex;
   flex-direction: column;
-  gap: var(--loom-space-2);
   min-width: 0;
+}
+
+/* The aggregate footer docks flush under the viewport — no floating seam. */
+.loom-grid-load-more {
+  margin-top: var(--loom-space-2);
 }
 
 .loom-grid-header,
@@ -1393,7 +1426,9 @@
   top: 0;
   z-index: 6;
   flex: 0 0 auto;
-  overflow: hidden;
+  /* overflow:clip (not hidden) — hidden would make the header a scroll
+     container and break horizontal `position:sticky` on frozen cells. */
+  overflow: clip;
   border-bottom: 1px solid var(--loom-grid-line-strong);
   background: var(--loom-header-bg);
 }
@@ -1439,13 +1474,47 @@
 .loom-field-value-chip {
   display: inline-flex;
   align-items: center;
+  box-sizing: border-box;
+  height: 20px;
   max-width: 100%;
-  padding: 0 var(--loom-space-1);
+  padding: 0 8px;
   border: 1px solid var(--loom-border);
   border-radius: var(--loom-radius-sm);
   background: var(--loom-bg-secondary-alt);
   color: var(--loom-text-normal);
-  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Approved Checkbox cell glyph — a 14px box that mirrors the boolean
+   value; the accessible state travels via role=img + aria-label. */
+.loom-field-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  box-sizing: border-box;
+  border: 1px solid var(--loom-grid-line-strong);
+  border-radius: 2px;
+  background: var(--loom-bg-primary);
+  color: transparent;
+  flex: 0 0 auto;
+}
+
+.loom-field-check[data-checked='true'] {
+  border-color: var(--loom-accent);
+  background: var(--loom-accent);
+  color: var(--loom-on-accent);
+}
+
+.loom-field-check .loom-ui-icon {
+  width: 10px;
+  height: 10px;
+  margin-inline-end: 0;
 }
 
 .loom-field-value-chip[data-chip-state='deleted'] {
@@ -1556,12 +1625,13 @@
 
 .loom-grid-header-cell {
   position: relative;
-  height: 2.25rem;
+  height: 36px;
   display: flex;
   align-items: center;
   border-inline-end: 1px solid var(--loom-grid-line);
   color: var(--loom-text-muted);
-  font-size: var(--loom-font-ui-smaller);
+  font-size: 13px;
+  line-height: 20px;
   font-weight: var(--loom-font-semibold);
 }
 
@@ -1615,6 +1685,8 @@
 
 .loom-grid-cell {
   position: relative;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 .loom-grid-cell.loom-grid-frozen,
@@ -1634,6 +1706,15 @@
   left: 0;
   justify-content: center;
   background: inherit;
+}
+
+.loom-grid-index-header .loom-grid-select-all {
+  width: 14px;
+  height: 14px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  cursor: default;
 }
 
 .loom-grid-frozen-last {
@@ -1658,10 +1739,37 @@
   position: sticky;
   left: 0;
   z-index: 3;
+  display: flex;
+  align-items: center;
   background: inherit;
-  justify-content: center;
+  padding: 0 2px;
+  gap: 0;
   color: var(--loom-text-faint);
-  font-size: var(--loom-font-ui-smaller);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+/* Coarse track is 132 = 44×3 with no outer inset (see grid-geometry). */
+.loom-grid-wrapper[data-track='coarse'] .loom-grid-index-cell {
+  padding: 0;
+}
+
+/* Three transparent hit slots fill the system track (88 = 2+28+28+28+2;
+   coarse widens each to 44px inside the 132px track). */
+.loom-grid-slot {
+  display: inline-flex;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.loom-grid-wrapper[data-track='coarse'] .loom-grid-slot {
+  flex-basis: 44px;
+  width: 44px;
+  height: 44px;
 }
 
 .loom-grid-row-number {
@@ -1671,13 +1779,10 @@
 }
 
 .loom-grid-open {
-  position: absolute;
-  top: 50%;
-  left: 50%;
   display: none;
-  width: 1.375rem;
-  height: 1.375rem;
-  padding: 0.25rem;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   align-items: center;
   justify-content: center;
   border: 0;
@@ -1685,12 +1790,11 @@
   background: transparent;
   color: var(--loom-text-muted);
   cursor: pointer;
-  transform: translate(-50%, -50%);
 }
 
 .loom-grid-open .loom-ui-icon {
-  width: 0.8125rem;
-  height: 0.8125rem;
+  width: 14px;
+  height: 14px;
   margin-inline-end: 0;
 }
 
@@ -1702,17 +1806,25 @@
 }
 
 .loom-grid-row-drag {
-  position: absolute;
-  inset-inline-start: 3px;
-  top: 50%;
-  width: 12px;
-  text-align: center;
-  line-height: 1;
-  font-size: var(--loom-font-ui-smaller);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   color: var(--loom-text-faint);
   opacity: 0;
   user-select: none;
-  transform: translateY(-50%);
+}
+
+.loom-grid-wrapper[data-track='coarse'] .loom-grid-row-drag {
+  width: 44px;
+  height: 44px;
+}
+
+.loom-grid-row-drag .loom-ui-icon {
+  width: 14px;
+  height: 14px;
+  margin-inline-end: 0;
 }
 
 .loom-grid-row:hover .loom-grid-row-drag,
@@ -1720,27 +1832,23 @@
   opacity: 1;
 }
 
-.loom-grid-index-cell.is-manual-order .loom-grid-row-drag {
+.loom-grid-index-cell.is-manual-order .loom-grid-slot-handle {
   color: var(--loom-text-muted);
   cursor: grab;
 }
 
-.loom-grid-index-cell.is-manual-order .loom-grid-row-drag:active {
+.loom-grid-index-cell.is-manual-order .loom-grid-slot-handle:active {
   cursor: grabbing;
 }
 
 .loom-grid-index-cell input.loom-grid-row-check {
-  position: absolute;
-  inset-inline-start: 16px;
-  top: 50%;
-  width: 0.875rem;
-  height: 0.875rem;
+  width: 14px;
+  height: 14px;
   min-height: 0;
   margin: 0;
   padding: 0;
   opacity: 0;
   cursor: pointer;
-  transform: translateY(-50%);
 }
 
 .loom-grid-row:hover input.loom-grid-row-check,
@@ -1754,11 +1862,16 @@
   visibility: hidden;
 }
 
-.loom-grid-row:hover .loom-grid-open {
+/* The checkbox sits over the row number inside the same slot. */
+.loom-grid-slot-index .loom-grid-row-check {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+}
+
+.loom-grid-row:hover .loom-grid-open,
+.loom-grid-index-cell:focus-within .loom-grid-open {
   display: inline-flex;
-  left: auto;
-  inset-inline-end: 2px;
-  transform: translateY(-50%);
 }
 
 .loom-grid-index-cell.is-selected {
@@ -1769,8 +1882,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 0;
   border-radius: var(--loom-radius-sm);
@@ -1790,17 +1903,17 @@
 }
 
 .loom-grid-header-menu .loom-ui-icon {
-  width: 0.875rem;
-  height: 0.875rem;
+  width: 14px;
+  height: 14px;
   margin-inline-end: 0;
 }
 
 .loom-grid-col-resize {
   position: absolute;
-  inset-inline-end: -3px;
+  inset-inline-end: -4px;
   top: 0;
   bottom: 0;
-  width: 6px;
+  width: 8px;
   cursor: col-resize;
   z-index: 3;
 }
@@ -3696,7 +3809,7 @@
   display: flex;
   align-items: center;
   gap: var(--loom-space-2);
-  padding-inline: calc(56px + var(--loom-space-2)) var(--loom-space-2);
+  padding-inline: calc(88px + var(--loom-space-2)) var(--loom-space-2);
   border-bottom: 1px solid var(--loom-grid-line);
   background: var(--loom-bg-primary);
   color: var(--loom-text-error);
@@ -3714,6 +3827,10 @@
 
 .loom-grid-draft-error .loom-button {
   flex: 0 0 auto;
+}
+
+.loom-grid-wrapper[data-track='coarse'] .loom-grid-draft-error {
+  padding-inline-start: calc(132px + var(--loom-space-2));
 }
 
 /* Search highlight + grid footer bar */
@@ -3951,9 +4068,6 @@
 @media (hover: none) {
   .loom-grid-index-cell.is-selected .loom-grid-open {
     display: inline-flex;
-    left: auto;
-    inset-inline-end: 2px;
-    transform: translateY(-50%);
   }
 
   .loom-grid-index-cell.is-selected input.loom-grid-row-check {
@@ -4095,7 +4209,9 @@
 
 .loom-filter-values {
   position: absolute;
-  z-index: 40;
+  /* Above .loom-query-panel (50): the picker renders inside the grid shell,
+     not inside the panel, so it must outrank the panel to stay clickable. */
+  z-index: 60;
   display: flex;
   flex-direction: column;
   gap: var(--loom-space-1);
@@ -4232,6 +4348,21 @@
   font-size: var(--loom-font-ui-smaller);
   overflow: hidden;
   white-space: nowrap;
+}
+
+.loom-grid-aggregate-cell.loom-grid-frozen {
+  position: sticky;
+  z-index: 2;
+  background: var(--loom-bg-secondary);
+}
+
+.loom-grid-aggregate-cell.loom-grid-frozen-last {
+  border-inline-end: 2px solid var(--loom-grid-line-strong);
+  box-shadow: 4px 0 6px -4px var(--loom-border);
+}
+
+.loom-grid-aggregate-cell.loom-grid-index-cell {
+  justify-content: center;
 }
 
 .loom-grid-aggregate-cell.clickable-icon {

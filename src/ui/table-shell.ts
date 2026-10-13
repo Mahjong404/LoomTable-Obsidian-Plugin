@@ -376,6 +376,14 @@ export class TableShell {
       });
       row.append(item);
 
+      // Default is orthogonal to Current — the badge marks the Default view
+      // whether or not it is the one being browsed.
+      if (view.isDefault) {
+        const badge = createTextElement('span', this.#translate('view.default'));
+        badge.className = 'loom-view-panel-default';
+        row.append(badge);
+      }
+
       if (broken) {
         const badge = createTextElement('span', this.#translate('view.manage.broken'));
         badge.classList.add('loom-view-broken');

@@ -771,7 +771,11 @@ describe('Record Detail Location seam', () => {
     );
     expect(text?.textContent).toBe('Empty');
     expect(text?.dataset.valueState).toBe('empty');
-    expect(checkbox?.textContent).toBe('Checked');
+    // The shared renderer shows the approved boolean glyph; the accessible
+    // name carries the truthful state.
+    const checkGlyph = checkbox?.querySelector<HTMLElement>('.loom-field-check');
+    expect(checkGlyph?.dataset.checked).toBe('true');
+    expect(checkGlyph?.getAttribute('aria-label')).toBe('Checked');
     expect(attachment?.textContent).toBe(
       'notes.md · Source: Vault · Type: text/markdown · Size: 2 KB · Ready',
     );

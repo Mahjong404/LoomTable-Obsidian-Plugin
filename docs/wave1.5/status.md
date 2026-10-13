@@ -1,6 +1,6 @@
 # Wave 1.5 — 唯一实施状态
 
-更新：2026-10-14。只记录实际实施、授权与交付引用；范围见README/implementation-plan，行为见UI/Architecture，任务合同见task-specifications。当前授权由Codex完成A/B及PR115最终修复、验证、正常合并；不直接继续C或W15-03，不通知或调度Devin。
+更新：2026-10-14（C 交付）。只记录实际实施、授权与交付引用；范围见README/implementation-plan，行为见UI/Architecture，任务合同见task-specifications。A/B已由Codex交付合并（PR114/PR115）；C 阶段 W15-05 几何/Typed Display 子集与 W15-09 View Tab/Context 外观子集由 Devin 在 A/B 基线上实施并完成本地门禁与 Host QA。
 
 ## 批准与当前基线
 
@@ -37,12 +37,12 @@ Obsidian1.14.4隔离合成Vault、默认requestUrl+loopback内存API、Microsoft
 | W15-02 Filter               | Review / Visual not accepted               | bde37b9 + remediation27e00bd；A/B共享基础 | 保现有identity/generation/reorder；本轮不重复完整Filter审查。owner销毁flush已由A修，B接valid draft count并验证invalid排除；Filter32px controls/文字Remove等领域anatomy仍未对齐 | C Golden通过后02视觉续段，不重复已修旧缺陷、不重设计Filter                       |
 | W15-03 Sort                 | Planned / Hold                             | —                                         | 未实施批准的临时Add/Grip新版；当前旧UI不是01/02回归                                                                                                                            | 首批代表性页面达标后启动                                                         |
 | W15-04 Display              | Planned                                    | —                                         | 新positive visibility/More/density/hidden widths merge未验收                                                                                                                   | 02视觉/03后；不阻断当前合法config的05几何子集                                    |
-| W15-05 Grid                 | Planned                                    | —                                         | 真实system56/More20/tail40/body15/Footer gap8；standard rows36/Footer36已正确                                                                                                  | 首批C交付geometry/typed展示子集；完整04/G4/G6分别追踪                            |
+|| W15-05 Grid                 | C subset delivered                          | Devin / C commit 见本节                    | 单一Geometry Model（src/ui/grid-geometry.ts）：track88desktop/132coarse、header/footer36、tail56、More28、rail8、row30/36/44；typed display13/20、checkbox glyph、Choice Tag20/12/18；footer贴齐viewport；Host实测见docs/local/qa-w15-c-host-qa.md | 完整05剩余项与04/06分别追踪；真实touch/G4全query选择保持原范围 |
 | W15-06 Continuous loading   | Planned                                    | —                                         | 未运行本包验收                                                                                                                                                                 | Grid基线后                                                                       |
 | W15-07 Choice / Field Type  | Planned                                    | —                                         | 当前9色/native types保持；Tag视觉及完整Picker目标有差异                                                                                                                        | C含9色Tag窄展示接缝；完整07、G1/G2独立                                           |
 | W15-08A Activity / Undo安全 | Planned                                    | —                                         | 未运行本包验收                                                                                                                                                                 | 页面基础稳定后按共享owner推进                                                    |
 | W15-08B 最终操作入口        | Gated                                      | —                                         | G5完整投影/metadata/identity未交付                                                                                                                                             | 不做假feed                                                                       |
-| W15-09 View / Rename        | Planned                                    | —                                         | 当前Tab30/r8/600；导航可用，完整Rename/生命周期未验收                                                                                                                          | 首批C仅Tab/Context外观；其余与G3保持原范围                                       |
+|| W15-09 View / Rename        | C subset delivered                          | Devin / C commit 见本节                    | View Tab 28px/r4/pad0-8/13-500-20；Current=accent-soft+accent+2px inset指示条；Default独立；长名截断；More不切换View；Host实测见docs/local/qa-w15-c-host-qa.md | 完整Rename/生命周期与G3 order CAS保持原范围 |
 | W15-10 Date / Grid          | Planned                                    | —                                         | 实际仍native date input；Calendar未实施，不报01回归                                                                                                                            | 07窄handle/稳定Grid后                                                            |
 | W15-11 Date消费者           | Planned                                    | —                                         | Detail/Draft/Map基线入口可达；新Date消费者未实施                                                                                                                               | 10后                                                                             |
 | W15-12 集成验收             | Planned                                    | —                                         | 本轮局部CDP审计不等于全Wave Host QA Passed                                                                                                                                     | 按包及Golden三门；保未验证设备/能力                                              |
@@ -52,6 +52,18 @@ Obsidian1.14.4隔离合成Vault、默认requestUrl+loopback内存API、Microsoft
 ### B最终Host复核（2026-10-14）
 
 新bundle SHA-256为beebf26cb3dc308054bd8ac3b5b11a84f9ab77057343c40f78e03392ac217093；styles仍为310430bec6a3ca8198fb3d0b860869072c9e68818b3cfe83daf046d4b82aa262。隔离profile/Vault、默认requestUrl、loopback RAM API、1360×900/Microsoft YaHei UI：Light/Dark失败Apply后closed count=已存2、reopen=草稿1；失败Clear后closed=2、reopen=0；成功Apply/Clear由已提交状态刷新。新增6项通过，既有B9+5与A6在新bundle全部复测通过，共26项Host场景；保28/32/r4、Primary、pending不跳、Menu语义/owner/focus、Field失败重试、窄Pane、真实200%Zoom和Reduced Motion。环境安装器getVersion=1.12.7、profile含obsidian-1.14.4.asar；不以安装器版本推断渲染runtime版本。旧9eb66d证据仅对应B初版。真实Mobile/touch、生产Server持久化及C完整Grid仍Not Verified。可选本机JSON/截图不作为干净克隆的必需输入。
+
+### C 阶段交付与 Host 验收（2026-10-14，Devin）
+
+授权范围：W15-05 Grid 几何与 Typed Display 子集 + W15-09 View Tab/Context 外观子集；完整组合的生产 Grid 页面，复用 A/B 交付的 `createLoomButton`/`createToolbarToggle`/`openContextMenu`，未新建第二套控件、未侵入 Controller/Client/CAS/Queue。
+
+- **单一 Geometry Model**：新增 `src/ui/grid-geometry.ts`，renderer/grid-display/styles 全部消费同一 resolved 模型（desktop track 88=2+28×3+2、coarse 132=44×3、header/footer 36、tail 56、More 28、rail 8、row 30/36/44）；冻结列偏移、footer 模板、resize 命中、横向滚动统一。
+- **Typed Display**：body 13/20、meta 12/18；checkbox 渲染批准 glyph（`loom-field-check`+`data-checked`+aria-label），不再以文字冒充；Select/MultiSelect 为 20px Choice Tag（12/18、语义色对）；Number 按字段配置格式化。
+- **View Tab**：`.loom-view-tab` 28px/r4/pad 0-8/13-500-20；Current=accent-soft 背景+accent 文字+2px inset 底部指示条（按 Figma 组件与 design-system 正文，修正了最初透明底实现）；Default 徽标独立于 Current；More 菜单（Rename/Copy/Set as default/Delete）不切换 View；长名截断不增高。
+- **G6 Footer**：复用 eed381b 桥接；Host 实测 Filter+Search 联合 aggregate 请求携带 search 且值正确；InMemory fixture 补足真实 filter 求值（不再忽略 filter 声称联合正确）；capability 缺失→unavailable。
+- **Host QA 修复项**（真实 Obsidian 发现并已修复）：`.loom-grid-header{overflow:hidden}` 破坏冻结列 sticky（复验 idx≈57/frozen=145 固定）；`.loom-filter-values-popover` z-index 40 被 query-panel z50 遮挡导致真实点击落空（升至 60）；View Tab Current 缺 accent-soft 背景（对齐 Figma）。
+- **门禁**：vitest 70 文件/1100 全绿；tsc 0 错；eslint 0 error/750 warning（存量）；prettier 全绿；api:generate 确定性零 diff；build 成功。证据与截图：`docs/local/qa-w15-c-host-qa.md`、`docs/local/experiments/cdp/shots/qa-c-*`。
+- **Not Verified**：真实 touch/coarse 设备（仅 media 模拟）、生产 Server 写路径（仅隔离 stub）、G4 全 query 选择、真实 Mobile。W15-02 视觉续段/W15-03/W15-04/W15-06 未启动。
 
 ## API / Future
 
