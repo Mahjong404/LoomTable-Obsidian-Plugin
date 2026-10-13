@@ -11,6 +11,8 @@ export default defineConfig(
     'src/generated/transport.ts',
     'tests/gallery/bundle.js',
     'docs/local',
+    'docs/.vitepress/cache',
+    'docs/.vitepress/dist',
   ]),
   {
     languageOptions: {
@@ -19,7 +21,13 @@ export default defineConfig(
       },
       parserOptions: {
         projectService: {
-          allowDefaultProject: ['eslint.config.mts', 'esbuild.config.mjs', 'scripts/*.mjs'],
+          allowDefaultProject: [
+            'eslint.config.mts',
+            'esbuild.config.mjs',
+            'scripts/*.mjs',
+            'docs/.vitepress/config.mts',
+            'docs/.vitepress/theme/index.ts',
+          ],
         },
         tsconfigRootDir: import.meta.dirname,
       },

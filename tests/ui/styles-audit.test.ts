@@ -61,7 +61,8 @@ describe('LoomTable CSS contract', () => {
   });
 
   it('defines a shared namespaced control geometry contract', () => {
-    expect(tokenRoot()).toContain('--loom-control-min-height: 2rem');
+    expect(tokenRoot()).toContain('--loom-control-min-height: 32px');
+    expect(tokenRoot()).toContain('--loom-control-compact-height: 28px');
     expect(tokenRoot()).toContain('--loom-control-padding-block: var(--loom-space-1)');
     expect(tokenRoot()).toContain('--loom-control-padding-inline: var(--loom-space-2)');
     expect(styles).toContain('min-height: var(--loom-control-min-height)');

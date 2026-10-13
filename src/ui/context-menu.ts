@@ -22,6 +22,8 @@ export interface ContextMenuItem {
 export type ContextMenuEntry = ContextMenuItem | 'separator';
 
 export interface ContextMenuOptions {
+  /** Base Menu defaults to 230px; domain menus may request their own width. */
+  readonly width?: number;
   readonly items: readonly ContextMenuEntry[];
   readonly x: number;
   readonly y: number;
@@ -87,6 +89,20 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
   menu.className = 'loom-context-menu loom-portal';
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', options.label);
+  let copiedTokens: string[] = [];
+  const copyOwnerTokens = (): void => {
+    const style = ownerDocument.defaultView?.getComputedStyle(options.host);
+    if (style === undefined) return;
+    for (const name of copiedTokens) menu.style.removeProperty(name);
+    copiedTokens = [];
+    for (let index = 0; index < style.length; index += 1) {
+      const name = style.item(index);
+      if (!name.startsWith('--loom-')) continue;
+      menu.style.setProperty(name, style.getPropertyValue(name));
+      copiedTokens.push(name);
+    }
+  };
+  copyOwnerTokens();
 
   const buttons: HTMLButtonElement[] = [];
   for (const entry of options.items) {
@@ -112,6 +128,7 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     if (entry.icon !== undefined) item.append(createUiIcon(entry.icon));
     item.append(createTextSpan(ownerDocument, entry.label));
     if (entry.current === true || entry.checked === true) {
+      item.dataset.selected = 'true';
       if (entry.current === true) item.setAttribute('aria-current', 'true');
       const check = createUiIcon('menu-check');
       check.classList.add('loom-context-menu-check');
@@ -138,13 +155,22 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
   const restoreFocus = (): void => {
     if (trigger !== undefined && trigger.isConnected) trigger.focus();
   };
-  const observer = new MutationObserver(() => {
+  const observer = new MutationObserver((records) => {
     if (
       !options.host.isConnected ||
       !menu.isConnected ||
       (trigger !== undefined && !trigger.isConnected)
     )
       close();
+    else if (
+      records.some(
+        (record) =>
+          record.type === 'attributes' &&
+          record.target instanceof HTMLElement &&
+          record.target.contains(options.host),
+      )
+    )
+      copyOwnerTokens();
   });
   let closed = false;
   const close = (): void => {
@@ -212,6 +238,7 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
     right: ownerDocument.documentElement.clientWidth,
     bottom: ownerDocument.documentElement.clientHeight,
   };
+  menu.style.width = `${Math.min(options.width ?? 230, Math.max(0, bounds.right - bounds.left - MENU_MARGIN * 2))}px`;
   menu.classList.add('loom-context-menu--measuring');
   ownerDocument.body.append(menu);
   const menuRect = menu.getBoundingClientRect();
@@ -244,7 +271,12 @@ export function openContextMenu(options: ContextMenuOptions): () => void {
   activeMenu = record;
   triggerControl?.setAttribute('aria-expanded', 'true');
   options.host.addEventListener('scroll', onScroll, true);
-  observer.observe(ownerDocument.documentElement, { childList: true, subtree: true });
+  observer.observe(ownerDocument.documentElement, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: ['class', 'style'],
+  });
   ownerDocument.addEventListener('pointerdown', onPointerDown, true);
   ownerDocument.addEventListener('keydown', onKeyDown, true);
   ownerDocument.addEventListener('focusout', onFocusOut, true);

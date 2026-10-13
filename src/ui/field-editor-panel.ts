@@ -8,6 +8,7 @@ import type { Translator } from '../i18n';
 import { getFocusableElements } from './dangerous-action-confirmation';
 import { createFieldTypeIcon } from './field-type-icon';
 import { createUiIcon } from './icons';
+import { createLoomButton } from './loom-button';
 
 export const FIELD_TYPES: readonly Field['type'][] = [
   'text',
@@ -314,10 +315,15 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
   errorEl.hidden = true;
   panel.append(errorEl);
 
-  const submit = document.createElement('button');
-  submit.type = 'button';
-  submit.className = 'loom-field-editor-submit loom-button-primary';
-  submit.textContent = t(options.mode === 'create' ? 'field.submit.create' : 'field.submit.save');
+  const submitControl = createLoomButton({
+    label: t(options.mode === 'create' ? 'field.submit.create' : 'field.submit.save'),
+    variant: 'primary',
+    size: 'default',
+    reserveBusySpace: true,
+    onActivate: () => void doSubmit(),
+  });
+  const submit = submitControl.element;
+  submit.classList.add('loom-field-editor-submit');
 
   const showError = (message: string): void => {
     errorEl.textContent = message;
@@ -347,6 +353,7 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     closed = true;
     observer.disconnect();
     dismissPalette();
+    submitControl.dispose();
     panel.remove();
     options.host.removeEventListener('scroll', onScroll);
     document.removeEventListener('pointerdown', onPointerDown, true);
@@ -418,15 +425,15 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     dismissPalette();
     lockDraft();
     panel.dataset.submitting = 'true';
-    submit.setAttribute('aria-busy', 'true');
+    submitControl.update({ busy: true });
     try {
       await options.onSubmit(input);
     } catch (error) {
       if (closed) return;
       submitting = false;
       delete panel.dataset.submitting;
-      submit.removeAttribute('aria-busy');
       unlockDraft();
+      submitControl.update({ busy: false });
       showError(
         error instanceof Error && error.message !== '' ? error.message : t('field.submit.failed'),
       );
@@ -435,7 +442,6 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     close(true);
   };
 
-  submit.addEventListener('click', () => void doSubmit());
   panel.append(submit);
 
   const onScroll = (): void => close();

@@ -13,6 +13,7 @@ import type {
   SortSpec,
 } from '../../src/client/loomtable-client';
 import { createTranslator, type Translator } from '../../src/i18n';
+import { mountControlShowcase } from './control-showcase';
 import { TileProviderRegistry } from '../../src/maps/providers/tile-provider-registry';
 import type {
   MapCamera,
@@ -67,6 +68,12 @@ export interface GalleryScenario {
 }
 
 export const galleryScenarios: readonly GalleryScenario[] = [
+  {
+    id: 'loom-controls',
+    section: 'Loom UI',
+    title: 'Production controls — Light/Dark & states',
+    mount: mountControlShowcase,
+  },
   {
     id: 'component-zones',
     section: 'Layout',

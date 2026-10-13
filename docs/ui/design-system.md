@@ -57,22 +57,33 @@ Grid / Map / Record Views
 所有 LoomTable CSS 必须位于 `.loom-*` 命名空间：
 
 ```css
-.loom-root {}
-.loom-toolbar {}
-.loom-button {}
-.loom-grid {}
-.loom-cell {}
-.loom-cell[data-state="editing"] {}
+.loom-root {
+}
+.loom-toolbar {
+}
+.loom-button {
+}
+.loom-grid {
+}
+.loom-cell {
+}
+.loom-cell[data-state='editing'] {
+}
 ```
 
 禁止在插件 CSS 中全局覆盖：
 
 ```css
-button {}
-input {}
-textarea {}
-.workspace {}
-.markdown-preview-view {}
+button {
+}
+input {
+}
+textarea {
+}
+.workspace {
+}
+.markdown-preview-view {
+}
 ```
 
 禁止使用 `transition: all`。涉及布局测量、SVG、编辑器光标和虚拟化 Grid 的元素不得使用会改变尺寸的全局动画。
@@ -81,11 +92,11 @@ textarea {}
 
 图标按语义分三层来源，不得混用：
 
-| 层 | Provider | 用途 |
-|---|---|---|
-| 系统 UI 图标 | Obsidian 图标体系 / Lucide 风格 stroke SVG（经 `setIcon` 渲染；`src/ui/icons.ts`、`src/ui/field-type-icon.ts`） | 工具栏、按钮、字段类型、状态标记等界面内置图标 |
-| 用户可选图标 | Tabler Icons | 未来开放用户为 View、字段等自选图标时的候选集 |
-| 领域专属图标 | LoomTable 自绘 SVG | 仅用于现成图标无法表达 LoomTable 领域语义的场景 |
+| 层           | Provider                                                                                                        | 用途                                            |
+| ------------ | --------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
+| 系统 UI 图标 | Obsidian 图标体系 / Lucide 风格 stroke SVG（经 `setIcon` 渲染；`src/ui/icons.ts`、`src/ui/field-type-icon.ts`） | 工具栏、按钮、字段类型、状态标记等界面内置图标  |
+| 用户可选图标 | Tabler Icons                                                                                                    | 未来开放用户为 View、字段等自选图标时的候选集   |
+| 领域专属图标 | LoomTable 自绘 SVG                                                                                              | 仅用于现成图标无法表达 LoomTable 领域语义的场景 |
 
 原则：
 
@@ -99,21 +110,21 @@ textarea {}
 
 原则：宿主控件优先；宿主控件明显不胜任复杂数据场景时自建 Loom 组件，不为“原生感”降级交互。
 
-| 场景 | 实现 |
-|---|---|
-| Settings | Obsidian 原生 Setting |
-| Command | Obsidian Command |
-| Notice | Obsidian Notice |
-| 宿主原生菜单 | Obsidian Menu；宿主命令使用 |
-| Loom 产品菜单 | 既有 openContextMenu；拥有 trigger、pane、选择语义和生命周期 |
-| 基础 Modal | Obsidian Modal |
-| Button / Input | Loom 包装和样式 |
-| Grid | Loom 自定义 DOM |
-| Cell Editor | Loom Field Editor |
-| Filter Builder | Loom 自定义 DOM |
-| Record Detail | Loom 自定义 DOM（桌面 Detail Panel / 窄布局 Sheet） |
-| Field Type Picker / Relation Picker 等复杂选择器 | Loom 自定义 DOM |
-| Map View | Loom Map UI + 随包 Leaflet Adapter |
+| 场景                                             | 实现                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------ |
+| Settings                                         | Obsidian 原生 Setting                                        |
+| Command                                          | Obsidian Command                                             |
+| Notice                                           | Obsidian Notice                                              |
+| 宿主原生菜单                                     | Obsidian Menu；宿主命令使用                                  |
+| Loom 产品菜单                                    | 既有 openContextMenu；拥有 trigger、pane、选择语义和生命周期 |
+| 基础 Modal                                       | Obsidian Modal                                               |
+| Button / Input                                   | Loom 包装和样式                                              |
+| Grid                                             | Loom 自定义 DOM                                              |
+| Cell Editor                                      | Loom Field Editor                                            |
+| Filter Builder                                   | Loom 自定义 DOM                                              |
+| Record Detail                                    | Loom 自定义 DOM（桌面 Detail Panel / 窄布局 Sheet）          |
+| Field Type Picker / Relation Picker 等复杂选择器 | Loom 自定义 DOM                                              |
+| Map View                                         | Loom Map UI + 随包 Leaflet Adapter                           |
 
 ## 组件状态
 
@@ -136,13 +147,13 @@ offline
 
 ## 组件实现
 
-实现使用 TypeScript 工厂函数和原生 DOM（`src/ui/`）。以下是接口方向示例，不能据此假定这些导出已经存在：
+实现使用 TypeScript 工厂函数和原生 DOM（`src/ui/`）。生产导出、消费者和生命周期见 [Loom UI 接口](loom-ui.md)。以下 Popover/Field 示例仍只是方向，不表示已创建通用实现：
 
 ```ts
-createLoomButton(options)
-createLoomPopover(options)
-createFieldEditor(field, value, context)
-createRecordDetail(record, context)
+createLoomButton(options);
+createLoomPopover(options);
+createFieldEditor(field, value, context);
+createRecordDetail(record, context);
 ```
 
 不引入 React 或其他 UI 框架，不引入组件库，不复制完整主题 CSS。Plugin Runtime 保持 native DOM；VitePress 文档站只挂载同源 DOM factory，Vue 仅用于站点宿主，不进入 Plugin bundle。
@@ -168,7 +179,7 @@ createRecordDetail(record, context)
 
 ## Component Gallery
 
-落地链路为 Figma → Loom UI → VitePress Component Showcase → Obsidian Plugin。当前代码只有 tests/gallery 开发 Gallery，没有 VitePress 工程或通用 Button/Popover factory；已有 Menu、Field、Query 等生产模块不能据此称作完整 Primitive 库。迁移展示站须在真实消费者同批复用组件；Gallery 是过渡验收入口，不能为网站复制组件或以网站完成替代宿主完成。
+落地链路为 Figma → Loom UI → VitePress Component Showcase → Obsidian Plugin。`tests/gallery/control-showcase.ts` 和 `docs/.vitepress/` 挂载同一生产 Button/Toolbar factory，样式只消费 `styles.css`；Plugin 不导入 Vue/VitePress。Menu、Field、Query 保持领域所有权，没有通用 Popover/保存框架。Gallery/Showcase 不能替代宿主验收。
 
 Plugin 内提供开发用 Component Gallery，展示每个组件的：
 
@@ -193,54 +204,54 @@ Wave 1 保持 Approved/Frozen；Wave 1.5 视觉基线已批准。此节定义目
 
 Grid、Picker 和历史 typed renderer 使用同一背景/前景 token 对。下表是批准的 fallback 值，只在 Token 定义层维护；组件不硬编码第二套色板。每个主题独立定义背景与前景，标签始终有文字；颜色不用于代替 Current 或系统保存状态。新三色 writer 仍受 [G1](../wave1.5/api-boundary.md#g1--12-color-write-compatibility) 约束，reader 对未知色保值并安全显示。
 
-| Color | Light background / foreground | Dark background / foreground | 写入范围 |
-| --- | --- | --- | --- |
-| gray | #F0F1F4 / #4D5663 | #47515F / #E0E6EE | 当前 9 色 |
-| red | #FCE8E8 / #9B323C | #7A3544 / #FFDCE2 | 当前 9 色 |
-| orange | #FCEBDD / #985017 | #784725 / #FFE0B9 | 当前 9 色 |
-| yellow | #FBF0C7 / #786006 | #665A22 / #FFEB9C | 当前 9 色 |
-| lime | #EFF3D6 / #566720 | #526820 / #E7F5B0 | G1 后启用 writer |
-| green | #E6F3E7 / #376946 | #2B6343 / #BDF2CE | 当前 9 色 |
-| cyan | #DEF3F4 / #21686D | #1E5D6B / #B4EDF4 | 当前 9 色 |
-| blue | #E7EEFC / #345BA4 | #2A5484 / #CEE2FF | 当前 9 色 |
-| indigo | #E7E8F9 / #5057A6 | #484789 / #DEDEFF | G1 后启用 writer |
-| purple | #EEE6F8 / #6F478F | #603E82 / #E8D4FF | 当前 9 色 |
-| pink | #F9E5EF / #98476B | #7A3D60 / #FFD6EC | 当前 9 色 |
-| brown | #F0E8E1 / #7C5845 | #62483B / #EED4BE | G1 后启用 writer |
+| Color  | Light background / foreground | Dark background / foreground | 写入范围         |
+| ------ | ----------------------------- | ---------------------------- | ---------------- |
+| gray   | #F0F1F4 / #4D5663             | #47515F / #E0E6EE            | 当前 9 色        |
+| red    | #FCE8E8 / #9B323C             | #7A3544 / #FFDCE2            | 当前 9 色        |
+| orange | #FCEBDD / #985017             | #784725 / #FFE0B9            | 当前 9 色        |
+| yellow | #FBF0C7 / #786006             | #665A22 / #FFEB9C            | 当前 9 色        |
+| lime   | #EFF3D6 / #566720             | #526820 / #E7F5B0            | G1 后启用 writer |
+| green  | #E6F3E7 / #376946             | #2B6343 / #BDF2CE            | 当前 9 色        |
+| cyan   | #DEF3F4 / #21686D             | #1E5D6B / #B4EDF4            | 当前 9 色        |
+| blue   | #E7EEFC / #345BA4             | #2A5484 / #CEE2FF            | 当前 9 色        |
+| indigo | #E7E8F9 / #5057A6             | #484789 / #DEDEFF            | G1 后启用 writer |
+| purple | #EEE6F8 / #6F478F             | #603E82 / #E8D4FF            | 当前 9 色        |
+| pink   | #F9E5EF / #98476B             | #7A3D60 / #FFD6EC            | 当前 9 色        |
+| brown  | #F0E8E1 / #7C5845             | #62483B / #EED4BE            | G1 后启用 writer |
 
 ### Picker 视觉合同
 
 下表量值均以 Picker 左上角为原点。Date 6 个 master、Time 12 个 master 的固定设计尺寸均为 280×325；Time/DateTime/12h 是 Future/API-gated。容器承载形态和焦点按 HIG，不通过压缩内部几何解决窄 Pane。
 
-| 部位 | 批准值 |
-| --- | --- |
-| Root | 280×325 |
-| Header | x14/y8/w252/h36 |
-| Footer | x14/y276/w252/h28；Clear/Confirm 各 56×28，gap8；中心 x138/x202，右边缘 x258 |
-| Footer leading | 72px；Time mode target 28×28，中心 Picker x50；glyph 22×22；Date 使用 Today |
-| Date 标题 | 年/月 15px/600、line22，Quiet target 高28；Year slot112、Month64；无 caret 或常驻边框 |
-| Calendar | Day 7×6、day cell36×32；Month3×4；Year4×5、每页20年 |
-| Time body | x14/y48/w252/h220 |
-| Time anchor | 130×36，Header local x61；HH local x0/w56、colon x60.5/w9、MM x74/w56；Picker HH x75、MM x149，colon 中心 x140 |
-| Time 字体 | HH/MM 32px/600、line36；colon28px/500、line36；Clock labels13px/500 |
-| AM/PM | 独立 trailing control，Picker x210/y8/w40/h36；不参与 time anchor 居中计算；minute hit gap5、右侧 inset30 |
-| AM/PM 内容 | 字12px/600、line18；indicator x2/w36/h18/r4，AM y0/PM y18；浅 accent 背景、选中文字 accent，未选中中性可读 |
-| Wheel | 两列各 5×36px 可见行，窗口180px；中心选中带固定，不随数字滚动 |
+| 部位           | 批准值                                                                                                         |
+| -------------- | -------------------------------------------------------------------------------------------------------------- |
+| Root           | 280×325                                                                                                        |
+| Header         | x14/y8/w252/h36                                                                                                |
+| Footer         | x14/y276/w252/h28；Clear/Confirm 各 56×28，gap8；中心 x138/x202，右边缘 x258                                   |
+| Footer leading | 72px；Time mode target 28×28，中心 Picker x50；glyph 22×22；Date 使用 Today                                    |
+| Date 标题      | 年/月 15px/600、line22，Quiet target 高28；Year slot112、Month64；无 caret 或常驻边框                          |
+| Calendar       | Day 7×6、day cell36×32；Month3×4；Year4×5、每页20年                                                            |
+| Time body      | x14/y48/w252/h220                                                                                              |
+| Time anchor    | 130×36，Header local x61；HH local x0/w56、colon x60.5/w9、MM x74/w56；Picker HH x75、MM x149，colon 中心 x140 |
+| Time 字体      | HH/MM 32px/600、line36；colon28px/500、line36；Clock labels13px/500                                            |
+| AM/PM          | 独立 trailing control，Picker x210/y8/w40/h36；不参与 time anchor 居中计算；minute hit gap5、右侧 inset30      |
+| AM/PM 内容     | 字12px/600、line18；indicator x2/w36/h18/r4，AM y0/PM y18；浅 accent 背景、选中文字 accent，未选中中性可读     |
+| Wheel          | 两列各 5×36px 可见行，窗口180px；中心选中带固定，不随数字滚动                                                  |
 
 ### Clock Pointer Geometry — Future
 
 Hour/Minute 使用同一公式，起点始终为 Clock 中心，终点为活动 ring 的 marker 中心。参数按活动环变化，不按示例分钟补偿。
 
-| 参数 | 批准值 |
-| --- | --- |
-| Dial envelope | 216×216；现有圆形 surface 可见直径212 |
-| 中心 | Dial(108,108)，Body(126,110)，Picker(140,158) |
-| Label / active ring | 外环 R94；24h 内环 R62；12h Hour 与 Minute 使用外环 R94 |
-| Pointer length | 24h Hour 按活动环为94/62；12h Hour94；Minute 所有0–59统一94 |
-| Hand stroke | Hour/Minute、两主题统一1.5px，消费 accent Token |
-| Selected marker radius | Hour12；Minute6；中心点 radius2.5 |
-| 输入 dead zone | R28；是 hit policy，不是可见空白或 pointer 起点 |
-| 24h ring hit threshold | R78 附近 ±4px hysteresis；与视觉 R94/R62 分开 |
+| 参数                   | 批准值                                                      |
+| ---------------------- | ----------------------------------------------------------- |
+| Dial envelope          | 216×216；现有圆形 surface 可见直径212                       |
+| 中心                   | Dial(108,108)，Body(126,110)，Picker(140,158)               |
+| Label / active ring    | 外环 R94；24h 内环 R62；12h Hour 与 Minute 使用外环 R94     |
+| Pointer length         | 24h Hour 按活动环为94/62；12h Hour94；Minute 所有0–59统一94 |
+| Hand stroke            | Hour/Minute、两主题统一1.5px，消费 accent Token             |
+| Selected marker radius | Hour12；Minute6；中心点 radius2.5                           |
+| 输入 dead zone         | R28；是 hit policy，不是可见空白或 pointer 起点             |
+| 24h ring hit threshold | R78 附近 ±4px hysteresis；与视觉 R94/R62 分开               |
 
 以12点为0°：θ=minute×6° 或 (hour mod12)×30°，P=C+R×(sinθ,−cosθ)。28分钟为168°，Dial endpoint=(127.543699,199.945874)。数字与指针前景层应保持可读；所有60分钟、跨0°与两环输入的真实比例和命中留到 Runtime QA。
 
@@ -248,20 +259,21 @@ Hour/Minute 使用同一公式，起点始终为 Clock 中心，终点为活动 
 
 本节补充批准组件的落地量值；Figma 节点与本轮实测在 [对齐入口](../wave1.5/ui-alignment.md)。颜色、字体家族适配宿主；结构、状态槽、组件密度不能由宿主默认 button/select chrome 决定。
 
-| 层 / 部位 | 批准量值及消费方式 |
-|---|---|
-| Compact control | 固定 border-box 高28；Toolbar/IconButton/Menu target/Query operand 使用；默认表单 control 高32。使用 height，不能只设 min-height 后留下宿主30/32px默认高度 |
-| Control geometry token | 单一定义 compact28/default32、control radius4、inline padding8、icon14、icon-label gap4；已有 token 可保名称但须表达准确用途。floating radius8 独立；不将宿主 radius-s=8 当作 compact control 的4px批准值 |
-| Button label | 13px/400、line20；Primary 使用 accent/on-accent，Quiet 透明；loading/disabled 不改变宽高。样本内容宽度随文案与宿主字体，不把60px固定给所有语言 |
-| ViewTab | 高28、padding0/8、gap4、label13/500/20、radius4；Current accent-soft；Default metadata独立。名称截断和tabs横滚依 HIG，不为长文案增加行高 |
-| Toolbar Button | Default icon14 + label；Open 增加 trailing chevron14、neutral surface；Active 显示12px/18 count + accent；Open与Active可组合，不能以 aria-expanded 推导 query active |
-| Menu | 基础Menu root230宽/padding4（Light13:1841、Dark13:1868），受pane clamp与真实内容约束；item target高28、label13/20、glyph14；radio/checkbox 与 command 分开；Check14/1.75只影响Check。item布局显式控制 leading/label/trailing，不能让 clickable-icon 将整个hug文案居中而失去label可用空间 |
-| Query surfaces | padding8；Filter/Sort gap8；Display gap4。具体 root宽度/typed布局来自对应 Panel variant；不是一律384px或一律240px |
-| Filter | Empty320×98；Single480×108；TwoRules520×189；Narrow304×225；rule controls28，X target28；组、规则、operand 是领域 Pattern，不能降成通用 Button 列表 |
-| Sort | Empty320×143；TwoRules432×215；Narrow304×223；完整 entry 高28；临时 Add Field picker，与已选 entry 区分 |
-| Display | Standard304×169 / Narrow264×169为3字段样本；每字段row高28，heading20、density row28。更多字段高度自然增长/内部滚动，不拿3行样本总高强压7行 |
-| Grip | 普通命中槽28透明；Figma Query实例的24px视觉占位不缩小28px命中要求。实现可用透明外槽扩展hit，保持行/邻控件无重叠；coarse规则见Grid/HIG |
-| Grid contents | body13/20；metadata12/18；Choice Tag高20、label12/18、无独立重边框、padding inline8，主题bg/fg对按现有色板；当前行高密度不变 |
+| 层 / 部位              | 批准量值及消费方式                                                                                                                                                                                                                                                                                  |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compact control        | 固定 border-box 高28；Toolbar/IconButton/Menu target/Query operand 使用；默认表单 control 高32。使用 height，不能只设 min-height 后留下宿主30/32px默认高度                                                                                                                                          |
+| Control geometry token | 单一定义 compact28/default32、control radius4、inline padding8、icon14、icon-label gap4；已有 token 可保名称但须表达准确用途。基础 Menu floating radius6（13:1841/1868），Query/Field Panel radius8 独立；不将宿主 radius-s=8 当作 compact control 的4px批准值                                      |
+| Button label           | 13px/400、line20；Primary 使用 accent/on-accent，Quiet 透明；loading/disabled 不改变宽高。样本内容宽度随文案与宿主字体，不把60px固定给所有语言                                                                                                                                                      |
+| Async Loading 槽       | 用户批准的实施适配：可异步提交的 consumer 从初始状态预留 trailing Loading14 槽，Pending 保留 Label 与 Spinner；Field Submit 使用整行宽度，其余普通 button 按内容收缩。Figma 6:186 的普通42与6:201的Loading64是各自样本，异步 consumer 不在两宽度间跳变；busy 由 consumer 控制，failure 恢复同一控件 |
+| ViewTab                | 高28、padding0/8、gap4、label13/500/20、radius4；Current accent-soft；Default metadata独立。名称截断和tabs横滚依 HIG，不为长文案增加行高                                                                                                                                                            |
+| Toolbar Button         | Default icon14 + label；Open 增加 trailing chevron14、neutral surface；Active 显示12px/18 count + accent；Open与Active可组合，不能以 aria-expanded 推导 query active                                                                                                                                |
+| Menu                   | 基础Menu root230宽/padding4（Light13:1841、Dark13:1868），受pane clamp与真实内容约束；item target高28、label13/20、glyph14；radio/checkbox 与 command 分开；Check14/1.75只影响Check。item布局显式控制 leading/label/trailing，不能让 clickable-icon 将整个hug文案居中而失去label可用空间            |
+| Query surfaces         | padding8；Filter/Sort gap8；Display gap4。具体 root宽度/typed布局来自对应 Panel variant；不是一律384px或一律240px                                                                                                                                                                                   |
+| Filter                 | Empty320×98；Single480×108；TwoRules520×189；Narrow304×225；rule controls28，X target28；组、规则、operand 是领域 Pattern，不能降成通用 Button 列表                                                                                                                                                 |
+| Sort                   | Empty320×143；TwoRules432×215；Narrow304×223；完整 entry 高28；临时 Add Field picker，与已选 entry 区分                                                                                                                                                                                             |
+| Display                | Standard304×169 / Narrow264×169为3字段样本；每字段row高28，heading20、density row28。更多字段高度自然增长/内部滚动，不拿3行样本总高强压7行                                                                                                                                                          |
+| Grip                   | 普通命中槽28透明；Figma Query实例的24px视觉占位不缩小28px命中要求。实现可用透明外槽扩展hit，保持行/邻控件无重叠；coarse规则见Grid/HIG                                                                                                                                                               |
+| Grid contents          | body13/20；metadata12/18；Choice Tag高20、label12/18、无独立重边框、padding inline8，主题bg/fg对按现有色板；当前行高密度不变                                                                                                                                                                        |
 
 CSS限定到组件角色和直接槽位，例如 Toolbar的直接command group。禁止通过 .loom-grid-toolbar .loom-button 这类所有后代选择器改变 Query/Field/child Primary。组件需覆盖实际 Obsidian button:not(.clickable-icon) 和 input/select 的默认高度、颜色与圆角，使用有界组件选择器；不得复制宿主整套CSS或全局覆盖 button。
 

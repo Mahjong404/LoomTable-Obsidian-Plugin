@@ -56,6 +56,22 @@ P1先处理正确性及基础视觉；P2属于相应未完成切片；P3为缺�
 
 不新建任务包或第二status。第一批只启动现有W15-01的正确性/Primitive续段，再串行启动W15-05几何子集及W15-09 Tab/Context外观子集，形成真实Grid页面；精确合同与第一批prompt在 [Task Specifications](task-specifications.md#wave-15-ui-首批执行合同)。每个子段独立PR/固定SHA与验收；前段未通过不得扩大。
 
-第一批达到功能+视觉+Host三门后，再启动W15-02视觉续段→W15-03→W15-04，并完成05剩余/06；之后07→10→11，08A安全与09剩余按共享文件owner排队。08B等G5。G1/G6已交付Server但Plugin pin仍旧，另立现有Gate接入切片，在明确授权后同步f3980b1b4126cdfce026c0a94779c8c8261b3997并分别验证capability，不能混入纯UI PR。Future不进入。
+第一批达到功能+视觉+Host三门后，再启动W15-02视觉续段→W15-03→W15-04，并完成05剩余/06；之后07→10→11，08A安全与09剩余按共享文件owner排队。08B等G5。Devin eed381b已将Plugin pin更新至f3980b1b4126cdfce026c0a94779c8c8261b3997并交付G1/G6桥接；新writer消费者/生产联调仍按各Gate验收，纯UI不改合同、不回退桥接。Future不进入。
 
 本轮没有需要重选的产品设计决定。24px Figma Grip实例与28px命中合同通过透明hit槽解决；宿主字体/颜色按语义适配。缺少完整Shell/Record/Map设计画面时只组合批准规则，若实施发现真正无法满足的冲突，应提交具体节点/geometry/复现要求裁决，不能自行创作整页新设计。
+
+## B 生产收敛证据（2026-10-13）
+
+上述矩阵保留52b2c9d历史审计，不改写旧量尺。B以A merge58175c1为基线，实际导出/所有权/生产消费者见[接口](../ui/loom-ui.md)，进度只见status。Figma live读取同时导出节点；Obsidian1.14.4、合成数据、默认requestUrl、Microsoft YaHei UI QA字体、1360×900/dpr1，实际owner Pane1316px/内部可用宽度依DOM，窄420视口与Electron zoom2另测。
+
+| 历史项 / 当前消费者 | Figma / 合同                                                | 当前真实Host证据 / 判定                                                                                                                                                         |
+| ------------------- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A01 Toolbar         | Default9:888、Open9:898、Active9:906；Dark9:931/941/949     | 两主题Default60×28、Open80×28、Active71.047×28、Open+Active91.047×28；r4/p0-8/g4/font13/400/20；Open trailing14向上；count12/18。Confirmed；字体count宽约0.047px为允许渲染差异  |
+| A03 Field Primary   | Primary6:186/279 + default内容32；DS异步适配                | 整行222×32/r4/p0-8；normal/pending/failure同尺寸同Label、Spinner14；真实失败保draft并retry成功。Confirmed。用户已批准预留独立Loading槽，普通42/Loading64样本不强迫异步控件跳宽  |
+| A04 Menu            | root13:1841/1868、checked13:1705/1780、disabled13:1700/1775 | root230/p4/r6/border1 strong，item220×28/r4/font13/400/20；真实Aggregate为radio/aria-checked，Check14、1.75px且non-scaling，仅此glyph受影响。Grip菜单命令不添加check。Confirmed |
+| A06 Count           | HIG draft-local有效规则                                     | 真正Filter编辑无效operand后count从2变1，Open保持；通知不写query，既有测试保证invalid零写。Confirmed；不签Filter整套视觉                                                         |
+| A17 Showcase        | 同源factory，不重写HTML/CSS                                 | Gallery/VitePress同fixture import生产factory；实际站点两主题、28/32、长label240截断与原生Enter可用；Plugin bundle入口无Vue/VitePress。Confirmed，站点不替代Host                 |
+
+宿主允许的色彩适配：Figma Primary为Light#5558B7/Dark#A5ABF1，真实默认Obsidian为Light rgb152/115/247、Dark rgb138/92/245；文字使用宿主on-accent白色，布局/字号/角色保持。浮层使用owner计算后的Loom Token（floating surface/strong border/shadow），不把Figma hex硬编码到生产consumer。Owner override与打开期间主题/样式更新经Host证明；同源展示站另提供Figma主题变量环境。
+
+B还验证native Enter/Space一次、Reduced Motion静态Spinner、真正窄Pane和Electron200%缩放、Menu跨Pane替换/卸载、Toolbar旧handle无Action、A六项共享生命周期回归。截图/DOM量尺及bundle/styles指纹留在可选本机QA证据，正式status保关键数值和真实限制；新克隆只需源码/规范/合成fixture即可复测。C整页Golden、新版Filter/Sort/Display、真实Mobile/touch和生产Server持久化仍Missing Verification，不能从B局部通过推导全产品达到设计要求。

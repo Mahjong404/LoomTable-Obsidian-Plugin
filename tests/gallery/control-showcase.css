@@ -1,0 +1,48 @@
+/* Documentation fixture environment only. Components always use styles.css. */
+.loom-control-showcase .loom-showcase-theme {
+  padding: 16px;
+  margin: 16px 0;
+  color: var(--loom-text-normal);
+  background: var(--loom-bg-primary);
+  border: 1px solid var(--loom-border);
+}
+.loom-showcase-theme[data-theme='light'] {
+  --background-primary: #fff;
+  --background-secondary: #f3f3f5;
+  --background-modifier-hover: #eaeaf0;
+  --background-modifier-border: #a7a7b2;
+  --interactive-normal: #f3f3f5;
+  --interactive-hover: #eaeaf0;
+  --interactive-accent: #5558b7;
+  --interactive-accent-hover: #484b9d;
+  --text-normal: #252526;
+  --text-muted: #73737e;
+  --text-accent: #5558b7;
+  --text-error: #b42318;
+  --text-on-accent: #fff;
+}
+.loom-showcase-theme[data-theme='dark'] {
+  --background-primary: #25272b;
+  --background-secondary: #2d3037;
+  --background-modifier-hover: #383b44;
+  --background-modifier-border: #868c9a;
+  --interactive-normal: #2d3037;
+  --interactive-hover: #383b44;
+  --interactive-accent: #a5abf1;
+  --interactive-accent-hover: #b9bef5;
+  --text-normal: #e5e5e7;
+  --text-muted: #8e929e;
+  --text-accent: #a5abf1;
+  --text-error: #ff9d96;
+  --text-on-accent: #1d1e28;
+}
+.loom-showcase-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.loom-showcase-narrow {
+  width: 240px;
+  max-width: 100%;
+}
