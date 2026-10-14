@@ -24,8 +24,10 @@ export interface GridGeometry {
   readonly headerHeight: number;
   /** Aggregate footer height — independent of row density. */
   readonly footerHeight: number;
-  /** Body row height: 30 compact / 36 standard / 44 comfortable. */
+  /** Pointer density 30/36/44; effective coarse row height is at least44. */
   readonly rowHeight: number;
+  /** Tail create affordance stays 36px; an active draft uses rowHeight. */
+  readonly addRowHeight: number;
   /** Add-field tail track appended to header and footer templates. */
   readonly addTail: number;
   /** Header column-menu hit target. */
@@ -62,7 +64,8 @@ export function resolveGridGeometry(options: {
     systemInset,
     headerHeight: GRID_HEADER_HEIGHT,
     footerHeight: GRID_FOOTER_HEIGHT,
-    rowHeight: options.rowHeight,
+    rowHeight: coarse ? Math.max(systemSlot, options.rowHeight) : options.rowHeight,
+    addRowHeight: GRID_HEADER_HEIGHT,
     addTail: GRID_ADD_TAIL_WIDTH,
     moreTarget: GRID_HEADER_MORE_TARGET,
     resizeRail: GRID_RESIZE_RAIL_WIDTH,

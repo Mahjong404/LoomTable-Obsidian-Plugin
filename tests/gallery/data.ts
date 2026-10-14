@@ -320,6 +320,67 @@ export function galleryData(): InMemoryGridData {
   };
 }
 
+/** Approved C Golden, consumed by the live Controller/Renderer Gallery. */
+export function cGoldenGalleryData(): InMemoryGridData {
+  const labels: Readonly<Record<string, string>> = {
+    field_title: '名称',
+    field_count: '价格',
+    field_due: '检查日期',
+    field_done: '已验证',
+    field_status: '状态',
+  };
+  const fields = GALLERY_FIELDS.map((field): Field => {
+    const named = { ...field, name: labels[field.id] ?? field.name };
+    if (field.type === 'number')
+      return { ...named, type: 'number', config: { format: { thousandsSeparator: true } } };
+    if (field.type === 'select')
+      return {
+        ...named,
+        type: 'select',
+        config: {
+          ...field.config,
+          options: field.config.options.map((option, index) =>
+            index === 0 ? { ...option, name: '等待评审', color: 'blue' } : option,
+          ),
+        },
+      };
+    return named;
+  });
+  const ids = ['field_title', 'field_count', 'field_due', 'field_done', 'field_status'];
+  const view = {
+    ...GALLERY_GRID_VIEW,
+    isDefault: true,
+    name: 'Grid',
+    config: {
+      ...galleryGridConfig(),
+      projection: ids,
+      columnOrder: ids,
+      columnWidths: {
+        field_title: 216,
+        field_count: 120,
+        field_due: 168,
+        field_done: 112,
+        field_status: 200,
+      },
+      frozenFieldIds: [],
+      rowHeight: 'standard' as const,
+      sort: [],
+    },
+  };
+  const records = GALLERY_RECORDS.slice(0, 4).map((record) => ({
+    ...record,
+    values: {
+      ...record.values,
+      field_title: '采样地点',
+      field_count: 12800,
+      field_due: '2026-10-09',
+      field_done: true,
+      field_status: 'opt_todo',
+    },
+  }));
+  return { ...galleryData(), fields, views: [view], records };
+}
+
 export function createGalleryState(update: Partial<GridState> = {}): GridState {
   return {
     status: 'ready',

@@ -65,6 +65,7 @@ export type UiIconName =
   | 'menu-duplicate'
   | 'view-default'
   | 'field-format'
+  | 'field-pin'
   | 'row-insert-below';
 
 const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
@@ -301,6 +302,11 @@ const UI_ICONS: Record<UiIconName, readonly IconPart[]> = {
     ['line', { x1: '14', x2: '21', y1: '20', y2: '20' }],
   ],
   'menu-check': [['path', { d: 'M20 6 9 17l-5-5' }]],
+  // Approved Pin 205:31150 / 205:31154, normalized from its 14px Lucide geometry.
+  'field-pin': [
+    ['path', { d: 'M12 17v5' }],
+    ['path', { d: 'M9 3h6l-1 7 4 4v3H6v-3l4-4-1-7Z' }],
+  ],
   'view-manage': [
     ['line', { x1: '21', x2: '14', y1: '4', y2: '4' }],
     ['line', { x1: '10', x2: '3', y1: '4', y2: '4' }],

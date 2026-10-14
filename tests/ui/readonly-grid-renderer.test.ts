@@ -931,7 +931,10 @@ describe('ReadonlyGridRenderer', () => {
       [...(cell?.querySelectorAll<HTMLElement>('[role="listitem"]') ?? [])].map(
         (chip) => chip.textContent,
       ),
-    ).toEqual(['Old (Deleted option)', 'One']);
+    ).toEqual(['Old (Deleted option)', '+1']);
+    expect(cell?.querySelector('.loom-field-value-chips')?.getAttribute('aria-label')).toBe(
+      'Old (Deleted option), One',
+    );
     expect(cell?.textContent).not.toContain('option_old');
 
     cell?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
@@ -3236,7 +3239,7 @@ describe('Grid record lifecycle', () => {
     container.remove();
   });
 
-  it('paints filler grid lines and an inline add-record row below the last record', () => {
+  it('keeps the unoccupied canvas clear with an inline add-record row below real records', () => {
     const container = document.createElement('div');
     document.body.append(container);
     const callbacks = {
@@ -3247,7 +3250,9 @@ describe('Grid record lifecycle', () => {
     renderer.render(createState(2));
 
     const canvas = container.querySelector<HTMLElement>('.loom-grid-canvas');
-    expect(canvas?.style.backgroundImage).toContain('repeating-linear-gradient');
+    expect(canvas?.style.backgroundImage).toBe('');
+    expect(container.querySelectorAll('.loom-grid-row')).toHaveLength(2);
+    expect(container.querySelector('.loom-grid-system-rail')).not.toBeNull();
     const addRow = container.querySelector<HTMLButtonElement>(
       '.loom-grid-add-row[data-action="grid-add-row"]',
     );
@@ -4267,6 +4272,28 @@ describe('Toolbar overflow', () => {
     const overflow = toolbar.querySelector<HTMLElement>('.loom-toolbar-overflow');
     expect(overflow?.hidden).toBe(true);
     expect(toolbar.querySelector<HTMLElement>('[data-action="toggle-sort"]')?.hidden).toBe(false);
+    container.remove();
+  });
+
+  it('includes the overflow trigger width before deciding how many commands to hide', () => {
+    const roCallbacks = stubResizeObserver();
+    const container = document.createElement('div');
+    document.body.append(container);
+    const { renderer } = overflowRenderer(container);
+    renderer.render(createState(1));
+    const toolbar = container.querySelector<HTMLElement>('.loom-grid-toolbar')!;
+    const trigger = toolbar.querySelector<HTMLElement>('.loom-toolbar-overflow')!;
+    Object.defineProperty(toolbar, 'clientWidth', { value: 320 });
+    Object.defineProperty(toolbar, 'scrollWidth', {
+      get: () => {
+        const hidden = toolbar.querySelectorAll('[data-overflow][hidden]').length;
+        return 340 - hidden * 20 + (trigger.hidden ? 0 : 36);
+      },
+    });
+    for (const callback of roCallbacks) callback([], {} as ResizeObserver);
+    expect(toolbar.querySelectorAll('[data-overflow][hidden]')).toHaveLength(3);
+    expect(toolbar.scrollWidth).toBeLessThanOrEqual(toolbar.clientWidth);
+    renderer.dispose();
     container.remove();
   });
 
@@ -6054,7 +6081,9 @@ describe('Resolved Grid geometry (W15-05 C)', () => {
     expect(header?.style.gridTemplateColumns.startsWith('88px ')).toBe(true);
     expect(header?.style.gridTemplateColumns.endsWith(' 56px')).toBe(true);
     expect(row?.style.gridTemplateColumns.startsWith('88px ')).toBe(true);
-    expect(footer?.style.gridTemplateColumns).toBe(header?.style.gridTemplateColumns);
+    expect(
+      footer?.querySelector<HTMLElement>('.loom-grid-aggregate-row')?.style.gridTemplateColumns,
+    ).toBe(header?.style.gridTemplateColumns);
     expect(footer?.style.height).toBe('36px');
     container.remove();
   });

@@ -54,7 +54,8 @@ describe('LoomTable CSS contract', () => {
   it('retains non-color state and visible focus contracts', () => {
     expect(styles).toContain("[data-status='error']");
     expect(styles).toContain("[data-status='conflict']");
-    expect(styles).toContain("[data-edit-state='queued']");
+    expect(styles).toContain(".loom-save-status[data-status='saving']");
+    expect(styles).not.toContain(".loom-grid-cell[data-edit-state='queued']");
     expect(styles).toContain('.loom-grid-cell:focus-visible');
     expect(styles).toContain('box-shadow: inset 0 0 0 2px var(--loom-selection-border)');
     expect(styles).toContain('outline: 2px solid var(--loom-focus)');

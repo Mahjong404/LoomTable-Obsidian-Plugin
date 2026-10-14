@@ -131,8 +131,9 @@ describe('FilterBuilder', () => {
     const host = mount(builder);
 
     host
-      .querySelector<HTMLElement>('[data-path=""]')
-      ?.querySelector<HTMLButtonElement>('[data-action="filter-add-group"]')
+      .querySelector<HTMLButtonElement>(
+        '.loom-filter-builder > .loom-filter-actions [data-action="filter-add-group"]',
+      )
       ?.click();
     const emptyGroup = host.querySelector<HTMLElement>('[data-path="1"]');
     expect(emptyGroup?.querySelector('select[data-role="filter-group-op"]')).not.toBeNull();
@@ -211,7 +212,8 @@ describe('FilterBuilder', () => {
     };
     const builder = createBuilder(initial, { onApply });
     const host = mount(builder);
-    expect(host.querySelector('.loom-filter-summary')?.textContent).toContain('2');
+    expect(builder.getValidRuleCount()).toBe(2);
+    expect(host.querySelector('.loom-filter-title')?.textContent).toBe('Filter');
     host.querySelector<HTMLButtonElement>('[data-action="filter-clear"]')?.click();
     await vi.waitFor(() => expect(onApply).toHaveBeenCalledWith(undefined));
     host.remove();
@@ -244,7 +246,9 @@ describe('FilterBuilder', () => {
     expect(host.querySelector('select[data-role="filter-group-op"]')).toBeNull();
 
     host
-      .querySelector<HTMLButtonElement>('.loom-filter-root-actions [data-action="filter-add-rule"]')
+      .querySelector<HTMLButtonElement>(
+        '.loom-filter-builder > .loom-filter-actions [data-action="filter-add-rule"]',
+      )
       ?.click();
     expect(host.querySelector('select[data-role="filter-group-op"]')).not.toBeNull();
     expect(host.querySelectorAll('.loom-filter-row')).toHaveLength(2);
@@ -322,7 +326,7 @@ describe('FilterBuilder', () => {
     const builder = createBuilder(initial, {});
     const host = mount(builder);
     const groupRemove = host.querySelector<HTMLElement>(
-      '.loom-filter-group[data-path=""] > .loom-filter-group-head [data-action="filter-remove"]',
+      '.loom-filter-group[data-path="1"] > .loom-filter-group-head [data-action="filter-remove"]',
     );
     expect(groupRemove?.textContent).toBe('Remove group');
     const ruleRemove = host.querySelector<HTMLElement>(
@@ -713,6 +717,42 @@ describe('FilterBuilder', () => {
       resolveLoad(page([{ value: 'opt_a', display: 'Alpha', count: 1 }]));
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(popover()).toBeNull();
+      host.remove();
+    });
+
+    it('restores the current value trigger after an apply rerender and consumes only child Escape', async () => {
+      let complete!: () => void;
+      const onApply = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            complete = resolve;
+          }),
+      );
+      const builder = createBuilder(
+        { kind: 'rule', fieldId: 'field_status', operator: 'is', value: 'opt_a' },
+        { host: document.body, loadFieldValues: vi.fn(async () => page([])), onApply },
+      );
+      const host = mount(builder);
+      const parentEscape = vi.fn();
+      host.addEventListener('keydown', parentEscape);
+      const operator = host.querySelector<HTMLSelectElement>('[data-role="filter-operator"]')!;
+      operator.value = 'isNot';
+      operator.dispatchEvent(new Event('change', { bubbles: true }));
+      const trigger = host.querySelector<HTMLButtonElement>('.loom-filter-value-pick')!;
+      trigger.click();
+      await waitForApply(onApply);
+      complete();
+      await vi.waitFor(() => expect(trigger.isConnected).toBe(false));
+      const currentTrigger = host.querySelector<HTMLButtonElement>('.loom-filter-value-pick')!;
+      expect(currentTrigger).not.toBe(trigger);
+      const search = popover()!.querySelector<HTMLInputElement>('.loom-filter-values-search')!;
+      search.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(popover()).toBeNull();
+      expect(document.activeElement).toBe(currentTrigger);
+      expect(parentEscape).not.toHaveBeenCalled();
+      currentTrigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      expect(parentEscape).toHaveBeenCalledOnce();
+      builder.dispose();
       host.remove();
     });
 

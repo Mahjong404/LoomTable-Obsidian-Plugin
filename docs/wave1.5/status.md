@@ -1,6 +1,6 @@
 # Wave 1.5 — 唯一实施状态
 
-更新：2026-10-14（C 交付）。只记录实际实施、授权与交付引用；范围见README/implementation-plan，行为见UI/Architecture，任务合同见task-specifications。A/B已由Codex交付合并（PR114/PR115）；C 阶段 W15-05 几何/Typed Display 子集与 W15-09 View Tab/Context 外观子集由 Devin 在 A/B 基线上实施并完成本地门禁与 Host QA。
+更新：2026-10-14（C Remediation，等待用户视觉验收）。只记录实际实施、授权与交付引用；范围见README/implementation-plan，行为见UI/Architecture，任务合同见task-specifications。A/B已合并（PR114/PR115，B merge fe9f24a）；Devin原C提交经独立审计未通过组合验收。Codex在PR116继续修复，PR保持Open，禁止未经用户确认新视觉结果合并。
 
 ## 批准与当前基线
 
@@ -8,8 +8,8 @@
 | ------------------------------- | ----------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
 | Wave 1 / Wave 1.5设计           | Approved（当前实施基线）                                                                                    | 已批准视觉/布局/交互；用户可通过Design Delta迭代，规则见UI入口；Future/API门槛保留                                 |
 | W15-00 正式文档基线             | Done                                                                                                        | Plugin69e296cc6a02f74ca61a633c6168fb36b9b89398；Server5d430cd641e5a210eab3371c9864919837cd69a9已发布               |
-| 当前Plugin代码                  | A基线main@58175c1；B交付与集成入口[PR115](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/115) | 已保留A merge与Devin G1/G6桥接eed381b；最终B head/CI/merge由该PR记录，接手先核对实际HEAD，不假定共享checkout已更新 |
-| 本轮UI工程重校准                | 规格/A已合并；B生产交付PR115                                                                                | 实际API见docs/ui/loom-ui.md；最终CI/merge以PR115事实为准。A/B/C是原包分段，不自动解锁C、完整Filter重设计或后续范围 |
+| 当前Plugin代码                  | A/B main@fe9f24a；C待验收入口[PR116](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/116) | 已保留A merge与Devin G1/G6桥接eed381b；B merge fe9f24a；C最新head/CI以PR116记录，接手先核对实际HEAD，不假定共享checkout已更新 |
+| 本轮UI工程重校准                | 规格/A/B已合并；C修复PR116待用户视觉验收                                                                                | 实际API见docs/ui/loom-ui.md；最终CI/merge以PR115事实为准。A/B/C是原包分段，不自动解锁C、完整Filter重设计或后续范围 |
 | Plugin API pin                  | f3980b1b4126cdfce026c0a94779c8c8261b3997（v0.4.0）                                                          | eed381b接入G1/G6；生产/v1/meta实测choicePalette12+aggregateSearch                                                  |
 | Server固定交付                  | G1/G6已交付；Plugin桥接eed381b已接入                                                                        | 详细contract/commit/capability验证来源如下表；其余Gate仍独立                                                       |
 | Time/DateTime、12h、整Table回滚 | Future / API-gated                                                                                          | Avatar/Profile/Cascader/细粒度转换审计Deferred                                                                     |
@@ -33,16 +33,16 @@ Obsidian1.14.4隔离合成Vault、默认requestUrl+loopback内存API、Microsoft
 | Task                        | State                                      | Owner / code baseline                     | Checks / Host QA与实际边界                                                                                                                                                     | Next action                                                                      |
 | --------------------------- | ------------------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
 | W15-00                      | Done                                       | Devin / 文档基线69e296c                   | 既有文档已发布；本轮仅在同一规范上补精确工程验收                                                                                                                               | 不重复启动                                                                       |
-| W15-01 Primitive消费者      | A integrated；B delivered（集成凭据PR115） | Codex / A merge58175c1；B PR115           | B Factory、真实消费者、同源Showcase、最终Count所有权回归及Host见本表；以PR115最新CI与merge作为集成门禁，历史52b2c9d不作为未修列表                                              | C基础组件前置交付已具备；只有PR115合并且获得下一任务授权才启动C，不标全Wave Done |
-| W15-02 Filter               | Review / Visual not accepted               | bde37b9 + remediation27e00bd；A/B共享基础 | 保现有identity/generation/reorder；本轮不重复完整Filter审查。owner销毁flush已由A修，B接valid draft count并验证invalid排除；Filter32px controls/文字Remove等领域anatomy仍未对齐 | C Golden通过后02视觉续段，不重复已修旧缺陷、不重设计Filter                       |
+| W15-01 Primitive消费者      | A/B integrated | Codex / A merge58175c1；B PR115           | B Factory、真实消费者、同源Showcase、最终Count所有权回归及Host见本表；以PR115最新CI与merge作为集成门禁，历史52b2c9d不作为未修列表                                              | C基础组件前置交付已具备；C修复待用户视觉验收，不提前启动后续包，不标全Wave Done |
+| W15-02 Filter               | Review / Visual not accepted               | bde37b9 + remediation27e00bd；A/B共享基础 | 保现有identity/generation/reorder；本轮不重复完整Filter审查。owner销毁flush已由A修，B接valid draft count并验证invalid排除；批准Filter视觉已在C修复候选中收敛；完整02仍待独立验收 | C Golden通过后02视觉续段，不重复已修旧缺陷、不重设计Filter                       |
 | W15-03 Sort                 | Planned / Hold                             | —                                         | 未实施批准的临时Add/Grip新版；当前旧UI不是01/02回归                                                                                                                            | 首批代表性页面达标后启动                                                         |
 | W15-04 Display              | Planned                                    | —                                         | 新positive visibility/More/density/hidden widths merge未验收                                                                                                                   | 02视觉/03后；不阻断当前合法config的05几何子集                                    |
-|| W15-05 Grid                 | C subset delivered                          | Devin / C commit 见本节                    | 单一Geometry Model（src/ui/grid-geometry.ts）：track88desktop/132coarse、header/footer36、tail56、More28、rail8、row30/36/44；typed display13/20、checkbox glyph、Choice Tag20/12/18；footer贴齐viewport；Host实测见docs/local/qa-w15-c-host-qa.md | 完整05剩余项与04/06分别追踪；真实touch/G4全query选择保持原范围 |
+| W15-05 Grid                 | C remediation / User visual review pending                          | Codex remediation / PR116最新HEAD                    | 单一Geometry Model（src/ui/grid-geometry.ts）：track88desktop/132coarse、header/footer36、tail56、More28、rail8、row30/36/44；typed display13/20、checkbox glyph、Choice Tag20/12/18；footer贴齐viewport；最新修复/CI/宿主边界见PR116与本表；忽略目录仅可选证据 | 完整05剩余项与04/06分别追踪；真实touch/G4全query选择保持原范围 |
 | W15-06 Continuous loading   | Planned                                    | —                                         | 未运行本包验收                                                                                                                                                                 | Grid基线后                                                                       |
 | W15-07 Choice / Field Type  | Planned                                    | —                                         | 当前9色/native types保持；Tag视觉及完整Picker目标有差异                                                                                                                        | C含9色Tag窄展示接缝；完整07、G1/G2独立                                           |
 | W15-08A Activity / Undo安全 | Planned                                    | —                                         | 未运行本包验收                                                                                                                                                                 | 页面基础稳定后按共享owner推进                                                    |
 | W15-08B 最终操作入口        | Gated                                      | —                                         | G5完整投影/metadata/identity未交付                                                                                                                                             | 不做假feed                                                                       |
-|| W15-09 View / Rename        | C subset delivered                          | Devin / C commit 见本节                    | View Tab 28px/r4/pad0-8/13-500-20；Current=accent-soft+accent+2px inset指示条；Default独立；长名截断；More不切换View；Host实测见docs/local/qa-w15-c-host-qa.md | 完整Rename/生命周期与G3 order CAS保持原范围 |
+| W15-09 View / Rename        | C remediation / User visual review pending                          | Codex remediation / PR116最新HEAD                    | View Tab 28px/r4/pad0-8/13-500-20；Current=accent-soft+accent文字；Default独立；长名截断；More不切换View；最新修复/CI/宿主边界见PR116与本表；忽略目录仅可选证据 | 完整Rename/生命周期与G3 order CAS保持原范围 |
 | W15-10 Date / Grid          | Planned                                    | —                                         | 实际仍native date input；Calendar未实施，不报01回归                                                                                                                            | 07窄handle/稳定Grid后                                                            |
 | W15-11 Date消费者           | Planned                                    | —                                         | Detail/Draft/Map基线入口可达；新Date消费者未实施                                                                                                                               | 10后                                                                             |
 | W15-12 集成验收             | Planned                                    | —                                         | 本轮局部CDP审计不等于全Wave Host QA Passed                                                                                                                                     | 按包及Golden三门；保未验证设备/能力                                              |
@@ -53,7 +53,7 @@ Obsidian1.14.4隔离合成Vault、默认requestUrl+loopback内存API、Microsoft
 
 新bundle SHA-256为beebf26cb3dc308054bd8ac3b5b11a84f9ab77057343c40f78e03392ac217093；styles仍为310430bec6a3ca8198fb3d0b860869072c9e68818b3cfe83daf046d4b82aa262。隔离profile/Vault、默认requestUrl、loopback RAM API、1360×900/Microsoft YaHei UI：Light/Dark失败Apply后closed count=已存2、reopen=草稿1；失败Clear后closed=2、reopen=0；成功Apply/Clear由已提交状态刷新。新增6项通过，既有B9+5与A6在新bundle全部复测通过，共26项Host场景；保28/32/r4、Primary、pending不跳、Menu语义/owner/focus、Field失败重试、窄Pane、真实200%Zoom和Reduced Motion。环境安装器getVersion=1.12.7、profile含obsidian-1.14.4.asar；不以安装器版本推断渲染runtime版本。旧9eb66d证据仅对应B初版。真实Mobile/touch、生产Server持久化及C完整Grid仍Not Verified。可选本机JSON/截图不作为干净克隆的必需输入。
 
-### C 阶段交付与 Host 验收（2026-10-14，Devin）
+### 原 C 阶段报告（2026-10-14，Devin；历史报告，不代表本轮验收）
 
 交付引用：[PR116](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/116)；分支 `devin/w15-c-grid`；commit `696879b`（基于 B merge `fe9f24a`）。
 
@@ -61,11 +61,22 @@ Obsidian1.14.4隔离合成Vault、默认requestUrl+loopback内存API、Microsoft
 
 - **单一 Geometry Model**：新增 `src/ui/grid-geometry.ts`，renderer/grid-display/styles 全部消费同一 resolved 模型（desktop track 88=2+28×3+2、coarse 132=44×3、header/footer 36、tail 56、More 28、rail 8、row 30/36/44）；冻结列偏移、footer 模板、resize 命中、横向滚动统一。
 - **Typed Display**：body 13/20、meta 12/18；checkbox 渲染批准 glyph（`loom-field-check`+`data-checked`+aria-label），不再以文字冒充；Select/MultiSelect 为 20px Choice Tag（12/18、语义色对）；Number 按字段配置格式化。
-- **View Tab**：`.loom-view-tab` 28px/r4/pad 0-8/13-500-20；Current=accent-soft 背景+accent 文字+2px inset 底部指示条（按 Figma 组件与 design-system 正文，修正了最初透明底实现）；Default 徽标独立于 Current；More 菜单（Rename/Copy/Set as default/Delete）不切换 View；长名截断不增高。
+- **View Tab**：`.loom-view-tab` 28px/r4/pad 0-8/13-500-20；Current=accent-soft 背景+accent文字（live Figma9:807没有独立underline；原报告的2px指示条表述错误）；Default 徽标独立于 Current；More 菜单（Rename/Copy/Set as default/Delete）不切换 View；长名截断不增高。
 - **G6 Footer**：复用 eed381b 桥接；Host 实测 Filter+Search 联合 aggregate 请求携带 search 且值正确；InMemory fixture 补足真实 filter 求值（不再忽略 filter 声称联合正确）；capability 缺失→unavailable。
 - **Host QA 修复项**（真实 Obsidian 发现并已修复）：`.loom-grid-header{overflow:hidden}` 破坏冻结列 sticky（复验 idx≈57/frozen=145 固定）；`.loom-filter-values-popover` z-index 40 被 query-panel z50 遮挡导致真实点击落空（升至 60）；View Tab Current 缺 accent-soft 背景（对齐 Figma）。
 - **门禁**：vitest 70 文件/1100 全绿；tsc 0 错；eslint 0 error/750 warning（存量）；prettier 全绿；api:generate 确定性零 diff；build 成功。证据与截图：`docs/local/qa-w15-c-host-qa.md`、`docs/local/experiments/cdp/shots/qa-c-*`。
 - **Not Verified**：真实 touch/coarse 设备（仅 media 模拟）、生产 Server 写路径（仅隔离 stub）、G4 全 query 选择、真实 Mobile。W15-02 视觉续段/W15-03/W15-04/W15-06 未启动。
+
+### C 独立审计修复候选（2026-10-14，Codex）
+
+原审计基线`4b25316912fe4444b7610f96cb3af362ffc754b0`；修复继续PR116，唯一修改目录为独立worktree，Devin共享checkout不切换、不覆盖。**Review-ready / 用户视觉尚未验收 / 禁止自动Merge**，不以原C Complete或测试总数签产品完成。
+
+- 独立台账23条：3 C Regression、4 C Incomplete、16既有视觉/消费者债务；P0=1（同View几何替换丢未接受IME/editor，固定原C快照单测Confirmed，Host原路径未复现）、P1=16、P2=6。三项公开Devin Finding为Footer横滚、coarse裁剪、Checkbox中心，均复现并修复。未公开Current underline Flag经live9:807/DS核对不属于批准要求，不添加新指示条。
+- Footer改为受Pane约束外scroll box+完整inner row；geometry消费到Header/body/footer/More/rail/Add，coarse有效行44；resize同步冻结偏移，取消零写；冻结key/scroll anchor正确；同View保原生Cell editor/IME节点，dispose取消未接受timer。空canvas不制造假记录行。
+- 批准Filter视觉续段收敛28px控件/Grip/X/Quiet底部动作，保stable IDs/300ms/singleflight/CAS/失败草稿；Values Escape回有效trigger。Header/Aggregate consumer接入已有Menu trigger；Toolbar hidden、Loading占位及More徽标宽度修复。Primitive实现未另建，Controller/Client/MutationQueue/API pin/Runtime依赖不改。
+- 最终生产Bundle SHA256 `a01037c266c4e96ff280ba2ecbed5756e3420ea9b4643120cd7b1ac48a057707`；源码以PR116本轮最新HEAD为准。Vitest1121/1121（完整run --maxWorkers=2），Typecheck通过、API生成零diff、Production/Gallery/VitePress build通过；src/tests ESLint0 errors/754 warnings（原750，净+4本轮DOM警告）；不为Warning=0处理存量。当前CI以修复HEAD的新check为准，不沿用原4b CI。
+- 真实Obsidian1.12.7隔离合成Vault/RAM API：14组完整操作+5组补充+MultiSelect真实摘要验证通过。含Light/Dark、CSS1360 viewport/Grid960、320/400/600Pane、双Pane、Pointer30/36/44与CDPcoarse44、冻结/非零横滚、resize、G0–G3、Field pending/failure/retry、Filter300ms与inflight/queued dispose实际写入次数、Grid→Map→Grid、Electron真实zoomFactor2、ReducedMotion。Two Filter520×189、单规则Narrow304×225、Header/Footer36、Pin14、More28，列对齐误差≤1。
+- 原C、修复版和live Figma对应证据在本Session及PR交付说明。忽略目录报告/截图/fixture是可选复核材料，不是正式任务必需输入。实际Touch/Mobile、真实IME候选窗、第三方主题、生产Server持久化、Map有坐标marker及完整后续领域视觉Not Verified；不解锁API/Future，不开始Sort/Display或后续包。Subagent=0。
 
 ## API / Future
 

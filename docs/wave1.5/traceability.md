@@ -159,6 +159,8 @@ G03/04/05/06的B生产接缝现为`src/ui/loom-button.ts:createLoomButton`、`to
 
 B最终计数边界由Renderer拥有：仅当前open Builder发布draft；closed从已提交View读取。`shared-owner-lifecycle.test.ts`新增六项覆盖Apply/Clear失败恢复与成功提交、closed retained callback、旧View/Renderer迟到响应；观测公开aria-label的瞬态发布，防止后续重绘掩盖错误。FilterBuilder/Controller/Queue合同不变，见[PR115审查关闭项](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/115#discussion_r4251850229)。
 
+2026-10-14 C Remediation继续[PR116](https://github.com/Mahjong404/LoomTable-Obsidian-Plugin/pull/116)：G19–24的几何接缝为`grid-geometry.ts`、Renderer和同源C Gallery；`grid-geometry-remediation.test.ts`覆盖coarse/density、Footer scroll事件与ARIA、冻结变更/resize取消、滚动锚点、原生编辑器与IME/Dispose、Header完整Menu boundary。G13视觉续段沿live Figma92:7125/7126/7128/7131收敛，保留既有stable identity、异步世代、300ms/CAS/失败草稿；Values Escape回有效trigger，相关测试在`filter-builder.test.ts`。G04 Tab按9:807的accent-soft Current与Default独立，未添加未批准的underline。接口见[生产API](../ui/loom-ui.md#c-消费者与几何接缝)，当前检查与用户视觉门禁只在status；历史忽略目录报告/截图是可选审计证据，不是工程输入。
+
 G02–06/A01–04/A17→01 A/B；G08/G19–24/A09–13→05/09代表性C；G13/A05–06→02视觉续段；G14/A07→03；G15/A08→04；G07/G12/A14→07；G35–36/A15→10/11；Record/Map整页未获完整新authority，只验既有基线及明确consumer接缝。G37–39及Deferred保持原边界，不列当前遗漏。
 
 01/02已有功能/remediation不等于所有视觉组完成；cross-pane ownership和pending draft锁的正确实现保留。新增4个定向失败与真实Grip/Map/Palette证据进入首批A，不把已解决的02旧问题再计为新问题。Showcase factory、生产消费者、Figma/Host证据与fixedSHA须同PR追踪；视觉缺证据单列，不冒称Host QA Passed。
