@@ -82,11 +82,12 @@ Obsidian1.14.4隔离合成Vault、默认requestUrl+loopback内存API、Microsoft
 
 继续PR116，基于`f5e7fd3`并合入main规则`30bb6e5`；未合并PR、未标C Done。远距离虚拟行Finding已Confirmed：新viewport先建第0页窗口，以及布局保存后Controller暂时只发布第一页，均可丢失第200行未接受输入。当前候选恢复连接后的滚动窗口、保原生编辑器/selection/composition、最多额外保留一条合法编辑行；布局不改变查询成员/顺序时按新View revision重新取足已加载页后原子发布。删除/context/dispose仍取消旧UI；不修改MutationQueue/CAS/API。
 
-- 新完整运行1139/1139，TypeScript、Prettier、API生成零diff、Production/Gallery/VitePress Build通过；full ESLint0 errors/760 warnings，对上一候选755净+5，不清理无关存量。Field失败显示任意底层异常的遗漏已复现，改用已有本地化文案，保raw/单飞/解锁/Retry；不改Controller返回合同。
-- 用户现有可见`qa-vault`安装当前候选，bundle SHA256 `114286653b13f2ea73f52a9f62732925943b67fbfdb31692f6a2702fa99e9923`，CSS仍`439e5f94c7b165bc0a4f656d1b676ea445877311da087330a89889b942b7d2e8`。宿主为简体中文，旧QA Plugin显式`en`导致英文；仅该Vault恢复`auto`，生产解析器与翻译表不需局部硬编码修改。
+- 新完整运行1141/1141，TypeScript、Prettier、API生成零diff、Production/Gallery/VitePress Build通过；full ESLint0 errors/761 warnings，对f5候选755净+6，不清理无关存量。Field失败显示任意底层异常的遗漏已复现，改用已有本地化文案，保raw/单飞/解锁/Retry；不改Controller返回合同。
+- 用户现有可见`qa-vault`安装当前候选，bundle SHA256 `700a73cb1ed4c5c570a1b9a44cfcd883cf325dfbb91a3616bd53ff750a651cac`，CSS仍`439e5f94c7b165bc0a4f656d1b676ea445877311da087330a89889b942b7d2e8`。宿主为简体中文，旧QA Plugin显式`en`导致英文；仅该Vault恢复`auto`，生产解析器与翻译表不需局部硬编码修改。
 - 经用户授权复用现有连接方式，实际部署`v0.4.0+f3980b1b4126`能力已验证；仅新建自有合成QA数据，不修改日常Vault或既有业务数据。真实可见Host确认：第200行双轴滚动、原生CDP composition下pointer resize保原DOM/raw/caret/focus且零Record写入；Frozen/30/36/44密度及远距离Create Draft几何替换保输入且零提前Create。真实960 Grid、200%Electron zoom、coarse模拟44px与完整Menu focus boundary已取得证据。
 - 用户授权取消当前QA输入并继续占用后，已补可见中文Light/Dark、实际320/400/600Grid、Footer非零横滚/冻结对齐≤1px、Checkbox居中、Enter/Escape、Two/Grip/Values子浮层、Field失败重试/等宽Primary、Map切换、双Pane背景owner、已接受in-flight加queued后dispose只一笔原View写入、Reduced Motion与late Field失败不复活。Two外层520×189；双规则Narrow304×405，不冒称Figma单规则304×225。Native F2未到达DOM，不能宣称Passed；Enter路径已通过，不为此覆盖宿主快捷键。真实触控/OS IME候选窗/第三方主题仍Not Verified；不以历史隐藏Profile/RAM API补签。
 - 未公开save-feedback Flag已读取；HIG/Grid明确由Status/Operation Feedback承接网络保存/冲突，不恢复被设计取消的Cell保存色。三项旧公开Finding保持resolved，本轮不重新审计全部23项。源码与远端CI/Review以PR116最新Head为准，旧Head CI不能作为本次通过；用户视觉尚未验收，禁止自动Merge；Subagent=0。
+- `2d74c18`的CI/Review完成，原Scrolled Editor由Reviewer关闭；随后新增“Failed refresh strands remaining records”已复现并补Retry：重新读取最新View，查询相同时从新cursor起点原子恢复旧加载前缀和Load More，查询改变时正常替换。纯Controller与真实View按钮测试、可见Host故障注入200行→Retry200/300→Load More300行均通过，0Record写入。新的Head仍须读取其CI/Review，不用2d74旧检查签证。Review的Host文案冲突Flag使用了push前旧PR描述快照；当前描述已明确可见qa-vault和历史证据边界。
 
 ## API / Future
 

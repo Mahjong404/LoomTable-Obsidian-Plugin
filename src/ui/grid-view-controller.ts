@@ -1324,6 +1324,25 @@ export class GridViewController {
   async load(options?: { preserveRecords?: boolean }): Promise<void> {
     const requestToken = ++this.#requestToken;
     const preserveRecords = options?.preserveRecords === true;
+    const previousView = this.#state.views.find(
+      (candidate) => candidate.id === this.#state.selectedViewId,
+    );
+    const preservedQuery =
+      preserveRecords && previousView !== undefined && isGridView(previousView)
+        ? {
+            request: JSON.stringify(
+              createGridQuery(
+                previousView.tableId,
+                previousView,
+                undefined,
+                undefined,
+                this.#searchTerm,
+              ),
+            ),
+            manualSort: previousView.config.manualSort,
+            count: this.#state.records.length,
+          }
+        : null;
     if (!preserveRecords) this.#history.clear();
     this.#publish({
       status: 'loading',
@@ -1470,7 +1489,16 @@ export class GridViewController {
             ? this.#state.lastDeletedRecord
             : null,
       });
-      await this.#loadQuery(requestToken, table.id, view, undefined, true);
+      // Explicit Retry rediscovers the latest View, but must not collapse an
+      // unchanged loaded query to page one after a failed atomic refresh.
+      const minimumRecords =
+        preservedQuery !== null &&
+        preservedQuery.manualSort === view.config.manualSort &&
+        preservedQuery.request ===
+          JSON.stringify(createGridQuery(table.id, view, undefined, undefined, this.#searchTerm))
+          ? preservedQuery.count
+          : 0;
+      await this.#loadQuery(requestToken, table.id, view, undefined, true, minimumRecords);
     } catch (error) {
       this.#publishError(requestToken, error);
     }

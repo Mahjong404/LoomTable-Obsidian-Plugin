@@ -307,6 +307,53 @@ describe('shared owner lifecycle', () => {
       });
     },
   );
+  it('recovers a failed layout refresh through the real Retry consumer and restores Load More', async () => {
+    const { view, client } = await mountView(1000);
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+    for (let page = 0; page < 2; page++) {
+      view.contentEl.querySelector<HTMLButtonElement>('.loom-grid-load-more')!.click();
+      await vi.waitFor(() =>
+        expect(
+          view.contentEl.querySelector<HTMLButtonElement>('.loom-grid-load-more')!.disabled,
+        ).toBe(false),
+      );
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    }
+    view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-display"]')!.click();
+    const viewport = view.contentEl.querySelector<HTMLElement>('.loom-grid-viewport')!;
+    viewport.scrollTop = 7200;
+    viewport.dispatchEvent(new Event('scroll'));
+    const query = client.query.bind(client);
+    const spy = vi.spyOn(client, 'query').mockImplementation((request) => {
+      if (request.cursor !== undefined)
+        return Promise.reject(new LoomTableClientError('network', { message: 'offline' }));
+      return query(request);
+    });
+    const width = view.contentEl.querySelector<HTMLInputElement>('[data-role="display-width"]')!;
+    width.value = '260';
+    width.dispatchEvent(new Event('input', { bubbles: true }));
+    await vi.waitFor(() =>
+      expect(
+        view.contentEl.querySelector(`button[aria-label="${t('grid.retryRequest')}"]`),
+      ).not.toBeNull(),
+    );
+    expect(view.contentEl.querySelector('.loom-grid-load-more')).toBeNull();
+    spy.mockImplementation(query);
+    spy.mockClear();
+    view.contentEl
+      .querySelector<HTMLButtonElement>(`button[aria-label="${t('grid.retryRequest')}"]`)!
+      .click();
+    await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(3));
+    await vi.waitFor(() =>
+      expect(view.contentEl.querySelector('.loom-grid-load-more')).not.toBeNull(),
+    );
+    expect(view.contentEl.querySelector('[data-record-id="record_200"]')).not.toBeNull();
+    expect(view.contentEl.querySelectorAll('.loom-grid-row').length).toBeLessThan(50);
+    expect(client.mutationRequests).toHaveLength(0);
+    view.contentEl.querySelector<HTMLButtonElement>('.loom-grid-load-more')!.click();
+    await vi.waitFor(() => expect(spy).toHaveBeenCalledTimes(4));
+  });
+
   it('keeps a failed closed Apply count authoritative and restores its draft on reopen', async () => {
     const { view, client, write } = await mountView();
     let reject!: (reason: Error) => void;

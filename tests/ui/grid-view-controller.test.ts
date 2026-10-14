@@ -1911,6 +1911,65 @@ describe('GridViewController query controls', () => {
     controller.dispose();
   });
 
+  it('retries a failed atomic refresh from a fresh cursor without collapsing loaded rows', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(8), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+    await controller.loadNextPage();
+    await controller.loadNextPage();
+    const original = controller.state.records.map((record) => record.id);
+    const query = client.query.bind(client);
+    const spy = vi.spyOn(client, 'query').mockImplementation((request) => {
+      if (request.cursor !== undefined) {
+        return Promise.reject(new LoomTableClientError('network', { message: 'offline' }));
+      }
+      return query(request);
+    });
+    await controller.applyViewDisplay('view_01', {
+      ...selectedConfig(controller),
+      rowHeight: 'compact',
+    });
+    expect(controller.state.records.map((record) => record.id)).toEqual(original);
+    spy.mockImplementation(query);
+    spy.mockClear();
+    const counts: number[] = [];
+    const unsubscribe = controller.subscribe((state) => counts.push(state.records.length));
+
+    await controller.refresh();
+
+    expect(controller.state.records.map((record) => record.id)).toEqual(original);
+    expect(counts.every((count) => count === 6)).toBe(true);
+    expect(spy.mock.calls.map(([request]) => request.cursor)).toEqual([
+      undefined,
+      'cursor:2',
+      'cursor:4',
+    ]);
+    expect(controller.state.status).toBe('ready');
+    expect(controller.state.hasMore).toBe(true);
+    expect(controller.state.nextCursor).toBe('cursor:6');
+    await controller.loadNextPage();
+    expect(controller.state.records).toHaveLength(8);
+    expect(client.mutationRequests).toHaveLength(0);
+    unsubscribe();
+    const latest = await client.getView('view_01');
+    await client.updateView('view_01', {
+      type: 'grid',
+      expectedRevision: latest.revision,
+      config: {
+        ...selectedConfig(controller),
+        filter: { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'no-match' },
+      },
+    });
+    spy.mockClear();
+    await controller.refresh();
+    expect(controller.state.records).toHaveLength(0);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]?.[0].filter).toMatchObject({ value: 'no-match' });
+    controller.dispose();
+  });
+
   it('does not publish or request another page when disposed during a geometry refresh', async () => {
     const client = new InMemoryLoomTableClient(
       createData(createRecords(6), createGridConfig(false)),
