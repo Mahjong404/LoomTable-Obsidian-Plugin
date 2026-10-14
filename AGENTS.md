@@ -2,6 +2,10 @@
 
 当前阶段（P1.6）范围见 `docs/p1.6/README.md`。独立克隆本仓库可直接按下列入口恢复，不要求同级工作区或本地研究。
 
+## Agent 操作 SOP
+
+新 Agent（包括 DSH、Codex）开始任务先读 `docs/agent-ops/README.md`，再按工作类型读取对应 SOP；产品规范与状态仍以原权威入口为准。以下硬约束继续生效。
+
 ## Wave 1.5 实施入口
 
 涉及 Wave 1.5 开发/交接，先读 `docs/wave1.5/README.md`、`status.md`、`devin-plugin.md` 及目标任务卡。长期视觉/交互在 `docs/ui/`，编辑器所有权在 `docs/architecture/field-editor-lifecycle.md`；计划不复制这些规范。按明确授权交付一个纵向切片，更新唯一 status/traceability。当前 API 支持的 UI 先做，API-dependent 部分按 `api-boundary.md` 等待 Server 合同/固定 commit/能力验证，普通 UI 不同步 API。
