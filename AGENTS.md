@@ -18,21 +18,33 @@
 - 合同：`npm run api:generate` 后 `openapi/` 与 `src/generated/transport.ts` 应零 diff
 - 构建：`npm run build`（esbuild → `main.js` + `styles.css`）
 
-## Server 环境
+## Figma 读写：仅限 Figwright（强制）
 
-- 正常开发与验证环境使用远端服务器上长期运行的 LoomTable Server（Docker 部署）；部署与连接信息以 `C:\Personal folder\Server\rainyunMahjong404\server.md` 为准，敏感细节不复制进本文件。
-- 不要默认在本机创建 LoomTable Server / 数据库等 Docker 环境。
-- 若某项验证确实必须临时启动本地 Docker，先明确用途；结束后检查并清理本次创建的 containers / networks / volumes，不留遗留测试资源；不得触碰其他项目的 Docker 资源。
+- Figma 的读取与写入（节点、变量、样式、组件、导出、修改与复核）**必须使用已安装的 Figwright plugin**；**禁止官方 Figma MCP**，不得私自改用其他 Figma MCP、浏览器/API 或旧截图冒充当前设计事实。
+- 访问前核对文件/节点/Variant 和当前批准版本。Figwright 不可用时停止需要 Figma 读写的步骤并明确标记 Not Verified，不得猜测、伪造数据或以工具不可用为由修改设计合同。
+- 正式文档/仓库不出现竞品名及链接；研究仅存 gitignored `docs/local/`。
 
-## Obsidian 真机审计（CDP）
+## Obsidian CDP：使用现有可见 qa-vault（强制）
 
-UI 观感/交互的核验走 Obsidian 内嵌 Chromium 的 DevTools 协议。`docs/local/` 下的 CDP driver 是**可选本机工具、已 gitignore**——干净克隆不依赖它；宿主验收也可走本节末尾的正式手动 QA 方法。
+- Obsidian UI/CDP 测试、截图和调整只允许在**用户已经存在的 `qa-vault`** 中操作。先查明并确认真实 Vault 路径；禁止新建替代 QA Vault 或对其他 Vault（含用户日常 Vault）安装插件、修改配置、写入测试数据。Plugin 源码/测试代码仍可正常在本仓库改动。
+- **禁止无头、隐藏窗口、不可见的后台 Obsidian 进程做 Host QA**。使用实际可见的 Obsidian GUI，通过 CDP 观察/测试。允许直接占用目前打开的 Obsidian；如需开启 `--remote-debugging-port=9223`，可正常关闭当前 Obsidian 并以可见 GUI 重启，再确认打开的是现有 `qa-vault`。退出前处理未保存状态，避免强杀。
+- 旧要求“不得重启或重配用户正在使用的实例”在此由用户新授权替代；不要强制创建独立 Profile 或无头实例。CDP/真实 GUI 不可用时，Host QA 标记 Not Verified，Vitest、Gallery、截图模拟均不能冒充真实 Obsidian 验收。
+- QA 证据（截图、实际 DOM rect、computed style、操作状态、主题、字体、zoom、bundle SHA）存入 gitignored `docs/local/`；测试结束仅清理本轮临时资源，不影响其他 Vault、进程或用户数据。不得记录凭据、Token。
 
-1. 在隔离测试 Vault 中启动独立 Obsidian 实例（不得重启或重配用户正在使用的实例）：
-   `Obsidian.exe --remote-debugging-port=9223`。
-2. 若本机存在 `docs/local/ux-followup-2026-09-19/cdp.mjs`（Node ≥24，零依赖），可驱动：
-   `node cdp.mjs list | eval "<js>" | shot <name> | hover/click/rclick "<selector>" | key <k> | type "<text>" | emulate <w> <h> | emulate 0 0`
-3. 鉴权探测服务端：页内 `app.secretStorage.getSecret('loomtable-server')` 取 token + `requestUrl()` 发请求（token 不出页面，绝不写入仓库或报告）。
-4. 证据存 `docs/local/<audit-dir>/shots/`；`docs/local/` 已 gitignore，审计产物不入库。
+## Obsidian 语言与本地化（强制）
 
-正式手动 QA（无 CDP 时的等效验收路径）：构建 `npm run build` 后在隔离 Vault 中启用插件，逐项走对应任务卡的验收清单（菜单开关/重复触发/Outside/Escape/焦点恢复、Field Editor 成败/失败保 draft、双主题、窄 Pane、键盘/指针、Reduced Motion、组件卸载清理、跨 Pane 菜单隔离），结果与限制写入 `docs/wave1.5/status.md` 的 Checks/Host QA 列；Vitest/jsdom 结果不得冒充宿主验收。
+- Plugin UI 语言必须服从**当前 Obsidian 的有效语言设置**，按既有 i18n 解析/刷新机制工作；不得因 Agent、Fixture 或 QA 方便擅自改为英文。当前用户 Obsidian 语言是**简体中文**，实际 Host QA 必须检查中文。
+- 不把中文硬编码为唯一语言；Obsidian 语言变更时需按产品既有协议响应。不得用系统/浏览器/Server 的语言代替宿主语言。确需 QA 切换语言时只能在 `qa-vault` 内进行，结束恢复原设置并核查 UI 文案，新增文本补齐 i18n/回归测试。
+
+## Server 联调与云端资源
+
+- 进行 Server 连接、联调或远程测试前，必须查阅用户私有运维说明：`C:\Personal folder\Server\rainyunMahjong404\server.md`。无法访问时报告缺口，不猜测主机/端口/凭据；不在仓库、报告或日志复制秘密。
+- Server 二进制/容器、PostgreSQL、Docker/Compose 和数据库集成/HTTP 端到端测试应在**云端隔离环境**进行；不得在本机启动 Server/数据库/Docker 服务栈。Plugin 的纯单元测试、类型/格式/构建仍可本地执行。
+- 云端测试应及时执行；包含 `DROP SCHEMA public CASCADE` 等破坏性测试**只能**指向专用可销毁云端数据库，绝不触碰生产/共享库。创建者需核对并清理本轮临时容器、网络、测试卷、合成数据和进程，不删除其他应用资源、附件和备份。
+- Server 代码合并不等于生产部署；Plugin 功能门控以实际 ready、migrationRequired、meta/capability 与发布版本为准，不用 Mock 宣称线上 Gate 可用。
+
+## Codex Subagent 使用限制
+
+- 主 Session 默认 **0 个 Subagent**，自行完成阅读、代码、测试和自审；禁止例行并列启动 Standards/Spec/Implementation 多 Agent 重复审查。
+- 单轮任务**最多 1 个**，仅限可说明必要性、有独立可验证价值的任务，且必须显式指定**严格低于主 Session 的模型**；只降低同模型 Thinking Effort 不算。无法确认/指定模型等级时禁止委派，禁止递归委派。
+- 交付时说明使用次数及价值；CI 和外部 PR Review 不需 Subagent。集中 Push，避免不必要的 PR/CI 通知，不取消必要质量门禁。
