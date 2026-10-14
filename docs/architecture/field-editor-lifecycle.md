@@ -64,3 +64,9 @@ Renderer只在owner仍有效时响应query dismiss；区分user-close、escape�
 UI守卫不更改Controller/ViewWriteCoordinator/MutationQueue的持久合同：已发送的immutable operation继续归原数据context；不替换clientMutationId/body，不取消原receipt恢复，不在失效owner上启动新的intent。
 
 这里的未发UI intent是尚未调用consumer callback的timer/queued draft。consumer已claim的Controller/View coordinator/Queue工作继续按原协议完成，即使transport尚未开始，也不能由overlay重写其身份或擅自撤回。销毁禁止的是旧UI继续启动新的callback，并隔离旧completion对新UI的发布；该定义不改变既有持久化合同。
+
+## 同 View 几何替换与未接受输入
+
+列宽、冻结列与密度变更不构成 Cell 接受意图。Record/Field/type 仍合法时，Renderer 在连接的新 viewport 中先恢复滚动锚点及虚拟窗口，再定位原编辑器；保留同一个原生输入节点、raw、selection/caret、focus 与 composition。支持原生 `moveBefore` 的宿主使用保持状态的移动；DOM fallback 的设备行为须单独验证。被动滚动后的编辑行可在正常虚拟窗口外额外保留一行，不全量挂载数据。Create Draft 同样不因几何重建触发 Create。
+
+每次 View revision 更新都会使 Server cursor 失效。Controller 必须重新查询；查询成员与顺序不变的布局写入，先取足先前已加载数量再原子发布，不能暂时只发布第一页并使远处编辑器失效。后续页失败保留旧行并显示刷新错误；context/dispose 使迟到页失效且不再请求下一页。Filter/Sort/projection 等真实查询改变仍沿既有重查语义；Record/Field 删除、type 失效、Table/View 切换与 owner 销毁按原生命周期取消，不无限保留失效编辑器。此接缝不修改 Record mutation、CAS、Queue 或已接受操作身份。

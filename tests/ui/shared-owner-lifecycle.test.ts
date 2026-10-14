@@ -38,24 +38,40 @@ function host(): HTMLElement {
   document.body.append(element);
   return element;
 }
-async function mountView() {
+async function mountView(
+  recordCount?: number,
+  density: 'compact' | 'standard' | 'comfortable' = 'standard',
+) {
   const fixture = galleryData();
   const data: InMemoryGridData = {
     ...fixture,
+    ...(recordCount === undefined
+      ? {}
+      : {
+          records: Array.from({ length: recordCount }, (_, index) => ({
+            ...fixture.records[0]!,
+            id: `record_${index}`,
+            values: { ...fixture.records[0]!.values, field_title: `Project ${index}` },
+          })),
+        }),
     views: fixture.views.map((view) =>
       view.type === 'grid'
         ? {
             ...view,
             config: {
               ...view.config,
+              rowHeight: density,
               // 'project' honestly matches three gallery Records; 'old' matched
               // none once the fixture started evaluating filters for real.
-              filter: {
-                kind: 'rule',
-                fieldId: 'field_title',
-                operator: 'contains',
-                value: 'project',
-              },
+              filter:
+                recordCount === undefined
+                  ? {
+                      kind: 'rule',
+                      fieldId: 'field_title',
+                      operator: 'contains',
+                      value: 'project',
+                    }
+                  : { kind: 'group', operator: 'and', children: [] },
             },
           }
         : view,
@@ -157,6 +173,140 @@ afterEach(async () => {
 });
 
 describe('shared owner lifecycle', () => {
+  it.each(['map', 'dispose'] as const)(
+    'cancels a far raw editor on %s without accepting a stale mutation',
+    async (target) => {
+      const { view, client } = await mountView(1000);
+      view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+      await vi.waitFor(() =>
+        expect(view.contentEl.querySelector('.loom-grid-load-more')).not.toBeNull(),
+      );
+      for (let page = 0; page < 2; page++) {
+        const count = client.queryRequests.length;
+        view.contentEl.querySelector<HTMLButtonElement>('.loom-grid-load-more')!.click();
+        await vi.waitFor(() => expect(client.queryRequests.length).toBeGreaterThan(count));
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
+      const viewport = view.contentEl.querySelector<HTMLElement>('.loom-grid-viewport')!;
+      viewport.scrollTop = 7200;
+      viewport.dispatchEvent(new Event('scroll'));
+      await vi.waitFor(() =>
+        expect(view.contentEl.querySelector('[data-record-id="record_200"]')).not.toBeNull(),
+      );
+      view.contentEl
+        .querySelector('[data-record-id="record_200"] [data-field-id="field_title"]')!
+        .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      const editor = view.contentEl.querySelector<HTMLInputElement>('.loom-grid-editor')!;
+      editor.value = 'Never accept after destroy';
+      editor.dispatchEvent(new CompositionEvent('compositionstart'));
+      if (target === 'dispose') {
+        await view.onClose();
+        // Obsidian removes the ItemView DOM; the test host substitutes that shell.
+        view.contentEl.remove();
+        expect(editor.isConnected).toBe(false);
+      } else
+        view.contentEl
+          .querySelector<HTMLButtonElement>('[role="tab"][data-view-id="view_map"]')!
+          .click();
+      if (target === 'map')
+        await vi.waitFor(() =>
+          expect(view.contentEl.querySelector('.loom-grid-editor')).toBeNull(),
+        );
+      editor.dispatchEvent(new CompositionEvent('compositionend'));
+      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      editor.dispatchEvent(new Event('blur'));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      expect(client.mutationRequests).toHaveLength(0);
+    },
+  );
+  it.each(['width', 'frozen', 'compact', 'standard', 'comfortable'] as const)(
+    'retains row-200 input through View → Renderer → Controller %s writes',
+    async (change) => {
+      const initialDensity = change === 'standard' ? 'comfortable' : 'standard';
+      const { view, client, write } = await mountView(1000, initialDensity);
+      view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-filter"]')!.click();
+      await vi.waitFor(() =>
+        expect(view.contentEl.querySelector('.loom-grid-load-more')).not.toBeNull(),
+      );
+      const pageSize = client.queryRequests.find((query) => (query.limit ?? 100) > 1)?.limit ?? 100;
+      for (let loaded = pageSize; loaded <= 200; loaded += pageSize) {
+        const count = client.queryRequests.length;
+        view.contentEl.querySelector<HTMLButtonElement>('.loom-grid-load-more')!.click();
+        await vi.waitFor(() => expect(client.queryRequests.length).toBeGreaterThan(count));
+        await vi.waitFor(() =>
+          expect(
+            view.contentEl.querySelector<HTMLButtonElement>('.loom-grid-load-more')!.disabled,
+          ).toBe(false),
+        );
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      }
+      view.contentEl.querySelector<HTMLButtonElement>('[data-action="toggle-display"]')!.click();
+      const viewport = view.contentEl.querySelector<HTMLElement>('.loom-grid-viewport')!;
+      viewport.scrollTop = 200 * (initialDensity === 'comfortable' ? 44 : 36);
+      viewport.scrollLeft = 120;
+      viewport.dispatchEvent(new Event('scroll'));
+      await vi.waitFor(() =>
+        expect(view.contentEl.querySelector('[data-record-id="record_200"]')).not.toBeNull(),
+      );
+      const cell = view.contentEl.querySelector<HTMLElement>(
+        '[data-record-id="record_200"] [data-field-id="field_title"]',
+      )!;
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      const editor = cell.querySelector<HTMLInputElement>('.loom-grid-editor')!;
+      editor.value = '第200行未提交草稿';
+      editor.setSelectionRange(3, 6);
+      editor.focus();
+      editor.dispatchEvent(new CompositionEvent('compositionstart'));
+      const queryCount = client.queryRequests.length;
+      if (change === 'width') {
+        const width = view.contentEl.querySelector<HTMLInputElement>(
+          '[data-role="display-width"]',
+        )!;
+        width.value = '260';
+        width.dispatchEvent(new Event('input', { bubbles: true }));
+      } else if (change === 'frozen') {
+        const frozen = view.contentEl.querySelector<HTMLInputElement>(
+          '[data-role="display-frozen"]',
+        )!;
+        frozen.checked = !frozen.checked;
+        frozen.dispatchEvent(new Event('change', { bubbles: true }));
+      } else {
+        const density = view.contentEl.querySelector<HTMLInputElement>(
+          `[data-role="display-row-height"][value="${change}"]`,
+        )!;
+        density.checked = true;
+        density.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      await vi.waitFor(() => expect(write).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(client.queryRequests).toHaveLength(queryCount + 3));
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      await vi.waitFor(() =>
+        expect(view.contentEl.querySelector('.loom-grid-editor')).toBe(editor),
+      );
+      expect(editor.value).toBe('第200行未提交草稿');
+      expect([editor.selectionStart, editor.selectionEnd]).toEqual([3, 6]);
+      expect(document.activeElement).toBe(editor);
+      const expectedHeight = change === 'compact' ? 30 : change === 'comfortable' ? 44 : 36;
+      expect(view.contentEl.querySelector<HTMLElement>('.loom-grid-row')!.style.height).toBe(
+        `${expectedHeight}px`,
+      );
+      expect(view.contentEl.querySelector<HTMLElement>('.loom-grid-viewport')!.scrollTop).toBe(
+        200 * expectedHeight,
+      );
+      expect(client.mutationRequests).toHaveLength(0);
+      expect(view.contentEl.querySelectorAll('.loom-grid-row').length).toBeLessThan(50);
+      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      expect(client.mutationRequests).toHaveLength(0);
+      editor.dispatchEvent(new CompositionEvent('compositionend'));
+      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await vi.waitFor(() => expect(client.mutationRequests).toHaveLength(1));
+      expect(client.mutationRequests[0]!.request.commands[0]).toMatchObject({
+        kind: 'updateRecord',
+        recordId: 'record_200',
+        set: { field_title: '第200行未提交草稿' },
+      });
+    },
+  );
   it('keeps a failed closed Apply count authoritative and restores its draft on reopen', async () => {
     const { view, client, write } = await mountView();
     let reject!: (reason: Error) => void;

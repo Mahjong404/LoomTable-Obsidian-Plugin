@@ -546,6 +546,29 @@ export class ReadonlyGridRenderer {
     }
     const queryFocus = captureQueryControlFocus(this.#container);
     this.#lastState = state;
+    const editor = this.#cellEditor;
+    const selection =
+      editor !== null &&
+      !(editor.element instanceof HTMLSelectElement) &&
+      editor.element.selectionStart !== null &&
+      editor.element.selectionEnd !== null
+        ? {
+            start: editor.element.selectionStart,
+            end: editor.element.selectionEnd,
+            direction: editor.element.selectionDirection ?? 'none',
+          }
+        : null;
+    if (
+      editor !== null &&
+      (this.#virtualGrid?.state.selectedTableId !== state.selectedTableId ||
+        (editor.recordId !== DRAFT_RECORD_ID &&
+          !state.records.some((record) => record.id === editor.recordId)) ||
+        orderedFields(state).find((field) => field.id === editor.fieldId)?.type !==
+          editor.fieldType)
+    ) {
+      editor.cancel();
+      editor.element.remove();
+    }
     // Reconcile the Active Cell + selection by identity before any paint so
     // the rows below project the correct `.is-active` border.
     this.#reconcileActiveCell(state);
@@ -594,9 +617,26 @@ export class ReadonlyGridRenderer {
       const showStatusBand =
         state.records.length === 0 || (state.status !== 'ready' && state.status !== 'loading');
       if (showStatusBand) root.append(this.#renderStatus(state.status, state));
-      root.append(this.#renderGrid(state));
+      // Keep both trees connected until the editor has moved. Chromium's
+      // state-preserving move retains native focus/caret and IME composition.
+      this.#container.insertBefore(root, this.#container.firstChild);
+      const grid = this.#renderGrid(state);
+      if ('moveBefore' in root && grid.isConnected) {
+        (root as HTMLElement & { moveBefore(node: Node, before: Node | null): void }).moveBefore(
+          grid,
+          null,
+        );
+      } else root.append(grid);
     }
 
+    if (!this.#container.contains(root)) {
+      this.#container.insertBefore(root, this.#container.firstChild);
+    }
+    // Scroll restoration needs the attached viewport's real layout. Materialize
+    // that window before looking up the edited cell, never the transient top-0
+    // window of a freshly constructed viewport.
+    this.#restoreRowHeightAnchor();
+    this.#restoreScrollAnchor();
     const liveEditor = this.#cellEditor;
     if (liveEditor !== null && !root.contains(liveEditor.element)) {
       const localCreate =
@@ -635,13 +675,8 @@ export class ReadonlyGridRenderer {
     // drop focus to <body>.
     const overlay =
       this.#overlayEl !== null && this.#overlayEl.isConnected ? this.#overlayEl : null;
-    if (overlay === null) {
-      this.#container.replaceChildren(root);
-    } else {
-      for (const child of [...this.#container.children]) {
-        if (child !== overlay) child.remove();
-      }
-      this.#container.insertBefore(root, overlay);
+    for (const child of [...this.#container.children]) {
+      if (child !== root && child !== overlay) child.remove();
     }
     // A cycle that did not re-render the Grid (status-only views) leaves the
     // previous viewport outside the live tree — drop the refs.
@@ -650,8 +685,17 @@ export class ReadonlyGridRenderer {
       this.#gridResizeObserver = null;
       this.#virtualGrid = null;
     }
-    this.#restoreRowHeightAnchor();
-    this.#restoreScrollAnchor();
+    // Native state-preserving moves keep composition alive, but Chromium can
+    // reset the input selection during a geometry rebuild. Restore only the
+    // same surviving editor, never a newly opened or invalidated edit session.
+    if (
+      selection !== null &&
+      editor !== null &&
+      this.#cellEditor === editor &&
+      !(editor.element instanceof HTMLSelectElement) &&
+      root.contains(editor.element)
+    )
+      editor.element.setSelectionRange(selection.start, selection.end, selection.direction);
     this.#syncFooterScroll();
     this.#syncActionButtons();
     const overlayFocused =
@@ -2920,7 +2964,18 @@ export class ReadonlyGridRenderer {
     // are unchanged (fresh handlers stay valid); rows hosting a live editor
     // are pinned regardless so an in-flight edit survives any rebuild.
     const desired: HTMLElement[] = [];
-    for (let rowIndex = range.start; rowIndex < range.end; rowIndex += 1) {
+    const rowIndices = Array.from(
+      { length: range.end - range.start },
+      (_, index) => range.start + index,
+    );
+    // Passive scrolling can leave an editor outside the viewport. Preserve at
+    // most that one legal record in a new geometry tree too, never all rows.
+    const editorIndex =
+      this.#cellEditor === null
+        ? -1
+        : grid.state.records.findIndex((record) => record.id === this.#cellEditor?.recordId);
+    if (editorIndex >= 0 && !rowIndices.includes(editorIndex)) rowIndices.push(editorIndex);
+    for (const rowIndex of rowIndices) {
       const record = grid.state.records[rowIndex];
       if (record === undefined) continue;
       const slot = existing.get(record.id);
@@ -4273,7 +4328,13 @@ export class ReadonlyGridRenderer {
         rowIndex = nextRow;
         fieldIndex = nextColumn;
         moving = true;
-        cell.replaceChildren(editor);
+        cell.replaceChildren();
+        if ('moveBefore' in cell && cell.isConnected && editor.isConnected) {
+          (cell as HTMLElement & { moveBefore(node: Node, before: Node | null): void }).moveBefore(
+            editor,
+            null,
+          );
+        } else cell.append(editor);
         cell.tabIndex = -1;
         moving = false;
       },

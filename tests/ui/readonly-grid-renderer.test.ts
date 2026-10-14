@@ -3881,13 +3881,49 @@ describe('column menu and field editor', () => {
 
     await vi.waitFor(() => {
       expect(container.querySelector('.loom-field-editor [role="alert"]')?.textContent).toBe(
-        'Field management is unavailable while offline.',
+        createTranslator('en')('field.submit.failed'),
       );
     });
     expect(container.querySelector('.loom-field-editor')).not.toBeNull();
     expect(container.querySelector<HTMLInputElement>('.loom-field-editor-name')?.value).toBe(
       'Notes',
     );
+    container.remove();
+  });
+
+  it('localizes failed field outcomes without publishing transport details and permits retry', async () => {
+    const container = document.createElement('div');
+    document.body.append(container);
+    const translate = createTranslator('zh-CN');
+    const onFieldSave = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: 'failed',
+        kind: 'server',
+        error: { message: 'Internal transport at private.invalid: connection refused' },
+      })
+      .mockResolvedValueOnce({ status: 'written' });
+    const renderer = new ReadonlyGridRenderer(container, translate, {
+      ...rendererCallbacks(),
+      onFieldSave,
+    });
+    renderer.render(createState(1));
+    container.querySelector<HTMLElement>('.loom-grid-add-field button')?.click();
+    container.querySelector<HTMLInputElement>('.loom-field-editor-name')!.value = '保留草稿';
+    container.querySelector<HTMLButtonElement>('.loom-field-editor-submit')?.click();
+    await vi.waitFor(() => {
+      expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+        translate('field.submit.failed'),
+      );
+    });
+    expect(container.textContent).not.toContain('private.invalid');
+    expect(container.querySelector<HTMLInputElement>('.loom-field-editor-name')?.value).toBe(
+      '保留草稿',
+    );
+    container.querySelector<HTMLButtonElement>('.loom-field-editor-submit')?.click();
+    await vi.waitFor(() => expect(container.querySelector('.loom-field-editor')).toBeNull());
+    expect(onFieldSave).toHaveBeenCalledTimes(2);
+    renderer.dispose();
     container.remove();
   });
 

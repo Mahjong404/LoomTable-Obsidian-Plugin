@@ -1878,6 +1878,78 @@ describe('GridViewController query controls', () => {
     expect(request?.cursor).toBeUndefined();
   });
 
+  it('keeps all loaded rows if an atomic geometry refresh fails on a later page', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(6), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+    await controller.loadNextPage();
+    await controller.loadNextPage();
+    const original = controller.state.records.map((record) => record.id);
+    const counts: number[] = [];
+    const unsubscribe = controller.subscribe((state) => counts.push(state.records.length));
+    const query = client.query.bind(client);
+    vi.spyOn(client, 'query').mockImplementation((request) => {
+      if (request.cursor !== undefined) {
+        return Promise.reject(new LoomTableClientError('network', { message: 'offline' }));
+      }
+      return query(request);
+    });
+
+    const outcome = await controller.applyViewDisplay('view_01', {
+      ...selectedConfig(controller),
+      rowHeight: 'compact',
+    });
+
+    expect(outcome.status).toBe('saved');
+    expect(controller.state.records.map((record) => record.id)).toEqual(original);
+    expect(counts.every((count) => count === 6)).toBe(true);
+    expect(controller.state.status).toBe('network');
+    expect(client.mutationRequests).toHaveLength(0);
+    unsubscribe();
+    controller.dispose();
+  });
+
+  it('does not publish or request another page when disposed during a geometry refresh', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(6), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+    await controller.loadNextPage();
+    await controller.loadNextPage();
+    const query = client.query.bind(client);
+    let resolvePage!: (result: QueryResult) => void;
+    let delayedPage!: QueryResult;
+    const spy = vi.spyOn(client, 'query').mockImplementation(async (request) => {
+      const result = await query(request);
+      if (request.cursor !== undefined) {
+        delayedPage = result;
+        return new Promise<QueryResult>((resolve) => {
+          resolvePage = resolve;
+        });
+      }
+      return result;
+    });
+    const pending = controller.applyViewDisplay('view_01', {
+      ...selectedConfig(controller),
+      rowHeight: 'compact',
+    });
+    await vi.waitFor(() => expect(resolvePage).toBeTypeOf('function'));
+    const snapshots = vi.fn();
+    controller.subscribe(snapshots);
+    controller.dispose();
+    snapshots.mockClear();
+    resolvePage(delayedPage);
+    await pending;
+
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(snapshots).not.toHaveBeenCalled();
+    expect(controller.state.records).toHaveLength(6);
+    expect(client.mutationRequests).toHaveLength(0);
+  });
+
   it('rejects an invalid display patch without a View write', async () => {
     const client = new InMemoryLoomTableClient(
       createData(createRecords(1), createGridConfig(false)),

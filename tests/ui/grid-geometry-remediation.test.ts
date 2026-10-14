@@ -12,7 +12,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mount(density: 'compact' | 'standard' | 'comfortable' = 'standard') {
+function mount(density: 'compact' | 'standard' | 'comfortable' = 'standard', recordCount?: number) {
   const base = createGalleryState();
   const fields = base.fields.slice(0, 2);
   const ids = fields.map((field) => field.id);
@@ -27,7 +27,15 @@ function mount(density: 'compact' | 'standard' | 'comfortable' = 'standard') {
       rowHeight: density,
     },
   };
-  const state = { ...base, fields, views: [view], selectedViewId: view.id };
+  const records =
+    recordCount === undefined
+      ? base.records
+      : Array.from({ length: recordCount }, (_, index) => ({
+          ...base.records[0]!,
+          id: `record_${index}`,
+          values: { ...base.records[0]!.values, [ids[0]!]: `Row ${index}` },
+        }));
+  const state = { ...base, records, fields, views: [view], selectedViewId: view.id };
   const container = document.createElement('div');
   document.body.append(container);
   const onApplyDisplay = vi.fn();
@@ -49,6 +57,114 @@ function mount(density: 'compact' | 'standard' | 'comfortable' = 'standard') {
 }
 
 describe('C review geometry regressions', () => {
+  it.each(['record', 'field'] as const)(
+    'cancels a deleted %s without a late write',
+    async (deleted) => {
+      vi.useFakeTimers();
+      const { container, renderer, state, ids, onCellEdit } = mount('standard', 1000);
+      const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport')!;
+      viewport.scrollTop = 7200;
+      viewport.dispatchEvent(new Event('scroll'));
+      await vi.advanceTimersByTimeAsync(30);
+      container
+        .querySelector(`[data-record-id="record_200"] [data-field-id="${ids[0]}"]`)!
+        .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor')!;
+      editor.value = 'Invalid owner';
+      renderer.render({
+        ...state,
+        ...(deleted === 'record'
+          ? { records: state.records.filter((record) => record.id !== 'record_200') }
+          : { fields: state.fields.slice(1) }),
+      });
+      expect(container.querySelector('.loom-grid-editor')).toBeNull();
+      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      editor.dispatchEvent(new Event('blur'));
+      await vi.advanceTimersByTimeAsync(100);
+      expect(onCellEdit).not.toHaveBeenCalled();
+    },
+  );
+
+  it('pins only the legal edited row if passive scrolling has moved beyond it before replacement', async () => {
+    vi.useFakeTimers();
+    const { container, renderer, state, ids, onCellEdit } = mount('standard', 1000);
+    const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport')!;
+    viewport.scrollTop = 7200;
+    viewport.dispatchEvent(new Event('scroll'));
+    await vi.advanceTimersByTimeAsync(30);
+    container
+      .querySelector(`[data-record-id="record_200"] [data-field-id="${ids[0]}"]`)!
+      .dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    const editor = container.querySelector<HTMLInputElement>('.loom-grid-editor')!;
+    editor.value = 'Pinned raw';
+    viewport.scrollTop = 18000;
+    viewport.dispatchEvent(new Event('scroll'));
+    await vi.advanceTimersByTimeAsync(30);
+    const view = state.views[0]!;
+    renderer.render({
+      ...state,
+      views: [{ ...view, config: { ...view.config, frozenFieldIds: [] } }],
+    });
+    expect(container.querySelector('.loom-grid-editor')).toBe(editor);
+    expect(editor.value).toBe('Pinned raw');
+    expect(container.querySelector<HTMLElement>('.loom-grid-viewport')!.scrollTop).toBe(18000);
+    expect(container.querySelectorAll('.loom-grid-row').length).toBeLessThan(50);
+    renderer.dispose();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(onCellEdit).not.toHaveBeenCalled();
+  });
+
+  it.each(['width', 'frozen', 'compact', 'standard', 'comfortable'] as const)(
+    'preserves a row-200 raw editor across %s geometry with bounded virtualization',
+    async (change) => {
+      vi.useFakeTimers();
+      const { container, renderer, state, ids, onCellEdit } = mount('standard', 1000);
+      const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport')!;
+      viewport.scrollTop = 7200;
+      viewport.scrollLeft = 120;
+      viewport.dispatchEvent(new Event('scroll'));
+      await vi.advanceTimersByTimeAsync(30);
+      const cell = container.querySelector<HTMLElement>(
+        `[data-record-id="record_200"] [data-field-id="${ids[0]}"]`,
+      )!;
+      expect(cell).not.toBeNull();
+      cell.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+      await vi.advanceTimersByTimeAsync(0);
+      const editor = cell.querySelector<HTMLInputElement>('.loom-grid-editor')!;
+      editor.value = '未提交的中文草稿';
+      editor.setSelectionRange(2, 5);
+      editor.focus();
+      editor.dispatchEvent(new CompositionEvent('compositionstart'));
+      const view = state.views[0]!;
+      const config = {
+        ...view.config,
+        ...(change === 'width'
+          ? { columnWidths: { ...view.config.columnWidths, [ids[0]!]: 260 } }
+          : {}),
+        ...(change === 'frozen' ? { frozenFieldIds: [] } : {}),
+        ...(change === 'compact' || change === 'standard' || change === 'comfortable'
+          ? { rowHeight: change }
+          : {}),
+      };
+      renderer.render({ ...state, views: [{ ...view, config }] });
+      expect(container.querySelector('.loom-grid-editor')).toBe(editor);
+      expect(editor.value).toBe('未提交的中文草稿');
+      expect([editor.selectionStart, editor.selectionEnd]).toEqual([2, 5]);
+      expect(document.activeElement).toBe(editor);
+      const nextViewport = container.querySelector<HTMLElement>('.loom-grid-viewport')!;
+      expect(nextViewport.scrollTop).toBe(
+        200 * (change === 'compact' ? 30 : change === 'comfortable' ? 44 : 36),
+      );
+      expect(nextViewport.scrollLeft).toBe(120);
+      expect(container.querySelectorAll('.loom-grid-row').length).toBeLessThan(50);
+      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await vi.advanceTimersByTimeAsync(100);
+      expect(onCellEdit).not.toHaveBeenCalled();
+      editor.dispatchEvent(new CompositionEvent('compositionend'));
+      editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      expect(onCellEdit).toHaveBeenCalledExactlyOnceWith('record_200', ids[0], '未提交的中文草稿');
+    },
+  );
   it.each([30, 36, 44])('resolves an unclipped coarse hit for density %ipx', (rowHeight) => {
     const geometry = resolveGridGeometry({ rowHeight, coarse: true });
     expect(geometry.rowHeight).toBe(44);
@@ -206,12 +322,23 @@ describe('C review geometry regressions', () => {
 
   it('retains the unaccepted Create editor during a same-view geometry replacement', async () => {
     vi.useFakeTimers();
-    const { container, renderer, state, ids, onCreateRecord } = mount();
+    const { container, renderer, state, ids, onCreateRecord } = mount('standard', 1000);
+    const viewport = container.querySelector<HTMLElement>('.loom-grid-viewport')!;
+    viewport.scrollTop = 7200;
+    viewport.scrollLeft = 120;
+    viewport.dispatchEvent(new Event('scroll'));
+    await vi.advanceTimersByTimeAsync(30);
+    container
+      .querySelector(`[data-record-id="record_200"] [data-field-id="${ids[0]}"]`)!
+      .dispatchEvent(new MouseEvent('click', { bubbles: true }));
     container.querySelector<HTMLButtonElement>('[data-action="create-record"]')!.click();
     const editor = container.querySelector<HTMLInputElement>(
       '.loom-grid-draft-row .loom-grid-editor',
     )!;
     editor.value = 'Still local create';
+    editor.focus();
+    editor.setSelectionRange(2, 5);
+    editor.dispatchEvent(new CompositionEvent('compositionstart'));
     const view = state.views[0]!;
     renderer.render({
       ...state,
@@ -225,6 +352,9 @@ describe('C review geometry regressions', () => {
     await vi.advanceTimersByTimeAsync(100);
     expect(container.querySelector('.loom-grid-draft-row .loom-grid-editor')).toBe(editor);
     expect(editor.value).toBe('Still local create');
+    expect([editor.selectionStart, editor.selectionEnd]).toEqual([2, 5]);
+    expect(document.activeElement).toBe(editor);
+    expect(container.querySelectorAll('.loom-grid-row').length).toBeLessThan(50);
     expect(onCreateRecord).not.toHaveBeenCalled();
   });
 

@@ -164,3 +164,5 @@ B最终计数边界由Renderer拥有：仅当前open Builder发布draft；closed
 G02–06/A01–04/A17→01 A/B；G08/G19–24/A09–13→05/09代表性C；G13/A05–06→02视觉续段；G14/A07→03；G15/A08→04；G07/G12/A14→07；G35–36/A15→10/11；Record/Map整页未获完整新authority，只验既有基线及明确consumer接缝。G37–39及Deferred保持原边界，不列当前遗漏。
 
 01/02已有功能/remediation不等于所有视觉组完成；cross-pane ownership和pending draft锁的正确实现保留。新增4个定向失败与真实Grip/Map/Palette证据进入首批A，不把已解决的02旧问题再计为新问题。Showcase factory、生产消费者、Figma/Host证据与fixedSHA须同PR追踪；视觉缺证据单列，不冒称Host QA Passed。
+
+2026-10-15 C最终正确性补充：G19–24的远距离编辑经真实`LoomTableView → ReadonlyGridRenderer → GridViewController → query`路径复核。`shared-owner-lifecycle.test.ts`覆盖第200行、千行数据、实际Display写入/多页刷新、width/frozen/三密度、原input/raw/caret/focus、Map/dispose零旧写入；`grid-geometry-remediation.test.ts`补composition、Draft、删除及窗口外单行保留；`grid-view-controller.test.ts`补后续页失败与dispose时无部分发布/无追加查询。所有权合同见[生命周期](../architecture/field-editor-lifecycle.md#同-view-几何替换与未接受输入)，仍以[status](status.md)记录实际验证及用户视觉门禁，不将旧Head的CI或隐藏审计环境作为新可见Host证明。

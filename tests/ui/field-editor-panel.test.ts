@@ -81,7 +81,7 @@ describe('openFieldEditor', () => {
 
     await vi.waitFor(() => {
       expect(host.querySelector('.loom-field-editor [role="alert"]')?.textContent).toBe(
-        'Field management is unavailable while offline.',
+        createTranslator('en')('field.submit.failed'),
       );
     });
     const panel = host.querySelector<HTMLElement>('.loom-field-editor');
