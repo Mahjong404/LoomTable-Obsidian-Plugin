@@ -6,6 +6,13 @@
 
 新 Agent（包括 DSH、Codex）开始任务先读 `docs/agent-ops/README.md`，再按工作类型读取对应 SOP；产品规范与状态仍以原权威入口为准。以下硬约束继续生效。
 
+## 本地 TODO 收集与阶段规划（强制）
+
+- 用户新提出的 Bug、交互、视觉、性能、技术债或产品建议**不自动构成本轮开发授权**。先核对已有稳定 ID、判断归属和优先级、预计 Wave/阶段、依赖与验收条件，登记到 gitignored `docs/local/maintenance/todo.md`。维护 Session 已建立此唯一的本地 TODO 台账；**即使可以顺手修，也必须先登记，再实施并依据证据标 Done**。
+- 记录来源、日期、截图在本地的可定位路径、复现/期望、Owner/PR、阶段、状态（Todo/Planned/In Progress/Blocked/Done/Deferred）、代码与 Figma 的 Done 门槛；不能仅凭测试通过关闭需要 Figma 更新的条目。UI-026～UI-031 已在本地台账，沿用 ID，不另建竞争列表。
+- 每次规划新阶段先读本地 TODO、正式 Wave 状态、任务合同及 API Gate，挑选本阶段真正获授权的条目；其余保留等待，不擅自扩大当前 PR。若新 Clone 取不到 gitignored 台账，明确说明缺口并向维护者取得拷贝，不能把私有内容复制入 tracked Git 文档。
+- 跨 Plugin/Server 的任务在各仓库本地 TODO 分别记录并引用关联 ID；本地维护清单不替代正式产品规范及唯一 Wave 状态。
+
 ## Wave 1.5 实施入口
 
 涉及 Wave 1.5 开发/交接，先读 `docs/wave1.5/README.md`、`status.md`、`devin-plugin.md` 及目标任务卡。长期视觉/交互在 `docs/ui/`，编辑器所有权在 `docs/architecture/field-editor-lifecycle.md`；计划不复制这些规范。按明确授权交付一个纵向切片，更新唯一 status/traceability。当前 API 支持的 UI 先做，API-dependent 部分按 `api-boundary.md` 等待 Server 合同/固定 commit/能力验证，普通 UI 不同步 API。
