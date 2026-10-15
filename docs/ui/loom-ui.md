@@ -80,6 +80,8 @@ Figma：内容6:127、Light Surface6:232 / Dark6:325；Toolbar9:888/898/906及9:
 
 ### C 消费者与几何接缝
 
+Grid 的 Header 整体绘制层必须高于所有滚动行（包括 system track 与 Current），不能只提高 Header 内部子元素的层级。Header 内部的 system track 高于数据列，窄 Pane 解除数据列 sticky 后也保持此顺序。冻结单元格与行头继承不透明的基础面，Hover/Selection 只作为其上的 tint；宿主的半透明 hover token 不能直接充当遮挡滚动内容的底层。`--loom-grid-surface` 与 `--loom-grid-row-overlay` 是内部绘制状态，不是新增消费者 API；复用现有状态类，不另复制冻结样式。
+
 `resolveGridGeometry`（`src/ui/grid-geometry.ts`）只解析展示量值，不写 View config。Pointer 行保留30/36/44配置；coarse有效行高至少44、system track132，Header/Footer/Add均36。Renderer把解析值发布为wrapper上的`--loom-grid-system-track/system-slot/system-inset/header-height/footer-height/more-target/resize-rail/row-height`，并以resolved columns维护content/data width与冻结偏移。不要在新consumer重新写88/132或单独维护Footer列宽。Header/body/Footer的横滚由viewport拥有；Footer只有受Pane约束的外盒滚动、完整轨道inner row。
 
 同View的宽度/冻结/密度替换保持Record滚动锚点与原生Cell Editor节点，保留raw input、selection及IME composition；不借几何重绘接受业务写入。已接受编辑仍由Controller/Queue处理，View切换或Renderer销毁取消未接受编辑的timer。窄Pane保持system track，沿既有策略解除数据列sticky，不更改持久化frozen配置。

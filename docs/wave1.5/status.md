@@ -89,6 +89,17 @@ Obsidian1.14.4隔离合成Vault、默认requestUrl+loopback内存API、Microsoft
 - 未公开save-feedback Flag已读取；HIG/Grid明确由Status/Operation Feedback承接网络保存/冲突，不恢复被设计取消的Cell保存色。三项旧公开Finding保持resolved，本轮不重新审计全部23项。源码与远端CI/Review以PR116最新Head为准，旧Head CI不能作为本次通过；用户视觉尚未验收，禁止自动Merge；Subagent=0。
 - `2d74c18`的CI/Review完成，原Scrolled Editor由Reviewer关闭；随后新增“Failed refresh strands remaining records”已复现并补Retry：重新读取最新View，查询相同时从新cursor起点原子恢复旧加载前缀和Load More，查询改变时正常替换。纯Controller与真实View按钮测试、可见Host故障注入200行→Retry200/300→Load More300行均通过，0Record写入。新的Head仍须读取其CI/Review，不用2d74旧检查签证。Review的Host文案冲突Flag使用了push前旧PR描述快照；当前描述已明确可见qa-vault和历史证据边界。
 
+### C Grid Stabilization 复核（2026-10-15）
+
+PR116 继续保持 **User Visual Review Pending / 未合并**。本轮基线 `70e208fef6e3146ea69f6637c9b4a0a3c896e22f`；纯 SOP PR117 已合并为 `99aae27b7ee0834316ec53c70a704a85f087e3f0`，不构成 C 产品批准。
+
+- UI-026 已自然复现：Header 父层与后绘制的行头同层，滚动行可覆盖系统表头；窄 Pane 取消冻结后，同层数据 Header 也能覆盖系统槽。有限分层修正为 Header 父层高于 body，Header 内 system 高于 data，不修改 G4 禁用占位。
+- UI-027 已自然复现：宿主 Hover/Selection token 含透明度，直接继承为冻结面会透出滚动文字。现复合状态 tint 与不透明基础面，复用既有 token/state；不改变 Geometry、Controller、Queue 或运行时依赖。
+- UI-031 不采纳本地 DSH `e2d1719`：原全局 selected 隐藏规则已在真实 Chromium 的 `hover:none / pointer:coarse` 生效；七行媒体补丁重复规则，五项测试孤立媒体分支无法证明 Cascade 缺陷。原桌面首次 Hover 仍 Not Reproduced，物理触屏仍 Not Verified，保留原提交与问题记录；不擅改透明 checkbox 的行选择命中语义。
+- 新增生产 Renderer + 实际 CSS 测试4项：Header 父/子绘制顺序、G4 占位、明暗 selected 显隐、虚拟窗口状态复用。最终完整 Vitest **72 文件 / 1145 项通过**；定向74项通过；Typecheck、完整 Prettier、API 生成零 diff、Production/Gallery/VitePress Build 通过；ESLint **0 error / 762 warnings**，不清理无关存量。最新源码与 CI 以 PR116 本轮提交为准。
+- QA-ENV-001 已解决：原生窗口恢复用户现有可见 `qa-vault`，核实 Vault 身份及中文 auto，不操作 Learning Notes。非零双轴滚动下系统槽命中、Hover/Selection 不透明底层与有界虚拟 DOM 通过；Light/Dark 实际960/600/400/320px Grid 无 root/Toolbar 溢出；Header/Body/Footer 对齐误差0px；真实 Electron Zoom2；Coarse 模拟 row/slot44px、Checkbox 居中且边缘可命中。第200行 CDP IME 草稿经窗口变化仍保原节点/raw/caret/focus，27条虚拟行；Grid→Map→Grid 无 Record 写入。Menu 完整焦点边界与中文双规则 Filter 520×189、控件28px复验通过。
+- Figwright 只读核对 Header `205:34361`、Row Header `205:33044`、Selected/Hover Grid `303:91947` 及 Cell `12:1325`；保88px系统轨道、36px Header/Footer及批准状态结构。第三方主题、真实触控硬件、OS IME候选窗与用户整体视觉批准未完成；本轮不领取 UI-028～030，不启动 Sort/Display 或 API消费者。ignored 本机证据仅为可选复核材料，不是正式工程必需输入。Subagent=0。
+
 ## API / Future
 
 | Gate                         | Contract approval         | Server PR / fixed source / merge                                                                                                                        | Deployed capability /验证来源                                                                                                                                                                                                                                                 | Plugin PR / pin                                                                                                                                       | State / Next action                                                                                                         |
