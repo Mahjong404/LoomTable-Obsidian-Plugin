@@ -4,6 +4,8 @@
 
 ## Agent 操作 SOP
 
+涉及分支、Worktree、提交身份、Issue/PR、Review、合并、发布、CI 或清理，先读 [Git 工作流](docs/agent-ops/git-workflow.md)。
+
 新 Agent（包括 DSH、Codex）开始任务先读 `docs/agent-ops/README.md`，再按工作类型读取对应 SOP；产品规范与状态仍以原权威入口为准。以下硬约束继续生效。
 
 ## 本地 TODO 收集与阶段规划（强制）

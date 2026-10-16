@@ -19,7 +19,7 @@ pnpm install --frozen-lockfile
 pnpm check
 ```
 
-贡献代码前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md)。分支遵循 GitHub Flow，使用 `feature/`、`fix/`、`docs/` 等用途前缀，不使用个人或自动化工具前缀。
+贡献代码前请阅读 [CONTRIBUTING.md](./CONTRIBUTING.md) 和 [Git 工作流](./docs/agent-ops/git-workflow.md)。唯一长期分支是 `main`，短期任务使用 `feat/`、`fix/`、`refactor/`、`docs/`、`test/`、`chore/` 前缀。
 
 `pnpm dev` 持续生成 Obsidian 加载的 `main.js`；`pnpm build` 生成生产 Bundle。OpenAPI 快照与生成类型均已提交，普通构建不读取同级 Server 工作树，也不访问网络。显式升级契约时运行：
 
