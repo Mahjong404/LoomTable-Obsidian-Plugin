@@ -8,11 +8,25 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine validation scope and check whitespace
+        id: scope
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 .github/scripts/test_ci_scope.py
+          python3 .github/scripts/ci-scope.py
       - uses: pnpm/action-setup@v4
         with:
           version: 11.16.0
@@ -21,4 +35,25 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
+      - name: Format changed Markdown, including ignored specification docs
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          paths = json.loads(Path(os.environ["RUNNER_TEMP"], "ci-prose.json").read_text())
+          if paths:
+              subprocess.run(
+                  ["pnpm", "exec", "prettier", "--check", "--ignore-path", "/dev/null", *paths],
+                  check=True,
+              )
+      - name: TypeScript, Vitest, ESLint, Prettier, API drift and production build
+        if: steps.scope.outputs.full == 'true'
+        run: pnpm check
+      - name: Build Gallery and VitePress consumers
+        if: steps.scope.outputs.full == 'true'
+        run: |
+          pnpm gallery
+          pnpm docs:build
