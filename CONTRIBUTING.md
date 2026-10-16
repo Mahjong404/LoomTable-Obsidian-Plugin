@@ -24,4 +24,3 @@ git diff --check
 ```
 
 For documentation-only work, use the applicable validation in the Git workflow. Review the resulting file list and diff for generated or temporary artifacts before publishing.
-
