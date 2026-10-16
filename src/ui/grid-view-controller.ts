@@ -1324,6 +1324,25 @@ export class GridViewController {
   async load(options?: { preserveRecords?: boolean }): Promise<void> {
     const requestToken = ++this.#requestToken;
     const preserveRecords = options?.preserveRecords === true;
+    const previousView = this.#state.views.find(
+      (candidate) => candidate.id === this.#state.selectedViewId,
+    );
+    const preservedQuery =
+      preserveRecords && previousView !== undefined && isGridView(previousView)
+        ? {
+            request: JSON.stringify(
+              createGridQuery(
+                previousView.tableId,
+                previousView,
+                undefined,
+                undefined,
+                this.#searchTerm,
+              ),
+            ),
+            manualSort: previousView.config.manualSort,
+            count: this.#state.records.length,
+          }
+        : null;
     if (!preserveRecords) this.#history.clear();
     this.#publish({
       status: 'loading',
@@ -1470,7 +1489,16 @@ export class GridViewController {
             ? this.#state.lastDeletedRecord
             : null,
       });
-      await this.#loadQuery(requestToken, table.id, view, undefined, true);
+      // Explicit Retry rediscovers the latest View, but must not collapse an
+      // unchanged loaded query to page one after a failed atomic refresh.
+      const minimumRecords =
+        preservedQuery !== null &&
+        preservedQuery.manualSort === view.config.manualSort &&
+        preservedQuery.request ===
+          JSON.stringify(createGridQuery(table.id, view, undefined, undefined, this.#searchTerm))
+          ? preservedQuery.count
+          : 0;
+      await this.#loadQuery(requestToken, table.id, view, undefined, true, minimumRecords);
     } catch (error) {
       this.#publishError(requestToken, error);
     }
@@ -2174,6 +2202,7 @@ export class GridViewController {
   ): Promise<void> {
     switch (outcome.status) {
       case 'saved': {
+        const previous = this.#state.views.find((candidate) => candidate.id === view.id);
         this.#clearViewWriteState(view.id);
         if (this.#state.views.some((candidate) => candidate.id === view.id)) {
           const views = this.#state.views.map((candidate) =>
@@ -2184,9 +2213,19 @@ export class GridViewController {
           await this.#refreshViewLists();
         }
         if (this.#state.selectedViewId === view.id && isGridView(outcome.view)) {
+          // Every View revision expires the Server cursor. When membership and
+          // order are unchanged, refresh the loaded pages atomically so a raw
+          // editor never disappears in a transient page-one-only state.
+          const keepLoaded =
+            previous !== undefined &&
+            isGridView(previous) &&
+            previous.config.manualSort === outcome.view.config.manualSort &&
+            JSON.stringify(createGridQuery(previous.tableId, previous)) ===
+              JSON.stringify(createGridQuery(outcome.view.tableId, outcome.view));
           await this.#reloadSelectedViewQuery(
             outcome.view,
             this.#translate('view.write.refreshFailed'),
+            keepLoaded ? this.#state.records.length : 0,
           );
         }
         return;
@@ -2274,7 +2313,11 @@ export class GridViewController {
     }
   }
 
-  async #reloadSelectedViewQuery(view: GridView, failureMessage?: string): Promise<void> {
+  async #reloadSelectedViewQuery(
+    view: GridView,
+    failureMessage?: string,
+    minimumRecords = 0,
+  ): Promise<void> {
     const requestToken = ++this.#requestToken;
     this.#publish({
       status: 'loading',
@@ -2287,7 +2330,7 @@ export class GridViewController {
       unfilteredTotal: this.#state.unfilteredTotal,
     });
     try {
-      await this.#loadQuery(requestToken, view.tableId, view, undefined, true);
+      await this.#loadQuery(requestToken, view.tableId, view, undefined, true, minimumRecords);
     } catch (error) {
       if (failureMessage !== undefined) {
         if (!this.#isCurrent(requestToken)) return;
@@ -2356,11 +2399,33 @@ export class GridViewController {
     view: GridView,
     cursor: string | undefined,
     replace: boolean,
+    minimumRecords = 0,
   ): Promise<void> {
     return this.#client
       .query(createGridQuery(tableId, view, this.#pageSize, cursor, this.#searchTerm))
       .then(async (result) => {
         if (!this.#isCurrent(requestToken)) return;
+        if (replace && result.items.length < minimumRecords && result.hasMore) {
+          const items = [...result.items];
+          let page = result;
+          while (page.hasMore && page.nextCursor !== undefined && items.length < minimumRecords) {
+            page = await this.#client.query(
+              createGridQuery(tableId, view, this.#pageSize, page.nextCursor, this.#searchTerm),
+            );
+            if (!this.#isCurrent(requestToken)) return;
+            items.push(...page.items);
+          }
+          result = {
+            items,
+            hasMore: page.hasMore,
+            changeCursor: page.changeCursor,
+            ...(page.nextCursor === undefined ? {} : { nextCursor: page.nextCursor }),
+            ...(result.totalCount === undefined ? {} : { totalCount: result.totalCount }),
+            ...(result.unfilteredTotal === undefined
+              ? {}
+              : { unfilteredTotal: result.unfilteredTotal }),
+          };
+        }
         if (replace || !this.#state.records.length) {
           this.#applyQueryResult(result, true);
           return;

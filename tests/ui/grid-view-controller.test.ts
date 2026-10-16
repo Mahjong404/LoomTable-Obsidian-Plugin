@@ -44,7 +44,8 @@ import type {
 
 describe('GridViewController', () => {
   it('discovers the current Workspace/Base/Table/View and submits the saved query contract', async () => {
-    const data = createData(createRecords(3), createGridConfig(true));
+    // The saved Filter applies on the Server: names must honestly contain 'a'.
+    const data = createData(createRecords(3, 'alpha'), createGridConfig(true));
     const client = new InMemoryLoomTableClient(data);
     const controller = new GridViewController(client, { pageSize: 2 });
 
@@ -1877,6 +1878,137 @@ describe('GridViewController query controls', () => {
     expect(request?.cursor).toBeUndefined();
   });
 
+  it('keeps all loaded rows if an atomic geometry refresh fails on a later page', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(6), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+    await controller.loadNextPage();
+    await controller.loadNextPage();
+    const original = controller.state.records.map((record) => record.id);
+    const counts: number[] = [];
+    const unsubscribe = controller.subscribe((state) => counts.push(state.records.length));
+    const query = client.query.bind(client);
+    vi.spyOn(client, 'query').mockImplementation((request) => {
+      if (request.cursor !== undefined) {
+        return Promise.reject(new LoomTableClientError('network', { message: 'offline' }));
+      }
+      return query(request);
+    });
+
+    const outcome = await controller.applyViewDisplay('view_01', {
+      ...selectedConfig(controller),
+      rowHeight: 'compact',
+    });
+
+    expect(outcome.status).toBe('saved');
+    expect(controller.state.records.map((record) => record.id)).toEqual(original);
+    expect(counts.every((count) => count === 6)).toBe(true);
+    expect(controller.state.status).toBe('network');
+    expect(client.mutationRequests).toHaveLength(0);
+    unsubscribe();
+    controller.dispose();
+  });
+
+  it('retries a failed atomic refresh from a fresh cursor without collapsing loaded rows', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(8), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+    await controller.loadNextPage();
+    await controller.loadNextPage();
+    const original = controller.state.records.map((record) => record.id);
+    const query = client.query.bind(client);
+    const spy = vi.spyOn(client, 'query').mockImplementation((request) => {
+      if (request.cursor !== undefined) {
+        return Promise.reject(new LoomTableClientError('network', { message: 'offline' }));
+      }
+      return query(request);
+    });
+    await controller.applyViewDisplay('view_01', {
+      ...selectedConfig(controller),
+      rowHeight: 'compact',
+    });
+    expect(controller.state.records.map((record) => record.id)).toEqual(original);
+    spy.mockImplementation(query);
+    spy.mockClear();
+    const counts: number[] = [];
+    const unsubscribe = controller.subscribe((state) => counts.push(state.records.length));
+
+    await controller.refresh();
+
+    expect(controller.state.records.map((record) => record.id)).toEqual(original);
+    expect(counts.every((count) => count === 6)).toBe(true);
+    expect(spy.mock.calls.map(([request]) => request.cursor)).toEqual([
+      undefined,
+      'cursor:2',
+      'cursor:4',
+    ]);
+    expect(controller.state.status).toBe('ready');
+    expect(controller.state.hasMore).toBe(true);
+    expect(controller.state.nextCursor).toBe('cursor:6');
+    await controller.loadNextPage();
+    expect(controller.state.records).toHaveLength(8);
+    expect(client.mutationRequests).toHaveLength(0);
+    unsubscribe();
+    const latest = await client.getView('view_01');
+    await client.updateView('view_01', {
+      type: 'grid',
+      expectedRevision: latest.revision,
+      config: {
+        ...selectedConfig(controller),
+        filter: { kind: 'rule', fieldId: 'field_name', operator: 'is', value: 'no-match' },
+      },
+    });
+    spy.mockClear();
+    await controller.refresh();
+    expect(controller.state.records).toHaveLength(0);
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy.mock.calls[0]?.[0].filter).toMatchObject({ value: 'no-match' });
+    controller.dispose();
+  });
+
+  it('does not publish or request another page when disposed during a geometry refresh', async () => {
+    const client = new InMemoryLoomTableClient(
+      createData(createRecords(6), createGridConfig(false)),
+    );
+    const controller = new GridViewController(client, { pageSize: 2 });
+    await controller.load();
+    await controller.loadNextPage();
+    await controller.loadNextPage();
+    const query = client.query.bind(client);
+    let resolvePage!: (result: QueryResult) => void;
+    let delayedPage!: QueryResult;
+    const spy = vi.spyOn(client, 'query').mockImplementation(async (request) => {
+      const result = await query(request);
+      if (request.cursor !== undefined) {
+        delayedPage = result;
+        return new Promise<QueryResult>((resolve) => {
+          resolvePage = resolve;
+        });
+      }
+      return result;
+    });
+    const pending = controller.applyViewDisplay('view_01', {
+      ...selectedConfig(controller),
+      rowHeight: 'compact',
+    });
+    await vi.waitFor(() => expect(resolvePage).toBeTypeOf('function'));
+    const snapshots = vi.fn();
+    controller.subscribe(snapshots);
+    controller.dispose();
+    snapshots.mockClear();
+    resolvePage(delayedPage);
+    await pending;
+
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(snapshots).not.toHaveBeenCalled();
+    expect(controller.state.records).toHaveLength(6);
+    expect(client.mutationRequests).toHaveLength(0);
+  });
+
   it('rejects an invalid display patch without a View write', async () => {
     const client = new InMemoryLoomTableClient(
       createData(createRecords(1), createGridConfig(false)),
@@ -2114,7 +2246,7 @@ describe('GridViewController query controls', () => {
 
   it('aggregates the selected Field with the active View filter', async () => {
     const client = new InMemoryLoomTableClient(
-      createData(createRecords(3), createGridConfig(true)),
+      createData(createRecords(3, 'alpha'), createGridConfig(true)),
     );
     const controller = new GridViewController(client);
     await controller.load();
@@ -2229,6 +2361,110 @@ describe('GridViewController query controls', () => {
         expect(controller.state.aggregateResults?.['field_number']?.[fn]).toBe(fnValues[fn]),
       );
     }
+  });
+
+  it('applies Filter and Search together so the aggregate never widens scope', async () => {
+    // 'alpha 1' matches both; 'beta x' matches the Filter but not the Search;
+    // 'cord 9' matches the Search-eligible fields but not the Filter.
+    const records: LoomTableRecord[] = [
+      {
+        id: 'record_01',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'alpha 1' },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_02',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'beta x' },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_03',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'cord 9' },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+    ];
+    const client = new InMemoryLoomTableClient(createData(records, createGridConfig(true)));
+    const controller = new GridViewController(client);
+    await controller.load();
+    await controller.setSearch('alp');
+
+    controller.setFieldAggregation('field_name', 'count');
+    await vi.waitFor(() => expect(controller.state.aggregateStatus).toBe('ready'));
+
+    const request = client.aggregateRequests.at(-1)?.request;
+    expect(request?.filter).toEqual({
+      kind: 'rule',
+      fieldId: 'field_name',
+      operator: 'contains',
+      value: 'a',
+    });
+    expect(request?.search).toBe('alp');
+    // Filter ∧ Search — not the Filter-only or Search-only superset.
+    expect(controller.state.aggregateResults?.['field_name']?.['count']).toBe(1);
+  });
+
+  it('evaluates group and rule Filter semantics in query pages', async () => {
+    const records: LoomTableRecord[] = [
+      {
+        id: 'record_01',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'alpha', field_number: 5 },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_02',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'beta', field_number: 50 },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+      {
+        id: 'record_03',
+        tableId: 'table_01',
+        revision: 1,
+        values: { field_name: 'gamma', field_number: 500 },
+        createdAt: '2026-08-14T00:00:00Z',
+        updatedAt: '2026-08-14T00:00:00Z',
+      },
+    ];
+    const groupView = createView({
+      ...createGridConfig(false),
+      filter: {
+        kind: 'group',
+        operator: 'and',
+        children: [
+          { kind: 'rule', fieldId: 'field_name', operator: 'contains', value: 'a' },
+          { kind: 'rule', fieldId: 'field_number', operator: 'greaterOrEqual', value: 50 },
+        ],
+      },
+      projection: ['field_name', 'field_number'],
+      columnOrder: ['field_name', 'field_number'],
+    });
+    const client = new InMemoryLoomTableClient(
+      createData(records, createGridConfig(false), [], [createNumberField()]),
+    );
+    const controller = new GridViewController(client);
+    await controller.load();
+    await controller.applyViewFilter('view_01', groupView.config.filter);
+
+    await vi.waitFor(() =>
+      expect(controller.state.records.map((record) => record.id)).toEqual([
+        'record_02',
+        'record_03',
+      ]),
+    );
   });
 
   it('marks Search aggregates unavailable when the connection lacks aggregateSearch', async () => {
@@ -2473,12 +2709,12 @@ function createView(config: GridViewConfig): Extract<View, { type: 'grid' }> {
   };
 }
 
-function createRecords(count: number): readonly LoomTableRecord[] {
+function createRecords(count: number, namePrefix = 'Record'): readonly LoomTableRecord[] {
   return Array.from({ length: count }, (_, index) => ({
     id: `record_0${index + 1}`,
     tableId: 'table_01',
     revision: 1,
-    values: { field_name: `Record ${index + 1}` },
+    values: { field_name: `${namePrefix} ${index + 1}` },
     createdAt: '2026-08-14T00:00:00Z',
     updatedAt: '2026-08-14T00:00:00Z',
   }));

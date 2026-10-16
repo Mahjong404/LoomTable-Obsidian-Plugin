@@ -11,13 +11,13 @@ import type { Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import { openFilterValuesPopover } from './filter-values-popover';
 import { closeActiveContextMenu, openContextMenu } from './context-menu';
-import { createUiIcon } from './icons';
+import type { UiIconName } from './icons';
+import { createLoomButton, type LoomButtonHandle } from './loom-button';
 import { jsonEqual } from './json-equal';
 import {
   addFilterChild,
   coerceRuleForField,
   coerceRuleForOperator,
-  countFilterRules,
   createFilterRule,
   filterNodeAt,
   filterOperatorsForField,
@@ -89,6 +89,7 @@ export class FilterBuilder {
   #applied: FilterNode | undefined;
   #draft: FilterNode | undefined;
   #root: HTMLElement | null = null;
+  #controls: LoomButtonHandle[] = [];
   #applying = false;
   #applyQueued = false;
   #applyTimer: number | null = null;
@@ -151,6 +152,7 @@ export class FilterBuilder {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#disposeControls();
     this.#applyQueued = false;
     for (const timer of this.#renderTimers) window.clearTimeout(timer);
     this.#renderTimers.clear();
@@ -208,31 +210,23 @@ export class FilterBuilder {
   }
 
   #build(): HTMLElement {
+    this.#disposeControls();
     const root = createElement('div', 'loom-filter-builder');
+    root.dataset.shape = this.#draft?.kind ?? 'empty';
+    root.setAttribute('aria-busy', String(this.#applying));
     root.setAttribute('role', 'form');
     labelContainer(root, this.#translate('filter.title'));
 
-    if (this.#applied !== undefined) {
-      const summary = createElement('div', 'loom-filter-summary');
-      summary.textContent = this.#translate('filter.summary').replace(
-        '{count}',
-        String(countFilterRules(this.#applied)),
-      );
-      root.append(summary);
-    }
+    const title = createTextElement('div', this.#translate('filter.title'));
+    title.className = 'loom-filter-title';
+    root.append(title);
 
     if (this.#draft === undefined) {
       const empty = createElement('div', 'loom-filter-empty');
       empty.append(createTextElement('p', this.#translate('filter.empty')));
-      empty.append(this.#addRuleButton([]));
       root.append(empty);
     } else {
       root.append(this.#renderNode(this.#draft, []));
-      if (this.#draft.kind === 'rule') {
-        const actions = createElement('div', 'loom-filter-root-actions');
-        actions.append(this.#addRuleButton([]), this.#addGroupButton([]));
-        root.append(actions);
-      }
     }
 
     // Prune touched entries whose nodes left the draft (remove/collapse)
@@ -267,13 +261,13 @@ export class FilterBuilder {
     }
 
     const footer = createElement('div', 'loom-filter-actions');
+    footer.append(this.#addRuleButton([]));
+    if (this.#draft !== undefined) footer.append(this.#addGroupButton([]));
     if (this.#applied !== undefined || this.#draft !== undefined) {
-      const clear = createElement('button', 'loom-button');
-      clear.type = 'button';
+      const clear = this.#actionButton(this.#translate('filter.clear'), () => void this.#clear());
+      clear.classList.add('loom-filter-clear');
       clear.dataset.action = 'filter-clear';
-      clear.textContent = this.#translate('filter.clear');
       clear.disabled = this.#applying;
-      clear.addEventListener('click', () => void this.#clear());
       footer.append(clear);
     }
     root.append(footer);
@@ -315,8 +309,7 @@ export class FilterBuilder {
       this.#rerender();
     });
     head.append(operator);
-    head.append(this.#addRuleButton(path), this.#addGroupButton(path));
-    const remove = this.#removeButton(path, 'group');
+    const remove = path.length === 0 ? null : this.#removeButton(path, 'group');
     if (remove !== null) head.append(remove);
     container.append(head);
     const children = createElement('div', 'loom-filter-children');
@@ -326,6 +319,11 @@ export class FilterBuilder {
       );
     });
     container.append(children);
+    if (path.length > 0) {
+      const actions = createElement('div', 'loom-filter-root-actions');
+      actions.append(this.#addRuleButton(path), this.#addGroupButton(path));
+      container.append(actions);
+    }
     return container;
   }
 
@@ -335,6 +333,7 @@ export class FilterBuilder {
     row.dataset.nodeId = this.#idFor(rule);
 
     const handle = this.#moveHandle(path, siblings);
+    row.dataset.reorder = String(handle !== null);
     if (handle !== null) row.append(handle);
 
     const fieldSelect = document.createElement('select');
@@ -442,6 +441,12 @@ export class FilterBuilder {
             x: event.clientX,
             y: event.clientY,
             host,
+            trigger: () =>
+              this.#disposed
+                ? null
+                : (this.#root?.querySelector<HTMLButtonElement>(
+                    `[data-node-id="${nodeId}"] [data-role="filter-value"]`,
+                  ) ?? null),
             translate: this.#translate,
             load: (request) => load(field.id, request),
             onPick: (value) => this.#pickRuleValue(capture, value),
@@ -654,56 +659,61 @@ export class FilterBuilder {
   }
 
   #addRuleButton(path: FilterPath): HTMLButtonElement {
-    const button = createElement('button', 'loom-button');
-    button.type = 'button';
+    const button = this.#actionButton(
+      this.#translate('filter.addRule'),
+      () => {
+        if (this.#disposed) return;
+        const field = this.#fields.find((candidate) => candidate.deletedAt === undefined);
+        if (field === undefined) return;
+        if (this.#draft === undefined) {
+          this.#draft = createFilterRule(field);
+        } else {
+          this.#addChild(path, 'rule', field);
+        }
+        this.#scheduleApply();
+        this.#rerender();
+      },
+      'tool-create',
+    );
     button.dataset.action = 'filter-add-rule';
-    button.textContent = this.#translate('filter.addRule');
-    button.addEventListener('click', () => {
-      const field = this.#fields.find((candidate) => candidate.deletedAt === undefined);
-      if (field === undefined) return;
-      if (this.#draft === undefined) {
-        this.#draft = createFilterRule(field);
-      } else {
-        this.#addChild(path, 'rule', field);
-      }
-      this.#scheduleApply();
-      this.#rerender();
-    });
     return button;
   }
 
   #addGroupButton(path: FilterPath): HTMLButtonElement {
-    const button = createElement('button', 'loom-button');
-    button.type = 'button';
+    const button = this.#actionButton(
+      this.#translate('filter.addGroup'),
+      () => {
+        if (this.#disposed || this.#draft === undefined) return;
+        const field = this.#fields.find((candidate) => candidate.deletedAt === undefined);
+        if (field === undefined) return;
+        this.#addChild(path, 'group', field);
+        this.#scheduleApply();
+        this.#rerender();
+      },
+      'tool-create',
+    );
     button.dataset.action = 'filter-add-group';
-    button.textContent = this.#translate('filter.addGroup');
-    button.addEventListener('click', () => {
-      if (this.#draft === undefined) return;
-      const field = this.#fields.find((candidate) => candidate.deletedAt === undefined);
-      if (field === undefined) return;
-      this.#addChild(path, 'group', field);
-      this.#scheduleApply();
-      this.#rerender();
-    });
     return button;
   }
 
   #removeButton(path: FilterPath, target: 'rule' | 'group'): HTMLButtonElement | null {
     if (this.#draft === undefined) return null;
-    const button = createElement('button', 'loom-button');
-    button.type = 'button';
-    button.dataset.action = 'filter-remove';
-    button.textContent = this.#translate(
-      target === 'rule' ? 'filter.removeRule' : 'filter.removeGroup',
+    const label = this.#translate(target === 'rule' ? 'filter.removeRule' : 'filter.removeGroup');
+    const button = this.#actionButton(
+      label,
+      () => {
+        if (this.#disposed || this.#draft === undefined) return;
+        const next = removeFilterNodeAt(this.#draft, path);
+        this.#preserveIds(this.#draft, next);
+        this.#draft = next;
+        this.#scheduleApply();
+        this.#rerender();
+      },
+      'detail-close',
     );
-    button.addEventListener('click', () => {
-      if (this.#disposed || this.#draft === undefined) return;
-      const next = removeFilterNodeAt(this.#draft, path);
-      this.#preserveIds(this.#draft, next);
-      this.#draft = next;
-      this.#scheduleApply();
-      this.#rerender();
-    });
+    button.classList.add('loom-filter-icon');
+    button.dataset.action = 'filter-remove';
+    button.title = label;
     return button;
   }
 
@@ -712,44 +722,63 @@ export class FilterBuilder {
   #moveHandle(path: FilterPath, siblings: SiblingContext | undefined): HTMLButtonElement | null {
     if (siblings === undefined || siblings.count < 2) return null;
     const { index, count } = siblings;
-    const button = createElement('button', 'loom-button loom-filter-handle');
-    button.type = 'button';
+    const button = this.#actionButton(
+      this.#translate('filter.move'),
+      () => {
+        // The trigger is inside the owned overlay: a second press toggles the
+        // open menu off instead of dismissing it and immediately reopening.
+        if (button.getAttribute('aria-expanded') === 'true') {
+          closeActiveContextMenu();
+          return;
+        }
+        const rect = button.getBoundingClientRect();
+        openContextMenu({
+          label: this.#translate('filter.move'),
+          x: rect.left,
+          y: rect.bottom + 4,
+          host: this.#host ?? this.#root ?? document.body,
+          trigger: button,
+          items: [
+            {
+              label: this.#translate('filter.moveUp'),
+              dataAction: 'filter-move-up',
+              disabled: index === 0,
+              action: () => this.#moveNode(path, -1),
+            },
+            {
+              label: this.#translate('filter.moveDown'),
+              dataAction: 'filter-move-down',
+              disabled: index === count - 1,
+              action: () => this.#moveNode(path, 1),
+            },
+          ],
+        });
+      },
+      'menu-grip',
+    );
+    button.classList.add('loom-filter-handle', 'loom-filter-icon');
     button.dataset.action = 'filter-move';
     button.dataset.role = 'filter-move-handle';
-    button.setAttribute('aria-label', this.#translate('filter.move'));
+    button.title = this.#translate('filter.move');
     button.setAttribute('aria-haspopup', 'menu');
-    button.append(createUiIcon('menu-grip'));
-    button.addEventListener('click', () => {
-      // The trigger is inside the owned overlay: a second press toggles the
-      // open menu off instead of dismissing it and immediately reopening.
-      if (button.getAttribute('aria-expanded') === 'true') {
-        closeActiveContextMenu();
-        return;
-      }
-      const rect = button.getBoundingClientRect();
-      openContextMenu({
-        label: this.#translate('filter.move'),
-        x: rect.left,
-        y: rect.bottom + 4,
-        host: this.#host ?? this.#root ?? document.body,
-        trigger: button,
-        items: [
-          {
-            label: this.#translate('filter.moveUp'),
-            dataAction: 'filter-move-up',
-            disabled: index === 0,
-            action: () => this.#moveNode(path, -1),
-          },
-          {
-            label: this.#translate('filter.moveDown'),
-            dataAction: 'filter-move-down',
-            disabled: index === count - 1,
-            action: () => this.#moveNode(path, 1),
-          },
-        ],
-      });
-    });
     return button;
+  }
+
+  #actionButton(label: string, onActivate: () => void, icon?: UiIconName): HTMLButtonElement {
+    const control = createLoomButton({
+      label,
+      size: 'compact',
+      variant: 'quiet',
+      onActivate,
+      ...(icon === undefined ? {} : { leadingIcon: icon }),
+    });
+    this.#controls.push(control);
+    return control.element;
+  }
+
+  #disposeControls(): void {
+    for (const control of this.#controls) control.dispose();
+    this.#controls = [];
   }
 
   #moveNode(path: FilterPath, delta: -1 | 1): void {
@@ -806,6 +835,9 @@ export class FilterBuilder {
       return this.#applyPromise ?? Promise.resolve();
     }
     this.#applying = true;
+    this.#root?.setAttribute('aria-busy', 'true');
+    const clear = this.#root?.querySelector<HTMLButtonElement>('[data-action="filter-clear"]');
+    if (clear !== null && clear !== undefined) clear.disabled = true;
     this.#applyPromise = this.#runApply();
     return this.#applyPromise;
   }

@@ -7,6 +7,7 @@ export interface FilterValuesPopoverOptions {
   readonly x: number;
   readonly y: number;
   readonly host: HTMLElement;
+  readonly trigger?: HTMLElement | (() => HTMLElement | null);
   readonly translate: Translator;
   readonly load: (request: { search?: string; cursor?: string }) => Promise<DistinctValuesPage>;
   readonly onPick: (value: string | number | boolean) => void;
@@ -201,8 +202,15 @@ export function openFilterValuesPopover(options: FilterValuesPopoverOptions): ()
   };
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') {
-      event.preventDefault();
+      const ownedFocus = panel.contains(panel.ownerDocument.activeElement);
       close();
+      if (ownedFocus) {
+        event.preventDefault();
+        event.stopPropagation();
+        const trigger = typeof options.trigger === 'function' ? options.trigger() : options.trigger;
+        if (trigger?.isConnected && options.host.contains(trigger))
+          trigger.focus({ preventScroll: true });
+      }
     }
   };
 

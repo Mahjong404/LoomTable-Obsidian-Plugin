@@ -42,11 +42,12 @@ import { DisplayPanel } from './display-panel';
 import {
   clampGridColumnWidth,
   GRID_COLUMN_WIDTH_DEFAULT,
-  GRID_INDEX_COLUMN_WIDTH,
+  GRID_SYSTEM_TRACK_WIDTH,
   resolveGridColumns,
   type GridDisplayPatch,
   type ResolvedGridColumns,
 } from './grid-display';
+import { resolveGridGeometry, type GridGeometry } from './grid-geometry';
 import {
   captureQueryControlFocus,
   restoreQueryControlFocus,
@@ -247,6 +248,7 @@ interface VirtualGridRefs {
   readonly fields: readonly Field[];
   readonly columns: ResolvedGridColumns;
   readonly columnTemplate: string;
+  readonly geometry: GridGeometry;
   readonly rowHeight: number;
   readonly contextKey: string;
   /** Last state actually painted into rows — identity shortcut for no-op renders. */
@@ -447,6 +449,22 @@ export class ReadonlyGridRenderer {
   #panelDismiss: ((event: PointerEvent) => void) | null = null;
   #overlayClose: (() => void) | null = null;
   #overlayEl: HTMLElement | null = null;
+  readonly #pointerQuery: MediaQueryList | null;
+  #gridResizeObserver: ResizeObserver | null = null;
+  #cellEditor: {
+    readonly element: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+    readonly recordId: string;
+    readonly fieldId: string;
+    readonly fieldType: Field['type'];
+    retarget(
+      cell: HTMLElement,
+      record: LoomTableRecord,
+      field: Field,
+      row: number,
+      column: number,
+    ): void;
+    cancel(): void;
+  } | null = null;
 
   constructor(
     container: HTMLElement,
@@ -458,8 +476,13 @@ export class ReadonlyGridRenderer {
     this.#translate = translate;
     this.#callbacks = callbacks;
     this.#sessions = sessions ?? new Map<string, GridSessionSnapshot>();
+    const win = container.ownerDocument.defaultView;
+    this.#pointerQuery = win?.matchMedia?.('(pointer: coarse)') ?? null;
+    this.#pointerQuery?.addEventListener('change', this.#onPointerChange);
     container.addEventListener('keydown', this.#onPanelKeyDown);
   }
+
+  readonly #onPointerChange = (): void => this.#rerenderSelf();
 
   readonly #onPanelKeyDown = (event: KeyboardEvent): void => {
     if (event.key !== 'Escape' || this.#openPanel === null || event.defaultPrevented) return;
@@ -477,6 +500,7 @@ export class ReadonlyGridRenderer {
   render(state: GridState): void {
     if (this.#disposed) return;
     if (state.selectedViewId !== this.#lastViewId) {
+      this.#cellEditor?.cancel();
       this.#cancelColumnResize?.();
       // Stash the outgoing View's session before switching — either to another
       // Grid View (in place) or before a Map View replaces this renderer.
@@ -499,8 +523,12 @@ export class ReadonlyGridRenderer {
     // deliberate external focus is never stolen back.
     const preActive = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
     const preFocusInside = preActive !== null && this.#container.contains(preActive);
+    const aggregateFocus =
+      preFocusInside && preActive?.matches('button.loom-grid-aggregate-cell')
+        ? preActive.dataset.fieldId
+        : undefined;
     const previousGrid = this.#virtualGrid;
-    const nextRowHeight = rowHeightPixels(state);
+    const nextRowHeight = this.#gridGeometry(state).rowHeight;
     if (
       previousGrid !== null &&
       previousGrid.rowHeight !== nextRowHeight &&
@@ -518,6 +546,29 @@ export class ReadonlyGridRenderer {
     }
     const queryFocus = captureQueryControlFocus(this.#container);
     this.#lastState = state;
+    const editor = this.#cellEditor;
+    const selection =
+      editor !== null &&
+      !(editor.element instanceof HTMLSelectElement) &&
+      editor.element.selectionStart !== null &&
+      editor.element.selectionEnd !== null
+        ? {
+            start: editor.element.selectionStart,
+            end: editor.element.selectionEnd,
+            direction: editor.element.selectionDirection ?? 'none',
+          }
+        : null;
+    if (
+      editor !== null &&
+      (this.#virtualGrid?.state.selectedTableId !== state.selectedTableId ||
+        (editor.recordId !== DRAFT_RECORD_ID &&
+          !state.records.some((record) => record.id === editor.recordId)) ||
+        orderedFields(state).find((field) => field.id === editor.fieldId)?.type !==
+          editor.fieldType)
+    ) {
+      editor.cancel();
+      editor.element.remove();
+    }
     // Reconcile the Active Cell + selection by identity before any paint so
     // the rows below project the correct `.is-active` border.
     this.#reconcileActiveCell(state);
@@ -566,7 +617,50 @@ export class ReadonlyGridRenderer {
       const showStatusBand =
         state.records.length === 0 || (state.status !== 'ready' && state.status !== 'loading');
       if (showStatusBand) root.append(this.#renderStatus(state.status, state));
-      root.append(this.#renderGrid(state));
+      // Keep both trees connected until the editor has moved. Chromium's
+      // state-preserving move retains native focus/caret and IME composition.
+      this.#container.insertBefore(root, this.#container.firstChild);
+      const grid = this.#renderGrid(state);
+      if ('moveBefore' in root && grid.isConnected) {
+        (root as HTMLElement & { moveBefore(node: Node, before: Node | null): void }).moveBefore(
+          grid,
+          null,
+        );
+      } else root.append(grid);
+    }
+
+    if (!this.#container.contains(root)) {
+      this.#container.insertBefore(root, this.#container.firstChild);
+    }
+    // Scroll restoration needs the attached viewport's real layout. Materialize
+    // that window before looking up the edited cell, never the transient top-0
+    // window of a freshly constructed viewport.
+    this.#restoreRowHeightAnchor();
+    this.#restoreScrollAnchor();
+    const liveEditor = this.#cellEditor;
+    if (liveEditor !== null && !root.contains(liveEditor.element)) {
+      const localCreate =
+        liveEditor.recordId === DRAFT_RECORD_ID && this.#draftCreateValues !== null;
+      const record = localCreate
+        ? this.#draftRecord(state)
+        : state.records.find((item) => item.id === liveEditor.recordId);
+      const field = this.#virtualGrid?.fields.find((item) => item.id === liveEditor.fieldId);
+      const cell = localCreate
+        ? ([...(this.#draftRowEl?.querySelectorAll<HTMLElement>('.loom-grid-cell') ?? [])].find(
+            (item) => item.dataset.fieldId === liveEditor.fieldId,
+          ) ?? null)
+        : this.#findCellForRecordField(liveEditor.recordId, liveEditor.fieldId);
+      if (record !== undefined && field?.type === liveEditor.fieldType && cell !== null) {
+        liveEditor.retarget(
+          cell,
+          record,
+          field,
+          localCreate
+            ? (this.#draftAnchor?.index ?? state.records.length)
+            : state.records.indexOf(record),
+          this.#virtualGrid!.fields.indexOf(field),
+        );
+      } else liveEditor.cancel();
     }
 
     const conflictIds = new Set(state.conflicts.map((conflict) => conflict.recordId));
@@ -581,21 +675,28 @@ export class ReadonlyGridRenderer {
     // drop focus to <body>.
     const overlay =
       this.#overlayEl !== null && this.#overlayEl.isConnected ? this.#overlayEl : null;
-    if (overlay === null) {
-      this.#container.replaceChildren(root);
-    } else {
-      for (const child of [...this.#container.children]) {
-        if (child !== overlay) child.remove();
-      }
-      this.#container.insertBefore(root, overlay);
+    for (const child of [...this.#container.children]) {
+      if (child !== root && child !== overlay) child.remove();
     }
     // A cycle that did not re-render the Grid (status-only views) leaves the
     // previous viewport outside the live tree — drop the refs.
     if (this.#virtualGrid !== null && !this.#container.contains(this.#virtualGrid.wrapper)) {
+      this.#gridResizeObserver?.disconnect();
+      this.#gridResizeObserver = null;
       this.#virtualGrid = null;
     }
-    this.#restoreRowHeightAnchor();
-    this.#restoreScrollAnchor();
+    // Native state-preserving moves keep composition alive, but Chromium can
+    // reset the input selection during a geometry rebuild. Restore only the
+    // same surviving editor, never a newly opened or invalidated edit session.
+    if (
+      selection !== null &&
+      editor !== null &&
+      this.#cellEditor === editor &&
+      !(editor.element instanceof HTMLSelectElement) &&
+      root.contains(editor.element)
+    )
+      editor.element.setSelectionRange(selection.start, selection.end, selection.direction);
+    this.#syncFooterScroll();
     this.#syncActionButtons();
     const overlayFocused =
       overlay !== null && overlay.contains(this.#container.ownerDocument.activeElement);
@@ -656,6 +757,14 @@ export class ReadonlyGridRenderer {
       // A status-mode tab destroyed by this render keeps DOM focus on its
       // replacement — the Grid must not pull focus back to the Active Cell.
       return;
+    } else if (aggregateFocus !== undefined) {
+      [
+        ...(this.#virtualGrid?.footer?.querySelectorAll<HTMLButtonElement>(
+          'button[data-field-id]',
+        ) ?? []),
+      ]
+        .find((button) => button.dataset.fieldId === aggregateFocus)
+        ?.focus({ preventScroll: true });
     } else if (blurredByMove && preActive !== null && !this.#suppressActiveFocusOnce) {
       // Reparenting the stable wrapper into the new shell can blur a focused
       // descendant (jsdom always does; some browser paths do too). The node
@@ -850,24 +959,27 @@ export class ReadonlyGridRenderer {
     for (const item of items) item.hidden = false;
     overflowButton.hidden = true;
     if (toolbar.clientWidth <= 0 || toolbar.scrollWidth <= toolbar.clientWidth) return;
+    overflowButton.hidden = false;
+    const updateBadge = (): void => {
+      const activeCount = items.filter(
+        (item) => item.hidden && item.dataset.active === 'true',
+      ).length;
+      let badge = overflowButton.querySelector<HTMLElement>('.loom-grid-query-count');
+      if (activeCount === 0) badge?.remove();
+      else {
+        if (badge === null) {
+          badge = createElement('span', 'loom-grid-query-count');
+          overflowButton.append(badge);
+        }
+        badge.textContent = String(activeCount);
+      }
+    };
+    updateBadge();
     for (const key of ['redo', 'undo', 'display', 'sort']) {
       if (toolbar.scrollWidth <= toolbar.clientWidth) break;
       const item = items.find((candidate) => candidate.dataset.overflow === key);
       if (item !== undefined) item.hidden = true;
-    }
-    const hiddenItems = items.filter((item) => item.hidden);
-    if (hiddenItems.length === 0) return;
-    overflowButton.hidden = false;
-    const activeCount = hiddenItems.filter((item) => item.dataset.active === 'true').length;
-    let badge = overflowButton.querySelector<HTMLElement>('.loom-grid-query-count');
-    if (activeCount === 0) {
-      badge?.remove();
-    } else {
-      if (badge === null) {
-        badge = createElement('span', 'loom-grid-query-count');
-        overflowButton.append(badge);
-      }
-      badge.textContent = String(activeCount);
+      updateBadge();
     }
   }
 
@@ -1251,8 +1363,12 @@ export class ReadonlyGridRenderer {
    * Builder's owned popover. Element listeners die with the detached DOM.
    */
   dispose(): void {
+    this.#cellEditor?.cancel();
     if (this.#disposed) return;
     this.#disposed = true;
+    this.#pointerQuery?.removeEventListener('change', this.#onPointerChange);
+    this.#gridResizeObserver?.disconnect();
+    this.#gridResizeObserver = null;
     this.#container.removeEventListener('keydown', this.#onPanelKeyDown);
     this.#toolbarObserver?.disconnect();
     this.#toolbarObserver = null;
@@ -1901,15 +2017,23 @@ export class ReadonlyGridRenderer {
     return restoreQueryControlFocus(this.#container, ref);
   }
 
+  #gridGeometry(state: GridState): GridGeometry {
+    return resolveGridGeometry({
+      rowHeight: rowHeightPixels(state),
+      coarse: this.#pointerQuery?.matches === true,
+    });
+  }
+
   #renderGrid(state: GridState): HTMLElement {
     const gridView = selectedGridView(state);
-    const columns = resolveGridColumns(state.fields, gridView?.config);
+    const geometry = this.#gridGeometry(state);
+    const rowHeight = geometry.rowHeight;
+    const columns = resolveGridColumns(state.fields, gridView?.config, geometry.systemTrack);
     const fields = columns.ordered;
-    const rowHeight = rowHeightPixels(state);
     const lastFrozenId = columns.frozen.at(-1)?.id;
     const hasAddField = this.#callbacks.onFieldSave !== undefined;
     const columnTemplate = [
-      '56px',
+      `${geometry.systemTrack}px`,
       ...fields.map((field) => `${columns.widths.get(field.id) ?? 180}px`),
     ].join(' ');
     const canCreate =
@@ -1925,6 +2049,8 @@ export class ReadonlyGridRenderer {
       state.selectedViewId ?? '-',
       fields.map((field) => `${field.id}:${field.revision}:${field.name}:${field.type}`).join(','),
       columnTemplate,
+      JSON.stringify([...columns.frozenOffsets.entries()]),
+      geometry.systemTrack,
       rowHeight,
       hasAddField ? 1 : 0,
       canCreate ? 1 : 0,
@@ -1951,8 +2077,48 @@ export class ReadonlyGridRenderer {
       return existing.wrapper;
     }
 
+    if (
+      existing !== null &&
+      existing.state.selectedTableId === state.selectedTableId &&
+      existing.state.selectedViewId === state.selectedViewId &&
+      this.#pendingScrollAnchor === null
+    ) {
+      const index = Math.max(0, Math.floor(existing.viewport.scrollTop / existing.rowHeight));
+      this.#pendingScrollAnchor = {
+        anchorRecordId: existing.state.records[index]?.id ?? null,
+        anchorIndex: index,
+        offsetPx: existing.viewport.scrollTop - index * existing.rowHeight,
+        rowHeight: existing.rowHeight,
+        left: existing.viewport.scrollLeft,
+      };
+    }
+
     const wrapper = createElement('div', 'loom-grid-wrapper');
+    if (geometry.coarse) wrapper.dataset.track = 'coarse';
+    for (const [name, value] of Object.entries({
+      'system-track': geometry.systemTrack,
+      'system-slot': geometry.systemSlot,
+      'system-inset': geometry.systemInset,
+      'header-height': geometry.headerHeight,
+      'footer-height': geometry.footerHeight,
+      'more-target': geometry.moreTarget,
+      'resize-rail': geometry.resizeRail,
+      'row-height': geometry.rowHeight,
+    }))
+      wrapper.style.setProperty(`--loom-grid-${name}`, `${value}px`);
+    wrapper.style.setProperty(
+      '--loom-grid-content-width',
+      `${
+        geometry.systemTrack +
+        [...columns.widths.values()].reduce((sum, width) => sum + width, 0) +
+        (hasAddField ? geometry.addTail : 0)
+      }px`,
+    );
     const viewport = createElement('div', 'loom-grid-viewport');
+    wrapper.style.setProperty(
+      '--loom-grid-data-width',
+      `${geometry.systemTrack + [...columns.widths.values()].reduce((sum, width) => sum + width, 0)}px`,
+    );
     viewport.tabIndex = 0;
     viewport.setAttribute('role', 'grid');
     labelContainer(viewport, this.#translate('grid.table'));
@@ -1964,10 +2130,22 @@ export class ReadonlyGridRenderer {
 
     const header = createElement('div', 'loom-grid-header');
     header.setAttribute('role', 'row');
-    header.style.gridTemplateColumns = hasAddField ? `${columnTemplate} 2.5rem` : columnTemplate;
-    const indexHeader = createGridCell('#', 'loom-grid-header-cell loom-grid-index-header');
+    header.style.gridTemplateColumns = hasAddField
+      ? `${columnTemplate} ${geometry.addTail}px`
+      : columnTemplate;
+    const indexHeader = createElement('div', 'loom-grid-header-cell loom-grid-index-header');
     indexHeader.setAttribute('role', 'columnheader');
     indexHeader.setAttribute('aria-colindex', '1');
+    // Query-wide selection waits for G4 — until the capability ships the
+    // approved header anatomy keeps a disabled checkbox with the reason.
+    const selectAll = document.createElement('input');
+    selectAll.type = 'checkbox';
+    selectAll.className = 'loom-grid-select-all';
+    selectAll.disabled = true;
+    selectAll.tabIndex = -1;
+    selectAll.setAttribute('aria-label', this.#translate('grid.selectAll'));
+    selectAll.title = this.#translate('grid.selectAllUnavailable');
+    indexHeader.append(selectAll);
     header.append(indexHeader);
     for (const [fieldIndex, field] of fields.entries()) {
       const fieldHeader = createGridCell('', 'loom-grid-header-cell');
@@ -2045,7 +2223,7 @@ export class ReadonlyGridRenderer {
         if (event.key === 'ContextMenu') {
           event.preventDefault();
           const rect = fieldHeader.getBoundingClientRect();
-          this.#openColumnMenu(field, rect.left, rect.bottom + 4);
+          this.#openColumnMenu(field, rect.left, rect.bottom + 4, fieldHeader);
         }
       });
       if (this.#callbacks.onApplyDisplay !== undefined) {
@@ -2106,20 +2284,35 @@ export class ReadonlyGridRenderer {
       const label = createElement('span', 'loom-grid-header-label');
       label.append(createFieldTypeIcon(field.type), createTextElement('span', field.name));
       const indicator = createElement('span', 'loom-grid-sort-indicator');
+      indicator.hidden = sortEntry === undefined;
       indicator.setAttribute('aria-hidden', 'true');
       indicator.textContent =
         sortEntry === undefined ? '' : sortEntry.direction === 'asc' ? '↑' : '↓';
       fieldHeader.append(label, indicator);
+      const pin = createElement('span', 'loom-grid-header-pin');
+      pin.dataset.pinned = String(frozenOffset !== undefined);
+      pin.append(createUiIcon('field-pin'));
+      if (frozenOffset !== undefined) {
+        pin.setAttribute('role', 'img');
+        pin.setAttribute('aria-label', this.#translate('grid.column.frozen'));
+        pin.title = this.#translate('grid.column.frozen');
+      } else pin.setAttribute('aria-hidden', 'true');
+      fieldHeader.append(pin);
       const menuButton = createElement('button', 'loom-grid-header-menu clickable-icon');
       menuButton.type = 'button';
       menuButton.dataset.action = 'field-menu';
       menuButton.setAttribute('aria-label', this.#translate('field.menu.open'));
       menuButton.setAttribute('aria-haspopup', 'menu');
+      menuButton.setAttribute('aria-expanded', 'false');
       menuButton.append(createUiIcon('menu-ellipsis'));
       menuButton.addEventListener('click', (event) => {
         event.stopPropagation();
+        if (menuButton.getAttribute('aria-expanded') === 'true') {
+          closeActiveContextMenu(this.#container);
+          return;
+        }
         const rect = menuButton.getBoundingClientRect();
-        this.#openColumnMenu(field, rect.left, rect.bottom + 4);
+        this.#openColumnMenu(field, rect.left, rect.bottom + 4, menuButton);
       });
       fieldHeader.append(menuButton);
       if (this.#callbacks.onApplyDisplay !== undefined && gridView !== null) {
@@ -2146,6 +2339,10 @@ export class ReadonlyGridRenderer {
           };
           const onCancel = () => {
             cleanup();
+            this.#previewColumnWidth(
+              field.id,
+              this.#virtualGrid?.columns.widths.get(field.id) ?? startWidth,
+            );
             this.#rerenderSelf();
           };
           const cleanup = () => {
@@ -2164,7 +2361,7 @@ export class ReadonlyGridRenderer {
       fieldHeader.addEventListener('contextmenu', (event) => {
         event.preventDefault();
         event.stopPropagation();
-        this.#openColumnMenu(field, event.clientX, event.clientY);
+        this.#openColumnMenu(field, event.clientX, event.clientY, fieldHeader);
       });
       header.append(fieldHeader);
     }
@@ -2190,14 +2387,13 @@ export class ReadonlyGridRenderer {
     // The canvas reserves the tail create slot explicitly: the draft row
     // (while open) or the bottom `+` affordance lives inside the scrollable
     // height, so it can never be covered by the aggregate footer (G-4).
-    const draftSlot = this.#draftCreateValues !== null || canCreate ? 1 : 0;
-    const errorSlot = this.#draftCreateValues !== null && this.#draftError !== null ? 1 : 0;
-    canvas.style.height = `${(state.records.length + draftSlot + errorSlot) * rowHeight}px`;
-    canvas.style.backgroundImage = gridFillerBackground(columns, fields, rowHeight);
     const rowLayer = createElement('div', 'loom-grid-row-layer');
     canvas.append(rowLayer);
     viewport.append(header, canvas);
     wrapper.append(viewport);
+    const rail = createElement('div', 'loom-grid-system-rail');
+    rail.setAttribute('aria-hidden', 'true');
+    wrapper.append(rail);
     this.#virtualGrid = {
       wrapper,
       viewport,
@@ -2208,6 +2404,7 @@ export class ReadonlyGridRenderer {
       fields,
       columns,
       columnTemplate,
+      geometry,
       rowHeight,
       contextKey,
       renderedState: null,
@@ -2220,6 +2417,16 @@ export class ReadonlyGridRenderer {
     this.#syncCanvasTail(this.#virtualGrid, state, canCreate);
     this.#syncAggregate(this.#virtualGrid, state, fields, columnTemplate, hasAddField);
     this.#syncLoadMore(this.#virtualGrid, state);
+    this.#gridResizeObserver?.disconnect();
+    if (typeof ResizeObserver === 'function') {
+      const grid = this.#virtualGrid;
+      this.#gridResizeObserver = new ResizeObserver(() => {
+        if (this.#disposed || this.#virtualGrid !== grid) return;
+        this.#renderVirtualRows();
+        this.#syncFooterScroll();
+      });
+      this.#gridResizeObserver.observe(viewport);
+    }
     // Scroll bursts coalesce into one paint per frame; the keyed reconcile is
     // then a no-op while the visible window is unchanged (G-5).
     const win = viewport.ownerDocument.defaultView ?? window;
@@ -2269,12 +2476,13 @@ export class ReadonlyGridRenderer {
       this.#draftError = null;
       this.#draftRowEl = null;
     }
-    grid.canvas.style.height = `${
-      (state.records.length +
-        (this.#draftCreateValues !== null || canCreate ? 1 : 0) +
-        (this.#draftCreateValues !== null && this.#draftError !== null ? 1 : 0)) *
-      grid.rowHeight
-    }px`;
+    const tailHeight =
+      this.#draftCreateValues !== null
+        ? grid.rowHeight * (this.#draftError !== null ? 2 : 1)
+        : canCreate
+          ? grid.geometry.addRowHeight
+          : 0;
+    grid.canvas.style.height = `${state.records.length * grid.rowHeight + tailHeight}px`;
     const existingAdd = grid.canvas.querySelector<HTMLElement>('.loom-grid-add-row');
     if (this.#draftCreateValues !== null) {
       existingAdd?.remove();
@@ -2303,7 +2511,7 @@ export class ReadonlyGridRenderer {
     if (canCreate) {
       const addRow = existingAdd ?? this.#buildAddRowButton();
       addRow.style.top = `${state.records.length * grid.rowHeight}px`;
-      addRow.style.height = `${grid.rowHeight}px`;
+      addRow.style.height = `${grid.geometry.addRowHeight}px`;
       if (existingAdd === null) grid.canvas.append(addRow);
     } else {
       existingAdd?.remove();
@@ -2314,7 +2522,7 @@ export class ReadonlyGridRenderer {
     const addRow = createElement('button', 'loom-grid-add-row loom-add-affordance clickable-icon');
     addRow.type = 'button';
     addRow.dataset.action = 'grid-add-row';
-    addRow.style.width = `${GRID_INDEX_COLUMN_WIDTH}px`;
+    addRow.style.width = `${this.#virtualGrid?.geometry.systemTrack ?? GRID_SYSTEM_TRACK_WIDTH}px`;
     const indexCell = createElement('span', 'loom-grid-index-cell loom-grid-add-row-index');
     indexCell.append(createUiIcon('tool-create'));
     addRow.append(indexCell);
@@ -2337,6 +2545,7 @@ export class ReadonlyGridRenderer {
     if (this.#callbacks.onSetFieldAggregation === undefined) {
       grid.footer?.remove();
       grid.footer = null;
+      grid.viewport.removeAttribute('aria-owns');
       return;
     }
     const fingerprint = JSON.stringify([
@@ -2347,23 +2556,31 @@ export class ReadonlyGridRenderer {
       state.totalCount,
       state.unfilteredTotal,
       fields.map((field) => field.id),
+      // Frozen layout and the resolved template are part of footer geometry.
+      columnTemplate,
+      [...grid.columns.frozenOffsets.entries()],
       hasAddField,
     ]);
+    grid.viewport.setAttribute('aria-rowcount', String(state.records.length + 2));
     if (grid.footer !== null && grid.footer.dataset.fingerprint === fingerprint) {
-      grid.footer.scrollLeft = grid.viewport.scrollLeft;
+      this.#syncFooterScroll();
       return;
     }
     const footer = this.#renderAggregateRow(
       state,
       fields,
-      hasAddField ? `${columnTemplate} 2.5rem` : columnTemplate,
-      grid.rowHeight,
+      grid.columns,
+      hasAddField ? `${columnTemplate} ${grid.geometry.addTail}px` : columnTemplate,
+      grid.geometry.footerHeight,
     );
     footer.dataset.fingerprint = fingerprint;
-    footer.scrollLeft = grid.viewport.scrollLeft;
+    footer.id = `${grid.viewport.getAttribute('aria-labelledby')}-footer`;
+    grid.viewport.setAttribute('aria-owns', footer.id);
+    grid.viewport.setAttribute('aria-rowcount', String(state.records.length + 2));
     grid.footer?.remove();
     grid.footer = footer;
     grid.wrapper.insertBefore(footer, grid.loadMore);
+    this.#syncFooterScroll();
   }
 
   #syncLoadMore(grid: VirtualGridRefs, state: GridState): void {
@@ -2413,6 +2630,7 @@ export class ReadonlyGridRenderer {
       }
       const indicator = cell.querySelector<HTMLElement>('.loom-grid-sort-indicator');
       if (indicator !== null) {
+        indicator.hidden = sortEntry === undefined;
         indicator.textContent =
           sortEntry === undefined ? '' : sortEntry.direction === 'asc' ? '↑' : '↓';
       }
@@ -2423,6 +2641,9 @@ export class ReadonlyGridRenderer {
   #syncFooterScroll(): void {
     const grid = this.#virtualGrid;
     if (grid?.footer !== null && grid !== null) {
+      // Match the actual scrollable width, including the vertical scrollbar.
+      // Detached DOM/jsdom has no layout; CSS provides the bounded fallback.
+      if (grid.viewport.clientWidth > 0) grid.footer.style.width = `${grid.viewport.clientWidth}px`;
       grid.footer.scrollLeft = grid.viewport.scrollLeft;
     }
   }
@@ -2430,28 +2651,44 @@ export class ReadonlyGridRenderer {
   #renderAggregateRow(
     state: GridState,
     fields: readonly Field[],
+    columns: ResolvedGridColumns,
     columnTemplate: string,
-    rowHeight: number,
+    footerHeight: number,
   ): HTMLElement {
-    const row = createElement('div', 'loom-grid-aggregate');
+    const footer = createElement('div', 'loom-grid-aggregate');
+    footer.setAttribute('role', 'rowgroup');
+    footer.style.height = `${footerHeight}px`;
+    const row = createElement('div', 'loom-grid-aggregate-row');
     row.setAttribute('role', 'row');
     row.style.gridTemplateColumns = columnTemplate;
-    row.style.height = `${rowHeight}px`;
+    footer.append(row);
     const indexCell = createElement('div', 'loom-grid-aggregate-cell loom-grid-index-cell');
-    indexCell.setAttribute('role', 'cell');
+    indexCell.setAttribute('role', 'gridcell');
     const symbol = createTextElement('span', 'Σ');
     symbol.className = 'loom-grid-aggregate-symbol';
     indexCell.append(symbol);
     indexCell.setAttribute('aria-label', this.#translate('grid.aggregate.menu'));
     row.append(indexCell);
+    const lastFrozenId = columns.frozen.at(-1)?.id;
     for (const field of fields) {
-      row.append(this.#renderAggregateCell(state, field));
+      const cell = createElement('div', 'loom-grid-aggregate-item');
+      cell.setAttribute('role', 'gridcell');
+      cell.dataset.fieldId = field.id;
+      cell.append(this.#renderAggregateCell(state, field));
+      const frozenOffset = columns.frozenOffsets.get(field.id);
+      if (frozenOffset !== undefined) {
+        cell.classList.add('loom-grid-frozen');
+        cell.style.left = `${frozenOffset}px`;
+        if (field.id === lastFrozenId) cell.classList.add('loom-grid-frozen-last');
+      }
+      row.append(cell);
     }
     // D-3: the Toolbar owns the base row count; this filler only carries a
     // live selection summary written by #applySelection.
     const filler = createElement('div', 'loom-grid-aggregate-cell loom-grid-aggregate-count');
+    filler.setAttribute('role', 'gridcell');
     row.append(filler);
-    return row;
+    return footer;
   }
 
   #rowsCountText(state: GridState): string {
@@ -2467,17 +2704,20 @@ export class ReadonlyGridRenderer {
       // Loaded/total keeps partial progress visible while paging continues.
       return `${state.records.length}/${state.totalCount} ${this.#translate('grid.rows')}`;
     }
-    if (state.totalCount !== null) return `${state.totalCount} ${this.#translate('grid.rows')}`;
-    if (state.records.length > 0) return `${state.records.length} ${this.#translate('grid.rows')}`;
+    if (state.totalCount !== null)
+      return `${state.totalCount} ${this.#translate(state.totalCount === 1 ? 'grid.row' : 'grid.rows')}`;
+    if (state.records.length > 0)
+      return `${state.records.length} ${this.#translate(state.records.length === 1 ? 'grid.row' : 'grid.rows')}`;
     return '';
   }
 
   #renderAggregateCell(state: GridState, field: Field): HTMLElement {
     const cell = createElement('button', 'loom-grid-aggregate-cell clickable-icon');
     cell.type = 'button';
-    cell.setAttribute('role', 'cell');
     cell.dataset.fieldId = field.id;
     const selected = state.fieldAggregations[field.id];
+    cell.setAttribute('aria-haspopup', 'menu');
+    cell.setAttribute('aria-expanded', 'false');
     cell.setAttribute(
       'aria-label',
       `${field.name}: ${selected === undefined ? this.#translate('grid.aggregate.menu') : this.#aggregateFnLabel(selected)}`,
@@ -2494,9 +2734,16 @@ export class ReadonlyGridRenderer {
       cell.textContent = `${this.#aggregateFnLabel(selected)} ${this.#translate('grid.aggregate.unavailable')}`;
     } else {
       const value = state.aggregateResults?.[field.id]?.[selected];
-      cell.textContent = `${this.#aggregateFnLabel(selected)} ${formatAggregateValue(value)}`;
+      const formatted =
+        field.type === 'number' &&
+        field.config.format !== undefined &&
+        selected !== 'count' &&
+        typeof value === 'number'
+          ? defaultFieldRendererRegistry.render(field, value, { translate: this.#translate }).text
+          : formatAggregateValue(value);
+      cell.textContent = `${this.#aggregateFnLabel(selected)} ${formatted}`;
     }
-    cell.addEventListener('click', (event) => {
+    cell.addEventListener('click', () => {
       const onSetFieldAggregation = this.#callbacks.onSetFieldAggregation;
       if (onSetFieldAggregation === undefined) return;
       const items: ContextMenuEntry[] = [
@@ -2528,11 +2775,13 @@ export class ReadonlyGridRenderer {
           action: () => void onSetFieldAggregation(field.id, fn),
         })),
       ];
+      const rect = cell.getBoundingClientRect();
       openContextMenu({
         items,
-        x: event.clientX,
-        y: event.clientY,
+        x: rect.left,
+        y: rect.bottom + 4,
         host: this.#container,
+        trigger: cell,
         label: this.#translate('grid.aggregate.menu'),
       });
     });
@@ -2715,7 +2964,18 @@ export class ReadonlyGridRenderer {
     // are unchanged (fresh handlers stay valid); rows hosting a live editor
     // are pinned regardless so an in-flight edit survives any rebuild.
     const desired: HTMLElement[] = [];
-    for (let rowIndex = range.start; rowIndex < range.end; rowIndex += 1) {
+    const rowIndices = Array.from(
+      { length: range.end - range.start },
+      (_, index) => range.start + index,
+    );
+    // Passive scrolling can leave an editor outside the viewport. Preserve at
+    // most that one legal record in a new geometry tree too, never all rows.
+    const editorIndex =
+      this.#cellEditor === null
+        ? -1
+        : grid.state.records.findIndex((record) => record.id === this.#cellEditor?.recordId);
+    if (editorIndex >= 0 && !rowIndices.includes(editorIndex)) rowIndices.push(editorIndex);
+    for (const rowIndex of rowIndices) {
       const record = grid.state.records[rowIndex];
       if (record === undefined) continue;
       const slot = existing.get(record.id);
@@ -2777,20 +3037,30 @@ export class ReadonlyGridRenderer {
     const indexCell = createElement('div', 'loom-grid-index-cell');
     indexCell.setAttribute('role', 'rowheader');
     indexCell.setAttribute('aria-colindex', '1');
+    // Three transparent 28px slots (44px coarse): drag handle, row number
+    // revealing the selection checkbox on hover, and the detail opener. Only
+    // the handle slot may start a drag — checkbox/detail/blanks never do.
+    const handleSlot = createElement('span', 'loom-grid-slot loom-grid-slot-handle');
+    const dragHandle = createElement('span', 'loom-grid-row-drag');
+    dragHandle.append(createUiIcon('menu-grip'));
+    dragHandle.setAttribute('aria-hidden', 'true');
+    handleSlot.append(dragHandle);
+    const indexSlot = createElement('label', 'loom-grid-slot loom-grid-slot-index');
+    // The transparent slot is the checkbox target; preserve native activation.
+    indexSlot.addEventListener('click', (event) => event.stopPropagation());
     const rowNumber = createTextElement('span', String(rowIndex + 1));
     rowNumber.className = 'loom-grid-row-number';
-    const dragHandle = createTextElement('span', '≡');
-    dragHandle.className = 'loom-grid-row-drag';
-    dragHandle.setAttribute('aria-hidden', 'true');
     const check = createElement('input', 'loom-grid-row-check');
     check.type = 'checkbox';
     check.checked = this.#isRowSelected(record.id);
-    check.tabIndex = -1;
+    check.tabIndex = 0;
     check.setAttribute('aria-label', this.#translate('grid.selectRow'));
     check.addEventListener('click', (event) => {
       event.stopPropagation();
       this.#toggleRowSelected(record.id, event.shiftKey);
     });
+    indexSlot.append(rowNumber, check);
+    const detailSlot = createElement('span', 'loom-grid-slot loom-grid-slot-detail');
     const open = document.createElement('button');
     open.type = 'button';
     open.className = 'loom-grid-open loom-grid-row-expand clickable-icon';
@@ -2801,10 +3071,11 @@ export class ReadonlyGridRenderer {
       event.stopPropagation();
       this.#callbacks.onRecordOpen(record);
     });
-    indexCell.append(rowNumber, dragHandle, check, open);
+    detailSlot.append(open);
+    indexCell.append(handleSlot, indexSlot, detailSlot);
     indexCell.addEventListener('click', (event) => {
       event.stopPropagation();
-      if ((event.target as HTMLElement).closest('input') !== null) return;
+      if ((event.target as HTMLElement).closest('input,button') !== null) return;
       if (event.shiftKey && this.#rowAnchorRecordId !== null) {
         this.#selectRowRange(this.#rowAnchorRecordId, record.id);
       } else if (event.ctrlKey || event.metaKey) {
@@ -2820,17 +3091,13 @@ export class ReadonlyGridRenderer {
     });
     if (manualOrderEnabled(gridState) && this.#callbacks.onMoveRecord !== undefined) {
       indexCell.classList.add('is-manual-order');
-      indexCell.draggable = true;
-      indexCell.addEventListener('dragstart', (event) => {
-        if ((event.target as HTMLElement).closest('input,button') !== null) {
-          event.preventDefault();
-          return;
-        }
+      handleSlot.draggable = true;
+      handleSlot.addEventListener('dragstart', (event) => {
         event.dataTransfer?.setData(RECORD_DRAG_MIME, record.id);
         if (event.dataTransfer !== null) event.dataTransfer.effectAllowed = 'move';
         row.classList.add('is-dragging');
       });
-      indexCell.addEventListener('dragend', () => {
+      handleSlot.addEventListener('dragend', () => {
         row.classList.remove('is-dragging');
         this.#clearRowDropTargets();
       });
@@ -3061,6 +3328,7 @@ export class ReadonlyGridRenderer {
       this.#callbacks.onRecordOpen(record);
     });
     row.addEventListener('keydown', (event) => {
+      if (event.target !== row) return;
       if (event.key === 'Enter') {
         event.preventDefault();
         this.#callbacks.onRecordOpen(record);
@@ -3114,6 +3382,8 @@ export class ReadonlyGridRenderer {
           displayValue.state === 'unset' ? { ...displayValue, text: '' } : displayValue,
           {
             compactAttachments: true,
+            compactChips: true,
+            translate: this.#translate,
             ...(this.#callbacks.attachmentThumbnail === undefined
               ? {}
               : { attachmentThumbnail: this.#callbacks.attachmentThumbnail }),
@@ -3647,7 +3917,7 @@ export class ReadonlyGridRenderer {
     });
   }
 
-  #openColumnMenu(field: Field, x: number, y: number): void {
+  #openColumnMenu(field: Field, x: number, y: number, trigger?: HTMLElement): void {
     const gridState = this.#virtualGrid?.state;
     const view = gridState?.views.find((candidate) => candidate.id === gridState.selectedViewId);
     const table = gridState?.tables.find((candidate) => candidate.id === gridState.selectedTableId);
@@ -3808,6 +4078,7 @@ export class ReadonlyGridRenderer {
       y,
       host: this.#container,
       label: this.#translate('grid.menu.column'),
+      ...(trigger === undefined ? {} : { trigger }),
     });
   }
 
@@ -3976,6 +4247,8 @@ export class ReadonlyGridRenderer {
         displayValue.state === 'unset' ? { ...displayValue, text: '' } : displayValue,
         {
           compactAttachments: true,
+          compactChips: true,
+          translate: this.#translate,
           ...(this.#callbacks.attachmentThumbnail === undefined
             ? {}
             : { attachmentThumbnail: this.#callbacks.attachmentThumbnail }),
@@ -4031,9 +4304,52 @@ export class ReadonlyGridRenderer {
     cell.tabIndex = -1;
     let composing = false;
     let finished = false;
+    let moving = false;
+    let focusTimer: number | undefined;
+    let blurTimer: number | undefined;
+    const editorViewId = this.#lastViewId;
+    const editorTableId = this.#lastState?.selectedTableId;
+    const cancel = (): void => {
+      finished = true;
+      window.clearTimeout(focusTimer);
+      window.clearTimeout(blurTimer);
+      if (this.#cellEditor?.element === editor) this.#cellEditor = null;
+    };
+    this.#cellEditor = {
+      element: editor,
+      recordId: record.id,
+      fieldId: field.id,
+      fieldType: field.type,
+      cancel,
+      retarget: (nextCell, nextRecord, nextField, nextRow, nextColumn) => {
+        cell = nextCell;
+        record = nextRecord;
+        field = nextField;
+        rowIndex = nextRow;
+        fieldIndex = nextColumn;
+        moving = true;
+        cell.replaceChildren();
+        if ('moveBefore' in cell && cell.isConnected && editor.isConnected) {
+          (cell as HTMLElement & { moveBefore(node: Node, before: Node | null): void }).moveBefore(
+            editor,
+            null,
+          );
+        } else cell.append(editor);
+        cell.tabIndex = -1;
+        moving = false;
+      },
+    };
     const finish = (commit: boolean, moveOffset = 0, advance = false): void => {
       if (finished) return;
-      finished = true;
+      if (
+        this.#disposed ||
+        this.#lastViewId !== editorViewId ||
+        this.#lastState?.selectedTableId !== editorTableId
+      ) {
+        cancel();
+        return;
+      }
+      cancel();
       if (!commit) {
         if (record.id === DRAFT_RECORD_ID) {
           this.#cancelDraftCreate();
@@ -4142,8 +4458,9 @@ export class ReadonlyGridRenderer {
     });
     let blurred = false;
     editor.addEventListener('blur', () => {
+      if (moving) return;
       blurred = true;
-      window.setTimeout(() => {
+      blurTimer = window.setTimeout(() => {
         if (!finished && !composing && document.activeElement !== editor) finish(true);
       }, 0);
     });
@@ -4159,10 +4476,10 @@ export class ReadonlyGridRenderer {
       if (focusRetries >= 10) return;
       focusRetries += 1;
       editor.focus();
-      window.setTimeout(ensureEditorFocus, 50);
+      focusTimer = window.setTimeout(ensureEditorFocus, 50);
     };
     editor.focus();
-    window.setTimeout(ensureEditorFocus, 0);
+    focusTimer = window.setTimeout(ensureEditorFocus, 0);
     if (
       selectAll &&
       (editor instanceof HTMLInputElement || editor instanceof HTMLTextAreaElement)
@@ -5042,15 +5359,25 @@ export class ReadonlyGridRenderer {
   #previewColumnWidth(fieldId: string, width: number): void {
     const grid = this.#virtualGrid;
     if (grid === null) return;
+    const view = selectedGridView(grid.state);
+    if (view === null) return;
+    const columns = resolveGridColumns(
+      grid.state.fields,
+      {
+        ...view.config,
+        columnWidths: { ...view.config.columnWidths, [fieldId]: width },
+      },
+      grid.geometry.systemTrack,
+    );
     const base = [
-      `${GRID_INDEX_COLUMN_WIDTH}px`,
+      `${grid.geometry.systemTrack}px`,
       ...grid.fields.map(
-        (field) =>
-          `${field.id === fieldId ? width : (grid.columns.widths.get(field.id) ?? GRID_COLUMN_WIDTH_DEFAULT)}px`,
+        (field) => `${columns.widths.get(field.id) ?? GRID_COLUMN_WIDTH_DEFAULT}px`,
       ),
     ].join(' ');
     // The header carries the trailing add-field cell; body rows do not.
-    const headerTemplate = this.#callbacks.onFieldSave !== undefined ? `${base} 2.5rem` : base;
+    const headerTemplate =
+      this.#callbacks.onFieldSave !== undefined ? `${base} ${grid.geometry.addTail}px` : base;
     grid.viewport.querySelectorAll<HTMLElement>('.loom-grid-header').forEach((row) => {
       row.style.gridTemplateColumns = headerTemplate;
     });
@@ -5059,6 +5386,29 @@ export class ReadonlyGridRenderer {
       .forEach((row) => {
         row.style.gridTemplateColumns = base;
       });
+    // The detached footer shares the resolved columns, tail track included.
+    const footerRow = grid.footer?.querySelector<HTMLElement>('.loom-grid-aggregate-row');
+    if (footerRow !== null && footerRow !== undefined)
+      footerRow.style.gridTemplateColumns = headerTemplate;
+    grid.wrapper.style.setProperty(
+      '--loom-grid-content-width',
+      `${
+        grid.geometry.systemTrack +
+        [...columns.widths.values()].reduce((sum, value) => sum + value, 0) +
+        (this.#callbacks.onFieldSave !== undefined ? grid.geometry.addTail : 0)
+      }px`,
+    );
+    grid.wrapper.style.setProperty(
+      '--loom-grid-data-width',
+      `${grid.geometry.systemTrack + [...columns.widths.values()].reduce((sum, value) => sum + value, 0)}px`,
+    );
+    for (const cell of grid.wrapper.querySelectorAll<HTMLElement>(
+      '.loom-grid-frozen[data-field-id]',
+    )) {
+      const offset = columns.frozenOffsets.get(cell.dataset.fieldId ?? '');
+      if (offset !== undefined) cell.style.left = `${offset}px`;
+    }
+    this.#syncFooterScroll();
   }
 
   #commitColumnWidth(field: Field, width: number): void {
@@ -5357,11 +5707,15 @@ function selectedGridView(state: GridState): Extract<View, { type: 'grid' }> | n
   return view?.type === 'grid' ? view : null;
 }
 
-function columnTemplateFor(fields: readonly Field[], state?: GridState): string {
+function columnTemplateFor(
+  fields: readonly Field[],
+  state?: GridState,
+  systemTrack = GRID_SYSTEM_TRACK_WIDTH,
+): string {
   const view = state === undefined ? null : selectedGridView(state);
-  const widths = resolveGridColumns(state?.fields ?? fields, view?.config).widths;
+  const widths = resolveGridColumns(state?.fields ?? fields, view?.config, systemTrack).widths;
   const columns = fields.map((field) => `${widths.get(field.id) ?? clampGridColumnWidth(180)}px`);
-  return ['56px', ...columns].join(' ');
+  return [`${systemTrack}px`, ...columns].join(' ');
 }
 
 function rowHeightPixels(state: GridState): number {
@@ -5461,24 +5815,6 @@ function createTextElement<K extends keyof HTMLElementTagNameMap>(
   const element = document.createElement(tagName);
   element.textContent = text;
   return element;
-}
-
-function gridFillerBackground(
-  columns: ResolvedGridColumns,
-  fields: readonly Field[],
-  rowHeight: number,
-): string {
-  const layers = [
-    `repeating-linear-gradient(to bottom, transparent 0, transparent ${rowHeight - 1}px, var(--loom-grid-line) ${rowHeight - 1}px, var(--loom-grid-line) ${rowHeight}px)`,
-  ];
-  let edge = GRID_INDEX_COLUMN_WIDTH;
-  for (const field of fields) {
-    layers.push(
-      `linear-gradient(to right, transparent ${edge - 1}px, var(--loom-grid-line) ${edge - 1}px, var(--loom-grid-line) ${edge}px, transparent ${edge}px)`,
-    );
-    edge += columns.widths.get(field.id) ?? GRID_COLUMN_WIDTH_DEFAULT;
-  }
-  return layers.join(', ');
 }
 
 function deletedRecordTitle(

@@ -428,15 +428,15 @@ export function openFieldEditor(options: FieldEditorOptions): () => void {
     submitControl.update({ busy: true });
     try {
       await options.onSubmit(input);
-    } catch (error) {
+    } catch {
       if (closed) return;
       submitting = false;
       delete panel.dataset.submitting;
       unlockDraft();
       submitControl.update({ busy: false });
-      showError(
-        error instanceof Error && error.message !== '' ? error.message : t('field.submit.failed'),
-      );
+      // Consumer/transport errors are diagnostics, not localized UI copy.
+      // Keep the draft and retry path without exposing arbitrary internals.
+      showError(t('field.submit.failed'));
       return;
     }
     close(true);

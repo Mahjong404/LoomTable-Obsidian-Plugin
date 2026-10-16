@@ -6,10 +6,11 @@ import type {
   NumberFormatConfig,
   SelectFieldConfig,
 } from '../client/loomtable-client';
-import type { Translator } from '../i18n';
+import { createTranslator, type Translator } from '../i18n';
 import type { MessageKey } from '../i18n/messages';
 import { isAttachmentDownloadable } from './attachment-download';
 import { editorTextValue, normalizeCellValue } from './field-value-editor';
+import { createUiIcon } from './icons';
 
 type SelectField = FieldBase & { readonly type: 'select'; readonly config: SelectFieldConfig };
 type MultiSelectField = FieldBase & {
@@ -91,6 +92,8 @@ export interface RenderedFieldValue {
   readonly link?: RenderedFieldLink;
   readonly chips?: readonly RenderedFieldChip[];
   readonly attachments?: readonly RenderedAttachment[];
+  /** Approved boolean glyph: a real 14px checkbox box instead of prose. */
+  readonly check?: boolean;
 }
 
 export interface FieldRenderContext {
@@ -101,6 +104,8 @@ export type FieldEditorElement = HTMLInputElement | HTMLTextAreaElement | HTMLSe
 
 export interface RenderedFieldValueElementOptions {
   readonly compactAttachments?: boolean;
+  /** Grid's single-line first tag + remaining count; Detail keeps the full list. */
+  readonly compactChips?: boolean;
   readonly attachmentThumbnail?: (attachment: RenderedAttachment) => string | undefined;
   readonly highlight?: string;
   readonly translate?: Translator;
@@ -330,9 +335,12 @@ export function renderFieldValue(
         : unavailable(translate);
     case 'checkbox':
       if (typeof value !== 'boolean') return unavailable(translate);
-      return renderedValue(
-        value ? translate('grid.cell.checked') : translate('grid.cell.unchecked'),
-      );
+      return {
+        state: 'value',
+        text: value ? translate('grid.cell.checked') : translate('grid.cell.unchecked'),
+        ariaLabel: value ? translate('grid.cell.checked') : translate('grid.cell.unchecked'),
+        check: value,
+      };
     case 'date': {
       const normalized = normalizeCellValue(field, value);
       return normalized.ok && typeof normalized.value === 'string' && normalized.value !== ''
@@ -465,6 +473,16 @@ export function createRenderedFieldValueElement(
     root.append(list);
     return root;
   }
+  if (rendered.check !== undefined) {
+    const box = document.createElement('span');
+    box.className = 'loom-field-check';
+    box.dataset.checked = rendered.check ? 'true' : 'false';
+    box.setAttribute('role', 'img');
+    box.setAttribute('aria-label', rendered.ariaLabel);
+    if (rendered.check) box.append(createUiIcon('menu-check'));
+    root.append(box);
+    return root;
+  }
   if (rendered.chips === undefined) {
     appendHighlightedText(root, rendered.text, options.highlight);
     return root;
@@ -473,12 +491,19 @@ export function createRenderedFieldValueElement(
   const list = document.createElement('span');
   list.className = 'loom-field-value-chips';
   list.setAttribute('role', 'list');
-  for (const chip of rendered.chips) {
+  const chips = options.compactChips === true ? rendered.chips.slice(0, 1) : rendered.chips;
+  if (options.compactChips === true) {
+    list.dataset.compact = 'true';
+    list.setAttribute('aria-label', rendered.ariaLabel);
+    list.title = rendered.ariaLabel;
+  }
+  for (const chip of chips) {
     const element = document.createElement('span');
     element.className = 'loom-field-value-chip';
     element.dataset.chipState = chip.state;
     if (chip.color !== undefined) element.dataset.color = chip.color;
     element.setAttribute('role', 'listitem');
+    element.setAttribute('aria-label', chip.ariaLabel);
     element.append(document.createTextNode(chip.text));
     if (chip.statusText !== undefined) {
       const status = document.createElement('span');
@@ -487,6 +512,17 @@ export function createRenderedFieldValueElement(
       element.append(status);
     }
     list.append(element, document.createTextNode(' '));
+  }
+  const remaining = rendered.chips.length - chips.length;
+  if (remaining > 0) {
+    const more = document.createElement('span');
+    more.className = 'loom-field-value-chip-more';
+    more.setAttribute('role', 'listitem');
+    more.textContent = (options.translate ?? createTranslator('en'))('record.option.more').replace(
+      '{count}',
+      String(remaining),
+    );
+    list.append(more);
   }
   root.append(list);
   return root;

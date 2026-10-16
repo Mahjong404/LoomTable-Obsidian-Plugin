@@ -1,9 +1,11 @@
 import type { Field, GridViewConfig } from '../client/loomtable-client';
+import { resolveGridGeometry } from './grid-geometry';
 
 export const GRID_COLUMN_WIDTH_MIN = 80;
 export const GRID_COLUMN_WIDTH_MAX = 1000;
 export const GRID_COLUMN_WIDTH_DEFAULT = 180;
-export const GRID_INDEX_COLUMN_WIDTH = 56;
+/** The approved left system track width on desktop pointers (see grid-geometry). */
+export const GRID_SYSTEM_TRACK_WIDTH = resolveGridGeometry({ rowHeight: 36 }).systemTrack;
 
 export interface GridDisplayPatch {
   readonly projection: readonly string[];
@@ -42,6 +44,7 @@ function activeFieldsByPosition(fields: readonly Field[]): readonly Field[] {
 export function resolveGridColumns(
   fields: readonly Field[],
   config: GridViewConfig | undefined,
+  systemTrack: number = GRID_SYSTEM_TRACK_WIDTH,
 ): ResolvedGridColumns {
   const active = activeFieldsByPosition(fields);
   const byId = new Map(active.map((field) => [field.id, field]));
@@ -73,7 +76,7 @@ export function resolveGridColumns(
     widths.set(field.id, clampGridColumnWidth(config?.columnWidths[field.id] ?? 180));
   }
   const frozenOffsets = new Map<string, number>();
-  let offset = GRID_INDEX_COLUMN_WIDTH;
+  let offset = systemTrack;
   for (const field of frozen) {
     frozenOffsets.set(field.id, offset);
     offset += widths.get(field.id) ?? GRID_COLUMN_WIDTH_DEFAULT;

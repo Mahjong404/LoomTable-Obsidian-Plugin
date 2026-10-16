@@ -114,6 +114,26 @@ describe('Fields', () => {
 });
 
 describe('Grid states', () => {
+  it('mounts the C Golden through the production controller and preserves configured format', async () => {
+    const host = await mount('grid-c-golden');
+    await vi.waitFor(() => expect(host.querySelectorAll('.loom-grid-row')).toHaveLength(4));
+    expect(host.querySelector('.loom-grid-count')!.textContent).toBe('4 rows');
+    expect(host.textContent).toContain('12,800');
+    expect(host.textContent).toContain('采样地点');
+    expect(host.querySelector('.loom-grid-aggregate-row')).not.toBeNull();
+  });
+
+  it('mounts density variants from the same resolved geometry and renderer', async () => {
+    const host = await mount('grid-c-density');
+    expect(
+      [...host.querySelectorAll<HTMLElement>('.loom-grid-wrapper')].map((e) =>
+        e.style.getPropertyValue('--loom-grid-row-height'),
+      ),
+    ).toEqual(['30px', '36px', '44px']);
+    expect(
+      [...host.querySelectorAll<HTMLElement>('.loom-grid-add-row')].map((e) => e.style.height),
+    ).toEqual(['36px', '36px', '36px']);
+  });
   it('marks cells with per-record edit states and surfaces the error banner', async () => {
     const host = await mount('grid-edit-states');
     expect(
@@ -203,8 +223,9 @@ describe('Grid states', () => {
     await vi.waitFor(() => {
       expect(host.querySelectorAll('.loom-grid-row').length).toBeGreaterThan(0);
     });
-    const realRows = () => host.querySelectorAll('.loom-grid-row:not(.loom-grid-draft-row)').length;
-    const before = realRows();
+    const authoritativeCount = () =>
+      Number.parseInt(host.querySelector('.loom-grid-count')!.textContent, 10);
+    const before = authoritativeCount();
     host.querySelector<HTMLButtonElement>('.loom-grid-record-create')?.click();
     const draftRow = host.querySelector<HTMLElement>('.loom-grid-draft-row');
     expect(draftRow).not.toBeNull();
@@ -215,7 +236,7 @@ describe('Grid states', () => {
     editor!.blur();
     draftRow!.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
     await vi.waitFor(() => {
-      expect(realRows()).toBeGreaterThan(before);
+      expect(authoritativeCount()).toBe(before + 1);
     });
     expect(host.textContent).toContain('Gallery record');
   });

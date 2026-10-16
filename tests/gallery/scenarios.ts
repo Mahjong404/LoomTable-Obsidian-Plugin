@@ -51,6 +51,7 @@ import {
   GALLERY_RECORDS,
   GALLERY_VIEWS,
   createGalleryState,
+  cGoldenGalleryData,
   galleryData,
   galleryGridConfig,
   galleryMapConfig,
@@ -90,6 +91,48 @@ export const galleryScenarios: readonly GalleryScenario[] = [
         onCreateRecord: async () => GALLERY_RECORDS[0]!,
         onLoadDeletedRecords: () => undefined,
       });
+    },
+  },
+  {
+    id: 'grid-c-golden',
+    section: 'Grid C',
+    title: 'C Golden — live Grid, four records, real aggregate/filter/field consumers',
+    mount: (host) => mountInteractiveGrid(host, cGoldenGalleryData()),
+  },
+  {
+    id: 'grid-c-frozen',
+    section: 'Grid C',
+    title: 'C Frozen — Name + Date, horizontal scroll and resize',
+    mount(host) {
+      const data = cGoldenGalleryData();
+      return mountInteractiveGrid(host, {
+        ...data,
+        views: data.views.map((view) =>
+          view.type === 'grid'
+            ? { ...view, config: { ...view.config, frozenFieldIds: ['field_title', 'field_due'] } }
+            : view,
+        ),
+      });
+    },
+  },
+  {
+    id: 'grid-c-density',
+    section: 'Grid C',
+    title: 'C Density — real rows at compact / standard / comfortable',
+    async mount(host) {
+      const disposers: (() => void)[] = [];
+      const data = cGoldenGalleryData();
+      for (const density of ['compact', 'standard', 'comfortable'] as const) {
+        const sample = block(host, 'loom-root');
+        const view = data.views[0];
+        if (view?.type !== 'grid') throw new Error('Golden Grid fixture missing');
+        const result = await mountInteractiveGrid(sample, {
+          ...data,
+          views: [{ ...view, config: { ...view.config, rowHeight: density } }],
+        });
+        if (result?.dispose !== undefined) disposers.push(result.dispose);
+      }
+      return { dispose: () => disposers.forEach((dispose) => dispose()) };
     },
   },
   {
@@ -219,7 +262,8 @@ export const galleryScenarios: readonly GalleryScenario[] = [
   {
     id: 'grid-edit-states',
     section: 'Grid',
-    title: 'Cell statuses — draft, queued, saving, error, terminal and conflict',
+    title:
+      'Operation feedback — queued, saving, error, terminal and conflict; Current stays independent',
     mount(host) {
       return mountStaticGrid(
         host,
@@ -586,7 +630,12 @@ function mountStaticGrid(
     ...overrides,
   });
   renderer.render(state);
-  return { dispose: () => container.replaceChildren() };
+  return {
+    dispose: () => {
+      renderer.dispose();
+      container.replaceChildren();
+    },
+  };
 }
 
 function galleryShellState(update: Partial<TableShellState> = {}): TableShellState {
@@ -618,9 +667,12 @@ function mountStaticShell(host: HTMLElement, state?: TableShellState): void {
   host.append(shell.render(state ?? galleryShellState()));
 }
 
-async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResult> {
+async function mountInteractiveGrid(
+  host: HTMLElement,
+  data = galleryData(),
+): Promise<GalleryMountResult> {
   const translate = createTranslator('en');
-  const client = new InMemoryLoomTableClient(galleryData());
+  const client = new InMemoryLoomTableClient(data);
   let controller: GridViewController | null = null;
   const runtime = new MutationQueueRuntime({
     load: () => undefined,
@@ -723,6 +775,8 @@ async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResu
       confirmDangerousAction(confirmHost, message, translate, trigger),
     onSearch: (term) => grid.setSearch(term),
     onApplyFilter: (viewId, filter) => grid.applyViewFilter(viewId, filter),
+    onSetFieldAggregation: (fieldId, fn) => grid.setFieldAggregation(fieldId, fn),
+    onQueryFieldValues: (fieldId, request) => grid.queryFieldValues(fieldId, request),
     onApplySort: (viewId, sort) => grid.applyViewSort(viewId, sort),
     onApplyDisplay: (viewId, patch) => grid.applyViewDisplay(viewId, patch),
     onCreateRecord: (values) => grid.createRecord(values),
@@ -761,6 +815,8 @@ async function mountInteractiveGrid(host: HTMLElement): Promise<GalleryMountResu
   await grid.load();
   return {
     dispose: () => {
+      renderer.dispose();
+      shell.dispose();
       unsubscribe();
       grid.dispose();
       gridHost.replaceChildren();

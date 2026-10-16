@@ -15,6 +15,7 @@ import {
   type CreateFieldRequest,
   type CreateViewRequest,
   type Field,
+  type FilterNode,
   type HistoryPage,
   type InitializeAttachmentRequest,
   type JsonValue,
@@ -527,6 +528,7 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
       ) {
         return false;
       }
+      if (!matchesFilterNode(record, request.filter)) return false;
       if (lifecycle === 'all') return true;
       return lifecycle === 'deleted'
         ? record.deletedAt !== undefined
@@ -734,6 +736,7 @@ export class InMemoryLoomTableClient implements GridDataSource, ViewWriteSource,
       (record) =>
         record.tableId === tableId &&
         record.deletedAt === undefined &&
+        matchesFilterNode(record, request.filter) &&
         (request.search === undefined ||
           matchesSearchTerm(record, request.search, this.#fields, primaryFieldId)),
     );
@@ -1145,6 +1148,105 @@ function matchesSearchTerm(
     const value = record.values[field.id];
     return typeof value === 'string' && value.normalize('NFC').toLowerCase().includes(term);
   });
+}
+
+// Honest Filter evaluation so Filter+Search combinations (e.g. G6 aggregate
+// queries) cannot pass tests on a fake that silently ignores the Filter.
+function matchesFilterNode(record: LoomTableRecord, node: FilterNode | undefined): boolean {
+  if (node === undefined) return true;
+  if (node.kind === 'group') {
+    return node.operator === 'and'
+      ? node.children.every((child) => matchesFilterNode(record, child))
+      : node.children.some((child) => matchesFilterNode(record, child));
+  }
+  const value = record.values[node.fieldId];
+  switch (node.operator) {
+    case 'isEmpty':
+      return (
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (Array.isArray(value) && value.length === 0)
+      );
+    case 'isNotEmpty':
+      return !(
+        value === undefined ||
+        value === null ||
+        value === '' ||
+        (Array.isArray(value) && value.length === 0)
+      );
+    case 'is':
+      return jsonEquals(value, node.value);
+    case 'isNot':
+      return !jsonEquals(value, node.value);
+    case 'contains':
+      return containsValue(value, node.value);
+    case 'notContains':
+      return !containsValue(value, node.value);
+    case 'startsWith':
+      return (
+        typeof value === 'string' &&
+        typeof node.value === 'string' &&
+        foldCase(value).startsWith(foldCase(node.value))
+      );
+    case 'endsWith':
+      return (
+        typeof value === 'string' &&
+        typeof node.value === 'string' &&
+        foldCase(value).endsWith(foldCase(node.value))
+      );
+    case 'greaterThan':
+      return compareScalar(value, node.value) > 0;
+    case 'greaterOrEqual':
+      return compareScalar(value, node.value) >= 0;
+    case 'lessThan':
+      return compareScalar(value, node.value) < 0;
+    case 'lessOrEqual':
+      return compareScalar(value, node.value) <= 0;
+    case 'includes': {
+      const list = asJsonArray(value);
+      return list === null
+        ? jsonEquals(value, node.value)
+        : list.some((item) => jsonEquals(item, node.value));
+    }
+    case 'excludes': {
+      const list = asJsonArray(value);
+      return list === null
+        ? !jsonEquals(value, node.value)
+        : !list.some((item) => jsonEquals(item, node.value));
+    }
+  }
+}
+
+function asJsonArray(value: JsonValue | undefined): readonly JsonValue[] | null {
+  return Array.isArray(value) ? (value as readonly JsonValue[]) : null;
+}
+
+function foldCase(value: string): string {
+  return value.normalize('NFC').toLowerCase();
+}
+
+function containsValue(value: JsonValue | undefined, needle: JsonValue | undefined): boolean {
+  if (typeof value === 'string' && typeof needle === 'string') {
+    return foldCase(value).includes(foldCase(needle));
+  }
+  const list = asJsonArray(value);
+  if (list !== null) return list.some((item) => jsonEquals(item, needle));
+  return false;
+}
+
+function compareScalar(value: JsonValue | undefined, operand: JsonValue | undefined): number {
+  if (typeof value === 'number' && typeof operand === 'number') return value - operand;
+  if (typeof value === 'string' && typeof operand === 'string') {
+    return value < operand ? -1 : value > operand ? 1 : 0;
+  }
+  // Non-comparable pairs are treated as unordered — the rule cannot match,
+  // so return a sentinel that every comparison turns into false.
+  return Number.NaN;
+}
+
+function jsonEquals(a: JsonValue | undefined, b: JsonValue | undefined): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
 }
 
 function unsupported(): LoomTableClientError {
