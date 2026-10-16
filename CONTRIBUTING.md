@@ -15,7 +15,7 @@ Only `main` is long-lived. Use short-lived `feat/`, `fix/`, `refactor/`, `docs/`
 - Never put access tokens, SecretStorage values, personal Server URLs, Vault data, or record contents in commits, fixtures, logs, screenshots, or PR descriptions.
 - Update the pinned Server contract only through the explicit `pnpm api:sync <commit-sha>` workflow. Normal builds must remain independent of the Server repository and the network.
 
-Before opening or updating a pull request, run:
+For runtime, configuration, dependency, CI, or unknown-path changes, run before opening or updating a pull request:
 
 ```text
 pnpm install --frozen-lockfile
@@ -23,4 +23,5 @@ pnpm check
 git diff --check
 ```
 
-Review the resulting file list and diff for generated or temporary artifacts before publishing.
+For documentation-only work, use the applicable validation in the Git workflow. Review the resulting file list and diff for generated or temporary artifacts before publishing.
+
